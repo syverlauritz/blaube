@@ -44,9 +44,9 @@ jobs:
       # signed and notarized. Without one it is ad-hoc signed, which runs but
       # still needs "Open Anyway" in Privacy & Security on first launch.
       - if: runner.os == 'macOS' && env.CSC_LINK != ''
-        run: npx electron-builder --mac --arm64 --x64 --publish never
+        run: npx electron-builder --mac --arm64 --x64 --publish never --config build/signed.config.js
       - if: runner.os == 'macOS' && env.CSC_LINK == ''
-        run: npx electron-builder --mac --arm64 --x64 --publish never -c.mac.identity=- -c.mac.hardenedRuntime=false
+        run: npx electron-builder --mac --arm64 --x64 --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
       - if: runner.os == 'Windows'

@@ -101,7 +101,8 @@ The window covers the screen's work area but lets clicks pass through everywhere
 npm test                 # physics, session tracking and hook installer tests
 npm start                # run the app
 BLAUBE_DEMO=1 npm start  # run with fake sessions
-npm run dist:mac         # build a .dmg (on macOS)
+npm run dist:mac         # build a .dmg (on macOS; ad-hoc signed, never uses your keychain)
+npm run build:mac:local  # just build dist/mac-*/Blaube.app
 npm run dist:win         # build an installer (on Windows)
 node scripts/make-icons.js  # re-render the icons (needs playwright)
 ```

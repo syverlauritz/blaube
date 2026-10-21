@@ -10,8 +10,9 @@
     "start": "electron .",
     "test": "node --test test/*.test.js",
     "dist": "electron-builder",
-    "dist:mac": "electron-builder --mac",
-    "dist:win": "electron-builder --win --x64 && electron-builder --win --arm64"
+    "dist:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
+    "dist:win": "electron-builder --win --x64 && electron-builder --win --arm64",
+    "build:mac:local": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir --publish never"
   },
   "build": {
     "appId": "app.blaube.desktop",
@@ -40,7 +41,9 @@
       "extendInfo": {
         "LSUIElement": true
       },
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "identity": "-",
+      "hardenedRuntime": false
     },
     "win": {
       "target": [
