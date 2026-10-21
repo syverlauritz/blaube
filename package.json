@@ -42,7 +42,7 @@
         "LSUIElement": true
       },
       "artifactName": "${productName}-${version}-${arch}.${ext}",
-      "identity": "-",
+      "identity": null,
       "hardenedRuntime": false
     },
     "win": {
@@ -60,7 +60,8 @@
       "oneClick": true,
       "perMachine": false,
       "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
-    }
+    },
+    "afterPack": "build/adhoc-sign.js"
   },
   "devDependencies": {
     "electron": "^45.0.0",
