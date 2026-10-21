@@ -544,7 +544,7 @@ function sessionMenu(id) {
     { label: 'Colour', submenu: colorMenu(colorOf(s) || prefs.config.color, (hex) => { prefs.colors[colorKey(s)] = hex; savePrefs(); pushState(); }) },
     { label: 'Blaube', submenu: appMenuTemplate() },
     { type: 'separator' },
-    { label: 'Merge back in', click: () => { tracker.handle({ session_id: id, hook_event_name: 'SessionEnd' }); } },
+    { label: 'Merge back in', click: () => tracker.dismiss(id) },
   ]);
 }
 
