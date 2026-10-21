@@ -52,6 +52,8 @@
       ['waitingHopStrength', 600, 0, 2000, 10, 'Needs-you hop strength'],
       ['splitImpulse', 700, 0, 2000, 10, 'Split launch speed'],
       ['dizzySpeed', 2300, 500, 8000, 50, 'Dizzy after impact over (px/s)'],
+      ['glassesSpeed', 1700, 300, 8000, 50, 'High effort loses glasses over (px/s)'],
+      ['levitateHeight', 70, 0, 300, 1, 'Extra high effort float height (px)'],
     ]],
     ['World', [
       ['dockCollision', true, 0, 0, 0, 'Collide with the Dock / taskbar'],

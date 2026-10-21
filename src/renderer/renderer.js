@@ -17,7 +17,7 @@
 
   let W = 0, H = 0;
   let mouse = { x: -1e4, y: -1e4, lastMove: performance.now() / 1000 };
-  let drag = null; // { buddy, x0, y0, t0, moved }
+  let drag = null; // { buddy, x0, y0, t0, moved } or { glasses, owner }
   let ignoring = null;
   let settings = { hooksInstalled: true };
   let time = 0;
@@ -31,6 +31,8 @@
       this.targetR = r;
       this.session = session || null;
       this.state = session ? session.state : 'idle';
+      this.effort = (session && session.effort) || 'medium';
+      this.glasses = null; // high effort: the glasses, while they're off its face
       this.born = time;
       this.parent = null; // set while splitting off
       this.merging = null; // { since }
@@ -145,6 +147,8 @@
       const prev = b.state;
       b.session = s;
       b.state = s.state;
+      b.effort = s.effort || 'medium';
+      if (b.effort !== 'high') b.glasses = null;
       if (prev !== s.state) react(b, prev);
       if (s.seen && b.bubble && b.bubble.sticky) b.bubble = null;
     }
@@ -222,6 +226,9 @@
       body.step(DT);
       if (b.splitting) pullStrand(b);
       if (body.lastImpact > CFG.dizzySpeed) b.dizzyUntil = time + 0.9;
+      if (b.effort === 'high' && !b.isMain && !b.glasses && !b.splitting && !b.dying && body.lastImpact > CFG.glassesSpeed) knockGlasses(b);
+      if (b.glasses) stepGlasses(b);
+      if (b.effort === 'xhigh' && b.state === 'working' && !b.isMain && !body.grab && !b.merging && !b.splitting && !b.dying) levitate(b);
 
       if (b.merging && !b.dying) {
         const c = body.centroid(), mc = m.body.centroid();
@@ -248,6 +255,76 @@
         }
       }
     }
+  }
+
+  // High effort: hit something hard enough and the glasses fly off.
+  function knockGlasses(b) {
+    const body = b.body, c = body.centroid(), r = body.o.radius, v = body.velocity(DT);
+    b.glasses = {
+      x: c.x + Math.sin(b.body.angle) * r * 0.18, y: c.y - Math.cos(b.body.angle) * r * 0.18,
+      vx: v.x * 0.5 + (Math.random() - 0.5) * 400, vy: Math.min(0, v.y) * 0.4 - 650,
+      a: body.angle, va: (Math.random() - 0.5) * 24,
+      r: r * CFG.faceScale, held: false, since: time, lx: 0, ly: 0,
+    };
+    b.say('My glasses!', 1.6);
+  }
+
+  function glassesBox(g) {
+    return { hw: g.r * 0.72, hh: g.r * 0.28 };
+  }
+
+  function stepGlasses(b) {
+    const g = b.glasses;
+    if (g.held) {
+      // Track the throw speed from how the cursor moves them.
+      g.vx = g.vx * 0.8 + ((g.x - g.lx) / DT) * 0.2;
+      g.vy = g.vy * 0.8 + ((g.y - g.ly) / DT) * 0.2;
+      g.lx = g.x; g.ly = g.y;
+      g.a *= 0.9;
+      return;
+    }
+    const { hw, hh } = glassesBox(g);
+    g.vy += CFG.gravity * DT;
+    g.x += g.vx * DT; g.y += g.vy * DT; g.a += g.va * DT;
+    const floor = floorAt(g.x) - hh;
+    if (g.y > floor) {
+      g.y = floor;
+      g.vy = g.vy > 120 ? -g.vy * 0.35 : 0;
+      g.vx *= 0.86;
+      g.va *= 0.5;
+      g.a += (Math.round(g.a / Math.PI) * Math.PI - g.a) * 0.25; // settle flat, or upside down
+    }
+    if (g.y < hh) { g.y = hh; g.vy = Math.abs(g.vy) * 0.4; }
+    if (g.x < hw) { g.x = hw; g.vx = Math.abs(g.vx) * 0.5; }
+    if (g.x > W - hw) { g.x = W - hw; g.vx = -Math.abs(g.vx) * 0.5; }
+    // The owner bumps into them: back on they go.
+    const c = b.body.centroid();
+    if (time - g.since > 0.6 && !b.merging && Math.hypot(g.x - c.x, g.y - c.y) < b.body.o.radius * 0.95) wearGlasses(b);
+  }
+
+  function wearGlasses(b) {
+    b.glasses = null;
+    b.happyUntil = time + 1.6;
+    b.hop(0, -260);
+  }
+
+  function glassesAt(x, y) {
+    for (const b of buddies.values()) {
+      const g = b.glasses;
+      if (!g || b.dying) continue;
+      const { hw, hh } = glassesBox(g);
+      if (Math.abs(x - g.x) < hw + 6 && Math.abs(y - g.y) < hh * 1.6 + 6) return b;
+    }
+    return null;
+  }
+
+  // Extra high effort, thinking: floats above the ground like it's meditating.
+  function levitate(b) {
+    const body = b.body, c = body.centroid(), r = body.o.radius, v = body.velocity(DT);
+    const target = floorAt(c.x) - r - CFG.levitateHeight + Math.sin(time * 1.6 + b.born * 3) * 8;
+    const ay = -CFG.gravity + (target - c.y) * 16 - v.y * 4.5;
+    const ax = -v.x * 2.5;
+    body.impulse(ax * DT, ay * DT, DT);
   }
 
   // While splitting, a goo strand ties the new slime to the big one: a
@@ -281,6 +358,17 @@
     if (b.bubble && time > b.bubble.until) b.bubble = null;
     if (b.body.grab || !b.body.onFloor() || b.merging || time < b.nextHop) return;
 
+    const g = b.glasses;
+    if (g) {
+      // Lost its glasses: hop over to them (or wait while you hold them).
+      if (!g.held) {
+        const dx = g.x - b.body.centroid().x;
+        b.hop(Math.sign(dx) * Math.min(520, Math.abs(dx) * 2 + 90), -340 - Math.min(400, Math.max(0, b.body.centroid().y - g.y) * 1.6));
+      }
+      b.nextHop = time + 0.9 + Math.random() * 0.4;
+      return;
+    }
+
     const st = b.isMain ? aggregateState() : b.state;
     const unseen = b.session && !b.session.seen;
     if (st === 'waiting' && (b.isMain || unseen)) {
@@ -290,6 +378,9 @@
       // Finished: bounce up and down until someone clicks it.
       b.hop((Math.random() - 0.5) * 60, -CFG.doneHopStrength);
       b.nextHop = time + CFG.doneHopEvery;
+    } else if (st === 'working' && (b.effort === 'low' || b.effort === 'xhigh')) {
+      // Zoned out, or deep in meditation: no fidgeting.
+      b.nextHop = time + 1;
     } else if (st === 'working') {
       // Deep concentration: mostly still, with the odd wobble.
       b.hop((Math.random() - 0.5) * 120, -140);
@@ -317,7 +408,20 @@
     else if (st === 'done' && b.session && !b.session.seen) { expression = 'happy'; mouth = 'grin'; }
     else if (st === 'working' && !b.isMain) { expression = 'concentrate'; mouth = 'flat'; }
     else if (st === 'idle' && time - mouse.lastMove > 120) { expression = 'sleepy'; mouth = 'flat'; }
-    return { expression, mouth, blink: b.blink, look: mouse, scale: CFG.faceScale };
+    const effort = b.isMain ? 'medium' : b.effort;
+    const working = st === 'working' && !b.isMain;
+    let drool = null;
+    if (effort === 'low' && expression !== 'dizzy' && !body.grab) {
+      if (working) { mouth = 'slack'; drool = ((time - b.born) / 4.5) % 1; }
+      else if (mouth === 'smile') mouth = 'flat';
+    }
+    if (effort === 'xhigh' && expression !== 'dizzy') mouth = mouth === 'o' || mouth === 'grin' ? mouth : 'smile';
+    return {
+      expression, mouth, blink: b.blink, look: mouse, scale: CFG.faceScale,
+      effort, working, drool,
+      glasses: effort === 'high' && !b.glasses,
+      squint: effort === 'high' && !!b.glasses && expression === 'normal',
+    };
   }
 
   function draw() {
@@ -344,17 +448,20 @@
 
     for (const b of list) {
       const unseen = b.session && !b.session.seen && (b.state === 'waiting' || b.state === 'done');
-      const glow = unseen && CFG.glow ? D.STATE_COLORS[b.state] : null;
+      const zen = b.effort === 'xhigh' && b.state === 'working' && !b.isMain && !b.dying;
+      const glow = unseen && CFG.glow ? D.STATE_COLORS[b.state] : zen ? '#ffffff' : null;
       D.drawBody(ctx, b.body, b.color, { glow, outline: CFG.outline });
       if (b.body.o.radius > 12) D.drawFace(ctx, b.body, faceFor(b));
       const st = b.isMain ? aggregateState() : b.state;
-      if (st === 'working' && !b.isMain && !b.dying) D.drawThinking(ctx, b.body, time);
+      if (zen) D.drawMotes(ctx, b.body, time);
+      else if (st === 'working' && !b.isMain && !b.dying && b.effort !== 'low') D.drawThinking(ctx, b.body, time);
       if (!b.isMain && !b.dying) {
         if (b.state === 'done' && b.session && !b.session.seen) D.drawExclaim(ctx, b.body, time, D.STATE_COLORS.done);
         else D.drawDots(ctx, b.body, [b.state], time);
         D.drawLabel(ctx, b.body, label(b));
       }
     }
+    for (const b of list) if (b.glasses) D.drawGlasses(ctx, b.glasses.x, b.glasses.y, b.glasses.r, b.glasses.a);
     for (const b of list) {
       if (b.bubble) D.drawBubble(ctx, b.body, b.bubble.lines, Math.min(1, (b.bubble.until - time) * 3), W);
     }
@@ -420,7 +527,7 @@
   }
 
   function updateIgnore() {
-    const want = !(drag || buddyAt(mouse.x, mouse.y));
+    const want = !(drag || buddyAt(mouse.x, mouse.y) || glassesAt(mouse.x, mouse.y));
     if (want !== ignoring) {
       ignoring = want;
       api.setIgnoreMouse(want);
@@ -431,7 +538,10 @@
     mouse.x = e.clientX;
     mouse.y = e.clientY;
     mouse.lastMove = performance.now() / 1000;
-    if (drag) {
+    if (drag && drag.glasses) {
+      drag.glasses.x = e.clientX;
+      drag.glasses.y = e.clientY;
+    } else if (drag) {
       drag.buddy.body.moveGrab(e.clientX, e.clientY);
       if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > 5) drag.moved = true;
     }
@@ -440,6 +550,15 @@
 
   window.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
+    const owner = glassesAt(e.clientX, e.clientY);
+    if (owner) {
+      const g = owner.glasses;
+      g.held = true;
+      g.x = g.lx = e.clientX; g.y = g.ly = e.clientY;
+      g.vx = g.vy = g.va = 0;
+      drag = { glasses: g, owner };
+      return;
+    }
     const b = buddyAt(e.clientX, e.clientY);
     if (!b) return;
     drag = { buddy: b, x0: e.clientX, y0: e.clientY, t0: time, moved: false };
@@ -449,6 +568,17 @@
 
   window.addEventListener('mouseup', (e) => {
     if (e.button !== 0 || !drag) return;
+    if (drag.glasses) {
+      const { glasses: g, owner } = drag;
+      g.held = false;
+      g.since = time;
+      g.va = (Math.random() - 0.5) * 10;
+      // Handing them back: drop them on their owner.
+      if (owner.glasses === g && owner.body.contains(g.x, g.y)) wearGlasses(owner);
+      drag = null;
+      updateIgnore();
+      return;
+    }
     const b = drag.buddy;
     b.body.endGrab();
     if (!drag.moved && time - drag.t0 < 0.35) click(b);

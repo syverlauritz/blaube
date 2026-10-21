@@ -81,7 +81,8 @@
     return hsl(c.h, c.s, c.l + amount * 100);
   }
 
-  // face: { look: {x,y} in screen px, expression, blink 0..1, mouth }
+  // face: { look: {x,y} in screen px, expression, blink 0..1, mouth,
+  //         effort, glasses, squint, working, drool 0..1 or null }
   function drawFace(ctx, b, face) {
     const c = b.centroid();
     const r = b.o.radius;
@@ -107,8 +108,32 @@
     ctx.lineWidth = r * 0.06;
     ctx.strokeStyle = ink;
 
+    const effort = face.effort || 'medium';
     for (const side of [-1, 1]) {
       const x = side * ex, y = ey;
+      if (effort === 'low' && face.expression !== 'dizzy') {
+        // Vacant beady eyes: plain black dots, a bit too far apart.
+        const open = Math.max(0.15, 1 - face.blink);
+        ctx.fillStyle = ink;
+        ctx.beginPath();
+        ctx.ellipse(side * ex * 1.45, y + eh * 0.1, ew * 0.36, ew * 0.36 * open, 0, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
+      if (effort === 'xhigh' && face.expression !== 'dizzy') {
+        // Nirvana: glowing white eyes, half-lidded while it meditates.
+        const open = Math.max(0.1, 1 - face.blink) * (face.working ? 0.45 : 0.9);
+        ctx.save();
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = r * 0.35;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.ellipse(x, y, ew * 0.95, eh * open, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fill();
+        ctx.restore();
+        continue;
+      }
       switch (face.expression) {
         case 'happy':
           ctx.beginPath();
@@ -136,12 +161,12 @@
           ctx.stroke();
           break;
         default: {
-          const open = Math.max(0.08, 1 - face.blink);
+          const open = Math.max(0.08, 1 - face.blink) * (face.squint ? 0.35 : 1);
           ctx.fillStyle = '#fff';
           ctx.beginPath();
           ctx.ellipse(x, y, ew, eh * open, 0, 0, Math.PI * 2);
           ctx.fill();
-          if (open > 0.3) {
+          if (open > 0.25) {
             ctx.save();
             ctx.beginPath();
             ctx.ellipse(x, y, ew, eh * open, 0, 0, Math.PI * 2);
@@ -165,6 +190,13 @@
         ctx.lineTo(x + ew * 0.7 * side, y - eh * 1.35 - tilt * eh * 0.25);
         ctx.stroke();
       }
+    }
+
+    if (face.glasses) {
+      ctx.save();
+      ctx.translate(0, ey);
+      glassesShape(ctx, r, ink);
+      ctx.restore();
     }
 
     // Cheeks.
@@ -193,9 +225,93 @@
         ctx.moveTo(-r * 0.08, my); ctx.lineTo(r * 0.08, my);
         ctx.stroke();
         break;
+      case 'slack':
+        // Hanging open, a little lopsided.
+        ctx.fillStyle = ink;
+        ctx.ellipse(r * 0.03, my + r * 0.03, r * 0.07, r * 0.045, 0.15, 0, Math.PI * 2);
+        ctx.fill();
+        break;
       default:
         ctx.arc(0, my - r * 0.06, r * 0.1, Math.PI * 0.2, Math.PI * 0.8);
         ctx.stroke();
+    }
+    if (face.drool != null) drawDrool(ctx, r * 0.08, my + r * 0.06, r, face.drool);
+    ctx.restore();
+  }
+
+  // A drop of drool that slowly stretches down from the mouth corner, lets
+  // go and falls. p runs 0..1 over one drip.
+  function drawDrool(ctx, x, y, r, p) {
+    const grow = Math.min(1, p / 0.8);
+    const len = r * 0.5 * grow * grow;
+    const fall = p > 0.8 ? ((p - 0.8) / 0.2) ** 2 * r * 0.9 : 0;
+    const drop = r * (0.035 + 0.03 * grow);
+    ctx.save();
+    ctx.fillStyle = 'rgba(196,228,255,0.95)';
+    ctx.strokeStyle = 'rgba(80,130,185,0.85)';
+    ctx.lineWidth = Math.max(1, r * 0.015);
+    const strand = p > 0.8 ? len * (1 - (p - 0.8) / 0.2) : len;
+    if (strand > 1) {
+      ctx.beginPath();
+      ctx.moveTo(x - drop * 0.35, y);
+      ctx.quadraticCurveTo(x - drop * 0.1, y + strand * 0.6, x, y + strand);
+      ctx.quadraticCurveTo(x + drop * 0.1, y + strand * 0.6, x + drop * 0.35, y);
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(x, y + len + fall, drop, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Round nerd glasses centred on (0, 0), sized for a slime of radius r.
+  function glassesShape(ctx, r, ink = '#1b2440') {
+    const ex = r * 0.33, lr = r * 0.25;
+    ctx.lineWidth = r * 0.05;
+    ctx.strokeStyle = ink;
+    ctx.lineCap = 'round';
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(side * ex, 0, lr, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(220,240,255,0.22)';
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(side * (ex + lr), -lr * 0.15);
+      ctx.lineTo(side * (ex + lr + r * 0.18), -lr * 0.3);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(-ex + lr, -lr * 0.1);
+    ctx.quadraticCurveTo(0, -lr * 0.55, ex - lr, -lr * 0.1);
+    ctx.stroke();
+  }
+
+  // Glasses lying about on their own, after a nerd slime lost them.
+  function drawGlasses(ctx, x, y, r, angle) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    glassesShape(ctx, r);
+    ctx.restore();
+  }
+
+  // Little motes of light circling a meditating slime.
+  function drawMotes(ctx, b, t) {
+    const c = b.centroid();
+    const r = b.o.radius;
+    ctx.save();
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = 8;
+    for (let i = 0; i < 3; i++) {
+      const a = t * 0.9 + (i * Math.PI * 2) / 3;
+      const x = c.x + Math.cos(a) * r * 1.35;
+      const y = c.y + Math.sin(a) * r * 0.45 - r * 0.1;
+      ctx.fillStyle = `rgba(255,255,255,${0.55 + 0.4 * Math.sin(t * 3 + i)})`;
+      ctx.beginPath();
+      ctx.arc(x, y, 2.6, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
   }
@@ -335,5 +451,5 @@
     ctx.closePath();
   }
 
-  root.BlaubeDraw = { drawShadow, drawBody, vary, drawFace, drawDots, drawThinking, drawExclaim, drawLabel, drawBubble, STATE_COLORS };
+  root.BlaubeDraw = { drawShadow, drawBody, vary, drawFace, drawGlasses, drawMotes, drawDots, drawThinking, drawExclaim, drawLabel, drawBubble, STATE_COLORS };
 })(globalThis);

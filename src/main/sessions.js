@@ -14,6 +14,7 @@ class SessionTracker extends EventEmitter {
     super();
     this.now = now;
     this.sessions = new Map();
+    this.effortOf = null; // optional (payload) => 'low' | 'medium' | 'high' | 'xhigh' | ''
     // Sessions you merged back in by hand, so their next hook doesn't split
     // them right back out. Cleared when the session really ends.
     this.dismissed = new Map(); // id -> last time we heard from it
@@ -51,6 +52,7 @@ class SessionTracker extends EventEmitter {
       id,
       cwd,
       term: payload._term || (prev && prev.term) || '',
+      effort: payload._effort || (this.effortOf && this.effortOf({ ...payload, cwd })) || (prev && prev.effort) || '',
       project: cwd ? path.basename(cwd.replace(/[\\/]+$/, '')) : 'Claude',
       state: next.state,
       message: next.message || '',
@@ -61,7 +63,7 @@ class SessionTracker extends EventEmitter {
       updatedAt: this.now(),
     };
     this.sessions.set(id, session);
-    if (!prev || prev.state !== session.state) {
+    if (!prev || prev.state !== session.state || prev.effort !== session.effort) {
       this.emit('change', { session, from: prev ? prev.state : null, to: session.state });
     }
   }

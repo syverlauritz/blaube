@@ -6,6 +6,7 @@ const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
 const { openResumeTerminal, resumeCommand, focusSessionApp } = require('./terminal');
 const { startAgentsPoller } = require('./agents');
+const { effortFor } = require('./effort');
 const dock = require('./dock');
 const BlaubeConfig = require('../shared/config');
 
@@ -20,6 +21,7 @@ let tuningWin = null;
 let world = { obstacles: [] };
 let dockWindows = [];
 const tracker = new SessionTracker();
+tracker.effortOf = effortFor;
 
 // --- Preferences (config + chosen display), kept in the app's data folder ---
 
@@ -181,10 +183,12 @@ function sessionMenu(id) {
   const s = tracker.sessions.get(id);
   if (!s) return null;
   const word = { working: 'Working', waiting: 'Needs you', done: 'Done', idle: 'Idle' }[s.state] || s.state;
+  const effort = { low: 'Low effort', medium: 'Medium effort', high: 'High effort', xhigh: 'Extra high effort' }[s.effort];
   const isDemo = id.startsWith('demo-');
   return Menu.buildFromTemplate([
     { label: s.project, enabled: false },
     { label: `${word}${s.message && s.state === 'waiting' ? ': ' + s.message : ''}`, enabled: false },
+    ...(effort ? [{ label: effort, enabled: false }] : []),
     { type: 'separator' },
     { label: 'Open session', enabled: !isDemo, click: () => { if (!focusSessionApp(s)) openResumeTerminal(s); } },
     { label: 'Resume in new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
@@ -227,7 +231,8 @@ function uninstallHooks() {
 // Fakes a few sessions so you can see the split/merge without Claude running.
 function runDemo() {
   const at = (ms, f) => setTimeout(f, ms);
-  const ev = (id, cwd, hook_event_name, extra = {}) => tracker.handle({ session_id: id, cwd, hook_event_name, ...extra });
+  const effort = { 'demo-a': 'low', 'demo-b': 'high', 'demo-c': 'xhigh' };
+  const ev = (id, cwd, hook_event_name, extra = {}) => tracker.handle({ session_id: id, cwd, hook_event_name, _effort: effort[id], ...extra });
   const home = app.getPath('home');
   const a = 'demo-a', b = 'demo-b', c = 'demo-c';
   at(0, () => ev(a, path.join(home, 'code', 'blaube'), 'SessionStart'));

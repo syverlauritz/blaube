@@ -73,3 +73,12 @@ test('a session merged back in by hand stays merged until it ends', () => {
   t.handle(ev('SessionStart'));
   assert.equal(t.list().length, 1);
 });
+
+test('sessions carry their effort level', () => {
+  const t = new SessionTracker();
+  t.effortOf = () => 'high';
+  t.handle(ev('SessionStart'));
+  assert.equal(t.list()[0].effort, 'high');
+  t.handle(ev('UserPromptSubmit', { _effort: 'low' }));
+  assert.equal(t.list()[0].effort, 'low');
+});
