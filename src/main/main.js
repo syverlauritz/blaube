@@ -1,22 +1,119 @@
 const path = require('node:path');
-const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, shell, clipboard } = require('electron');
+const fs = require('node:fs');
+const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, shell, clipboard, globalShortcut } = require('electron');
 const { SessionTracker } = require('./sessions');
 const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
 const { openResumeTerminal, resumeCommand, focusSessionApp } = require('./terminal');
+const { startAgentsPoller } = require('./agents');
+const dock = require('./dock');
+const BlaubeConfig = require('../shared/config');
 
 const PORT = Number(process.env.BLAUBE_PORT) || DEFAULT_PORT;
 const ASSETS = path.join(__dirname, '..', '..', 'build');
 
+const TUNING_SHORTCUT = 'CommandOrControl+Alt+Shift+B';
+
 let win = null;
 let tray = null;
+let tuningWin = null;
+let world = { obstacles: [] };
+let dockWindows = [];
 const tracker = new SessionTracker();
+
+// --- Preferences (config + chosen display), kept in the app's data folder ---
+
+const prefsFile = () => path.join(app.getPath('userData'), 'prefs.json');
+let prefs = { config: {}, displayId: null };
+
+function loadPrefs() {
+  try { prefs = Object.assign(prefs, JSON.parse(fs.readFileSync(prefsFile(), 'utf8'))); } catch { /* first run */ }
+  prefs.config = BlaubeConfig.sanitize(prefs.config);
+}
+
+let saveTimer = null;
+function savePrefs() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      fs.mkdirSync(path.dirname(prefsFile()), { recursive: true });
+      fs.writeFileSync(prefsFile(), JSON.stringify(prefs, null, 2));
+    } catch { /* not fatal */ }
+  }, 300);
+}
+
+function setConfig(next) {
+  prefs.config = BlaubeConfig.sanitize(next);
+  savePrefs();
+  if (win) win.webContents.send('config', prefs.config);
+  updateWorld();
+}
+
+// --- Display and Dock --------------------------------------------------------
+
+function currentDisplay() {
+  const all = screen.getAllDisplays();
+  return all.find((d) => d.id === prefs.displayId) || screen.getPrimaryDisplay();
+}
+
+function fitWindow() {
+  if (!win) return;
+  win.setBounds(dock.windowBoundsFor(currentDisplay()));
+  updateWorld();
+}
+
+function updateWorld() {
+  if (!win) return;
+  const display = currentDisplay();
+  const rect = dock.dockRect(display, dockWindows);
+  const next = { obstacles: rect ? [dock.toWindowCoords(rect, dock.windowBoundsFor(display))] : [] };
+  if (JSON.stringify(next) === JSON.stringify(world)) return;
+  world = next;
+  win.webContents.send('world', world);
+}
+
+function refreshDock() {
+  dock.readDockWindows((list) => { dockWindows = list; updateWorld(); });
+}
+
+function moveToDisplay(id) {
+  prefs.displayId = id;
+  savePrefs();
+  fitWindow();
+  send('come-here');
+}
+
+function displayMenu() {
+  const cur = currentDisplay();
+  const primary = screen.getPrimaryDisplay();
+  return screen.getAllDisplays().map((d, i) => ({
+    label: `${d.label || `Display ${i + 1}`} (${d.size.width}×${d.size.height})${d.id === primary.id ? ', main' : ''}`,
+    type: 'radio',
+    checked: d.id === cur.id,
+    click: () => moveToDisplay(d.id),
+  }));
+}
+
+// --- Tuning panel ------------------------------------------------------------
+
+function openTuning() {
+  if (tuningWin) { tuningWin.show(); tuningWin.focus(); return; }
+  tuningWin = new BrowserWindow({
+    width: 400,
+    height: 760,
+    title: 'Blaube tuning',
+    alwaysOnTop: true,
+    webPreferences: { preload: path.join(__dirname, 'tuningPreload.js'), contextIsolation: true, sandbox: true },
+  });
+  tuningWin.setMenuBarVisibility(false);
+  tuningWin.loadFile(path.join(__dirname, '..', 'tuning', 'tuning.html'));
+  tuningWin.on('closed', () => { tuningWin = null; });
+}
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
 function createWindow() {
-  const display = screen.getPrimaryDisplay();
-  const { x, y, width, height } = display.workArea;
+  const { x, y, width, height } = dock.windowBoundsFor(currentDisplay());
   win = new BrowserWindow({
     x, y, width, height,
     transparent: true,
@@ -41,14 +138,10 @@ function createWindow() {
   win.setIgnoreMouseEvents(true, { forward: true });
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 
-  const fit = () => {
-    if (!win) return;
-    const d = screen.getPrimaryDisplay().workArea;
-    win.setBounds(d);
-  };
-  screen.on('display-metrics-changed', fit);
-  screen.on('display-added', fit);
-  screen.on('display-removed', fit);
+  const refit = () => { fitWindow(); refreshDock(); };
+  screen.on('display-metrics-changed', refit);
+  screen.on('display-added', refit);
+  screen.on('display-removed', refit);
   win.on('closed', () => { win = null; });
 }
 
@@ -72,6 +165,7 @@ function appMenu() {
     installed
       ? { label: 'Claude Code connected ✓', enabled: false }
       : { label: 'Connect Claude Code…', click: installHooks },
+    { label: 'Live on display', submenu: displayMenu() },
     { label: 'Come here', click: () => send('come-here') },
     { label: 'Everyone hop!', click: () => send('hop') },
     { label: 'Demo sessions', click: runDemo },
@@ -168,6 +262,8 @@ function refreshTray() {
 app.whenReady().then(async () => {
   if (process.platform === 'darwin' && app.dock) app.dock.hide();
 
+  loadPrefs();
+
   try {
     await startHookServer(tracker, PORT);
   } catch (e) {
@@ -184,7 +280,31 @@ app.whenReady().then(async () => {
   tracker.on('change', () => { pushState(); refreshTray(); });
   setInterval(() => { if (tracker.prune()) { pushState(); refreshTray(); } }, 30 * 1000);
 
-  ipcMain.on('ready', pushState);
+  ipcMain.on('ready', () => {
+    win.webContents.send('config', prefs.config);
+    win.webContents.send('world', world);
+    pushState();
+  });
+  ipcMain.on('open-tuning', openTuning);
+  ipcMain.on('demo', runDemo);
+  ipcMain.handle('config-get', () => prefs.config);
+  ipcMain.on('config-set', (_e, partial) => setConfig(Object.assign({}, prefs.config, partial)));
+  ipcMain.handle('config-replace', (_e, full) => { setConfig(full); return prefs.config; });
+  ipcMain.handle('config-copy', () => {
+    // Only the values that differ from the defaults, so it's easy to read.
+    const changed = {};
+    for (const [k, v] of Object.entries(prefs.config)) if (v !== BlaubeConfig.DEFAULTS[k]) changed[k] = v;
+    clipboard.writeText(JSON.stringify({ blaube: prefs.config, changed }, null, 2));
+  });
+  globalShortcut.register(TUNING_SHORTCUT, openTuning);
+
+  refreshDock();
+  setInterval(refreshDock, 10 * 1000);
+
+  startAgentsPoller(
+    (agents) => tracker.applyAgents(agents),
+    () => prefs.config.pollClaudeAgents,
+  );
   ipcMain.on('ignore-mouse', (_e, ignore) => {
     if (win) win.setIgnoreMouseEvents(ignore, { forward: true });
   });
@@ -209,3 +329,4 @@ app.whenReady().then(async () => {
 
 app.on('second-instance', () => send('come-here'));
 app.on('window-all-closed', () => app.quit());
+app.on('will-quit', () => globalShortcut.unregisterAll());

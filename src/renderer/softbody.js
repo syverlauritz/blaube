@@ -1,6 +1,6 @@
-// Blaube's body: a ring of Verlet point masses held together by three soft
-// constraints (edge springs, gas pressure, and shape matching), colliding
-// with the screen edges. Plain script so it loads in the renderer with a
+// Blaube's body: a ring of Verlet point masses held together by soft
+// constraints (edge springs, bending, gas pressure, shape matching),
+// colliding with the screen edges and rectangular obstacles like the Dock. Plain script so it loads in the renderer with a
 // <script> tag and in Node tests with require().
 (function (root) {
   'use strict';
@@ -8,21 +8,26 @@
   const DEFAULTS = {
     points: 28,
     radius: 56,
-    gravity: 2200, // px/s^2
-    damping: 0.995, // per substep velocity retention
+    gravity: 2400, // px/s^2
+    damping: 0.996, // per substep velocity retention
     iterations: 6,
-    edgeStiffness: 0.5,
-    pressure: 0.8,
-    bending: 0.08, // pulls each point toward its neighbours' midpoint, smoothing out wrinkles
-    shapeStiffness: 0.02,
-    fullness: 0.9,
-    upright: 0.04, // how hard the rest shape leans back to upright (a soft torque)
-    bounce: 0.45, // restitution against walls
-    friction: 0.18, // tangential loss on contact
-    maxSpeed: 4200, // px/s, keeps a wild toss from exploding the body
-    grabStiffness: 0.35,
-    grabFalloff: 0.9, // grab influence radius, in body radii
+    edgeStiffness: 0.3,
+    pressure: 0.6,
+    bending: 0.05, // pulls each point toward its neighbours' midpoint, smoothing out wrinkles
+    shapeStiffness: 0.01,
+    fullness: 0.8, // target area vs a full circle; < 1 leaves the skin slack so it sags
+    upright: 0.03, // how hard the rest shape leans back to upright (a soft torque)
+    bounce: 0.3, // restitution against walls
+    friction: 0.3, // tangential loss on contact
+    maxSpeed: 4500, // px/s, keeps a wild toss from exploding the body
+    grabSpring: 700, // 1/s^2: the cursor pulls the grabbed spot through a spring
+    grabDamping: 14, // 1/s, relative to the cursor's own motion
+    grabRadius: 0.6, // how much skin around the grabbed spot the spring acts on, in radii
+    grabGravity: 1, // gravity multiplier while held
   };
+
+  // Area of a regular n-gon with circumradius r.
+  const polyArea = (n, r) => 0.5 * n * r * r * Math.sin((2 * Math.PI) / n);
 
   class SoftBody {
     constructor(x, y, opts = {}) {
@@ -43,9 +48,10 @@
         this.py[i] = this.oy[i] = y + this.ry[i];
       }
       this.restEdge = 2 * r * Math.sin(Math.PI / n);
-      this.restArea = this.area() * this.o.fullness; // < 1 leaves the skin a bit slack so it sags
+      this.restArea = polyArea(n, r) * this.o.fullness;
       this.areaScale = 1; // modulated for breathing
       this.bounds = { left: 0, top: 0, right: 1e9, bottom: 1e9 };
+      this.obstacles = []; // [{ x0, y0, x1, y1 }] solid rectangles
       this.grab = null;
       this.angle = 0;
       this.lastImpact = 0; // strongest wall hit speed in the last step, px/s
@@ -54,6 +60,20 @@
 
     setBounds(left, top, right, bottom) {
       this.bounds = { left, top, right, bottom };
+    }
+
+    setObstacles(rects) {
+      this.obstacles = rects || [];
+    }
+
+    // Live-updates tuning parameters. Radius and point count are handled
+    // by setRadius and by rebuilding the body.
+    configure(opts) {
+      for (const k of Object.keys(DEFAULTS)) {
+        if (k === 'radius' || k === 'points' || !(k in opts)) continue;
+        this.o[k] = opts[k];
+      }
+      this.restArea = polyArea(this.n, this.o.radius) * this.o.fullness;
     }
 
     centroid() {
@@ -113,24 +133,25 @@
       for (let i = 0; i < this.n; i++) { this.rx[i] *= k; this.ry[i] *= k; }
       this.o.radius = r;
       this.restEdge *= k;
-      this.restArea *= k * k;
+      this.restArea = polyArea(this.n, r) * this.o.fullness;
     }
 
+    // Grabs the body at (x, y). The grabbed spot is remembered in the body's
+    // own frame, and a damped spring pulls it toward the cursor: the force is
+    // spread over the skin near that spot, so the rest dangles and swings.
     startGrab(x, y) {
-      const fall = this.o.radius * this.o.grabFalloff;
-      const w = new Float64Array(this.n);
-      const dx = new Float64Array(this.n);
-      const dy = new Float64Array(this.n);
-      let maxW = 0;
-      for (let i = 0; i < this.n; i++) {
+      const n = this.n;
+      const sigma = this.o.radius * this.o.grabRadius;
+      const w = new Float64Array(n);
+      let sum = 0;
+      for (let i = 0; i < n; i++) {
         const ex = this.px[i] - x, ey = this.py[i] - y;
-        w[i] = Math.exp(-(ex * ex + ey * ey) / (fall * fall));
-        dx[i] = ex; dy[i] = ey;
-        if (w[i] > maxW) maxW = w[i];
+        w[i] = Math.exp(-(ex * ex + ey * ey) / (sigma * sigma)) + 0.02;
+        sum += w[i];
       }
-      // Always hold on to at least the nearest bit of skin firmly.
-      for (let i = 0; i < this.n; i++) w[i] = Math.min(1, w[i] / maxW) * this.o.grabStiffness;
-      this.grab = { x, y, w, dx, dy };
+      for (let i = 0; i < n; i++) w[i] /= sum;
+      const a = this.anchorFrame(w);
+      this.grab = { x, y, w, lx: x - a.x, ly: y - a.y, angle: this.angle, vx: 0, vy: 0, px: x, py: y };
     }
 
     moveGrab(x, y) {
@@ -141,10 +162,50 @@
       this.grab = null;
     }
 
+    // Weighted centre and velocity (per step) of the grabbed region.
+    anchorFrame(w) {
+      let x = 0, y = 0, vx = 0, vy = 0;
+      for (let i = 0; i < this.n; i++) {
+        x += this.px[i] * w[i]; y += this.py[i] * w[i];
+        vx += (this.px[i] - this.ox[i]) * w[i]; vy += (this.py[i] - this.oy[i]) * w[i];
+      }
+      return { x, y, vx, vy };
+    }
+
+    // Where the grabbed spot is now, in screen space.
+    grabAnchor() {
+      const g = this.grab;
+      if (!g) return null;
+      const a = this.anchorFrame(g.w);
+      const t = this.angle - g.angle, c = Math.cos(t), s = Math.sin(t);
+      return { x: a.x + g.lx * c - g.ly * s, y: a.y + g.lx * s + g.ly * c, vx: a.vx, vy: a.vy };
+    }
+
+    // Adds the grab spring's velocity change (per step) to each point.
+    applyGrab(dt) {
+      const g = this.grab, o = this.o, n = this.n;
+      // Cursor velocity, smoothed: mouse events arrive once a frame, not every step.
+      g.vx += ((g.x - g.px) / dt - g.vx) * 0.25;
+      g.vy += ((g.y - g.py) / dt - g.vy) * 0.25;
+      g.px = g.x; g.py = g.y;
+      const a = this.grabAnchor();
+      const ax = o.grabSpring * (g.x - a.x) - o.grabDamping * (a.vx / dt - g.vx);
+      const ay = o.grabSpring * (g.y - a.y) - o.grabDamping * (a.vy / dt - g.vy);
+      // Total force acts on the whole body's mass, concentrated near the
+      // grabbed spot; capped per point so stiff springs stay stable.
+      const cap = 0.45 / (o.grabSpring * dt * dt + 1e-9);
+      for (let i = 0; i < n; i++) {
+        const share = Math.min(cap, g.w[i] * n);
+        this.ox[i] -= ax * share * dt * dt;
+        this.oy[i] -= ay * share * dt * dt;
+      }
+    }
+
     step(dt) {
       const o = this.o, n = this.n;
-      const g = o.gravity * dt * dt;
+      const g = o.gravity * dt * dt * (this.grab ? o.grabGravity : 1);
       const vmax = o.maxSpeed * dt;
+      if (this.grab) this.applyGrab(dt);
       for (let i = 0; i < n; i++) {
         let vx = (this.px[i] - this.ox[i]) * o.damping;
         let vy = (this.py[i] - this.oy[i]) * o.damping;
@@ -153,7 +214,7 @@
         this.ox[i] = this.px[i];
         this.oy[i] = this.py[i];
         this.px[i] += vx;
-        this.py[i] += vy + (this.grab ? g * 0.25 : g);
+        this.py[i] += vy + g;
       }
 
       this.lastImpact = 0;
@@ -163,7 +224,6 @@
         this.solveBending();
         this.solvePressure();
         this.solveShape();
-        if (this.grab) this.solveGrab();
         this.collide(dt, k === 0);
       }
     }
@@ -247,17 +307,6 @@
       }
     }
 
-    solveGrab() {
-      const { n, px, py } = this;
-      const g = this.grab;
-      for (let i = 0; i < n; i++) {
-        const w = g.w[i];
-        if (w < 0.01) continue;
-        px[i] += (g.x + g.dx[i] - px[i]) * w;
-        py[i] += (g.y + g.dy[i] - py[i]) * w;
-      }
-    }
-
     collide(dt, first) {
       const { n, px, py } = this;
       const b = this.bounds;
@@ -266,6 +315,17 @@
         else if (py[i] < b.top) this.hit(i, 'y', b.top, first, dt), (this.contact.top = true);
         if (px[i] > b.right) this.hit(i, 'x', b.right, first, dt), (this.contact.right = true);
         else if (px[i] < b.left) this.hit(i, 'x', b.left, first, dt), (this.contact.left = true);
+        for (const r of this.obstacles) {
+          const x = px[i], y = py[i];
+          if (x <= r.x0 || x >= r.x1 || y <= r.y0 || y >= r.y1) continue;
+          // Push out through the nearest side of the rectangle.
+          const dl = x - r.x0, dr = r.x1 - x, dt2 = y - r.y0, db = r.y1 - y;
+          const m = Math.min(dl, dr, dt2, db);
+          if (m === dt2) this.hit(i, 'y', r.y0, first, dt), (this.contact.bottom = true);
+          else if (m === db) this.hit(i, 'y', r.y1, first, dt), (this.contact.top = true);
+          else if (m === dl) this.hit(i, 'x', r.x0, first, dt), (this.contact.right = true);
+          else this.hit(i, 'x', r.x1, first, dt), (this.contact.left = true);
+        }
       }
     }
 
@@ -309,10 +369,9 @@
       return { minX, maxX, minY, maxY };
     }
 
+    // Resting on something: the screen bottom or the top of an obstacle.
     onFloor() {
-      const b = this.bounds.bottom;
-      for (let i = 0; i < this.n; i++) if (this.py[i] >= b - 1.5) return true;
-      return false;
+      return this.contact.bottom;
     }
   }
 
@@ -322,9 +381,30 @@
   function collideBodies(a, b) {
     const ba = a.bbox(), bb = b.bbox();
     if (ba.maxX < bb.minX || bb.maxX < ba.minX || ba.maxY < bb.minY || bb.maxY < ba.minY) return false;
+    // Deep overlap (one centre inside the other): per-point pushing would
+    // tear the inner body across the outer one, so slide them apart first.
+    const ca = a.centroid(), cb = b.centroid();
+    if (a.contains(cb.x, cb.y) || b.contains(ca.x, ca.y)) {
+      let dx = cb.x - ca.x, dy = cb.y - ca.y;
+      let d = Math.hypot(dx, dy);
+      if (d < 1e-3) { dx = 1; dy = 0; d = 1; }
+      const push = Math.min(6, (a.o.radius + b.o.radius) * 0.04);
+      const wa = b.o.radius ** 2 / (a.o.radius ** 2 + b.o.radius ** 2); // lighter body moves more
+      shift(a, (-dx / d) * push * wa, (-dy / d) * push * wa);
+      shift(b, (dx / d) * push * (1 - wa), (dy / d) * push * (1 - wa));
+      return true;
+    }
     const hitA = pushOut(a, b);
     const hitB = pushOut(b, a);
     return hitA || hitB;
+  }
+
+  // Moves a body's points without changing its velocity.
+  function shift(body, dx, dy) {
+    for (let i = 0; i < body.n; i++) {
+      body.px[i] += dx; body.ox[i] += dx;
+      body.py[i] += dy; body.oy[i] += dy;
+    }
   }
 
   function pushOut(a, b) {

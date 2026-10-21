@@ -43,3 +43,20 @@ test('hook server feeds the tracker', async () => {
   assert.equal(t.list()[0].state, 'working');
   server.close();
 });
+
+test('claude agents polling tracks sessions without hooks, and defers to hooks', () => {
+  const t = new SessionTracker();
+  t.applyAgents([{ sessionId: 'a', cwd: '/x/proj', status: 'busy' }]);
+  assert.equal(t.list()[0].state, 'working');
+  t.applyAgents([{ sessionId: 'a', cwd: '/x/proj', status: 'idle' }]);
+  assert.equal(t.list()[0].state, 'done');
+  // Hooks take over: a waiting state from a hook isn't overwritten by polling.
+  t.handle({ session_id: 'a', hook_event_name: 'Notification', message: 'perm', notification_type: 'permission_prompt' });
+  t.applyAgents([{ sessionId: 'a', cwd: '/x/proj', status: 'busy' }]);
+  assert.equal(t.list()[0].state, 'waiting');
+  // A polled-only session disappears when it leaves the list.
+  t.applyAgents([{ sessionId: 'b', cwd: '/y', status: 'busy' }]);
+  assert.deepEqual(t.list().map((s) => s.id).sort(), ['a', 'b']);
+  t.applyAgents([]);
+  assert.deepEqual(t.list().map((s) => s.id), ['a']);
+});

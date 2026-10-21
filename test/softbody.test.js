@@ -92,3 +92,39 @@ test('setRadius inflates the body to the new size', () => {
   const bb = b.bbox();
   assert.ok(Math.abs((bb.maxX - bb.minX) - 80) < 12, `width ${bb.maxX - bb.minX}`);
 });
+
+test('lands on top of an obstacle like the Dock and slides off its edge', () => {
+  const b = new SoftBody(400, 100, { radius: 40 });
+  b.setBounds(0, 0, 800, 600);
+  b.setObstacles([{ x0: 300, y0: 540, x1: 500, y1: 600 }]);
+  run(b, 2);
+  assert.ok(b.onFloor());
+  assert.ok(b.bbox().maxY <= 541, `rests on the dock, bottom at ${b.bbox().maxY}`);
+  for (let i = 0; i < b.n; i++) assert.ok(!(b.px[i] > 300 && b.px[i] < 500 && b.py[i] > 541));
+});
+
+test('held by the skin, the body dangles below the cursor', () => {
+  const b = new SoftBody(400, 300, { radius: 50 });
+  b.setBounds(0, 0, 800, 600);
+  run(b, 2);
+  const top = b.bbox().minY;
+  const c = b.centroid();
+  b.startGrab(c.x, top + 4);
+  for (let t = 0; t < 2; t += DT) { b.moveGrab(c.x, 150); b.step(DT); }
+  const a = b.grabAnchor();
+  assert.ok(Math.hypot(a.x - c.x, a.y - 150) < 30, `anchor near cursor: ${a.x},${a.y}`);
+  assert.ok(b.centroid().y > 150 + 25, 'body hangs below the grab point');
+  assert.ok(Math.abs(b.velocity(DT).y) < 200, 'wobbles but stays under control');
+});
+
+test('a small blob spawned inside a big one gets out', () => {
+  const { collideBodies } = require('../src/renderer/softbody.js');
+  const big = new SoftBody(400, 450, { radius: 96 }), small = new SoftBody(400, 450, { radius: 40 });
+  for (const x of [big, small]) x.setBounds(0, 0, 800, 600);
+  for (let t = 0; t < 3; t += DT) {
+    big.step(DT); small.step(DT);
+    for (let k = 0; k < 2; k++) collideBodies(big, small);
+  }
+  const c = small.centroid();
+  assert.ok(!big.contains(c.x, c.y), 'small centre is outside the big one');
+});

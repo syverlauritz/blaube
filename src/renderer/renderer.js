@@ -4,18 +4,16 @@
 (function () {
   'use strict';
 
-  const { SoftBody, collideBodies, BlaubeDraw: D } = globalThis;
+  const { SoftBody, collideBodies, BlaubeDraw: D, BlaubeConfig } = globalThis;
 
   const api = window.blaube || devShim();
   const canvas = document.getElementById('stage');
   const ctx = canvas.getContext('2d');
 
   const DT = 1 / 120;
-  const MAIN_R = 62;
-  const CHILD_R = 30;
-  const MAIN_MIN_R = 40;
-  const MAIN_HUE = 212;
   const SPLIT_TIME = 0.55;
+  let CFG = Object.assign({}, BlaubeConfig.DEFAULTS);
+  let obstacles = []; // Dock/taskbar rectangles in window coordinates
 
   let W = 0, H = 0;
   let mouse = { x: -1e4, y: -1e4, lastMove: performance.now() / 1000 };
@@ -25,12 +23,11 @@
   let time = 0;
 
   class Buddy {
-    constructor(key, x, y, r, hue, session) {
+    constructor(key, x, y, r, session) {
       this.key = key;
       this.isMain = key === 'main';
-      this.body = new SoftBody(x, y, { radius: r, points: this.isMain ? 32 : 22 });
-      this.body.setBounds(0, 0, W, H);
-      this.hue = hue;
+      this.body = makeBody(x, y, r, this.isMain);
+      this.color = colorFor(key);
       this.targetR = r;
       this.session = session || null;
       this.state = session ? session.state : 'idle';
@@ -62,6 +59,55 @@
 
   const buddies = new Map();
 
+  function bodyOpts(isMain) {
+    return Object.assign({}, CFG, { points: isMain ? CFG.mainPoints : CFG.childPoints });
+  }
+
+  function makeBody(x, y, r, isMain) {
+    const body = new SoftBody(x, y, Object.assign(bodyOpts(isMain), { radius: r }));
+    body.setBounds(0, 0, W, H);
+    body.setObstacles(CFG.dockCollision ? obstacles : []);
+    return body;
+  }
+
+  // Small slimes get a colour near the big one's, picked from their id.
+  function colorFor(key) {
+    if (key === 'main') return CFG.color;
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+    const u = ((h % 1000) / 999) * 2 - 1, v = (((h >>> 10) % 1000) / 999) * 2 - 1;
+    return D.vary(CFG.color, u * CFG.childHueSpread, v * CFG.childLightSpread);
+  }
+
+  function applyConfig(cfg) {
+    CFG = BlaubeConfig.sanitize(cfg);
+    for (const b of buddies.values()) {
+      const want = b.isMain ? CFG.mainPoints : CFG.childPoints;
+      if (b.body.n !== want) {
+        // Rebuild with the new point count, keeping place and momentum.
+        const c = b.body.centroid(), v = b.body.velocity(DT);
+        b.body = makeBody(c.x, c.y, b.body.o.radius, b.isMain);
+        b.body.impulse(v.x, v.y, DT);
+      }
+      b.body.configure(bodyOpts(b.isMain));
+      b.body.setObstacles(CFG.dockCollision ? obstacles : []);
+      b.color = colorFor(b.key);
+      if (!b.isMain && !b.dying) b.targetR = CFG.childRadius;
+    }
+  }
+
+  function setObstacles(rects) {
+    obstacles = (rects || []).map((r) => ({ x0: r.x, y0: r.y, x1: r.x + r.width, y1: r.y + r.height }));
+    for (const b of buddies.values()) b.body.setObstacles(CFG.dockCollision ? obstacles : []);
+  }
+
+  // The surface under x: the top of an obstacle there, or the screen bottom.
+  function floorAt(x) {
+    let y = H;
+    if (CFG.dockCollision) for (const r of obstacles) if (x >= r.x0 && x <= r.x1) y = Math.min(y, r.y0);
+    return y;
+  }
+
   function resize() {
     const dpr = window.devicePixelRatio || 1;
     W = window.innerWidth;
@@ -79,16 +125,12 @@
 
   const main = () => buddies.get('main');
 
-  function hueFor(id) {
-    let h = 0;
-    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-    return MAIN_HUE + ((h % 5) - 2) * 18;
-  }
-
+  // The big slime gives up some of its volume to each small one.
   function mainRadius() {
     let children = 0;
     for (const b of buddies.values()) if (!b.isMain && !b.dying) children++;
-    return Math.max(MAIN_MIN_R, Math.sqrt(MAIN_R * MAIN_R - 0.5 * children * CHILD_R * CHILD_R));
+    const R = CFG.mainRadius, r = CFG.childRadius;
+    return Math.max(Math.min(CFG.mainMinRadius, R), Math.sqrt(Math.max(0, R * R - 0.5 * children * r * r)));
   }
 
   // --- Sessions -----------------------------------------------------------
@@ -116,13 +158,13 @@
     const c = m.body.centroid();
     const side = Math.random() < 0.5 ? -1 : 1;
     const r = m.body.o.radius;
-    const b = new Buddy(session.id, c.x + side * r * 0.35, c.y - r * 0.15, CHILD_R * 0.45, hueFor(session.id), session);
-    b.targetR = CHILD_R;
+    const b = new Buddy(session.id, c.x + side * r * 0.35, c.y - r * 0.15, CFG.childRadius * 0.45, session);
+    b.targetR = CFG.childRadius;
     b.parent = m;
     b.state = 'idle';
     buddies.set(session.id, b);
-    b.hop(side * 520, -760);
-    m.hop(-side * 140, -180);
+    b.hop(side * CFG.splitImpulse * 0.7, -CFG.splitImpulse);
+    m.hop(-side * CFG.splitImpulse * 0.2, -CFG.splitImpulse * 0.25);
     return b;
   }
 
@@ -133,13 +175,13 @@
         if (b.bubble && b.bubble.sticky) b.bubble = null;
         break;
       case 'waiting':
-        b.hop(0, -650);
+        b.hop(0, -CFG.waitingHopStrength);
         b.say([{ text: `${label(b)} needs you`, color: D.STATE_COLORS.waiting }, { text: b.session.message || 'Waiting for you' }], 1e9, true);
         break;
       case 'done':
-        b.hop((Math.random() - 0.5) * 200, -820);
+        b.hop((Math.random() - 0.5) * 200, -CFG.doneHopStrength * 1.1);
         b.happyUntil = time + 2.5;
-        b.nextHop = time + 0.8;
+        b.nextHop = time + CFG.doneHopEvery;
         break;
     }
   }
@@ -176,10 +218,10 @@
       const body = b.body;
       const r = body.o.radius;
       if (Math.abs(b.targetR - r) > 0.05) body.setRadius(r + (b.targetR - r) * (b.dying ? 0.08 : 0.02));
-      body.areaScale = 1 + 0.025 * Math.sin(time * 2.2 + b.born * 3);
+      body.areaScale = 1 + CFG.breathe * Math.sin(time * 2.2 + b.born * 3);
       body.step(DT);
       if (b.splitting) pullStrand(b);
-      if (body.lastImpact > 2300) b.dizzyUntil = time + 0.9;
+      if (body.lastImpact > CFG.dizzySpeed) b.dizzyUntil = time + 0.9;
 
       if (b.merging && !b.dying) {
         const c = body.centroid(), mc = m.body.centroid();
@@ -242,19 +284,22 @@
     const st = b.isMain ? aggregateState() : b.state;
     const unseen = b.session && !b.session.seen;
     if (st === 'waiting' && (b.isMain || unseen)) {
-      b.hop(0, -560);
+      b.hop(0, -CFG.waitingHopStrength);
       b.nextHop = time + 2.2;
     } else if (st === 'done' && unseen && !b.isMain) {
       // Finished: bounce up and down until someone clicks it.
-      b.hop((Math.random() - 0.5) * 60, -700);
-      b.nextHop = time + 0.75;
+      b.hop((Math.random() - 0.5) * 60, -CFG.doneHopStrength);
+      b.nextHop = time + CFG.doneHopEvery;
     } else if (st === 'working') {
       // Deep concentration: mostly still, with the odd wobble.
       b.hop((Math.random() - 0.5) * 120, -140);
       b.nextHop = time + 3 + Math.random() * 3;
+    } else if (CFG.idleHopEvery > 0) {
+      const k = CFG.idleHopStrength;
+      b.hop((Math.random() - 0.5) * k * 1.4, -k * (0.8 + Math.random() * 0.4));
+      b.nextHop = time + CFG.idleHopEvery * (0.6 + Math.random() * 0.8);
     } else {
-      b.hop((Math.random() - 0.5) * 700, -420 - Math.random() * 200);
-      b.nextHop = time + 10 + Math.random() * 15;
+      b.nextHop = time + 1;
     }
   }
 
@@ -272,13 +317,13 @@
     else if (st === 'done' && b.session && !b.session.seen) { expression = 'happy'; mouth = 'grin'; }
     else if (st === 'working' && !b.isMain) { expression = 'concentrate'; mouth = 'flat'; }
     else if (st === 'idle' && time - mouse.lastMove > 120) { expression = 'sleepy'; mouth = 'flat'; }
-    return { expression, mouth, blink: b.blink, look: mouse };
+    return { expression, mouth, blink: b.blink, look: mouse, scale: CFG.faceScale };
   }
 
   function draw() {
     ctx.clearRect(0, 0, W, H);
     const list = [...buddies.values()].sort((a, b) => (a.isMain ? -1 : 0) - (b.isMain ? -1 : 0));
-    for (const b of list) D.drawShadow(ctx, b.body);
+    if (CFG.shadow) for (const b of list) D.drawShadow(ctx, b.body, floorAt(b.body.centroid().x));
 
     // Goo bridge while a slime is splitting off.
     for (const b of list) {
@@ -286,10 +331,10 @@
       const p = (time - b.born) / SPLIT_TIME;
       const a = b.parent.body.centroid(), c = b.body.centroid();
       ctx.save();
-      ctx.strokeStyle = `hsl(${b.parent.hue} 92% 60%)`;
+      ctx.strokeStyle = b.parent.color;
       ctx.lineCap = 'round';
       const thin = Math.min(1, (b.parent.body.o.radius + b.body.o.radius) / (Math.hypot(c.x - a.x, c.y - a.y) || 1));
-      ctx.lineWidth = CHILD_R * 1.2 * (1 - p) ** 1.5 * thin;
+      ctx.lineWidth = CFG.childRadius * 1.2 * (1 - p) ** 1.5 * thin;
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.quadraticCurveTo((a.x + c.x) / 2, Math.max(a.y, c.y) + 10, c.x, c.y);
@@ -299,8 +344,8 @@
 
     for (const b of list) {
       const unseen = b.session && !b.session.seen && (b.state === 'waiting' || b.state === 'done');
-      const glow = unseen ? D.STATE_COLORS[b.state] : null;
-      D.drawBody(ctx, b.body, b.hue, glow);
+      const glow = unseen && CFG.glow ? D.STATE_COLORS[b.state] : null;
+      D.drawBody(ctx, b.body, b.color, { glow, outline: CFG.outline });
       if (b.body.o.radius > 12) D.drawFace(ctx, b.body, faceFor(b));
       const st = b.isMain ? aggregateState() : b.state;
       if (st === 'working' && !b.isMain && !b.dying) D.drawThinking(ctx, b.body, time);
@@ -313,6 +358,41 @@
     for (const b of list) {
       if (b.bubble) D.drawBubble(ctx, b.body, b.bubble.lines, Math.min(1, (b.bubble.until - time) * 3), W);
     }
+    if (CFG.debugOverlay) drawDebug(list);
+  }
+
+  function drawDebug(list) {
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(0,200,255,0.9)';
+    ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+    ctx.fillStyle = 'rgba(0,200,255,0.18)';
+    for (const r of obstacles) {
+      ctx.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
+      ctx.strokeRect(r.x0 + 0.5, r.y0 + 0.5, r.x1 - r.x0 - 1, r.y1 - r.y0 - 1);
+    }
+    ctx.font = '11px ui-monospace, Menlo, Consolas, monospace';
+    for (const b of list) {
+      const body = b.body;
+      ctx.fillStyle = 'rgba(20,20,20,0.85)';
+      for (let i = 0; i < body.n; i++) ctx.fillRect(body.px[i] - 1.5, body.py[i] - 1.5, 3, 3);
+      const c = body.centroid(), v = body.velocity(DT);
+      ctx.strokeStyle = 'rgba(255,0,120,0.9)';
+      ctx.beginPath();
+      ctx.moveTo(c.x, c.y);
+      ctx.lineTo(c.x + v.x * 0.05, c.y + v.y * 0.05);
+      ctx.stroke();
+      const a = body.grabAnchor();
+      if (a) {
+        ctx.strokeStyle = 'rgba(0,160,0,0.9)';
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(body.grab.x, body.grab.y);
+        ctx.stroke();
+      }
+      ctx.fillText(`r=${body.o.radius.toFixed(0)} area=${(body.area() / body.restArea).toFixed(2)} v=${Math.hypot(v.x, v.y).toFixed(0)}`, c.x - 50, body.bbox().maxY + 14);
+    }
+    ctx.restore();
   }
 
   let last = performance.now() / 1000, acc = 0;
@@ -380,7 +460,8 @@
     e.preventDefault();
     const b = buddyAt(e.clientX, e.clientY);
     if (!b) return;
-    if (b.isMain) api.showAppMenu();
+    if (b.isMain && e.altKey) api.openTuning();
+    else if (b.isMain) api.showAppMenu();
     else api.showSessionMenu(b.key);
   });
 
@@ -403,6 +484,9 @@
     syncSessions(s.sessions || []);
   });
 
+  api.onConfig(applyConfig);
+  api.onWorld((w) => setObstacles(w.obstacles));
+
   api.onCommand((cmd) => {
     const m = main();
     if (cmd === 'come-here') {
@@ -416,7 +500,7 @@
 
   window.addEventListener('resize', resize);
   resize();
-  buddies.set('main', new Buddy('main', W * 0.75, H - MAIN_R - 10, MAIN_R, MAIN_HUE));
+  buddies.set('main', new Buddy('main', W * 0.8, H * 0.5, CFG.mainRadius));
   api.setIgnoreMouse(true);
   ignoring = true;
   api.ready();
@@ -424,10 +508,12 @@
 
   // Lets the renderer run in a plain browser for development and screenshots.
   function devShim() {
-    const listeners = { state: [], command: [] };
+    const listeners = { state: [], command: [], config: [], world: [] };
     window.__blaube = {
       setState: (s) => listeners.state.forEach((f) => f(s)),
       command: (c) => listeners.command.forEach((f) => f(c)),
+      setConfig: (c) => listeners.config.forEach((f) => f(c)),
+      setWorld: (w) => listeners.world.forEach((f) => f(w)),
       buddies: () => buddies,
     };
     return {
@@ -436,7 +522,10 @@
       showAppMenu() {},
       showSessionMenu() {},
       openSession() {},
+      openTuning() {},
       ready() {},
+      onConfig: (f) => listeners.config.push(f),
+      onWorld: (f) => listeners.world.push(f),
       onState: (f) => listeners.state.push(f),
       onCommand: (f) => listeners.command.push(f),
     };

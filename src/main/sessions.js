@@ -21,7 +21,7 @@ class SessionTracker extends EventEmitter {
   }
 
   // Applies one hook payload, as Claude Code sends it on stdin.
-  handle(payload) {
+  handle(payload, source = 'hook') {
     if (!payload || typeof payload !== 'object') return;
     const id = String(payload.session_id || 'unknown');
     const event = payload.hook_event_name;
@@ -44,11 +44,34 @@ class SessionTracker extends EventEmitter {
       state: next.state,
       message: next.message || '',
       seen: prev && prev.state === next.state ? prev.seen : false,
+      // Once hooks report on a session they're the better source, so the
+      // `claude agents` poller leaves it alone.
+      hooked: source === 'hook' || !!(prev && prev.hooked),
       updatedAt: this.now(),
     };
     this.sessions.set(id, session);
     if (!prev || prev.state !== session.state) {
       this.emit('change', { session, from: prev ? prev.state : null, to: session.state });
+    }
+  }
+
+  // Folds in `claude agents --json` output (busy/idle per running session).
+  // It covers sessions whose hooks never fire, e.g. hooks not installed yet.
+  applyAgents(agents) {
+    const live = new Set();
+    for (const a of agents) {
+      if (!a || !a.sessionId) continue;
+      live.add(a.sessionId);
+      const prev = this.sessions.get(a.sessionId);
+      if (prev && prev.hooked) continue;
+      const base = { session_id: a.sessionId, cwd: a.cwd };
+      if (!prev) this.handle({ ...base, hook_event_name: 'SessionStart' }, 'agents');
+      const cur = this.sessions.get(a.sessionId).state;
+      if (a.status === 'busy' && cur !== 'working') this.handle({ ...base, hook_event_name: 'UserPromptSubmit' }, 'agents');
+      else if (a.status !== 'busy' && cur === 'working') this.handle({ ...base, hook_event_name: 'Stop' }, 'agents');
+    }
+    for (const [id, s] of this.sessions) {
+      if (!s.hooked && !live.has(id) && !id.startsWith('demo-')) this.handle({ session_id: id, hook_event_name: 'SessionEnd' }, 'agents');
     }
   }
 

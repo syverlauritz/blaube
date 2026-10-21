@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
+    <title>Blaube tuning</title>
+    <style>
+      :root { color-scheme: light dark; --bg: #f6f4f1; --fg: #1f1d1a; --muted: #77716a; --line: #e2ddd6; --accent: #d97757; --card: #fff; }
+      @media (prefers-color-scheme: dark) { :root { --bg: #1d1b19; --fg: #f1ede8; --muted: #a39b92; --line: #35312d; --card: #262320; } }
+      * { box-sizing: border-box; }
+      body { margin: 0; font: 13px -apple-system, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+      header { position: sticky; top: 0; z-index: 1; background: var(--bg); border-bottom: 1px solid var(--line); padding: 12px 14px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+      header h1 { font-size: 14px; margin: 0 auto 0 0; }
+      button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 7px; padding: 5px 10px; cursor: pointer; }
+      button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      main { padding: 4px 14px 24px; }
+      section { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px 10px; }
+      h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 8px 0 4px; }
+      .row { display: grid; grid-template-columns: 1fr 64px; gap: 4px 10px; align-items: center; padding: 5px 0; }
+      .row label { grid-column: 1 / -1; display: flex; justify-content: space-between; }
+      .row label .key { color: var(--muted); font: 11px ui-monospace, Menlo, Consolas, monospace; }
+      .row input[type=range] { width: 100%; accent-color: var(--accent); }
+      .row input[type=number] { width: 64px; font: inherit; padding: 2px 4px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); color: var(--fg); }
+      .row.changed label span:first-child { color: var(--accent); font-weight: 600; }
+      .check { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+      .check input { accent-color: var(--accent); }
+      textarea { width: 100%; height: 120px; font: 11px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--fg); padding: 8px; }
+      #paste { display: none; margin-top: 14px; }
+      #status { color: var(--muted); font-size: 12px; width: 100%; min-height: 1em; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Blaube tuning</h1>
+      <button id="copy" class="primary">Copy config</button>
+      <button id="pasteToggle">Paste config</button>
+      <button id="demo">Demo sessions</button>
+      <button id="reset">Reset</button>
+      <div id="status"></div>
+    </header>
+    <main>
+      <div id="paste">
+        <textarea id="pasteText" placeholder="Paste a Blaube config JSON here"></textarea>
+        <button id="pasteApply" class="primary">Apply</button>
+      </div>
+      <div id="groups"></div>
+    </main>
+    <script src="../shared/config.js"></script>
+    <script src="tuning.js"></script>
+  </body>
+</html>

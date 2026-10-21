@@ -18,51 +18,67 @@
     ctx.closePath();
   }
 
-  function drawShadow(ctx, b) {
+  function drawShadow(ctx, b, floorY = b.bounds.bottom) {
     const c = b.centroid();
     const r = b.o.radius;
-    const h = Math.max(0, b.bounds.bottom - (c.y + r));
+    const h = Math.max(0, floorY - (c.y + r));
     const k = Math.max(0, 1 - h / 500);
     if (k <= 0) return;
     ctx.save();
     ctx.fillStyle = `rgba(0,0,0,${0.18 * k})`;
     ctx.beginPath();
-    ctx.ellipse(c.x, b.bounds.bottom - 2, r * (0.6 + 0.4 * k), r * 0.12 * k + 1, 0, 0, Math.PI * 2);
+    ctx.ellipse(c.x, floorY - 2, r * (0.6 + 0.4 * k), r * 0.12 * k + 1, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
 
-  function drawBody(ctx, b, hue, glow) {
-    const c = b.centroid();
-    const r = b.o.radius;
+  // Flat fill in a single colour, with an optional darker outline and a
+  // soft status glow.
+  function drawBody(ctx, b, color, opts = {}) {
     ctx.save();
-    if (glow) {
-      ctx.shadowColor = glow + '99';
-      ctx.shadowBlur = 14;
+    if (opts.glow) {
+      ctx.shadowColor = opts.glow + '99';
+      ctx.shadowBlur = 16;
     }
-    const g = ctx.createRadialGradient(c.x - r * 0.35, c.y - r * 0.45, r * 0.1, c.x, c.y, r * 1.25);
-    g.addColorStop(0, `hsl(${hue} 100% 82%)`);
-    g.addColorStop(0.45, `hsl(${hue} 92% 62%)`);
-    g.addColorStop(1, `hsl(${hue} 80% 44%)`);
     bodyPath(ctx, b);
-    ctx.fillStyle = g;
+    ctx.fillStyle = color;
     ctx.fill();
     ctx.shadowBlur = 0;
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = `hsl(${hue} 70% 34% / 0.55)`;
-    ctx.stroke();
-    // Glossy highlight that rides along with the body's rotation.
-    ctx.translate(c.x, c.y);
-    ctx.rotate(b.angle);
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
-    ctx.beginPath();
-    ctx.ellipse(-r * 0.38, -r * 0.52, r * 0.26, r * 0.13, -0.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.beginPath();
-    ctx.arc(-r * 0.62, -r * 0.3, r * 0.06, 0, Math.PI * 2);
-    ctx.fill();
+    if (opts.outline > 0) {
+      ctx.lineWidth = opts.outline;
+      ctx.strokeStyle = shade(color, -0.22);
+      ctx.stroke();
+    }
     ctx.restore();
+  }
+
+  // Colour helpers. Colours are '#rrggbb' strings.
+  function hexToHsl(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+    let h = 0, s = 0;
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      h *= 60;
+    }
+    return { h, s: s * 100, l: l * 100 };
+  }
+
+  const hsl = (h, s, l) => `hsl(${((h % 360) + 360) % 360} ${Math.max(0, Math.min(100, s))}% ${Math.max(0, Math.min(100, l))}%)`;
+
+  // Shifts a colour's hue (degrees) and lightness (percentage points).
+  function vary(hex, dh, dl) {
+    const c = hexToHsl(hex);
+    return hsl(c.h + dh, c.s, c.l + dl);
+  }
+
+  function shade(color, amount) {
+    if (color[0] !== '#') return 'rgba(0,0,0,0.25)';
+    const c = hexToHsl(color);
+    return hsl(c.h, c.s, c.l + amount * 100);
   }
 
   // face: { look: {x,y} in screen px, expression, blink 0..1, mouth }
@@ -73,7 +89,8 @@
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.rotate(b.angle);
-    ctx.scale(Math.min(1.4, st.x), Math.min(1.4, st.y));
+    const fs = face.scale || 1;
+    ctx.scale(Math.min(1.4, st.x) * fs, Math.min(1.4, st.y) * fs);
     ctx.translate(0, -r * 0.08);
 
     const ex = r * 0.33, ey = -r * 0.1, ew = r * 0.17, eh = r * 0.22;
@@ -151,7 +168,7 @@
     }
 
     // Cheeks.
-    ctx.fillStyle = 'rgba(255,120,160,0.35)';
+    ctx.fillStyle = 'rgba(255,90,110,0.28)';
     for (const side of [-1, 1]) {
       ctx.beginPath();
       ctx.ellipse(side * r * 0.55, r * 0.14, r * 0.12, r * 0.07, 0, 0, Math.PI * 2);
@@ -318,5 +335,5 @@
     ctx.closePath();
   }
 
-  root.BlaubeDraw = { drawShadow, drawBody, drawFace, drawDots, drawThinking, drawExclaim, drawLabel, drawBubble, STATE_COLORS };
+  root.BlaubeDraw = { drawShadow, drawBody, vary, drawFace, drawDots, drawThinking, drawExclaim, drawLabel, drawBubble, STATE_COLORS };
 })(globalThis);

@@ -28,7 +28,7 @@ const src = (f) => fs.readFileSync(path.join(root, 'src', 'renderer', f), 'utf8'
         b.px[i] = size / 2 + (b.px[i] - size / 2) * 1.06;
       }
       if (mode === 'app') {
-        BlaubeDraw.drawBody(ctx, b, 212, null);
+        BlaubeDraw.drawBody(ctx, b, '#D97757', {});
         BlaubeDraw.drawFace(ctx, b, { expression: 'normal', mouth: 'smile', blink: 0, look: { x: size * 0.55, y: size } });
       } else {
         ctx.fillStyle = '#000';
