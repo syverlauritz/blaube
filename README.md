@@ -22,7 +22,7 @@ Blaube never calls the Anthropic API. The physics runs locally, and session stat
 
 ## Getting started
 
-Download the latest build from the [Actions artifacts](../../actions) (a `.dmg` for macOS, an installer `.exe` for Windows), or run from source:
+Download the latest build from the [Actions artifacts](../../actions) (a `.dmg` for macOS and an installer `.exe` for Windows, one per CPU type: `arm64` for Apple Silicon and Windows on ARM, `x64` for Intel/AMD), or run from source:
 
 ```sh
 npm install

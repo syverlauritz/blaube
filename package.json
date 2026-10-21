@@ -11,7 +11,7 @@
     "test": "node --test test/*.test.js",
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
-    "dist:win": "electron-builder --win"
+    "dist:win": "electron-builder --win --x64 && electron-builder --win --arm64"
   },
   "build": {
     "appId": "app.blaube.desktop",
@@ -31,22 +31,23 @@
         {
           "target": "dmg",
           "arch": [
-            "universal"
+            "arm64",
+            "x64"
           ]
         }
       ],
       "icon": "build/icon.png",
       "extendInfo": {
         "LSUIElement": true
-      }
+      },
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "win": {
       "target": [
         {
           "target": "nsis",
           "arch": [
-            "x64",
-            "arm64"
+            "x64"
           ]
         }
       ],
@@ -54,7 +55,8 @@
     },
     "nsis": {
       "oneClick": true,
-      "perMachine": false
+      "perMachine": false,
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
     }
   },
   "devDependencies": {
