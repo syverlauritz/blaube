@@ -33,12 +33,24 @@ Then right-click Blaube and choose **Connect Claude Code…**. That adds Blaube'
 
 Want to see it without Claude running? Choose **Demo sessions** from the menu.
 
-### Unsigned builds
+### First launch (builds aren't notarized yet)
 
-The builds aren't code-signed yet.
-
-- **macOS:** right-click the app and choose **Open** the first time, or run `xattr -dr com.apple.quarantine /Applications/Blaube.app`.
+- **macOS:** open Blaube once and dismiss the warning ("Apple could not verify…"). Then go to **System Settings → Privacy & Security**, scroll down to "Blaube was blocked" and click **Open Anyway**. (On recent macOS, right-click → Open no longer skips this.) Or in Terminal: `xattr -dr com.apple.quarantine /Applications/Blaube.app`
 - **Windows:** SmartScreen may warn you. Choose **More info → Run anyway**.
+
+#### Signing and notarizing the Mac build
+
+The Mac build is ad-hoc signed, so it runs but macOS asks once. To make it open with no warning, CI signs and notarizes automatically when these repository secrets are set:
+
+| Secret | What it is |
+| --- | --- |
+| `MAC_CERT_P12_BASE64` | Your **Developer ID Application** certificate exported as `.p12`, base64-encoded |
+| `MAC_CERT_PASSWORD` | The password you set when exporting the `.p12` |
+| `APPLE_ID` | Your Apple ID email |
+| `APPLE_APP_SPECIFIC_PASSWORD` | An app-specific password from appleid.apple.com |
+| `APPLE_TEAM_ID` | Your 10-character team ID from developer.apple.com |
+
+This needs a paid Apple Developer Program membership (99 USD/year). Windows signing (to calm SmartScreen) needs a separate code-signing certificate.
 
 On Windows, Claude Code runs hooks through Git Bash, which has `curl`. On macOS `curl` is built in.
 
