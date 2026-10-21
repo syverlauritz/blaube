@@ -15,7 +15,7 @@ function settingsPath(home = os.homedir()) {
 }
 
 function hookCommand(port = DEFAULT_PORT) {
-  return `curl -s -m 1 -X POST -H "Content-Type: application/json" -H "X-Blaube-Term: $TERM_PROGRAM" --data-binary @- http://127.0.0.1:${port}${HOOK_PATH} >/dev/null 2>&1 || true`;
+  return `curl -s -m 1 -X POST -H "Content-Type: application/json" -H "X-Blaube-Term: $TERM_PROGRAM" -H "X-Blaube-Entry: $CLAUDE_CODE_ENTRYPOINT" --data-binary @- http://127.0.0.1:${port}${HOOK_PATH} >/dev/null 2>&1 || true`;
 }
 
 const isOurs = (h) => h && typeof h.command === 'string' && h.command.includes(MARKER);
@@ -60,10 +60,21 @@ function write(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
 }
 
-function isInstalled(file = settingsPath()) {
+function isInstalled(file = settingsPath(), port = DEFAULT_PORT) {
   try {
     const s = read(file);
-    return EVENTS.every((ev) => (s.hooks?.[ev] || []).some((g) => (g.hooks || []).some(isOurs)));
+    // Exact match, so an older Blaube's hooks show up as needing an update.
+    const cmd = hookCommand(port);
+    return EVENTS.every((ev) => (s.hooks?.[ev] || []).some((g) => (g.hooks || []).some((h) => isOurs(h) && h.command === cmd)));
+  } catch {
+    return false;
+  }
+}
+
+function hasAnyBlaubeHooks(file = settingsPath()) {
+  try {
+    const s = read(file);
+    return Object.values(s.hooks || {}).some((groups) => Array.isArray(groups) && groups.some((g) => (g.hooks || []).some(isOurs)));
   } catch {
     return false;
   }
@@ -78,4 +89,4 @@ function uninstall(file = settingsPath()) {
   write(file, withoutBlaube(read(file)));
 }
 
-module.exports = { install, uninstall, isInstalled, withBlaube, withoutBlaube, hookCommand, settingsPath, EVENTS };
+module.exports = { install, uninstall, isInstalled, hasAnyBlaubeHooks, withBlaube, withoutBlaube, hookCommand, settingsPath, EVENTS };

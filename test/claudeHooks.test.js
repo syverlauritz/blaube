@@ -36,3 +36,16 @@ test('refuses to touch a settings file it cannot parse', () => {
   assert.throws(() => hooks.install(file));
   assert.equal(fs.readFileSync(file, 'utf8'), '{ not json');
 });
+
+test('hooks from an older Blaube count as needing an update', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-'));
+  const file = path.join(dir, 'settings.json');
+  const old = { type: 'command', command: 'curl -s --data-binary @- http://127.0.0.1:47821/blaube/hook || true' };
+  fs.writeFileSync(file, JSON.stringify({ hooks: Object.fromEntries(hooks.EVENTS.map((e) => [e, [{ hooks: [old] }]])) }));
+  assert.ok(!hooks.isInstalled(file));
+  assert.ok(hooks.hasAnyBlaubeHooks(file));
+  hooks.install(file);
+  assert.ok(hooks.isInstalled(file));
+  const s = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.equal(s.hooks.Stop.length, 1, 'old hook replaced, not duplicated');
+});

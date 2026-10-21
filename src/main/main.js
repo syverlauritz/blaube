@@ -149,7 +149,7 @@ function pushState() {
   if (!win) return;
   win.webContents.send('state', {
     sessions: tracker.list(),
-    settings: { hooksInstalled: claudeHooks.isInstalled() },
+    settings: { hooksInstalled: claudeHooks.isInstalled(undefined, PORT) },
   });
 }
 
@@ -158,13 +158,13 @@ function send(cmd) {
 }
 
 function appMenu() {
-  const installed = claudeHooks.isInstalled();
+  const installed = claudeHooks.isInstalled(undefined, PORT);
   return Menu.buildFromTemplate([
     { label: 'Blaube', enabled: false },
     { type: 'separator' },
     installed
       ? { label: 'Claude Code connected ✓', enabled: false }
-      : { label: 'Connect Claude Code…', click: installHooks },
+      : { label: claudeHooks.hasAnyBlaubeHooks() ? 'Update Claude Code connection…' : 'Connect Claude Code…', click: installHooks },
     { label: 'Live on display', submenu: displayMenu() },
     { label: 'Come here', click: () => send('come-here') },
     { label: 'Everyone hop!', click: () => send('hop') },

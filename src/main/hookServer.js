@@ -25,6 +25,8 @@ function startHookServer(tracker, port = DEFAULT_PORT) {
         const payload = JSON.parse(body);
         const term = req.headers['x-blaube-term'];
         if (term) payload._term = String(term).slice(0, 64);
+        const entry = req.headers['x-blaube-entry'];
+        if (entry) payload._entry = String(entry).slice(0, 64);
         tracker.handle(payload);
       } catch { /* ignore junk */ }
       res.writeHead(204);

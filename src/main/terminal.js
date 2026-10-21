@@ -39,8 +39,12 @@ const MAC_APPS = {
 // Brings the app the session runs in to the front. Returns false when we
 // don't know which app that is, so the caller can resume it instead.
 function focusSessionApp(session, platform = process.platform) {
-  const name = MAC_APPS[session.term];
-  if (platform !== 'darwin' || !name) return false;
+  if (platform !== 'darwin') return false;
+  // Sessions started from the Claude desktop app have no terminal; their
+  // entrypoint says so (or, with older Claude Code, nothing is set at all).
+  const fromDesktop = /desktop/i.test(session.entry || '') || (!session.term && !session.entry && session.hooked);
+  const name = fromDesktop ? 'Claude' : MAC_APPS[session.term];
+  if (!name) return false;
   spawn('open', ['-a', name], { detached: true, stdio: 'ignore' }).unref();
   return true;
 }

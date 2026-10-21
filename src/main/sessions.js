@@ -40,6 +40,7 @@ class SessionTracker extends EventEmitter {
       id,
       cwd,
       term: payload._term || (prev && prev.term) || '',
+      entry: payload._entry || (prev && prev.entry) || '',
       project: cwd ? path.basename(cwd.replace(/[\\/]+$/, '')) : 'Claude',
       state: next.state,
       message: next.message || '',
