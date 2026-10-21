@@ -14,6 +14,15 @@ class SessionTracker extends EventEmitter {
     super();
     this.now = now;
     this.sessions = new Map();
+    // Sessions you merged back in by hand, so their next hook doesn't split
+    // them right back out. Cleared when the session really ends.
+    this.dismissed = new Map(); // id -> last time we heard from it
+  }
+
+  // "Merge back in": hides a session that's still running until it ends.
+  dismiss(id) {
+    this.dismissed.set(id, this.now());
+    this.handle({ session_id: id, hook_event_name: 'SessionEnd' }, 'user');
   }
 
   list() {
@@ -28,9 +37,11 @@ class SessionTracker extends EventEmitter {
     const prev = this.sessions.get(id);
 
     if (event === 'SessionEnd') {
+      if (source !== 'user') this.dismissed.delete(id);
       if (prev) { this.sessions.delete(id); this.emit('change', { session: prev, from: prev.state, to: 'gone' }); }
       return;
     }
+    if (this.dismissed.has(id)) { this.dismissed.set(id, this.now()); return; }
 
     const next = nextState(prev ? prev.state : 'idle', payload);
     if (!next) return;
@@ -62,6 +73,7 @@ class SessionTracker extends EventEmitter {
     for (const a of agents) {
       if (!a || !a.sessionId) continue;
       live.add(a.sessionId);
+      if (this.dismissed.has(a.sessionId)) { this.dismissed.set(a.sessionId, this.now()); continue; }
       const prev = this.sessions.get(a.sessionId);
       if (prev && prev.hooked) continue;
       const base = { session_id: a.sessionId, cwd: a.cwd };
@@ -73,6 +85,7 @@ class SessionTracker extends EventEmitter {
     for (const [id, s] of this.sessions) {
       if (!s.hooked && !live.has(id) && !id.startsWith('demo-')) this.handle({ session_id: id, hook_event_name: 'SessionEnd' }, 'agents');
     }
+    for (const id of this.dismissed.keys()) if (!live.has(id)) this.dismissed.delete(id);
   }
 
   // Marks done/waiting sessions as seen, so Blaube stops pestering.
@@ -83,6 +96,7 @@ class SessionTracker extends EventEmitter {
   prune() {
     const t = this.now();
     let changed = false;
+    for (const [id, at] of this.dismissed) if (t - at > FORGET_MS) this.dismissed.delete(id);
     for (const [id, s] of this.sessions) {
       if (t - s.updatedAt > FORGET_MS) { this.sessions.delete(id); changed = true; }
       else if (s.state === 'working' && t - s.updatedAt > STALE_WORKING_MS) { s.state = 'idle'; changed = true; }

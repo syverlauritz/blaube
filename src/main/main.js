@@ -191,7 +191,7 @@ function sessionMenu(id) {
     { label: 'Copy resume command', click: () => clipboard.writeText(`cd "${s.cwd}" && ${resumeCommand(s.id)}`) },
     { label: 'Open project folder', enabled: !!s.cwd, click: () => shell.openPath(s.cwd) },
     { type: 'separator' },
-    { label: 'Merge back in', click: () => { tracker.handle({ session_id: id, hook_event_name: 'SessionEnd' }); } },
+    { label: 'Merge back in', click: () => tracker.dismiss(id) },
   ]);
 }
 

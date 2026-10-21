@@ -60,3 +60,16 @@ test('claude agents polling tracks sessions without hooks, and defers to hooks',
   t.applyAgents([]);
   assert.deepEqual(t.list().map((s) => s.id), ['a']);
 });
+
+test('a session merged back in by hand stays merged until it ends', () => {
+  const t = new SessionTracker();
+  t.handle(ev('UserPromptSubmit'));
+  t.dismiss('s1');
+  assert.equal(t.list().length, 0);
+  t.handle(ev('PreToolUse'));
+  t.applyAgents([{ sessionId: 's1', cwd: '/Users/me/code/blaube', status: 'busy' }]);
+  assert.equal(t.list().length, 0);
+  t.handle(ev('SessionEnd'));
+  t.handle(ev('SessionStart'));
+  assert.equal(t.list().length, 1);
+});
