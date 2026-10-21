@@ -1,0 +1,76 @@
+# Blaube
+
+A squishy blue slime that lives on your desktop. Grab it, toss it, watch it splat against the edges of your screen. It also keeps an eye on your Claude Code sessions: every session splits off its own little slime, and they tell you when Claude is working, needs you, or is done.
+
+*Blau* is German for blue. You can work out the rest.
+
+## What it does
+
+- **Real softbody physics.** Blaube is a ring of point masses held together by springs, gas pressure and shape matching. Every hop, bounce, squash and wobble comes out of the simulation. There are no canned animations.
+- **Toss it around.** Click and drag to grab it, fling it, and it bounces off the screen edges, the dock/taskbar and its own little slimes.
+- **One slime per Claude Code session.** When a session starts, a small slime splits off the big one (on a gooey spring). When the session ends, it hops back and merges in.
+  - **Working:** eyes squeezed shut in deep concentration, with a thought puff.
+  - **Needs you:** worried face, glows red, hops for attention, and shows what Claude is asking.
+  - **Done:** happy face, bounces up and down with a "!" bubble until you click it.
+- **Click a small slime** to jump to that session. On macOS it brings the terminal/editor the session runs in to the front (Terminal, iTerm, VS Code, Cursor, Warp, Ghostty, WezTerm). Otherwise it opens a new terminal running `claude --resume <session>` in the project folder.
+- **Right-click a small slime** for its status, "Resume in new terminal", "Copy resume command", "Open project folder" and "Merge back in".
+- **Click the big slime** for a summary of all sessions. Right-click it (or use the tray/menu bar icon) for settings.
+
+## No API tokens
+
+Blaube never calls the Anthropic API. The physics runs locally, and session status comes from [Claude Code hooks](https://docs.claude.com/en/docs/claude-code/hooks) that `curl` each event to a tiny server Blaube runs on `127.0.0.1:47821`. If Blaube isn't running, the hooks just do nothing.
+
+## Getting started
+
+Download the latest build from the [Actions artifacts](../../actions) (a `.dmg` for macOS, an installer `.exe` for Windows), or run from source:
+
+```sh
+npm install
+npm start
+```
+
+Then right-click Blaube and choose **Connect Claude Code…**. That adds Blaube's hooks to `~/.claude/settings.json` (a backup is saved as `settings.json.blaube-backup`, and your existing hooks are kept). Restart any running Claude Code sessions to pick them up. **Disconnect Claude Code** removes exactly what was added.
+
+Want to see it without Claude running? Choose **Demo sessions** from the menu.
+
+### Unsigned builds
+
+The builds aren't code-signed yet.
+
+- **macOS:** right-click the app and choose **Open** the first time, or run `xattr -dr com.apple.quarantine /Applications/Blaube.app`.
+- **Windows:** SmartScreen may warn you. Choose **More info → Run anyway**.
+
+On Windows, Claude Code runs hooks through Git Bash, which has `curl`. On macOS `curl` is built in.
+
+## How it works
+
+| Piece | File |
+| --- | --- |
+| Softbody physics (Verlet, edge springs, bending, pressure, shape matching, wall and body collisions) | `src/renderer/softbody.js` |
+| Drawing: body, face, bubbles, labels | `src/renderer/face.js` |
+| Slimes, splitting/merging, behaviour, mouse input | `src/renderer/renderer.js` |
+| Transparent always-on-top click-through window, tray, menus | `src/main/main.js` |
+| Session state machine from hook events | `src/main/sessions.js` |
+| Local hook server | `src/main/hookServer.js` |
+| Installing/removing hooks in `~/.claude/settings.json` | `src/main/claudeHooks.js` |
+
+The window covers the screen's work area but lets clicks pass through everywhere except the slimes themselves.
+
+## Development
+
+```sh
+npm test                 # physics, session tracking and hook installer tests
+npm start                # run the app
+BLAUBE_DEMO=1 npm start  # run with fake sessions
+npm run dist:mac         # build a .dmg (on macOS)
+npm run dist:win         # build an installer (on Windows)
+node scripts/make-icons.js  # re-render the icons (needs playwright)
+```
+
+Set `BLAUBE_PORT` to use a different port; reconnect Claude Code afterwards so the hooks point at it.
+
+## Ideas for later
+
+- Type to a session straight from its slime (via a Claude Code channel/plugin).
+- Roaming across multiple monitors.
+- Sounds, accessories, feeding, more tricks.
