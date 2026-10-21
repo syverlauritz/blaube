@@ -160,7 +160,7 @@ function send(cmd) {
 function appMenu() {
   const installed = claudeHooks.isInstalled(undefined, PORT);
   return Menu.buildFromTemplate([
-    { label: 'Blaube', enabled: false },
+    { label: `Blaube ${app.getVersion()}`, enabled: false },
     { type: 'separator' },
     installed
       ? { label: 'Claude Code connected ✓', enabled: false }
@@ -171,7 +171,7 @@ function appMenu() {
     { label: 'Demo sessions', click: runDemo },
     { type: 'separator' },
     { label: 'Open at login', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: (i) => app.setLoginItemSettings({ openAtLogin: i.checked }) },
-    ...(installed ? [{ label: 'Disconnect Claude Code', click: uninstallHooks }] : []),
+    ...(installed ? [{ label: 'Reconnect Claude Code', click: installHooks }, { label: 'Disconnect Claude Code', click: uninstallHooks }] : []),
     { type: 'separator' },
     { label: 'Quit Blaube', role: 'quit' },
   ]);
