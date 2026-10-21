@@ -67,3 +67,34 @@ jobs:
             dist/*-x64.dmg
             dist/*-x64.exe
           if-no-files-found: error
+
+  # Publishes every build as a rolling "latest" pre-release, so installers
+  # download with a plain link (no GitHub login), e.g.
+  # https://github.com/syverlauritz/blaube/releases/download/latest/Blaube-mac-arm64.dmg
+  release:
+    needs: package
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Give the installers stable names
+        run: |
+          mkdir out
+          cp artifacts/blaube-macOS-arm64/*.dmg out/Blaube-mac-arm64.dmg
+          cp artifacts/blaube-macOS-x64/*.dmg out/Blaube-mac-x64.dmg
+          cp artifacts/blaube-Windows-x64/*.exe out/Blaube-Setup-windows-x64.exe
+          cp artifacts/blaube-Windows-arm64/*.exe out/Blaube-Setup-windows-arm64.exe
+          ls -la out
+      - name: Replace the latest pre-release
+        run: |
+          gh release delete latest -R "$GITHUB_REPOSITORY" --cleanup-tag -y || true
+          gh release create latest out/* -R "$GITHUB_REPOSITORY" --prerelease --target "$SHA" \
+            --title "Latest build (${SHA::7})" \
+            --notes "Built automatically from ${SHA}. macOS: Blaube-mac-arm64.dmg (Apple Silicon) or Blaube-mac-x64.dmg (Intel). Windows: Blaube-Setup-windows-x64.exe or -arm64.exe."

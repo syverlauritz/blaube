@@ -40,7 +40,12 @@ echo '{"session_id":"test","hook_event_name":"UserPromptSubmit","cwd":"/tmp/test
 
 ## Getting started
 
-Download the latest build from the [Actions artifacts](../../actions) (a `.dmg` for macOS and an installer `.exe` for Windows, one per CPU type: `arm64` for Apple Silicon and Windows on ARM, `x64` for Intel/AMD), or run from source:
+Download the latest build from the [latest release](https://github.com/syverlauritz/blaube/releases/tag/latest), no GitHub login needed:
+
+- macOS: [Apple Silicon](https://github.com/syverlauritz/blaube/releases/download/latest/Blaube-mac-arm64.dmg) · [Intel](https://github.com/syverlauritz/blaube/releases/download/latest/Blaube-mac-x64.dmg)
+- Windows: [x64](https://github.com/syverlauritz/blaube/releases/download/latest/Blaube-Setup-windows-x64.exe) · [ARM](https://github.com/syverlauritz/blaube/releases/download/latest/Blaube-Setup-windows-arm64.exe)
+
+Or run from source:
 
 ```sh
 npm install
