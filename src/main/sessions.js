@@ -8,6 +8,7 @@ const { EventEmitter } = require('node:events');
 
 const STALE_WORKING_MS = 15 * 60 * 1000; // no hooks for this long means it probably died
 const FORGET_MS = 6 * 60 * 60 * 1000;
+const HOOKED_GONE_MS = 60 * 1000;
 
 class SessionTracker extends EventEmitter {
   constructor(now = () => Date.now()) {
@@ -72,7 +73,13 @@ class SessionTracker extends EventEmitter {
       else if (a.status !== 'busy' && cur === 'working') this.handle({ ...base, hook_event_name: 'Stop' }, 'agents');
     }
     for (const [id, s] of this.sessions) {
-      if (!s.hooked && !live.has(id) && !id.startsWith('demo-')) this.handle({ session_id: id, hook_event_name: 'SessionEnd' }, 'agents');
+      if (live.has(id) || id.startsWith('demo-')) { s.missing = 0; continue; }
+      s.missing = (s.missing || 0) + 1;
+      // Hooked sessions normally end with a SessionEnd hook, but a killed
+      // session never sends one. Once it's been gone from `claude agents`
+      // for a few polls and quiet for a minute, treat it as closed.
+      const gone = s.hooked ? s.missing >= 3 && this.now() - s.updatedAt > HOOKED_GONE_MS : true;
+      if (gone) this.handle({ session_id: id, hook_event_name: 'SessionEnd' }, 'agents');
     }
   }
 

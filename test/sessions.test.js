@@ -60,3 +60,17 @@ test('claude agents polling tracks sessions without hooks, and defers to hooks',
   t.applyAgents([]);
   assert.deepEqual(t.list().map((s) => s.id), ['a']);
 });
+
+test('a hooked session that was killed (no SessionEnd) merges back once claude agents stops listing it', () => {
+  let now = 0;
+  const t = new SessionTracker(() => now);
+  t.handle(ev('UserPromptSubmit'));
+  t.applyAgents([{ sessionId: 's1', cwd: '/x', status: 'busy' }]);
+  t.applyAgents([]);
+  t.applyAgents([]);
+  t.applyAgents([]);
+  assert.equal(t.list().length, 1, 'recent hook activity keeps it alive');
+  now = 2 * 60 * 1000;
+  t.applyAgents([]);
+  assert.equal(t.list().length, 0);
+});
