@@ -407,7 +407,7 @@
     else if (st === 'done' && unseen(b)) { expression = 'happy'; mouth = 'grin'; }
     else if (st === 'working') { expression = 'concentrate'; mouth = 'flat'; }
     else if (st === 'idle' && time - mouse.lastMove > 120) { expression = 'sleepy'; mouth = 'flat'; }
-    return { expression, mouth, blink: b.blink, look: mouse, scale: CFG.faceScale };
+    return { expression, mouth, blink: b.blink, look: mouse, scale: CFG.faceScale, style: CFG };
   }
 
   // Big slimes first, so children are drawn on top (and get clicked first).

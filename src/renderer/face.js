@@ -81,7 +81,12 @@
     return hsl(c.h, c.s, c.l + amount * 100);
   }
 
-  // face: { look: {x,y} in screen px, expression, blink 0..1, mouth }
+  const FACE_DEFAULTS = {
+    faceInk: '#1b2440', eyeWhites: true, eyeShine: true, eyeSize: 1, pupilSize: 0.6, eyeSpacing: 1, eyeHeight: 0,
+    eyeRoundness: 0.77, lookAround: 1, faceLine: 1, mouthSize: 1, mouthHeight: 0, brows: true, cheeks: 0.28, cheekColor: '#ff5a6e',
+  };
+
+  // face: { look: {x,y} in screen px, expression, blink 0..1, mouth, style }
   function drawFace(ctx, b, face) {
     const c = b.centroid();
     const r = b.o.radius;
@@ -93,18 +98,21 @@
     ctx.scale(Math.min(1.4, st.x) * fs, Math.min(1.4, st.y) * fs);
     ctx.translate(0, -r * 0.08);
 
-    const ex = r * 0.33, ey = -r * 0.1, ew = r * 0.17, eh = r * 0.22;
+    const s = Object.assign({}, FACE_DEFAULTS, face.style);
+    const eh = r * 0.22 * s.eyeSize, ew = eh * s.eyeRoundness;
+    const ex = r * 0.33 * s.eyeSpacing, ey = -r * (0.1 + s.eyeHeight);
     // Look direction in the face's frame.
     let lx = face.look.x - c.x, ly = face.look.y - c.y;
     const ca = Math.cos(-b.angle), sa = Math.sin(-b.angle);
     [lx, ly] = [lx * ca - ly * sa, lx * sa + ly * ca];
     const ll = Math.hypot(lx, ly) || 1;
     const reach = Math.min(1, ll / (r * 3));
-    const pdx = (lx / ll) * ew * 0.45 * reach, pdy = (ly / ll) * eh * 0.45 * reach;
+    const look = 0.45 * reach * s.lookAround;
+    const pdx = (lx / ll) * ew * look, pdy = (ly / ll) * eh * look;
 
-    const ink = '#1b2440';
+    const ink = s.faceInk;
     ctx.lineCap = 'round';
-    ctx.lineWidth = r * 0.06;
+    ctx.lineWidth = r * 0.06 * s.faceLine;
     ctx.strokeStyle = ink;
 
     for (const side of [-1, 1]) {
@@ -137,6 +145,21 @@
           break;
         default: {
           const open = Math.max(0.08, 1 - face.blink);
+          if (!s.eyeWhites) {
+            // Solid eyes that move as a whole to look around.
+            const dx = pdx * 0.5, dy = pdy * 0.5;
+            ctx.fillStyle = ink;
+            ctx.beginPath();
+            ctx.ellipse(x + dx, y + dy, ew * 0.8, eh * 0.8 * open, 0, 0, Math.PI * 2);
+            ctx.fill();
+            if (s.eyeShine && open > 0.3) {
+              ctx.fillStyle = '#fff';
+              ctx.beginPath();
+              ctx.arc(x + dx - ew * 0.25, y + dy - eh * 0.3 * open, ew * 0.22, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            break;
+          }
           ctx.fillStyle = '#fff';
           ctx.beginPath();
           ctx.ellipse(x, y, ew, eh * open, 0, 0, Math.PI * 2);
@@ -148,17 +171,19 @@
             ctx.clip();
             ctx.fillStyle = ink;
             ctx.beginPath();
-            ctx.arc(x + pdx, y + pdy, ew * 0.6, 0, Math.PI * 2);
+            ctx.arc(x + pdx, y + pdy, ew * s.pupilSize, 0, Math.PI * 2);
             ctx.fill();
-            ctx.fillStyle = '#fff';
-            ctx.beginPath();
-            ctx.arc(x + pdx - ew * 0.22, y + pdy - ew * 0.25, ew * 0.2, 0, Math.PI * 2);
-            ctx.fill();
+            if (s.eyeShine) {
+              ctx.fillStyle = '#fff';
+              ctx.beginPath();
+              ctx.arc(x + pdx - ew * 0.22, y + pdy - ew * 0.25, ew * 0.2, 0, Math.PI * 2);
+              ctx.fill();
+            }
             ctx.restore();
           }
         }
       }
-      if (face.expression === 'worried' || face.expression === 'concentrate') {
+      if (s.brows && (face.expression === 'worried' || face.expression === 'concentrate')) {
         const tilt = face.expression === 'worried' ? -1 : 1;
         ctx.beginPath();
         ctx.moveTo(x - ew * side, y - eh * 1.35 + tilt * eh * 0.25);
@@ -168,15 +193,25 @@
     }
 
     // Cheeks.
-    ctx.fillStyle = 'rgba(255,90,110,0.28)';
-    for (const side of [-1, 1]) {
-      ctx.beginPath();
-      ctx.ellipse(side * r * 0.55, r * 0.14, r * 0.12, r * 0.07, 0, 0, Math.PI * 2);
-      ctx.fill();
+    if (s.cheeks > 0) {
+      ctx.save();
+      ctx.globalAlpha = s.cheeks;
+      ctx.fillStyle = s.cheekColor;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.ellipse(side * r * 0.55 * s.eyeSpacing, r * 0.14, r * 0.12, r * 0.07, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
     }
 
-    // Mouth.
-    const my = r * 0.2;
+    // Mouth: drawn around its own centre so it can be resized.
+    const my = r * (0.2 + s.mouthHeight);
+    ctx.save();
+    ctx.translate(0, my);
+    ctx.scale(s.mouthSize, s.mouthSize);
+    ctx.translate(0, -my);
+    ctx.lineWidth = r * 0.06 * s.faceLine / s.mouthSize;
     ctx.beginPath();
     switch (face.mouth) {
       case 'o':
@@ -197,6 +232,7 @@
         ctx.arc(0, my - r * 0.06, r * 0.1, Math.PI * 0.2, Math.PI * 0.8);
         ctx.stroke();
     }
+    ctx.restore();
     ctx.restore();
   }
 
