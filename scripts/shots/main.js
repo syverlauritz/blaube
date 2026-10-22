@@ -443,7 +443,7 @@ async function shootMotion(win, name, m) {
 			mouse('mouseMove', start.x + Math.cos(a) * 300, start.y - 80 + Math.sin(a) * 220);
 			if (i === m.hopAt) win.webContents.send('fire', 'command', 'hop');
 		} else if (m.shove) {
-			if (i < m.frames) mouse('mouseMove', start.x + Math.min(1, i / (m.frames * 0.5)) * (win.getContentSize()[0] * 0.7 - start.x), start.y + 10);
+			if (i < m.frames) mouse('mouseMove', start.x + Math.min(1, i / (m.frames * 0.5)) * (win.getContentSize()[0] * 0.55 - start.x), start.y + 10);
 		} else if (i < m.frames) mouse('mouseMove', start.x + Math.sin(i * 0.6) * 170, start.y - 50 - i * 5); // about as fast as a hand
 		if (!m.orbit && !m.still && i === m.frames) mouse('mouseUp', start.x, start.y - 60 - i * 6);
 		await sleep(m.every);

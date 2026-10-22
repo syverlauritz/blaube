@@ -519,7 +519,9 @@
     if (!d) return false;
     let mx = d.x, my = d.y;
     if (my > Math.abs(mx) && o.onFloor()) return null;
-    if ((mx > 0 && o.contact.right) || (mx < 0 && o.contact.left)) { my -= Math.abs(mx) * 1.5; mx = 0; }
+    // Up against (or nearly at) the edge it's being pushed toward: squeeze out.
+    const box = o.bbox(), near = o.o.radius * 0.15;
+    if ((mx > 0 && (o.contact.right || box.maxX > o.bounds.right - near)) || (mx < 0 && (o.contact.left || box.minX < o.bounds.left + near))) { my -= Math.abs(mx) * 3; mx = 0; }
     // Mostly a move, partly a push: it keeps some of the speed and slides on.
     for (let i = 0; i < o.n; i++) {
       o.px[i] += mx; o.py[i] += my;
