@@ -45,6 +45,8 @@ class SessionTracker extends EventEmitter {
       cwd,
       term: payload._term || (prev && prev.term) || '',
       entry: payload._entry || (prev && prev.entry) || '',
+      transcript: payload.transcript_path || (prev && prev.transcript) || '',
+      pid: payload._pid || (prev && prev.pid) || 0,
       project: cwd ? path.basename(cwd.replace(/[\\/]+$/, '')) : 'Claude',
       state: next.state,
       message: next.message || '',
@@ -105,8 +107,9 @@ class SessionTracker extends EventEmitter {
       if (!a || !a.sessionId) continue;
       live.add(a.sessionId);
       const prev = this.sessions.get(a.sessionId);
+      if (prev && a.pid) prev.pid = a.pid;
       if (prev && prev.hooked) continue;
-      const base = { session_id: a.sessionId, cwd: a.cwd };
+      const base = { session_id: a.sessionId, cwd: a.cwd, _pid: a.pid };
       if (!prev) this.handle({ ...base, hook_event_name: 'SessionStart' }, 'agents');
       const cur = this.sessions.get(a.sessionId).state;
       if (a.status === 'busy' && cur !== 'working') this.handle({ ...base, hook_event_name: 'UserPromptSubmit' }, 'agents');

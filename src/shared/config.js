@@ -45,8 +45,6 @@
       ['grabGravity', 1, 0, 1, 0.05, 'Gravity while held'],
     ]],
     ['Behaviour', [
-      ['idleHopEvery', 18, 0, 120, 1, 'Idle hop every (s, 0 = never)'],
-      ['idleHopStrength', 520, 0, 2000, 10, 'Idle hop strength'],
       ['doneHopStrength', 750, 0, 2000, 10, 'Done bounce strength'],
       ['doneHopEvery', 0.8, 0.3, 4, 0.05, 'Done bounce interval (s)'],
       ['waitingHopStrength', 600, 0, 2000, 10, 'Needs-you hop strength'],

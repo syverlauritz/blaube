@@ -6,6 +6,7 @@ const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
 const { openResumeTerminal, resumeCommand, focusSessionApp } = require('./terminal');
 const { startAgentsPoller } = require('./agents');
+const { startFocusWatcher } = require('./focus');
 const dock = require('./dock');
 const BlaubeConfig = require('../shared/config');
 
@@ -20,6 +21,17 @@ let tuningWin = null;
 let world = { obstacles: [] };
 let dockWindows = [];
 const tracker = new SessionTracker();
+let focus = { front: () => [] };
+
+// Sessions whose window you're looking at count as seen, so their slimes
+// stop jumping. Returns true if that changed anything.
+function markFrontSeen() {
+  let changed = false;
+  for (const s of focus.front(tracker.list())) {
+    if (!s.seen) { s.seen = true; changed = true; }
+  }
+  return changed;
+}
 
 // --- Preferences (config + chosen display), kept in the app's data folder ---
 
@@ -305,7 +317,8 @@ app.whenReady().then(async () => {
   tray.on('right-click', () => tray.popUpContextMenu(appMenu()));
   refreshTray();
 
-  tracker.on('change', () => { pushState(); refreshTray(); });
+  focus = startFocusWatcher(() => { if (markFrontSeen()) pushState(); });
+  tracker.on('change', () => { markFrontSeen(); pushState(); refreshTray(); });
   setInterval(() => { if (tracker.prune()) { pushState(); refreshTray(); } }, 30 * 1000);
 
   ipcMain.on('ready', () => {
@@ -357,4 +370,4 @@ app.whenReady().then(async () => {
 
 app.on('second-instance', () => send('come-here'));
 app.on('window-all-closed', () => app.quit());
-app.on('will-quit', () => globalShortcut.unregisterAll());
+app.on('will-quit', () => { globalShortcut.unregisterAll(); if (focus.stop) focus.stop(); });

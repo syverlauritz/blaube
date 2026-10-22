@@ -233,8 +233,9 @@
     }
   }
 
-  // Little "!" bubble that bobs above a slime that finished its work.
-  function drawExclaim(ctx, b, t, color) {
+  // Little "!" bubble that bobs above a slime that finished its work, or a
+  // "?" one above a slime waiting for your answer.
+  function drawExclaim(ctx, b, t, color, glyph = '!') {
     const c = b.centroid();
     const top = b.bbox().minY;
     const x = c.x + b.o.radius * 0.95, y = top - 6 + Math.sin(t * 7) * 2;
@@ -251,7 +252,7 @@
     ctx.font = '800 17px -apple-system, "Segoe UI", system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('!', x, y + 1);
+    ctx.fillText(glyph, x, y + 1);
     ctx.restore();
   }
 

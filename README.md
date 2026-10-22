@@ -11,8 +11,9 @@ A squishy Claude-orange slime that lives on your desktop. Grab it, toss it, watc
 - **One big slime per Claude Code session.** The first session takes over the big slime. Each new one splits off (on a gooey spring) and grows to full size. When a session ends, it hops over and merges into another one. The last one stays as Blaube.
 - **One little slime per subagent.** When a session starts a subagent, a little slime splits off that session's big slime, labelled with the agent type. When the subagent finishes, it hops back to its mother and merges in.
   - **Working:** eyes squeezed shut in deep concentration, with a thought puff.
-  - **Needs you:** worried face, glows red, hops for attention, and shows what Claude is asking.
-  - **Done:** happy face, bounces up and down with a "!" bubble until you click it.
+  - **Needs you:** worried face and a "?" bubble. It glows red and hops for attention until you look.
+  - **Done:** happy face, bounces up and down with a "!" bubble until you look.
+  - Slimes only jump to get your attention. "Looking" means clicking the slime or, on Windows, bringing the session's terminal window to the front. Each slime breathes at its own pace.
 - **Click a session's slime** (or one of its little ones) to jump to that session. On macOS it brings the terminal/editor the session runs in to the front (Terminal, iTerm, VS Code, Cursor, Warp, Ghostty, WezTerm). Otherwise it opens a new terminal running `claude --resume <session>` in the project folder.
 - **Right-click a session's slime** to pick its **Colour** (orange, blue, green, purple, pink, yellow; it sticks to the project folder), and for its status, "Resume in new terminal", "Copy resume command", "Open project folder" and "Merge back in".
 - **With no sessions**, click Blaube for a summary. Right-click it (or use the tray/menu bar icon, or the **Blaube** item in a session's menu) for settings, including **Colour** and **Live on display** to pick which screen it lives on.

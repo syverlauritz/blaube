@@ -46,7 +46,10 @@
       this.nextBlink = time + 1 + Math.random() * 4;
       this.dizzyUntil = 0;
       this.happyUntil = 0;
-      this.nextHop = time + 8 + Math.random() * 10;
+      this.nextHop = 0;
+      // Each slime breathes at its own pace.
+      this.breathPhase = Math.random() * Math.PI * 2;
+      this.breathRate = 2.2 * (0.8 + Math.random() * 0.4);
       this.color = colorFor(this);
     }
 
@@ -257,16 +260,12 @@
 
   function react(b, prev) {
     switch (b.state) {
-      case 'working':
-        if (prev !== 'waiting') b.hop((Math.random() - 0.5) * 120, -320);
-        if (b.bubble && b.bubble.sticky) b.bubble = null;
-        break;
       case 'waiting':
-        b.hop(0, -CFG.waitingHopStrength);
-        if (b.session) b.say([{ text: `${label(b)} needs you`, color: D.STATE_COLORS.waiting }, { text: b.session.message || 'Waiting for you' }], 1e9, true);
+        if (wantsAttention(b)) b.hop(0, -CFG.waitingHopStrength);
+        b.nextHop = time + 2.2;
         break;
       case 'done':
-        b.hop((Math.random() - 0.5) * 200, -CFG.doneHopStrength * 1.1);
+        if (wantsAttention(b)) b.hop((Math.random() - 0.5) * 200, -CFG.doneHopStrength * 1.1);
         b.happyUntil = time + 2.5;
         b.nextHop = time + CFG.doneHopEvery;
         break;
@@ -294,6 +293,15 @@
 
   const unseen = (b) => !!(b.session && !b.session.seen);
 
+  // Slimes only jump to get your attention: when they need you or are done
+  // and you haven't looked at their session yet. Children go by their
+  // mother's session.
+  function wantsAttention(b) {
+    const m = b.kind === 'child' ? b.mother : b;
+    if (!unseen(m)) return false;
+    return b.state === 'waiting' || (b.state === 'done' && b.kind !== 'child');
+  }
+
   // --- Simulation ---------------------------------------------------------
 
   function step() {
@@ -303,7 +311,7 @@
       const r = body.o.radius;
       if (b.big && !b.dying) b.targetR = radiusFor(b);
       if (Math.abs(b.targetR - r) > 0.05) body.setRadius(r + (b.targetR - r) * (b.dying ? 0.08 : 0.02));
-      body.areaScale = 1 + CFG.breathe * Math.sin(time * 2.2 + b.born * 3);
+      body.areaScale = 1 + CFG.breathe * Math.sin(time * b.breathRate + b.breathPhase);
       body.step(DT);
       if (b.splitting) pullStrand(b);
       if (body.lastImpact > CFG.dizzySpeed) b.dizzyUntil = time + 0.9;
@@ -321,7 +329,6 @@
           if (close || time - b.merging.since > 8) {
             b.dying = time;
             b.targetR = 2;
-            m.hop(0, -260);
             m.happyUntil = time + 1.2;
           } else if (body.onFloor() && !body.grab && time - (b.merging.lastHop || 0) > 0.6) {
             b.merging.lastHop = time;
@@ -375,24 +382,14 @@
     if (b.bubble && time > b.bubble.until) b.bubble = null;
     if (b.body.grab || !b.body.onFloor() || b.merging || time < b.nextHop) return;
 
-    const st = b.state;
-    if (st === 'waiting' && (b.kind === 'child' || unseen(b))) {
+    if (!wantsAttention(b)) return;
+    if (b.state === 'waiting') {
       b.hop(0, -CFG.waitingHopStrength);
       b.nextHop = time + 2.2;
-    } else if (st === 'done' && unseen(b)) {
-      // Finished: bounce up and down until someone clicks it.
+    } else {
+      // Finished: bounce up and down until you look at it.
       b.hop((Math.random() - 0.5) * 60, -CFG.doneHopStrength);
       b.nextHop = time + CFG.doneHopEvery;
-    } else if (st === 'working') {
-      // Deep concentration: mostly still, with the odd wobble.
-      b.hop((Math.random() - 0.5) * 120, -140);
-      b.nextHop = time + 3 + Math.random() * 3;
-    } else if (CFG.idleHopEvery > 0) {
-      const k = CFG.idleHopStrength;
-      b.hop((Math.random() - 0.5) * k * 1.4, -k * (0.8 + Math.random() * 0.4));
-      b.nextHop = time + CFG.idleHopEvery * (0.6 + Math.random() * 0.8);
-    } else {
-      b.nextHop = time + 1;
     }
   }
 
@@ -439,13 +436,13 @@
     }
 
     for (const b of list) {
-      const alert = (unseen(b) && (b.state === 'waiting' || b.state === 'done')) || (b.kind === 'child' && b.state === 'waiting');
-      const glow = alert && CFG.glow ? D.STATE_COLORS[b.state] : null;
+      const glow = wantsAttention(b) && CFG.glow ? D.STATE_COLORS[b.state] : null;
       D.drawBody(ctx, b.body, b.color, { glow, outline: CFG.outline });
       if (b.body.o.radius > 12) D.drawFace(ctx, b.body, faceFor(b));
       if (b.kind === 'home' || b.dying) continue;
       if (b.state === 'working') D.drawThinking(ctx, b.body, time);
-      if (b.state === 'done' && unseen(b)) D.drawExclaim(ctx, b.body, time, D.STATE_COLORS.done);
+      if (b.state === 'waiting') D.drawExclaim(ctx, b.body, time, D.STATE_COLORS.waiting, '?');
+      else if (b.state === 'done' && unseen(b)) D.drawExclaim(ctx, b.body, time, D.STATE_COLORS.done);
       else D.drawDots(ctx, b.body, [b.state], time);
       D.drawLabel(ctx, b.body, label(b));
     }
@@ -575,7 +572,6 @@
       b.say(summaryLines(), 5);
       api.acknowledge(null);
     }
-    b.hop(0, -300);
   }
 
   // --- Wiring -------------------------------------------------------------
