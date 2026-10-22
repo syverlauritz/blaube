@@ -12,7 +12,8 @@
     "dist": "electron-builder",
     "dist:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
     "dist:win": "electron-builder --win --x64 && electron-builder --win --arm64",
-    "build:mac:local": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir --publish never"
+    "build:mac:local": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir --publish never",
+    "shots": "electron scripts/shots/main.js"
   },
   "build": {
     "appId": "app.blaube.desktop",
