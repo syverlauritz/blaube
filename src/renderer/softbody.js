@@ -294,9 +294,10 @@
         cross += rx[i] * qy - ry[i] * qx;
       }
       this.angle = Math.atan2(cross, dot);
-      // Aim slightly closer to upright than the current pose, unless held,
-      // so Blaube rolls but rights itself like a weighted toy.
-      const goal = this.grab ? this.angle : this.angle * (1 - this.o.upright);
+      // Aim slightly closer to upright than the current pose, so Blaube
+      // rolls but rights itself like a weighted toy. Held, it rights itself
+      // harder, so it dangles face-up instead of lying on its side.
+      const goal = this.angle * (1 - this.o.upright * (this.grab ? 4 : 1));
       const cs = Math.cos(goal), sn = Math.sin(goal);
       const s = this.o.shapeStiffness;
       for (let i = 0; i < n; i++) {
@@ -304,6 +305,17 @@
         const gy = c.y + rx[i] * sn + ry[i] * cs;
         px[i] += (gx - px[i]) * s;
         py[i] += (gy - py[i]) * s;
+      }
+      // Held: turn the whole body back toward upright a little every step,
+      // so it leans with the drag but can't swing round like a pendulum.
+      if (this.grab && Math.abs(this.angle) > 0.12) {
+        const turn = -(this.angle - Math.sign(this.angle) * 0.12) * 0.12;
+        const tc = Math.cos(turn), ts = Math.sin(turn);
+        for (let i = 0; i < n; i++) {
+          const qx = px[i] - c.x, qy = py[i] - c.y;
+          px[i] = c.x + qx * tc - qy * ts;
+          py[i] = c.y + qx * ts + qy * tc;
+        }
       }
     }
 

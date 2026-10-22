@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  const { SoftBody, collideBodies, BlaubeDraw: D, BlaubeConfig } = globalThis;
+  const { SoftBody, collideBodies, BlaubeDraw: D, BlaubeConfig, BlaubeLooks: Looks } = globalThis;
 
   const api = window.blaube || devShim();
   const canvas = document.getElementById('stage');
@@ -19,8 +19,7 @@
 
   let W = 0, H = 0;
   let mouse = { x: -1e4, y: -1e4, lastMove: performance.now() / 1000 };
-  let drag = null; // { buddy, x0, y0, t0, moved }
-  let ignoring = null;
+  let drag = null; // { buddy, pet or glasses, x0, y0, t0, moved }
   let settings = { hooksInstalled: true };
   let time = 0;
 
@@ -35,6 +34,8 @@
       this.mother = null; // children
       this.agent = null; // children
       this.state = 'idle';
+      this.effort = 'medium';
+      this.glasses = null; // high effort: its glasses, while they're off its face
       this.born = time;
       this.parent = null; // the slime it's splitting off, while splitting
       this.merging = null; // { since }
@@ -46,6 +47,7 @@
       this.nextBlink = time + 1 + Math.random() * 4;
       this.dizzyUntil = 0;
       this.happyUntil = 0;
+      this.nodAt = -1;
       this.nextHop = 0;
       // Each slime breathes at its own pace.
       this.breathPhase = Math.random() * Math.PI * 2;
@@ -90,14 +92,25 @@
 
   function colorFor(b) {
     if (b.big) return baseColor(b);
+    return familyColor(b.mother, b.key);
+  }
+
+  // A shade of a mother's colour for one of hers (a helper or a pet): the
+  // key picks a hue and lightness within the configured spread.
+  function familyColor(mother, key) {
     let h = 0;
-    for (let i = 0; i < b.key.length; i++) h = (h * 31 + b.key.charCodeAt(i)) >>> 0;
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
     const u = ((h % 1000) / 999) * 2 - 1, v = (((h >>> 10) % 1000) / 999) * 2 - 1;
-    return D.vary(baseColor(b.mother), u * CFG.childHueSpread, v * CFG.childLightSpread);
+    return D.vary(baseColor(mother), u * CFG.childHueSpread, v * CFG.childLightSpread);
   }
 
   function applyConfig(cfg) {
     CFG = BlaubeConfig.sanitize(cfg);
+    D.setFont(CFG.font);
+    // Canvas text doesn't load a font by itself; ask for it.
+    if (CFG.font !== 'System' && document.fonts) document.fonts.load(`13px "${CFG.font}"`).catch(() => {});
+    // The Size setting scales every slime (and pet) at once.
+    for (const k of ['mainRadius', 'childRadius', 'mainMinRadius']) CFG[k] *= CFG.size;
     for (const b of buddies.values()) {
       const want = b.big ? CFG.mainPoints : CFG.childPoints;
       if (b.body.n !== want) {
@@ -143,10 +156,27 @@
   const bigs = () => [...buddies.values()].filter((b) => b.big && !b.dying);
 
   // A mother gives up some of her volume to each of her children.
+  // Sessions grow with the tokens they've used: a step bigger each time
+  // the total doubles, counted from 100k.
+  function tokenScale(m) {
+    const total = m.session && m.session.tokens ? m.session.tokens.total : 0;
+    if (!total) return 1;
+    return Math.min(CFG.maxTokenGrowth, 1 + CFG.tokenGrowth * Math.log2(1 + total / 100000));
+  }
+
+  // How full the session's context window is, 0..1.
+  function contextFill(b) {
+    const t = b.kind === 'mother' && b.session && b.session.tokens;
+    return t && t.limit ? Math.min(1, t.context / t.limit) : 0;
+  }
+
+  // 0..1 between two thresholds.
+  const ramp = (v, from, to) => Math.max(0, Math.min(1, (v - from) / Math.max(0.001, to - from)));
+
   function radiusFor(m) {
     let children = 0;
     for (const b of buddies.values()) if (b.mother === m && !b.dying) children++;
-    const R = CFG.mainRadius, r = CFG.childRadius;
+    const R = CFG.mainRadius * tokenScale(m), r = CFG.childRadius;
     return Math.max(Math.min(CFG.mainMinRadius, R), Math.sqrt(Math.max(0, R * R - 0.5 * children * r * r)));
   }
 
@@ -182,8 +212,11 @@
       let m = buddies.get(s.id);
       if (!m || m.dying) m = addMother(s);
       m.merging = null;
+      if (s.activity === 'tool' && m.lastActivity !== 'tool') m.pulse = true;
+      m.lastActivity = s.activity;
       m.session = s;
       m.color = colorFor(m);
+      setEffort(m, s.effort);
       setState(m, s.state);
       if (s.seen && m.bubble && m.bubble.sticky) m.bubble = null;
       for (const a of s.agents || []) {
@@ -193,11 +226,15 @@
         if (!c || c.dying) c = split(m, key, 'child');
         c.merging = null;
         c.mother = m;
+        if (a.activity === 'tool' && c.lastActivity !== 'tool') c.pulse = true;
+        c.lastActivity = a.activity;
         c.agent = a;
         c.color = colorFor(c);
+        setEffort(c, a.effort || s.effort);
         setState(c, a.state);
       }
     }
+    syncPets(sessions);
     // Finished sessions and subagents head back in.
     for (const b of buddies.values()) {
       if (b.kind !== 'home' && !live.has(b.key) && !b.merging && !b.dying) b.merging = { since: time };
@@ -208,6 +245,7 @@
       if (keep) {
         rekey(keep, HOME);
         Object.assign(keep, { kind: 'home', session: null, state: 'idle', merging: null, bubble: null });
+        setEffort(keep, '');
         keep.color = colorFor(keep);
       } else {
         buddies.set(HOME, new Buddy(HOME, 'home', W * 0.8, H * 0.5, CFG.mainRadius));
@@ -218,6 +256,157 @@
 
   // The first session takes over the home slime. Later ones split off the
   // nearest mother and grow to full size.
+  // --- Pets: background tasks ----------------------------------------------
+  // Each background task (a dev server, a watcher) is a small rigid box
+  // that hops after its session's slime, like a pet. Not a slime, so it
+  // can't be mistaken for a subagent, and it never changes the slime's face.
+  const pets = new Map();
+
+  // The shots script (scripts/shots) opens the window with ?debug to look
+  // inside while it plays a scene.
+  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, now: () => time };
+  const petSize = () => 34 * CFG.size;
+
+  function syncPets(sessions) {
+    const live = new Set();
+    for (const s of sessions) {
+      const m = buddies.get(s.id);
+      (s.tasks || []).forEach((task, i) => {
+        const key = `${s.id}/task/${task.id}`;
+        live.add(key);
+        let p = pets.get(key);
+        if (!p) {
+          // Pops out of its slime.
+          const c = m ? m.body.centroid() : { x: W / 2, y: H / 2 };
+          p = { key, x: c.x, y: c.y, vx: (Math.random() - 0.5) * 400, vy: -700, angle: 0, va: (Math.random() - 0.5) * 12, born: time, dying: 0, nextHop: time + 0.6, happy: false, heartAt: -1, nextBlink: time + 2, landedAt: -1, held: null };
+          pets.set(key, p);
+        }
+        Object.assign(p, { owner: m, task, index: i });
+      });
+    }
+    for (const p of pets.values()) if (!live.has(p.key) && !p.dying) p.dying = time;
+  }
+
+  function stepPets() {
+    for (const [key, p] of pets) {
+      if (p.dying && time - p.dying > 0.4) { pets.delete(key); continue; }
+      const PET = petSize(), h = PET / 2;
+      const floor = floorAt(p.x) - h;
+      // Standing on the floor, or on top of a slime.
+      const onFloor = !p.held && (p.y >= floor - 0.5 || time - p.landedAt < 0.05);
+      if (p.held) {
+        // Dragged: it follows the mouse on a stiff spring and tilts with it.
+        p.vx = (mouse.x - p.held.dx - p.x) * 20;
+        p.vy = (mouse.y - p.held.dy - p.y) * 20;
+        p.angle += (Math.max(-0.6, Math.min(0.6, p.vx / 1500)) - p.angle) * 0.2;
+        p.va = 0;
+      } else p.vy += CFG.gravity * DT;
+      p.x += p.vx * DT;
+      p.y += p.vy * DT;
+      p.angle += p.va * DT;
+      if (p.x < h) { p.x = h; p.vx = Math.abs(p.vx) * 0.5; }
+      if (p.x > W - h) { p.x = W - h; p.vx = -Math.abs(p.vx) * 0.5; }
+      if (p.y < h) { p.y = h; p.vy = Math.abs(p.vy) * 0.5; }
+      if (p.y >= floor) {
+        p.y = floor;
+        p.vy = p.vy > 250 ? -p.vy * 0.25 : 0;
+        p.vx *= 0.8;
+      }
+      // Rigid: it lands flat, upright.
+      if (onFloor) { p.angle *= 0.7; p.va = 0; }
+      // Its spot, next to its slime.
+      const m = p.owner && !p.owner.dying ? p.owner : null;
+      let dx = 0;
+      if (m) dx = petSpot(p, m, PET) - p.x;
+      // Back by its slime: a little heart, and it's happy until its slime
+      // moves well away again.
+      const happy = !!m && onFloor && Math.abs(dx) < (p.happy ? 70 : 30);
+      if (happy && !p.happy) p.heartAt = time;
+      p.happy = happy;
+      // Blinks now and then.
+      if (time > p.nextBlink) p.nextBlink = time + 1.5 + Math.random() * 4;
+      if (!onFloor || time < p.nextHop || p.dying) continue;
+      // Follow its slime: hop after it, at random moments.
+      if (m && !happy) {
+        p.vx = Math.sign(dx) * Math.min(520, Math.abs(dx) * 2.4 + 90);
+        p.vy = -360 - Math.random() * 180;
+        p.va = Math.sign(dx) * 1.5; // leans into the hop
+      }
+      p.nextHop = time + 0.5 + Math.random() * 2.2;
+    }
+  }
+
+  // Pets live on their own layer in front of the slimes: they pass in front
+  // of them, but bump into each other (and can stand on each other). A pet
+  // counts as a circle here, which is close enough for a small box.
+  function collidePets() {
+    const R = petSize() * 0.55;
+    const list = [...pets.values()].filter((p) => !p.dying);
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const a = list[i], c = list[j];
+        let dx = c.x - a.x, dy = c.y - a.y;
+        const d = Math.hypot(dx, dy);
+        if (d >= R * 2 || d < 1e-3) continue;
+        dx /= d; dy /= d;
+        const push = (R * 2 - d) / 2;
+        a.x -= dx * push; a.y -= dy * push;
+        c.x += dx * push; c.y += dy * push;
+        const rel = (c.vx - a.vx) * dx + (c.vy - a.vy) * dy;
+        if (rel < 0) {
+          a.vx += dx * rel * 0.6; a.vy += dy * rel * 0.6;
+          c.vx -= dx * rel * 0.6; c.vy -= dy * rel * 0.6;
+        }
+        if (dy > 0.6) a.landedAt = time; else if (dy < -0.6) c.landedAt = time;
+      }
+    }
+    const h = petSize() / 2;
+    for (const p of list) {
+      p.x = Math.max(h, Math.min(W - h, p.x));
+      p.y = Math.min(p.y, floorAt(p.x) - h);
+    }
+  }
+
+  // Where a pet wants to be: beside its slime's body, on its own side, or
+  // the other side if that's off the screen.
+  // Spots go right, left, right, left... each pair a step further out,
+  // skipping any that would be off the screen; pet number i takes the i-th.
+  function petSpot(p, m, size) {
+    const box = m.body.bbox();
+    const spots = [];
+    for (let k = 0; spots.length <= p.index && k < 40; k++) {
+      const gap = 14 + size / 2 + Math.floor(k / 2) * (size + 12);
+      const x = k % 2 ? box.minX - gap : box.maxX + gap;
+      if (x >= size / 2 && x <= W - size / 2) spots.push(x);
+    }
+    return spots[p.index] ?? spots[spots.length - 1] ?? p.x;
+  }
+
+  function petAt(x, y) {
+    const PET = petSize();
+    for (const p of pets.values()) if (!p.dying && Math.abs(x - p.x) < PET * 0.7 && Math.abs(y - p.y) < PET * 0.7) return p;
+    return null;
+  }
+
+  function drawPets() {
+    for (const p of pets.values()) {
+      const grow = p.dying ? Math.max(0, 1 - (time - p.dying) / 0.4) : Math.min(1, (time - p.born) / 0.25);
+      const color = p.owner ? familyColor(p.owner, p.key) : '#3a4258';
+      let lx = 0, ly = 0;
+      if (p.owner) {
+        const c = p.owner.body.centroid();
+        const d = Math.hypot(c.x - p.x, c.y - p.y) || 1;
+        lx = (c.x - p.x) / d; ly = (c.y - p.y) / d;
+      }
+      // When happy it sways softly from side to side, rocking on its base.
+      const sway = p.happy ? Math.sin((time - p.heartAt) * 1.8) * 0.13 * Math.min(1, (time - p.heartAt) * 2) : 0;
+      D.drawPet(ctx, {
+        x: p.x, y: p.y, size: petSize() * grow, angle: p.angle, sway, color, lx, ly,
+        blink: time > p.nextBlink - 0.13, happy: p.happy, heart: p.heartAt >= 0 ? time - p.heartAt : Infinity,
+      }, floorAt(p.x), CFG.shadow);
+    }
+  }
+
   function addMother(s) {
     const home = buddies.get(HOME);
     if (home && !home.dying) {
@@ -252,6 +441,36 @@
     return nearestBig(b, (o) => !o.merging) || nearestBig(b, () => true);
   }
 
+  // Each slime's look, picked from its key so a session keeps its look.
+  // (A session can name one, which the shots script uses.)
+  function lookOf(b) {
+    if (CFG.looks === 'Off' || b.kind === 'home') return 'none';
+    if (b.effort === 'high' && !b.glasses) return 'none'; // the glasses are its accent
+    if (b.session && b.session.look) return b.session.look;
+    // Chosen once, then kept for as long as it runs. A session's slime takes
+    // its favourite look that no other session's slime is wearing (plain
+    // ones may repeat); a helper always wears something, shared or not.
+    if (b.chosenLook && b.chosenLookFor === b.key) return b.chosenLook;
+    const order = Looks.lookOrder(b.key, !b.big);
+    if (b.kind === 'child') b.chosenLook = order.find((n) => n !== 'none');
+    else {
+      const worn = new Set([...buddies.values()].filter((o) => o !== b && o.kind === 'mother' && o.chosenLook && !o.dying).map((o) => o.chosenLook));
+      b.chosenLook = order.find((n) => n === 'none' || !worn.has(n)) || order[0];
+    }
+    b.chosenLookFor = b.key;
+    return b.chosenLook;
+  }
+
+  // low, medium, high or xhigh (max counts as xhigh).
+  function setEffort(b, effort) {
+    const e = String(effort || '').toLowerCase();
+    b.effort = e === 'max' ? 'xhigh' : ['low', 'high', 'xhigh'].includes(e) ? e : 'medium';
+    if (b.effort !== 'high' && b.glasses) {
+      if (drag && drag.glasses === b.glasses) drag = null;
+      b.glasses = null;
+    }
+  }
+
   function setState(b, state) {
     const prev = b.state;
     b.state = state;
@@ -273,7 +492,11 @@
   }
 
   function label(b) {
-    if (b.kind === 'child') return (b.agent && b.agent.type) || 'agent';
+    if (b.kind === 'child') {
+      const a = b.agent || {};
+      const name = a.description || a.type || 'agent';
+      return name.length > 28 ? name.slice(0, 27) + '…' : name;
+    }
     return (b.session && b.session.project) || 'Claude';
   }
 
@@ -305,19 +528,38 @@
   // --- Simulation ---------------------------------------------------------
 
   function step() {
+    stepPets();
     for (const b of [...buddies.values()]) {
       if (b.removed) continue;
       const body = b.body;
       const r = body.o.radius;
       if (b.big && !b.dying) b.targetR = radiusFor(b);
       if (Math.abs(b.targetR - r) > 0.05) body.setRadius(r + (b.targetR - r) * (b.dying ? 0.08 : 0.02));
-      body.areaScale = 1 + CFG.breathe * Math.sin(time * b.breathRate + b.breathPhase);
+      // A fuller context puffs the slime up tight; in pain it pants.
+      b.fill = (b.fill || 0) + (contextFill(b) - (b.fill || 0)) * 0.01;
+      b.pain = ramp(b.fill, CFG.painAt, 1);
+      b.breathPhase += DT * b.breathRate * 1.5 * b.pain;
+      body.areaScale = (1 + CFG.contextInflate * b.fill * b.fill) * (1 + CFG.breathe * Math.sin(time * b.breathRate + b.breathPhase));
+      // ...and firmer: more pressure inside, so a full one barely sags.
+      body.o.pressure = CFG.pressure * (1 + CFG.contextTighten * b.fill);
       body.step(DT);
       updateGaze(b);
+      b.look = lookOf(b);
+      if (b.look !== 'none') Looks.stepLook(b, DT);
       if (b.splitting) pullStrand(b);
       if (body.lastImpact > CFG.dizzySpeed) b.dizzyUntil = time + 0.9;
+      if (b.effort === 'high' && !b.glasses && !b.splitting && !b.merging && !b.dying && body.lastImpact > CFG.glassesSpeed) knockGlasses(b);
+      if (b.glasses) stepGlasses(b);
+      if (meditating(b)) levitate(b);
 
-      if (b.merging && !b.dying) {
+      // A helper that's done first has a moment to itself (happy eyes, a
+      // little hop and a heart), then heads home.
+      const celebrating = b.merging && b.kind === 'child' && time - b.merging.since < 0.9;
+      if (celebrating && !b.merging.hopped && body.onFloor() && !body.grab) {
+        b.merging.hopped = true;
+        b.hop(0, -380);
+      }
+      if (b.merging && !b.dying && !celebrating) {
         let m = b.mergeInto;
         if (!m || m.removed || m.dying) m = b.mergeInto = mergeTarget(b);
         if (!m) {
@@ -349,6 +591,78 @@
         }
       }
     }
+    collidePets();
+  }
+
+  // --- Effort ---------------------------------------------------------------
+
+  // High effort: hit something hard enough and the glasses fly off.
+  function knockGlasses(b) {
+    const body = b.body, c = body.centroid(), r = body.o.radius, v = body.velocity(DT);
+    b.glasses = {
+      x: c.x, y: c.y - r * 0.2,
+      vx: v.x * 0.5 + (Math.random() - 0.5) * 500, vy: Math.min(0, v.y) * 0.4 - 700,
+      a: 0, va: (Math.random() - 0.5) * 24,
+      r: r * CFG.faceScale, held: null, since: time,
+    };
+    b.say('My glasses!', 1.6);
+  }
+
+  const glassesBox = (g) => ({ hw: g.r * 0.62, hh: g.r * 0.2 });
+
+  // They tumble and land like a small rigid thing, until their slime
+  // bumps into them (or you drop them on it) and puts them back on.
+  function stepGlasses(b) {
+    const g = b.glasses;
+    const { hw, hh } = glassesBox(g);
+    if (g.held) {
+      g.vx = (mouse.x - g.held.dx - g.x) * 20;
+      g.vy = (mouse.y - g.held.dy - g.y) * 20;
+      g.a += (Math.max(-0.6, Math.min(0.6, g.vx / 1500)) - g.a) * 0.2;
+      g.va = 0;
+    } else g.vy += CFG.gravity * DT;
+    g.x += g.vx * DT;
+    g.y += g.vy * DT;
+    g.a += g.va * DT;
+    const floor = floorAt(g.x) - hh;
+    if (g.y >= floor) {
+      g.y = floor;
+      g.vy = g.vy > 200 ? -g.vy * 0.3 : 0;
+      g.vx *= 0.8;
+      g.va *= 0.5;
+      g.a += (Math.round(g.a / Math.PI) * Math.PI - g.a) * 0.25; // settle flat, or upside down
+    }
+    if (g.y < hh) { g.y = hh; g.vy = Math.abs(g.vy) * 0.4; }
+    if (g.x < hw) { g.x = hw; g.vx = Math.abs(g.vx) * 0.5; }
+    if (g.x > W - hw) { g.x = W - hw; g.vx = -Math.abs(g.vx) * 0.5; }
+    if (!g.held && time - g.since > 0.6 && b.body.contains(g.x, g.y)) wearGlasses(b);
+  }
+
+  function wearGlasses(b) {
+    if (drag && drag.glasses === b.glasses) drag = null;
+    b.glasses = null;
+    b.happyUntil = time + 1.6;
+    b.hop(0, -260);
+  }
+
+  function glassesAt(x, y) {
+    for (const b of buddies.values()) {
+      const g = b.glasses;
+      if (!g || b.dying) continue;
+      const { hw, hh } = glassesBox(g);
+      if (Math.abs(x - g.x) < hw + 6 && Math.abs(y - g.y) < hh * 1.6 + 6) return b;
+    }
+    return null;
+  }
+
+  // Extra high effort, while it works: it floats above the ground.
+  const meditating = (b) => b.effort === 'xhigh' && b.state === 'working' && b.kind !== 'home' && !b.body.grab && !b.merging && !b.splitting && !b.dying;
+
+  function levitate(b) {
+    const body = b.body, c = body.centroid(), r = body.o.radius, v = body.velocity(DT);
+    const target = floorAt(c.x) - r - CFG.levitateHeight + Math.sin(time * 1.6 + b.born * 3) * 8;
+    const ay = -CFG.gravity + (target - c.y) * 16 - v.y * 4.5;
+    body.impulse(-v.x * 2.5 * DT, ay * DT, DT);
   }
 
   // While splitting, a goo strand ties the new slime to the one it came
@@ -381,8 +695,27 @@
     } else b.blink = Math.max(0, b.blink - 0.2);
 
     if (b.bubble && time > b.bubble.until) b.bubble = null;
+    if (b.pulse) {
+      b.pulse = false;
+      if (b.body.onFloor() && !b.body.grab) b.body.impulse(0, 260, DT);
+    }
+    // A working slime rocks a little now and then while it thinks.
+    if (b.kind !== 'home' && b.state === 'working' && !b.merging && !b.body.grab && b.body.onFloor() && time > (b.nextFidget || 0)) {
+      if (b.nextFidget) b.hop((Math.random() < 0.5 ? -1 : 1) * (60 + Math.random() * 60), -140 - Math.random() * 90);
+      b.nextFidget = time + 1.8 + Math.random() * 3;
+    }
     if (b.body.grab || !b.body.onFloor() || b.merging || time < b.nextHop) return;
 
+    const g = b.glasses;
+    if (g) {
+      // Lost its glasses: hop over to get them (or wait while you hold them).
+      if (!g.held) {
+        const c = b.body.centroid(), dx = g.x - c.x;
+        b.hop(Math.sign(dx) * Math.min(520, Math.abs(dx) * 2 + 90), -340 - Math.min(400, Math.max(0, c.y - g.y) * 1.6));
+      }
+      b.nextHop = time + 0.9 + Math.random() * 0.4;
+      return;
+    }
     if (!wantsAttention(b)) return;
     if (b.state === 'waiting') {
       b.hop(0, -CFG.waitingHopStrength);
@@ -406,12 +739,23 @@
       g.jy = dart ? (Math.random() - 0.5) * r * 0.5 : 0;
       g.nextDart = time + 0.3 + Math.random() * 1.6;
     }
-    const k = 45, d = 9;
-    g.vx += (k * (mouse.x + g.jx - g.x) - d * g.vx) * DT;
-    g.vy += (k * (mouse.y + g.jy - g.y) - d * g.vy) * DT;
+    const k = 45, d = 9, to = b.gazeTarget || mouse;
+    g.vx += (k * (to.x + g.jx - g.x) - d * g.vx) * DT;
+    g.vy += (k * (to.y + g.jy - g.y) - d * g.vy) * DT;
     g.x += g.vx * DT;
     g.y += g.vy * DT;
   }
+
+  // Two quick dips of the face, the second smaller: a nod. 0 when still.
+  const NOD_TIME = 0.8;
+  function nodOf(b) {
+    const t = time - b.nodAt;
+    if (b.nodAt < 0 || t > NOD_TIME) return 0;
+    return Math.abs(Math.sin((t / NOD_TIME) * Math.PI * 2)) * (t < NOD_TIME / 2 ? 1 : 0.6);
+  }
+
+  // While nodding (and a beat after) it smiles at you; getting to work waits.
+  const nodding = (b) => b.nodAt >= 0 && time - b.nodAt < NOD_TIME + 0.2;
 
   function faceFor(b) {
     const st = b.state;
@@ -421,23 +765,123 @@
     let expression = 'normal', mouth = 'smile';
     if (time < b.dizzyUntil) { expression = 'dizzy'; mouth = 'flat'; }
     else if (body.grab) { mouth = 'o'; }
+    else if (b.merging && b.kind === 'child') { expression = 'happy'; mouth = 'smile'; }
+    else if (nodding(b)) { expression = 'happy'; mouth = 'smile'; }
     else if (speed > 900 && !body.onFloor()) { mouth = 'grin'; }
     else if (time < b.happyUntil) { expression = 'happy'; mouth = 'grin'; }
     else if (st === 'waiting') { expression = 'worried'; mouth = 'o'; }
+    else if (b.pain > 0.05) { expression = 'pained'; mouth = 'wobble'; }
     else if (st === 'done' && unseen(b)) { expression = 'happy'; mouth = 'grin'; }
     else if (st === 'working') { expression = 'concentrate'; mouth = 'flat'; }
     else if (st === 'idle' && time - mouse.lastMove > 120) { expression = 'sleepy'; mouth = 'flat'; }
-    // Only idle, awake slimes look at the mouse; busy ones mind their work.
-    // Eased, so the face glides back instead of snapping.
-    const wantLook = st === 'idle' && expression === 'normal' ? 1 : 0;
+    // Saying something by itself (a status bubble): eyes open to tell you.
+    // Just hovering doesn't wake it from its work.
+    if (b.bubble && (expression === 'concentrate' || expression === 'sleepy')) { expression = 'normal'; mouth = 'smile'; }
+    const effort = b.effort;
+    let drool = null;
+    if (effort === 'low' && expression === 'concentrate') {
+      // Low effort works by zoning out, drooling a little.
+      expression = 'normal';
+      mouth = 'slack';
+      drool = ((time - b.born) / 4.5) % 1;
+    } else if (effort === 'low' && mouth === 'smile') mouth = 'flat';
+    if (effort === 'xhigh' && expression === 'concentrate') { expression = 'meditate'; mouth = 'smile'; }
+    // Brows stay calm while it works, and now and then, for a moment, they
+    // pull together or lift (a little "hm!").
+    if (time > (b.nextFurrow || 0)) {
+      b.browMove = Math.random() < 0.6 ? 'furrow' : 'raise';
+      b.furrowUntil = time + 0.8 + Math.random() * 1.2;
+      b.nextFurrow = time + 4 + Math.random() * 8;
+    }
+    const moving = expression === 'concentrate' && time < b.furrowUntil;
+    const wantFurrow = moving && b.browMove === 'furrow' ? 1 : 0, wantRaise = moving && b.browMove === 'raise' ? 1 : 0;
+    b.furrow = (b.furrow || 0) + (wantFurrow - (b.furrow || 0)) * 0.15;
+    b.raise = (b.raise || 0) + (wantRaise - (b.raise || 0)) * 0.15;
+    // Only calm, awake slimes look at the mouse: idle, or done and already
+    // seen. Busy ones mind their work. Eased, so the face glides back
+    // instead of snapping.
+    let checkIn = false;
+    if (b.kind !== 'home' && expression === 'concentrate' && !body.grab) {
+      if (b.curiosity === undefined) b.curiosity = 0.5 + Math.random();
+      if (time > (b.nextGlance || 0)) {
+        if (b.nextGlance) {
+          const family = (o) => (b.kind === 'child' ? o === b.mother || o.mother === b.mother : o.mother === b);
+          const others = [...buddies.values()].filter((o) => o !== b && !o.dying && family(o));
+          const mom = b.kind === 'child' && b.mother && !b.mother.dying ? b.mother : null;
+          const roll = Math.random();
+          if (mom && roll < 0.45) b.glanceAt = mom;
+          else if (others.length && roll < 0.7) b.glanceAt = others[Math.floor(Math.random() * others.length)];
+          else if (roll < 0.85) b.glanceAt = 'you';
+          else {
+            // Daydreaming: somewhere up and off to one side.
+            const c = body.centroid(), r = body.o.radius;
+            b.glanceAt = { spot: { x: c.x + (Math.random() < 0.5 ? -1 : 1) * r * (1.5 + Math.random() * 2), y: c.y - r * (1 + Math.random() * 2.5) } };
+          }
+          b.glanceUntil = time + 0.3 + Math.random() * Math.random() * 1.6;
+        }
+        // Sometimes a quick second look right after; otherwise a while
+        // before the next, depending on how curious this one is.
+        b.nextGlance = b.nextGlance && Math.random() < 0.2 ? b.glanceUntil + 0.25 + Math.random() * 0.4
+          : time + (2 + Math.random() * Math.random() * 12) / b.curiosity;
+      }
+      if (b.glanceAt && time < b.glanceUntil && !(b.glanceAt.dying)) {
+        checkIn = true;
+        expression = 'normal';
+        mouth = 'flat';
+      }
+    }
+    b.gazeTarget = !checkIn || b.glanceAt === 'you' ? null : b.glanceAt.spot || b.glanceAt.body.centroid();
+    const wantLook = checkIn ? 1 : (st === 'idle' || st === 'done') && expression === 'normal' && effort !== 'low' && !body.grab && !b.bubble ? 1 : 0;
     b.lookAmount = (b.lookAmount ?? wantLook) + (wantLook - (b.lookAmount ?? wantLook)) * 0.08;
-    return { expression, mouth, blink: b.blink, look: b.gaze || mouse, lookAmount: b.lookAmount, scale: CFG.faceScale, style: CFG };
+    return { expression, mouth, blink: b.blink, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: b.pain || 0, nod: nodOf(b), scale: CFG.faceScale, style: CFG, bodyColor: b.color,
+      effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal',
+    };
+  }
+
+  // 'thinking' or 'tool' (running one), for a working slime. Most tools
+  // take a split second, so the icon only switches once the new activity
+  // has lasted a moment; otherwise it would flicker between the two.
+  function activityOf(b) {
+    const src = b.kind === 'child' ? b.agent : b.session;
+    const now = (src && src.activity) || 'thinking';
+    if (now !== b.actNext) { b.actNext = now; b.actSince = time; }
+    if (!b.actShown || (now !== b.actShown && time - b.actSince > 0.7)) b.actShown = now;
+    return b.actShown;
+  }
+
+  // The slime under the mouse, if any (not while dragging).
+  let hovered = null, hoverSeen = 0;
+
+  // What a slime says when you hover over it: its name, and what it's doing.
+  const STATE_WORDS = { working: 'Working', waiting: 'Needs you', done: 'Done', idle: 'Idle' };
+  function hoverLines(b) {
+    if (b.kind === 'home') return summaryLines();
+    const st = b.status;
+    // The last status update, while it still matches what the slime is doing.
+    const text = st && st.state === b.state && (b.state !== 'working' || time - st.at < 20) ? st.text : STATE_WORDS[b.state] || b.state;
+    const info = (b.kind === 'mother' && b.session && b.session.info) || {};
+    const lines = [{ text: info.title || label(b) }, { text, color: D.STATE_COLORS[b.state] }];
+    const extra = [info.branch, modelName(info.model)].filter(Boolean).join(' · ');
+    if (extra) lines.push({ text: extra, dim: true });
+    return lines;
+  }
+
+  // "claude-opus-5-5" -> "Opus 5.5", "claude-haiku-4-5-20251001" -> "Haiku 4.5".
+  function modelName(id) {
+    const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(String(id || ''));
+    if (!m) return '';
+    const minor = m[3] && m[3].length < 3 ? '.' + m[3] : '';
+    return m[1][0].toUpperCase() + m[1].slice(1) + ' ' + m[2] + minor;
   }
 
   // Big slimes first, so children are drawn on top (and get clicked first).
-  const drawOrder = () => [...buddies.values()].sort((a, b) => (a.big ? 0 : 1) - (b.big ? 0 : 1));
+  const drawOrder = () => [...buddies.values()].sort((a, b) => (a.body.grab ? 2 : a.big ? 0 : 1) - (b.body.grab ? 2 : b.big ? 0 : 1));
 
   function draw() {
+    D.setCrowd(); // a fresh frame: no balloons placed yet
+    const under = drag || petAt(mouse.x, mouse.y) || glassesAt(mouse.x, mouse.y) ? null : buddyAt(mouse.x, mouse.y);
+    if (under) { hovered = under; hoverSeen = time; }
+    else if (drag || time - hoverSeen > 0.35) hovered = null;
     ctx.clearRect(0, 0, W, H);
     const list = drawOrder();
     if (CFG.shadow) for (const b of list) D.drawShadow(ctx, b.body, floorAt(b.body.centroid().x));
@@ -460,20 +904,33 @@
     }
 
     for (const b of list) {
-      const glow = wantsAttention(b) && CFG.glow ? D.STATE_COLORS[b.state] : null;
-      D.drawBody(ctx, b.body, b.color, { glow, outline: CFG.outline });
+      Looks.drawLook(ctx, b, 'back', b.color);
+      D.drawBody(ctx, b.body, b.color);
+      Looks.drawLook(ctx, b, 'front', b.color);
+      D.drawFlush(ctx, b.body, ramp(b.fill || 0, CFG.redAt, 1), CFG, b.faceTurn);
       const face = faceFor(b);
       if (b.body.o.radius > 12) D.drawFace(ctx, b.body, face);
+      b.faceTurn = { x: face.turnX || 0, y: face.turnY || 0 };
       if (face.expression === 'sleepy') D.drawZzz(ctx, b.body, time);
+      const sweat = ramp(b.fill || 0, CFG.sweatAt, 1);
+      if (sweat > 0) D.drawSweat(ctx, b.body, time, sweat);
+      if (b.merging && b.kind === 'child' && !b.dying) {
+        const box = b.body.bbox();
+        D.drawHeart(ctx, b.body.centroid().x, Math.min(box.minY, b.body.lookTop ?? Infinity) - 14, Math.max(9, b.body.o.radius * 0.18), (time - b.merging.since) % 1.8);
+      }
       if (b.kind === 'home' || b.dying) continue;
-      if (b.state === 'working') D.drawThinking(ctx, b.body, time);
-      if (b.state === 'waiting') D.drawExclaim(ctx, b.body, time, D.STATE_COLORS.waiting, '?');
-      else if (b.state === 'done' && unseen(b)) D.drawExclaim(ctx, b.body, time, D.STATE_COLORS.done);
-      else D.drawDots(ctx, b.body, [b.state], time);
-      D.drawLabel(ctx, b.body, label(b));
+      if (b === hovered || b.bubble) continue; // the bubble sits where these go
+      if (b.state === 'working' && !nodding(b) && !b.merging) D.drawThinking(ctx, b.body, time, activityOf(b) === 'tool', W);
+      if (b.state === 'waiting') D.drawExclaim(ctx, b.body, time, W, '?');
+      else if (b.state === 'done' && unseen(b)) D.drawExclaim(ctx, b.body, time, W);
     }
+    drawPets();
+    for (const b of list) if (b.glasses) D.drawGlasses(ctx, b.glasses.x, b.glasses.y, b.glasses.r, b.glasses.a, CFG);
+    // Names and status only show when you hover over a slime.
     for (const b of list) {
-      if (b.bubble) D.drawBubble(ctx, b.body, b.bubble.lines, Math.min(1, (b.bubble.until - time) * 3), W);
+      const lines = b === hovered ? hoverLines(b) : b.bubble ? b.bubble.lines : null;
+      const alpha = b === hovered ? 1 : b.bubble ? Math.min(1, (b.bubble.until - time) * 3) : 0;
+      if (lines) D.drawBubble(ctx, b.body, lines, alpha, W);
     }
     if (CFG.debugOverlay) drawDebug(list);
   }
@@ -524,6 +981,7 @@
     }
     for (const b of buddies.values()) behave(b);
     draw();
+    updateIgnore();
     requestAnimationFrame(frame);
   }
 
@@ -541,12 +999,29 @@
     return m && m.kind === 'mother' && m.session ? m.session : null;
   }
 
+  // Tells the app where the grabbable things are, a few times a second; the
+  // app decides when the window catches clicks (see main.js).
+  let hitSent = 0;
   function updateIgnore() {
-    const want = !(drag || buddyAt(mouse.x, mouse.y));
-    if (want !== ignoring) {
-      ignoring = want;
-      api.setIgnoreMouse(want);
+    const now = performance.now();
+    if (now - hitSent < 50 && !drag === !updateIgnore.held) return;
+    hitSent = now;
+    updateIgnore.held = !!drag;
+    const rects = [];
+    for (const b of buddies.values()) {
+      if (b.dying) continue;
+      const box = b.body.bbox();
+      rects.push([box.minX, box.minY, box.maxX, box.maxY]);
     }
+    const h = petSize() * 0.7;
+    for (const p of pets.values()) if (!p.dying) rects.push([p.x - h, p.y - h, p.x + h, p.y + h]);
+    for (const b of buddies.values()) {
+      const g = b.glasses;
+      if (!g || b.dying) continue;
+      const { hw, hh } = glassesBox(g);
+      rects.push([g.x - hw, g.y - hh, g.x + hw, g.y + hh]);
+    }
+    api.setHitAreas(rects, !!drag);
   }
 
   window.addEventListener('mousemove', (e) => {
@@ -554,14 +1029,30 @@
     mouse.y = e.clientY;
     mouse.lastMove = performance.now() / 1000;
     if (drag) {
-      drag.buddy.body.moveGrab(e.clientX, e.clientY);
+      if (drag.buddy) drag.buddy.body.moveGrab(e.clientX, e.clientY);
       if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > 5) drag.moved = true;
     }
     updateIgnore();
   });
 
   window.addEventListener('mousedown', (e) => {
+    console.log(`[blaube] mousedown ${e.button} at ${e.clientX},${e.clientY} slime=${!!buddyAt(e.clientX, e.clientY)} pet=${!!petAt(e.clientX, e.clientY)}`);
     if (e.button !== 0) return;
+    const owner = glassesAt(e.clientX, e.clientY);
+    if (owner) {
+      // Pick up lost glasses, to hand them back.
+      const g = owner.glasses;
+      g.held = { dx: e.clientX - g.x, dy: e.clientY - g.y };
+      drag = { glasses: g, owner, x0: e.clientX, y0: e.clientY, t0: time, moved: false };
+      return;
+    }
+    const p = petAt(e.clientX, e.clientY);
+    if (p) {
+      // Pick up a pet; a quick click instead says what its task is.
+      p.held = { dx: e.clientX - p.x, dy: e.clientY - p.y };
+      drag = { pet: p, x0: e.clientX, y0: e.clientY, t0: time, moved: false };
+      return;
+    }
     const b = buddyAt(e.clientX, e.clientY);
     if (!b) return;
     drag = { buddy: b, x0: e.clientX, y0: e.clientY, t0: time, moved: false };
@@ -571,9 +1062,31 @@
 
   window.addEventListener('mouseup', (e) => {
     if (e.button !== 0 || !drag) return;
-    const b = drag.buddy;
-    b.body.endGrab();
-    if (!drag.moved && time - drag.t0 < 0.35) click(b);
+    const tap = !drag.moved && time - drag.t0 < 0.35;
+    if (drag.buddy) {
+      const c = drag.buddy.body.centroid();
+      console.log(`[blaube] mouseup ${tap ? 'tap' : 'drag'} after ${(time - drag.t0).toFixed(2)}s, mouse ${e.clientX},${e.clientY}, slime at ${c.x.toFixed(0)},${c.y.toFixed(0)}`);
+    }
+    if (drag.glasses) {
+      // Dropped on their slime: back on they go. Anywhere else they fall.
+      const { glasses: g, owner } = drag;
+      g.held = null;
+      g.since = time;
+      g.va = (Math.random() - 0.5) * 10;
+      if (owner.glasses === g && owner.body.contains(g.x, g.y)) wearGlasses(owner);
+    } else if (drag.pet) {
+      // Let go: it flies off with the speed it had (a throw).
+      const p = drag.pet;
+      p.held = null;
+      if (tap) {
+        p.vy = -420;
+        p.va = (Math.random() < 0.5 ? -1 : 1) * Math.PI * 2;
+        if (p.owner) p.owner.say([p.task.description, p.task.command].filter(Boolean).map((text) => ({ text })), 4);
+      }
+    } else {
+      drag.buddy.body.endGrab();
+      if (tap) click(drag.buddy);
+    }
     drag = null;
     updateIgnore();
   });
@@ -608,7 +1121,25 @@
   });
 
   api.onConfig(applyConfig);
-  if (api.onSay) api.onSay((m) => { const b = buddies.get(m.id); if (b) b.say(m.text, 4); });
+  // You told it something: a nod and a thumbs up.
+  if (api.onNod) api.onNod((id) => {
+    const b = buddies.get(id);
+    if (!b) return;
+    b.nodAt = time;
+    if (b.body.onFloor()) b.body.impulse(0, 260, DT);
+    b.say([{ text: '👍', size: 30 }], 1.6);
+  });
+  if (api.onSay) api.onSay((m) => {
+    const b = buddies.get(m.id);
+    if (!b) return;
+    // Status updates are kept for the hover bubble, and only pop up by
+    // themselves when the Status bubbles setting says Always.
+    if (m.status) {
+      b.status = { text: m.text, at: time, state: b.state };
+      if (CFG.statusBubbles !== 'Always') return;
+    }
+    b.say(m.text, m.seconds || 4);
+  });
   api.onWorld((w) => setObstacles(w.obstacles));
 
   api.onCommand((cmd) => {
@@ -625,8 +1156,13 @@
   window.addEventListener('resize', resize);
   resize();
   buddies.set(HOME, new Buddy(HOME, 'home', W * 0.8, H * 0.5, CFG.mainRadius));
-  api.setIgnoreMouse(true);
-  ignoring = true;
+  // The app also reports the cursor, so the eyes follow it even when the
+  // window isn't getting mouse moves.
+  if (api.onCursor) api.onCursor((p) => {
+    if (p.x !== mouse.x || p.y !== mouse.y) mouse.lastMove = performance.now() / 1000;
+    mouse.x = p.x;
+    mouse.y = p.y;
+  });
   api.ready();
   requestAnimationFrame(frame);
 
@@ -641,7 +1177,7 @@
       buddies: () => buddies,
     };
     return {
-      setIgnoreMouse() {},
+      setHitAreas() {},
       acknowledge() {},
       showAppMenu() {},
       showSessionMenu() {},

@@ -38,13 +38,18 @@ function parse(stdout) {
   }
 }
 
-// Calls onAgents(list) every few seconds while enabled() is true. Gives up
-// quietly after a few failures in a row (e.g. Claude Code isn't installed).
+// Calls onAgents(list) every few seconds while enabled() is true. After a
+// few failures in a row (e.g. Claude Code isn't installed, or is updating)
+// it only tries once a minute, but never stops for good: it's how sessions
+// with older hooks get their process id, which a click needs.
+const SLOW_MS = 60 * 1000;
 function startAgentsPoller(onAgents, enabled) {
-  let failures = 0, busy = false;
+  let failures = 0, busy = false, lastTry = 0;
   const tick = () => {
-    if (busy || !enabled() || failures >= 3) return;
+    if (busy || !enabled()) return;
+    if (failures >= 3 && Date.now() - lastTry < SLOW_MS) return;
     busy = true;
+    lastTry = Date.now();
     run((err, stdout) => {
       busy = false;
       const list = err ? null : parse(String(stdout));
@@ -58,4 +63,9 @@ function startAgentsPoller(onAgents, enabled) {
   return { stop: () => clearInterval(timer), retry: () => { failures = 0; tick(); } };
 }
 
-module.exports = { startAgentsPoller, parse };
+// One-off: calls cb(list) or cb(null).
+function listAgents(cb) {
+  run((err, stdout) => cb(err ? null : parse(String(stdout))));
+}
+
+module.exports = { startAgentsPoller, listAgents, parse };

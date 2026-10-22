@@ -5,8 +5,10 @@ const { SessionTracker } = require('./sessions');
 const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
 const { openResumeTerminal, resumeCommand, focusSessionApp } = require('./terminal');
-const { startAgentsPoller } = require('./agents');
-const { startFocusWatcher } = require('./focus');
+const { startAgentsPoller, listAgents } = require('./agents');
+const { startFocusWatcher, transcriptPath } = require('./focus');
+const usage = require('./usage');
+const { runningTasks } = require('./tasks');
 const dock = require('./dock');
 const BlaubeConfig = require('../shared/config');
 
@@ -54,6 +56,29 @@ function loadPrefs() {
 // A colour picked for a session sticks to its project folder, so the same
 // project gets the same colour every time.
 const colorKey = (s) => s.cwd || s.id;
+
+// Sessions without a picked colour: the first one is the main colour
+// (orange), each one after that gets a random other colour from the
+// palette, for as long as it runs.
+const autoColors = new Map(); // session id -> hex, or null for the main colour
+function colorOf(s) {
+  const picked = prefs.colors[colorKey(s)];
+  if (picked) return picked;
+  for (const id of autoColors.keys()) if (!tracker.sessions.has(id)) autoColors.delete(id);
+  if (!autoColors.has(s.id)) {
+    const main = prefs.config.color.toLowerCase();
+    const used = new Set(tracker.list().filter((o) => o.id !== s.id && autoColors.has(o.id))
+      .map((o) => (prefs.colors[colorKey(o)] || autoColors.get(o.id) || main).toLowerCase()));
+    if (!used.has(main)) autoColors.set(s.id, null);
+    else {
+      const others = BlaubeConfig.PALETTE.map(([, hex]) => hex).filter((hex) => hex.toLowerCase() !== main);
+      const free = others.filter((hex) => !used.has(hex.toLowerCase()));
+      const from = free.length ? free : others;
+      autoColors.set(s.id, from[Math.floor(Math.random() * from.length)]);
+    }
+  }
+  return autoColors.get(s.id);
+}
 
 function colorMenu(current, pick) {
   return BlaubeConfig.PALETTE.map(([name, hex]) => ({
@@ -129,6 +154,23 @@ function displayMenu() {
 
 // --- Tuning panel ------------------------------------------------------------
 
+let settingsWin = null;
+function openSettings() {
+  if (settingsWin) { settingsWin.show(); settingsWin.focus(); return; }
+  settingsWin = new BrowserWindow({
+    width: 360,
+    height: 330,
+    title: 'Blaube settings',
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    webPreferences: { preload: path.join(__dirname, 'tuningPreload.js'), contextIsolation: true, sandbox: true },
+  });
+  settingsWin.setMenuBarVisibility(false);
+  settingsWin.loadFile(path.join(__dirname, '..', 'settings', 'settings.html'));
+  settingsWin.on('closed', () => { settingsWin = null; });
+}
+
 function openTuning() {
   if (tuningWin) { tuningWin.show(); tuningWin.focus(); return; }
   tuningWin = new BrowserWindow({
@@ -144,6 +186,36 @@ function openTuning() {
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
+
+// While developing (not in the packaged app): any code change restarts the
+// app. A file with a syntax error is skipped, so a half-saved edit can't
+// kill it.
+function watchForChanges() {
+  const vm = require('node:vm');
+  const root = path.join(__dirname, '..');
+  let pending = new Set(), timer = null;
+  const compiles = (file) => {
+    if (!file.endsWith('.js')) return true;
+    try { new vm.Script(fs.readFileSync(file, 'utf8'), { filename: file }); return true; } catch (e) { console.log('[dev] not reloading,', e.message); return false; }
+  };
+  const apply = () => {
+    const files = [...pending].map((f) => path.join(root, f));
+    pending = new Set();
+    if (!files.every(compiles)) return;
+    // Always a full restart: reloading just the window left its clicks
+    // falling through to whatever was underneath.
+    app.relaunch();
+    app.exit(0);
+  };
+  try {
+    fs.watch(root, { recursive: true }, (_e, file) => {
+      if (!file || !/\.(js|html|css)$/.test(file)) return;
+      pending.add(file);
+      clearTimeout(timer);
+      timer = setTimeout(apply, 400);
+    });
+  } catch (e) { console.log('[dev] no live reload:', e.message); }
+}
 
 function createWindow() {
   const { x, y, width, height } = dock.windowBoundsFor(currentDisplay());
@@ -181,16 +253,147 @@ function createWindow() {
 function pushState() {
   if (!win) return;
   win.webContents.send('state', {
-    sessions: tracker.list().map((s) => Object.assign({}, s, { color: prefs.colors[colorKey(s)] || null })),
+    sessions: tracker.list().map((s) => Object.assign({}, s, {
+      color: colorOf(s),
+      tokens: tokens.get(s.id) || null,
+      info: usage.sessionInfo(transcriptPath(s)),
+      effort: efforts.get(s.id) || defaultEffort(),
+      agents: s.agents.map((a) => Object.assign({}, a, {
+        description: agentDescription(s, a),
+        effort: efforts.get(`${s.id}/${a.id}`) || efforts.get(s.id) || defaultEffort(),
+      })),
+    })),
     settings: { hooksInstalled: claudeHooks.isInstalled(undefined, PORT) },
   });
 }
 
+// Token usage per session id: { total, context, limit }. Re-read from the
+// transcripts every few seconds; demo sessions get made-up numbers.
+const tokens = new Map();
+const demoTokens = new Map();
+// Effort level per session id (and `${id}/${agentId}` for helpers), from
+// the newest call in their transcripts.
+const efforts = new Map();
+const demoEfforts = new Map();
+function refreshUsage() {
+  let changed = false;
+  const files = new Set();
+  const live = new Set();
+  const setEffort = (key, e) => {
+    live.add(key);
+    if (e && efforts.get(key) !== e) { efforts.set(key, e); changed = true; }
+  };
+  for (const s of tracker.list()) {
+    const file = transcriptPath(s);
+    if (file) files.add(file);
+    setEffort(s.id, demoEfforts.get(s.id) || usage.sessionEffort(file));
+    for (const a of s.agents) setEffort(`${s.id}/${a.id}`, demoEfforts.get(s.id) || usage.sessionEffort(file, a.id));
+    const u = demoTokens.get(s.id) || usage.sessionUsage(file);
+    if (!s.tasksSeeded && file && tracker.seedTasks(s.id, usage.sessionTasks(file))) changed = true;
+    const old = tokens.get(s.id);
+    if (u && (!old || old.total !== u.total || old.context !== u.context || old.limit !== u.limit)) {
+      tokens.set(s.id, u);
+      changed = true;
+    }
+  }
+  for (const id of tokens.keys()) if (!tracker.sessions.has(id)) tokens.delete(id);
+  for (const k of efforts.keys()) if (!live.has(k)) efforts.delete(k);
+  usage.forget(files);
+  if (changed) pushState();
+}
+
+// The effort level set in ~/.claude/settings.json, for sessions whose
+// transcript doesn't say yet. Re-read at most every 10 seconds.
+let settingsEffort = { at: 0, effort: '' };
+function defaultEffort() {
+  if (Date.now() - settingsEffort.at < 10000) return settingsEffort.effort;
+  let effort = '';
+  try { effort = String(JSON.parse(fs.readFileSync(path.join(app.getPath('home'), '.claude', 'settings.json'), 'utf8')).effortLevel || '').toLowerCase(); } catch { /* none */ }
+  settingsEffort = { at: Date.now(), effort };
+  return effort;
+}
+
+// --- Status bubbles ---------------------------------------------------------
+// Short speech bubbles for what a session (or one of its helpers) is up to.
+
+const base = (p) => path.basename(String(p || '')) || 'a file';
+const shorten = (s, n = 70) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+
+function describeTool(name, input = {}) {
+  switch (name) {
+    case 'Bash': case 'PowerShell': return input.description ? shorten(input.description) : '$ ' + shorten(input.command, 50);
+    case 'Read': return 'Reading ' + base(input.file_path);
+    case 'Edit': case 'MultiEdit': return 'Editing ' + base(input.file_path);
+    case 'Write': return 'Writing ' + base(input.file_path);
+    case 'NotebookEdit': return 'Editing ' + base(input.notebook_path);
+    case 'Grep': return 'Searching for "' + shorten(input.pattern, 30) + '"';
+    case 'Glob': return 'Looking for ' + shorten(input.pattern, 40);
+    case 'WebSearch': return 'Searching the web: ' + shorten(input.query, 40);
+    case 'WebFetch': try { return 'Reading ' + new URL(input.url).hostname; } catch { return 'Reading a web page'; }
+    case 'Agent': case 'Task': return 'Sending a helper: ' + shorten(input.description, 50);
+    case 'TodoWrite': case 'TaskCreate': case 'TaskUpdate': return 'Making a plan';
+    case 'AskUserQuestion': return 'I have a question for you';
+    default: return String(name || '').startsWith('mcp__') ? 'Using ' + String(name).split('__')[1] : name ? 'Using ' + name : '';
+  }
+}
+
+const lastBubble = new Map(); // slime key -> time of its last tool bubble
+function statusBubble({ session: s, agentId, payload: p }) {
+  if (!win) return;
+  const key = agentId ? `${s.id}/${agentId}` : s.id;
+  const say = (text, seconds) => { if (text) win.webContents.send('say', { id: key, text, seconds, status: true }); };
+  const event = p.hook_event_name;
+  if (event === 'PreToolUse') {
+    // Not every tool: a busy session would never stop talking.
+    const now = Date.now();
+    if (now - (lastBubble.get(key) || 0) < 4000) return;
+    lastBubble.set(key, now);
+    say(describeTool(p.tool_name, p.tool_input || {}), 2.5);
+  } else if (event === 'Stop') {
+    const said = p.last_assistant_message || usage.lastText(transcriptPath(s));
+    say(said ? 'Done: ' + shorten(said, 80) : 'Done!', 6);
+  } else if (event === 'Notification' && s.state === 'waiting') {
+    say(shorten(p.message || 'I need you', 80), 6);
+  }
+}
+
+// A helper's own description ("Ring Globe: Manta logo mode") instead of its
+// type ("general-purpose"). Claude Code keeps it in a small file next to the
+// helper's transcript.
+const agentDescriptions = new Map();
+function agentDescription(s, a) {
+  if (agentDescriptions.has(a.id)) return agentDescriptions.get(a.id);
+  const file = transcriptPath(s);
+  if (!file) return '';
+  try {
+    const meta = JSON.parse(fs.readFileSync(path.join(path.dirname(file), s.id, 'subagents', `agent-${a.id}.meta.json`), 'utf8'));
+    const d = String(meta.description || '');
+    if (d) agentDescriptions.set(a.id, d);
+    return d;
+  } catch { return ''; }
+}
+
 // Brings the session's own window to the front. If we can't find it, the
 // slime says so; it never opens a second copy of a running session.
+// A log in the app's data folder (blaube.log), for problems that only
+// show up on a real desktop.
+const logFile = () => path.join(app.getPath('userData'), 'blaube.log');
+function log(msg) {
+  fs.appendFile(logFile(), `${new Date().toISOString()} ${msg}\n`, () => {});
+}
+
 function goToSession(s) {
-  focusSessionApp(s, (ok) => {
+  const focus = () => focusSessionApp(s, (ok, info) => {
+    log(`go to session ${s.id} pid=${s.pid || '-'}: ${ok ? 'found' : 'not found'} ${info || ''}`);
     if (!ok && win) win.webContents.send('say', { id: s.id, text: "Can't find its window. Right-click me to resume it." });
+  });
+  if (s.pid || process.platform !== 'win32') return focus();
+  // No process id yet (older hooks, and the poller hasn't caught it):
+  // ask Claude Code right now.
+  listAgents((agents) => {
+    const a = (agents || []).find((x) => x && x.sessionId === s.id);
+    if (a && a.pid) s.pid = a.pid;
+    focus();
   });
 }
 
@@ -212,6 +415,7 @@ function appMenuTemplate() {
       : { label: claudeHooks.hasAnyBlaubeHooks() ? 'Update Claude Code connection…' : 'Connect Claude Code…', click: installHooks },
     { label: 'Colour', submenu: colorMenu(prefs.config.color, (hex) => setConfig(Object.assign({}, prefs.config, { color: hex }))) },
     { label: 'Live on display', submenu: displayMenu() },
+    { label: 'Settings…', click: openSettings },
     { label: 'Come here', click: () => send('come-here') },
     { label: 'Everyone hop!', click: () => send('hop') },
     { label: 'Demo sessions', click: runDemo },
@@ -227,17 +431,19 @@ function sessionMenu(id) {
   const s = tracker.sessions.get(id);
   if (!s) return null;
   const word = { working: 'Working', waiting: 'Needs you', done: 'Done', idle: 'Idle' }[s.state] || s.state;
+  const effort = { low: 'Low effort', medium: 'Medium effort', high: 'High effort', xhigh: 'Extra high effort', max: 'Max effort' }[efforts.get(id) || defaultEffort()];
   const isDemo = id.startsWith('demo-');
   return Menu.buildFromTemplate([
     { label: s.project, enabled: false },
     { label: `${word}${s.message && s.state === 'waiting' ? ': ' + s.message : ''}`, enabled: false },
+    ...(effort ? [{ label: effort, enabled: false }] : []),
     { type: 'separator' },
     { label: 'Go to session', enabled: !isDemo, click: () => goToSession(s) },
     { label: 'Resume in new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
     { label: 'Copy resume command', click: () => clipboard.writeText(`cd "${s.cwd}" && ${resumeCommand(s.id)}`) },
     { label: 'Open project folder', enabled: !!s.cwd, click: () => shell.openPath(s.cwd) },
     { type: 'separator' },
-    { label: 'Colour', submenu: colorMenu(prefs.colors[colorKey(s)] || prefs.config.color, (hex) => { prefs.colors[colorKey(s)] = hex; savePrefs(); pushState(); }) },
+    { label: 'Colour', submenu: colorMenu(colorOf(s) || prefs.config.color, (hex) => { prefs.colors[colorKey(s)] = hex; savePrefs(); pushState(); }) },
     { label: 'Blaube', submenu: appMenuTemplate() },
     { type: 'separator' },
     { label: 'Merge back in', click: () => { tracker.handle({ session_id: id, hook_event_name: 'SessionEnd' }); } },
@@ -279,6 +485,26 @@ function runDemo() {
   const ev = (id, cwd, hook_event_name, extra = {}) => tracker.handle({ session_id: id, cwd, hook_event_name, ...extra });
   const home = app.getPath('home');
   const a = 'demo-a', b = 'demo-b', c = 'demo-c';
+  // A light session, a hungry one, and one whose context is nearly full.
+  demoTokens.set(a, { total: 40000, context: 30000, limit: 200000 });
+  demoTokens.set(b, { total: 900000, context: 140000, limit: 200000 });
+  demoTokens.set(c, { total: 3000000, context: 192000, limit: 200000 });
+  at(36000, () => { for (const id of [a, b, c]) demoTokens.delete(id); });
+  // One of each effort level.
+  demoEfforts.set(a, 'low');
+  demoEfforts.set(b, 'high');
+  demoEfforts.set(c, 'max');
+  // A dev server and a test watcher as pets.
+  at(2200, () => {
+    const s = tracker.sessions.get(b);
+    if (!s) return;
+    s.tasks = [
+      { id: 'demo-t1', command: 'npm run dev', description: 'Dev server', startedAt: Date.now(), missing: 0, demo: true },
+      { id: 'demo-t2', command: 'npm test -- --watch', description: 'Test watcher', startedAt: Date.now(), missing: 0, demo: true },
+    ];
+    pushState();
+  });
+  at(15000, () => { const s = tracker.sessions.get(b); if (s) { s.tasks = s.tasks.slice(1); pushState(); } });
   at(0, () => ev(a, path.join(home, 'code', 'blaube'), 'SessionStart'));
   at(900, () => ev(a, path.join(home, 'code', 'blaube'), 'UserPromptSubmit'));
   at(1800, () => ev(b, path.join(home, 'code', 'kalkis'), 'UserPromptSubmit'));
@@ -326,6 +552,7 @@ app.whenReady().then(async () => {
   }
 
   createWindow();
+  if (!app.isPackaged) watchForChanges();
 
   tray = new Tray(trayIcon());
   tray.on('click', () => tray.popUpContextMenu(appMenu()));
@@ -334,7 +561,19 @@ app.whenReady().then(async () => {
 
   focus = startFocusWatcher(() => { if (markFrontSeen()) pushState(); });
   tracker.on('change', () => { markFrontSeen(); pushState(); refreshTray(); });
+  tracker.on('prompt', (s) => { if (win) win.webContents.send('nod', s.id); });
+  tracker.on('activity', statusBubble);
   setInterval(() => { if (tracker.prune()) { pushState(); refreshTray(); } }, 30 * 1000);
+  setInterval(refreshUsage, 3000);
+  setInterval(() => {
+    const live = tracker.allTasks().filter((t) => !t.demo);
+    if (!live.length) return;
+    runningTasks(live, (alive) => {
+      if (!alive) return;
+      for (const t of tracker.allTasks()) if (t.demo) alive.add(t.id);
+      if (tracker.pruneTasks(alive)) pushState();
+    });
+  }, 4000);
 
   ipcMain.on('ready', () => {
     win.webContents.send('config', prefs.config);
@@ -361,8 +600,37 @@ app.whenReady().then(async () => {
     (agents) => tracker.applyAgents(agents),
     () => prefs.config.pollClaudeAgents,
   );
-  ipcMain.on('ignore-mouse', (_e, ignore) => {
-    if (win) win.setIgnoreMouseEvents(ignore, { forward: true });
+  // Clicks: the window is see-through to the mouse except over a slime, pet
+  // or anything else you can grab. The window says where those are; this
+  // side watches the cursor itself and switches click-catching on and off.
+  // While the cursor is over a slime it re-applies that every half second,
+  // so a switch Windows dropped can't leave the slimes unclickable. It also
+  // tells the window where the cursor is, so the eyes can follow it.
+  let hitAreas = [], holding = false, clickable = false, applied = 0, cursorX = NaN, cursorY = NaN;
+  ipcMain.on('hit-areas', (_e, rects, hold) => { hitAreas = Array.isArray(rects) ? rects : []; holding = !!hold; });
+  setInterval(() => {
+    if (!win || win.isDestroyed()) return;
+    const p = screen.getCursorScreenPoint(), wb = win.getContentBounds();
+    const x = p.x - wb.x, y = p.y - wb.y;
+    const over = holding || hitAreas.some((r) => x >= r[0] && y >= r[1] && x <= r[2] && y <= r[3]);
+    const now = Date.now();
+    if (over !== clickable || (over && now - applied > 500)) {
+      if (over !== clickable) log(`clickable ${over} at ${x},${y}`);
+      win.setIgnoreMouseEvents(!over, { forward: true });
+      clickable = over;
+      applied = now;
+    }
+    if (x !== cursorX || y !== cursorY) {
+      cursorX = x; cursorY = y;
+      win.webContents.send('cursor', { x, y });
+    }
+  }, 33);
+  // Lines the window logs with a [blaube] tag go to blaube.log in the app's
+  // data folder, for finding problems we can't see from here.
+  try { if (fs.statSync(logFile()).size > 1 << 20) fs.unlinkSync(logFile()); } catch { /* none yet */ }
+  win.webContents.on('console-message', (e) => {
+    const msg = String(e.message || '');
+    if (msg.startsWith('[blaube]')) log(msg.slice(9));
   });
   ipcMain.on('acknowledge', (_e, id) => {
     if (id) { const s = tracker.sessions.get(id); if (s) s.seen = true; }
@@ -371,6 +639,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.on('open-session', (_e, id) => {
     const s = tracker.sessions.get(id);
+    log(`open session ${id}: ${s ? 'known' : 'unknown'}`);
     if (!s || id.startsWith('demo-')) return;
     goToSession(s);
   });

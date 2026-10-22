@@ -131,4 +131,4 @@ function startFocusWatcher(onChange) {
 	};
 }
 
-module.exports = { startFocusWatcher, sessionsInFront, cleanTitle };
+module.exports = { startFocusWatcher, sessionsInFront, cleanTitle, transcriptPath };

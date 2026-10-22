@@ -18,6 +18,11 @@ public static class BlaubeWin {
 	[DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
 	[DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
 	[DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, uint f, UIntPtr e);
+	[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+	[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr pid);
+	[DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+	[DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool attach);
+	[DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h);
 
 	// Returns the old title, or null when we can't reach the console.
 	public static string SwapTitle(int pid, string title) {
@@ -38,13 +43,20 @@ public static class BlaubeWin {
 		return h;
 	}
 
-	public static void Front(IntPtr h) {
+	// Returns true when the window ended up in front.
+	public static bool Front(IntPtr h) {
 		if (IsIconic(h)) ShowWindow(h, 9);
 		// Windows only lets the app you last used take focus. Tapping Alt
-		// counts as using us.
+		// counts as using us, and borrowing the input of the window that's
+		// in front now gets past the rest of the lock.
 		keybd_event(0x12, 0, 0, UIntPtr.Zero);
 		keybd_event(0x12, 0, 2, UIntPtr.Zero);
+		uint fg = GetWindowThreadProcessId(GetForegroundWindow(), IntPtr.Zero), me = GetCurrentThreadId();
+		bool joined = fg != me && AttachThreadInput(me, fg, true);
+		BringWindowToTop(h);
 		SetForegroundWindow(h);
+		if (joined) AttachThreadInput(me, fg, false);
+		return GetForegroundWindow() == h;
 	}
 }
 '@
@@ -72,19 +84,20 @@ if ($null -ne $old) {
 	[void][BlaubeWin]::SwapTitle($ProcessId, $old)
 	if ($hit) {
 		$hit.Tab.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-		[BlaubeWin]::Front([IntPtr]$hit.Window.Current.NativeWindowHandle)
+		$ok = [BlaubeWin]::Front([IntPtr]$hit.Window.Current.NativeWindowHandle)
+		Write-Output "terminal tab, in front: $ok"
 		exit 0
 	}
 	# A classic console window (not Windows Terminal).
 	$h = [BlaubeWin]::ConsoleWindow($ProcessId)
-	if ($h -ne [IntPtr]::Zero -and [BlaubeWin]::IsWindowVisible($h)) { [BlaubeWin]::Front($h); exit 0 }
+	if ($h -ne [IntPtr]::Zero -and [BlaubeWin]::IsWindowVisible($h)) { $ok = [BlaubeWin]::Front($h); Write-Output "console window, in front: $ok"; exit 0 }
 }
 
 # Otherwise the nearest parent with a window, e.g. VS Code or the Claude app.
 $id = $ProcessId
 for ($i = 0; $i -lt 12 -and $id; $i++) {
 	$p = Get-Process -Id $id -ErrorAction SilentlyContinue
-	if ($p -and $p.MainWindowHandle -ne [IntPtr]::Zero) { [BlaubeWin]::Front($p.MainWindowHandle); exit 0 }
+	if ($p -and $p.MainWindowHandle -ne [IntPtr]::Zero) { $ok = [BlaubeWin]::Front($p.MainWindowHandle); Write-Output "parent window $($p.ProcessName), in front: $ok"; exit 0 }
 	$c = Get-CimInstance Win32_Process -Filter "ProcessId=$id"
 	if (-not $c) { break }
 	$id = $c.ParentProcessId

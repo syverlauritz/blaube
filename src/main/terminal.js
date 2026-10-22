@@ -48,7 +48,7 @@ function focusSessionApp(session, done = () => {}, platform = process.platform) 
   if (platform === 'win32') {
     if (!session.pid) return done(false);
     execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', FOCUS_PS1, '-ProcessId', String(session.pid)],
-      { timeout: 8000, windowsHide: true }, (err) => done(!err));
+      { timeout: 8000, windowsHide: true }, (err, stdout, stderr) => done(!err, String(stdout || stderr || (err && err.message) || '').trim()));
     return;
   }
   if (platform !== 'darwin') return done(false);

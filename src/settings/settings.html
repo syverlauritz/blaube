@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
+		<title>Blaube settings</title>
+		<style>
+			:root { color-scheme: light dark; --bg: #f6f4f1; --fg: #1f1d1a; --muted: #77716a; --line: #e2ddd6; --accent: #d97757; --card: #fff; }
+			@media (prefers-color-scheme: dark) { :root { --bg: #1d1b19; --fg: #f1ede8; --muted: #a39b92; --line: #35312d; --card: #262320; } }
+			@font-face { font-family: "Coiny"; src: url(../renderer/fonts/Coiny.woff2) format("woff2"); font-weight: 400; }
+			@font-face { font-family: "Concert One"; src: url(../renderer/fonts/ConcertOne.woff2) format("woff2"); font-weight: 400; }
+			@font-face { font-family: "DynaPuff"; src: url(../renderer/fonts/DynaPuff.woff2) format("woff2"); font-weight: 400 700; }
+			@font-face { font-family: "Rubik Spray Paint"; src: url(../renderer/fonts/RubikSprayPaint.woff2) format("woff2"); font-weight: 400; }
+			* { box-sizing: border-box; }
+			body { margin: 0; padding: 18px; font: 13px -apple-system, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+			.row + .row { margin-top: 10px; }
+			select { width: 100%; font: 15px/1.4 inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); }
+			.preview { margin-top: 8px; font-size: 17px; }
+			.row { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+			.row label { display: flex; justify-content: space-between; margin-bottom: 8px; }
+			.row output { color: var(--muted); font-variant-numeric: tabular-nums; }
+			.row input { width: 100%; accent-color: var(--accent); }
+			.ends { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-top: 2px; }
+		</style>
+	</head>
+	<body>
+		<div id="rows"></div>
+		<script src="../shared/config.js"></script>
+		<script src="settings.js"></script>
+	</body>
+</html>
