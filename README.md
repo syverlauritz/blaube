@@ -19,7 +19,10 @@ A squishy Claude-orange slime that lives on your desktop. Grab it, toss it, watc
 - **Size and strain.** A session grows as it uses tokens (its subagents' tokens count too). As its context window fills, it puffs up and gets firmer, a red flush spreads from its face, then it sweats, and near the limit it strains. `/compact` brings it back.
 - **Effort.** Low effort zones out and drools while it works; high effort wears nerd glasses (a hard landing knocks them off, and it goes to fetch them, or drag them back yourself); max effort floats and meditates.
 - **Looks.** Each session's slime wears its own little something: a curl, a bow, antennas, horns, cat ears, bunny ears or a sprout, randomly sized and placed, swinging on a spring as it moves. Open sessions don't share a look.
-- **Pets.** Every background task a session starts (a dev server, a watcher) becomes a little square pet that hops after its slime and shows a heart when it reaches it. Click a pet to see its command; drag it around.
+- **Pets.** Every background task a session starts (a dev server, a watcher) becomes a little square pet that hops after its slime and shows a heart when it reaches it. Click a pet to see its command; drag it around. Pets play with each other, and wave goodbye (a hop and a heart) when their task ends.
+- **Arrivals.** A new session's slime only appears once Blaube knows its real state (transcript read, old background tasks checked against what's running), then pops out of the middle of the screen in its final colour, look and size. The others turn to look at the newcomer.
+- **Play.** Rub the cursor back and forth over a slime or a pet to pet it (hearts!). Fling a slime hard into another and the one that got hit sees stars; a gentle bump gets you a glare. Throw a helper at its mother and she catches it. Helpers squish when a tool starts, rock while they think, glance at their family now and then, follow their mother if she's dragged far away, and celebrate with a heart before they merge back. Long turns get yawns, and a burst of hearts when they finish ("Done in 6m"). A failed tool gets a wince; a compacted context gets a sigh of relief.
+- **Bubbles have weight.** Every bubble chases its spot above its slime on a spring and is leashed to it by a short tail (or, for a thought, two trailing puffs).
 - **Click a session's slime** (or one of its little ones) to jump to that session. On macOS it brings the terminal/editor the session runs in to the front (Terminal, iTerm, VS Code, Cursor, Warp, Ghostty, WezTerm). On Windows it brings the session's own window to the front, and in Windows Terminal it also picks the right tab. A click never opens a new terminal: if Blaube can't find the window, the slime tells you, and **Resume in new terminal** is in its right-click menu.
 - **Right-click a session's slime** to pick its **Colour** (orange, blue, green, purple, pink, yellow; it sticks to the project folder), and for its status, "Resume in new terminal", "Copy resume command", "Open project folder" and "Merge back in".
 - **With no sessions**, click Blaube for a summary. Right-click it (or use the tray/menu bar icon, or the **Blaube** item in a session's menu) for settings, including **Colour** and **Live on display** to pick which screen it lives on.
@@ -106,7 +109,16 @@ On Windows, Claude Code runs hooks through Git Bash, which has `curl`. On macOS 
 | Local hook server | `src/main/hookServer.js` |
 | Installing/removing hooks in `~/.claude/settings.json` | `src/main/claudeHooks.js` |
 
-The window covers the screen's work area but lets clicks pass through everywhere except the slimes themselves. The window tells the app where the slimes are; the app watches the cursor and switches click-catching on and off itself (re-applying it while you're over a slime), so a click never gets lost.
+The window covers the screen's work area but lets clicks pass through everywhere except the slimes themselves.
+
+**Clicks on Windows (don't undo this).** The window's own mouse events can't be trusted on Windows: after a while it simply stops receiving them, even while it's set to catch clicks (seen in the logs many times). So:
+
+- The window reports where grabbable things are (slimes, pets, dropped glasses) as boxes, a few times a second.
+- The app polls the cursor 60 times a second and switches click-catching on over those boxes (re-applying it every half second), so clicks there never fall through to apps underneath.
+- A small PowerShell helper watches the mouse buttons system-wide; the app turns presses that start over a slime into `pointer` events for the window, and sends the cursor position for dragging and for the eyes.
+- Live reload (`npm start` while developing) always restarts the whole app; reloading just the window made clicks fall through.
+
+On macOS and Linux the window's own mouse events are used. Problems that only show on a real desktop are logged to `blaube.log` in the app's data folder (clicks, the click-catching switch, going to a session's window).
 
 ## Development
 
@@ -124,6 +136,12 @@ node scripts/make-icons.js  # re-render the icons (needs playwright)
 Set `BLAUBE_PORT` to use a different port; reconnect Claude Code afterwards so the hooks point at it.
 
 How the look is decided and reviewed: `docs/DESIGN.md` (the brief, including what the creative director has decided) and `docs/REVIEW.md` (render, independent judges, fix, repeat). Problems that only show on a real desktop are logged to `blaube.log` in the app's data folder.
+
+## Known open issues
+
+- When you drag a slime into others, the ones it bumps can get squeezed out of shape.
+- The "Phew" on compaction and the "oops" wince on failed tools haven't been seen on a real session yet (the picture rig can't fake them).
+- Effort comes from the transcript; if it hasn't said yet, the `effortLevel` in `~/.claude/settings.json` is used (sessions often run at medium even when that says high).
 
 ## Ideas for later
 
