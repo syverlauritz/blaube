@@ -11,6 +11,13 @@ const dock = require('./dock');
 const BlaubeConfig = require('../shared/config');
 
 const PORT = Number(process.env.BLAUBE_PORT) || DEFAULT_PORT;
+
+// When Blaube is started from inside a Claude Code session (e.g. `npm start`
+// run by Claude), it inherits that session's markers. A `claude --resume` it
+// opens would then think it's a child session and stop saving transcripts.
+for (const k of Object.keys(process.env)) {
+  if (k === 'CLAUDECODE' || k === 'CLAUDE_PID' || k === 'CLAUDE_EFFORT' || /^CLAUDE_CODE_(CHILD_SESSION|SESSION_|MESSAGING_|ENTRYPOINT|EXECPATH)/.test(k)) delete process.env[k];
+}
 const ASSETS = path.join(__dirname, '..', '..', 'build');
 
 const TUNING_SHORTCUT = 'CommandOrControl+Alt+Shift+B';
