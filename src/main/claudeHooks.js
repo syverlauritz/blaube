@@ -15,7 +15,9 @@ function settingsPath(home = os.homedir()) {
 }
 
 function hookCommand(port = DEFAULT_PORT) {
-  return `curl -s -m 1 -X POST -H "Content-Type: application/json" -H "X-Blaube-Term: $TERM_PROGRAM" -H "X-Blaube-Entry: $CLAUDE_CODE_ENTRYPOINT" --data-binary @- http://127.0.0.1:${port}${HOOK_PATH} >/dev/null 2>&1 || true`;
+  // X-Blaube-Pid is the Windows process id of the hook's shell, so Blaube
+  // can find the claude.exe above it (and later, its terminal window).
+  return `curl -s -m 2 -X POST -H "Content-Type: application/json" -H "X-Blaube-Term: $TERM_PROGRAM" -H "X-Blaube-Entry: $CLAUDE_CODE_ENTRYPOINT" -H "X-Blaube-Pid: $(cat /proc/$/winpid 2>/dev/null)" --data-binary @- http://127.0.0.1:${port}${HOOK_PATH} >/dev/null 2>&1 || true`;
 }
 
 const isOurs = (h) => h && typeof h.command === 'string' && h.command.includes(MARKER);

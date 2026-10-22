@@ -14,7 +14,7 @@ A squishy Claude-orange slime that lives on your desktop. Grab it, toss it, watc
   - **Needs you:** worried face and a "?" bubble. It glows red and hops for attention until you look.
   - **Done:** happy face, bounces up and down with a "!" bubble until you look.
   - Slimes only jump to get your attention. "Looking" means clicking the slime or, on Windows, bringing the session's terminal window to the front. Each slime breathes at its own pace.
-- **Click a session's slime** (or one of its little ones) to jump to that session. On macOS it brings the terminal/editor the session runs in to the front (Terminal, iTerm, VS Code, Cursor, Warp, Ghostty, WezTerm). Otherwise it opens a new terminal running `claude --resume <session>` in the project folder.
+- **Click a session's slime** (or one of its little ones) to jump to that session. On macOS it brings the terminal/editor the session runs in to the front (Terminal, iTerm, VS Code, Cursor, Warp, Ghostty, WezTerm). On Windows it brings the session's own window to the front, and in Windows Terminal it also picks the right tab. A click never opens a new terminal: if Blaube can't find the window, the slime tells you, and **Resume in new terminal** is in its right-click menu.
 - **Right-click a session's slime** to pick its **Colour** (orange, blue, green, purple, pink, yellow; it sticks to the project folder), and for its status, "Resume in new terminal", "Copy resume command", "Open project folder" and "Merge back in".
 - **With no sessions**, click Blaube for a summary. Right-click it (or use the tray/menu bar icon, or the **Blaube** item in a session's menu) for settings, including **Colour** and **Live on display** to pick which screen it lives on.
 

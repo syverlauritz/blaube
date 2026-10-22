@@ -179,6 +179,14 @@ function pushState() {
   });
 }
 
+// Brings the session's own window to the front. If we can't find it, the
+// slime says so; it never opens a second copy of a running session.
+function goToSession(s) {
+  focusSessionApp(s, (ok) => {
+    if (!ok && win) win.webContents.send('say', { id: s.id, text: "Can't find its window. Right-click me to resume it." });
+  });
+}
+
 function send(cmd) {
   if (win) win.webContents.send('command', cmd);
 }
@@ -217,7 +225,7 @@ function sessionMenu(id) {
     { label: s.project, enabled: false },
     { label: `${word}${s.message && s.state === 'waiting' ? ': ' + s.message : ''}`, enabled: false },
     { type: 'separator' },
-    { label: 'Open session', enabled: !isDemo, click: () => { if (!focusSessionApp(s)) openResumeTerminal(s); } },
+    { label: 'Go to session', enabled: !isDemo, click: () => goToSession(s) },
     { label: 'Resume in new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
     { label: 'Copy resume command', click: () => clipboard.writeText(`cd "${s.cwd}" && ${resumeCommand(s.id)}`) },
     { label: 'Open project folder', enabled: !!s.cwd, click: () => shell.openPath(s.cwd) },
@@ -357,7 +365,7 @@ app.whenReady().then(async () => {
   ipcMain.on('open-session', (_e, id) => {
     const s = tracker.sessions.get(id);
     if (!s || id.startsWith('demo-')) return;
-    if (!focusSessionApp(s)) openResumeTerminal(s);
+    goToSession(s);
   });
   ipcMain.on('app-menu', () => appMenu().popup({ window: win }));
   ipcMain.on('session-menu', (_e, id) => {

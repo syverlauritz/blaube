@@ -582,6 +582,7 @@
   });
 
   api.onConfig(applyConfig);
+  if (api.onSay) api.onSay((m) => { const b = buddies.get(m.id); if (b) b.say(m.text, 4); });
   api.onWorld((w) => setObstacles(w.obstacles));
 
   api.onCommand((cmd) => {

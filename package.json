@@ -23,6 +23,9 @@
       "build/trayTemplate*.png",
       "build/tray*.png"
     ],
+    "asarUnpack": [
+      "src/main/win/**"
+    ],
     "directories": {
       "output": "dist"
     },
