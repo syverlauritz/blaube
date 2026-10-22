@@ -69,6 +69,17 @@
 
     hop(vx, vy) {
       if (this.body.grab) return;
+      // Up on a window it minds the edge: a hop that would land past it
+      // turns back (mothers wander off now and then; helpers never).
+      const l = this.body.onLedge;
+      if (l && vy < 0 && (this.kind === 'child' || Math.random() < 0.85)) {
+        const c = this.body.centroid(), r = this.body.o.radius;
+        const land = c.x + vx * (-2 * vy / CFG.gravity);
+        if (land < l.x0 + r * 0.6 || land > l.x1 - r * 0.6) {
+          const room = Math.max(0, Math.min(c.x - l.x0, l.x1 - c.x) - r * 0.6);
+          vx = Math.sign((l.x0 + l.x1) / 2 - c.x) * Math.min(Math.abs(vx), room / (-2 * vy / CFG.gravity) + 20);
+        }
+      }
       this.body.impulse(vx, vy, DT);
     }
   }
@@ -83,6 +94,7 @@
     const body = new SoftBody(x, y, Object.assign(bodyOpts(big), { radius: r }));
     body.setBounds(0, 0, W, H);
     body.setObstacles(CFG.dockCollision ? obstacles : []);
+    body.setLedges(ledges);
     return body;
   }
 
@@ -124,6 +136,29 @@
       b.color = colorFor(b);
       if (!b.big && !b.dying) b.targetR = CFG.childRadius;
     }
+    setLedges(rawLedges);
+  }
+
+  // Window tops (from the app): slimes and pets can land on them. A slime
+  // standing on a window that moves rides along with it.
+  let ledges = [], rawLedges = [];
+  function setLedges(list) {
+    rawLedges = list || [];
+    const next = CFG.windowLedges === 'Off' ? [] : rawLedges;
+    for (const b of buddies.values()) {
+      const l = b.body.onLedge;
+      if (l) {
+        const now = next.filter((m) => m.id === l.id).sort((p, q) => Math.abs(p.y - l.y) - Math.abs(q.y - l.y))[0];
+        if (now && (now.wx !== l.wx || now.y !== l.y)) b.body.shift(now.wx - l.wx, now.y - l.y);
+      }
+      b.body.setLedges(next);
+    }
+    for (const p of pets.values()) {
+      const l = p.ledge;
+      const now = l && next.find((m) => m.id === l.id);
+      if (now) { p.x += now.wx - l.wx; p.y += now.y - l.y; }
+    }
+    ledges = next;
   }
 
   function setObstacles(rects) {
@@ -132,9 +167,11 @@
   }
 
   // The surface under x: the top of an obstacle there, or the screen bottom.
-  function floorAt(x) {
+  // With 'from' (the bottom of a falling thing), window tops below it count.
+  function floorAt(x, from) {
     let y = H;
     if (CFG.dockCollision) for (const r of obstacles) if (x >= r.x0 && x <= r.x1) y = Math.min(y, r.y0);
+    if (from !== undefined) for (const l of ledges) if (x >= l.x0 && x <= l.x1 && l.y >= from - 6 && l.y < y) y = l.y;
     return y;
   }
 
@@ -302,7 +339,8 @@
         hearts.push({ x: p.x, y: p.y - petSize(), vx: 0, born: time, size: 8 });
       }
       const PET = petSize(), h = PET / 2;
-      const floor = floorAt(p.x) - h;
+      const floor = floorAt(p.x, p.held ? undefined : p.y + h) - h;
+      p.ledge = floor + h < floorAt(p.x) ? ledges.find((l) => l.y === floor + h && p.x >= l.x0 && p.x <= l.x1) : null;
       // Standing on the floor, or on top of a slime.
       const onFloor = !p.held && (p.y >= floor - 0.5 || time - p.landedAt < 0.05);
       if (p.held) {
@@ -327,11 +365,14 @@
       if (onFloor) { p.angle *= 0.7; p.va = 0; }
       // Its spot, next to its slime.
       const m = p.owner && !p.owner.dying ? p.owner : null;
-      let dx = 0;
-      if (m) dx = petSpot(p, m, PET) - p.x;
+      let dx = 0, rise = 0;
+      if (m) {
+        dx = petSpot(p, m, PET) - p.x;
+        rise = p.y + h - m.body.bbox().maxY; // its slime is up on a window
+      }
       // Back by its slime: a little heart, and it's happy until its slime
       // moves well away again.
-      const happy = !!m && onFloor && Math.abs(dx) < (p.happy ? 70 : 30);
+      const happy = !!m && onFloor && Math.abs(dx) < (p.happy ? 70 : 30) && Math.abs(rise) < PET;
       if (happy && !p.happy) p.heartAt = time;
       p.happy = happy;
       // Blinks now and then.
@@ -340,7 +381,7 @@
       // Follow its slime: hop after it, at random moments.
       if (m && !happy) {
         p.vx = Math.sign(dx) * Math.min(520, Math.abs(dx) * 2.4 + 90);
-        p.vy = -360 - Math.random() * 180;
+        p.vy = rise > PET ? -Math.sqrt(2 * CFG.gravity * (rise + PET * 1.5)) : -360 - Math.random() * 180;
         p.va = Math.sign(dx) * 1.5; // leans into the hop
       } else if (happy && time > (p.nextPlay || (p.nextPlay = time + 4 + Math.random() * 8))) {
         const mates = [...pets.values()].filter((o) => o !== p && o.owner === p.owner && !o.dying);
@@ -870,6 +911,13 @@
     }
     stackPlay(b);
     pounce(b);
+    // Hanging over the edge of a window: it clings and shuffles back on.
+    const l = b.body.onLedge;
+    if (l && !b.body.grab) {
+      const c = b.body.centroid(), r = b.body.o.radius;
+      if (c.x < l.x0 + r * 0.5) b.body.impulse(8, 0, DT);
+      else if (c.x > l.x1 - r * 0.5) b.body.impulse(-8, 0, DT);
+    }
     // A working slime rocks a little now and then while it thinks.
     if (b.kind !== 'home' && b.state === 'working' && !b.merging && !b.body.grab && b.body.onFloor() && time > (b.nextFidget || 0)) {
       if (b.nextFidget) b.hop((Math.random() < 0.5 ? -1 : 1) * (60 + Math.random() * 60), -140 - Math.random() * 90);
@@ -879,6 +927,23 @@
     if (b.kind === 'child' && b.mother && !b.mother.dying) {
       const c = b.body.centroid(), mc = b.mother.body.centroid();
       const dx = mc.x - c.x, far = b.mother.body.o.radius * 2 + b.body.o.radius * 6;
+      // Mum up on a window: jump high enough to get up there too.
+      const rise = b.body.bbox().maxY - b.mother.body.bbox().maxY;
+      const up = rise > b.body.o.radius && b.mother.body.onLedge;
+      if (up) {
+        // Aimed: high enough to clear the edge, landing near mum.
+        const vy = Math.sqrt(2 * CFG.gravity * (rise + b.body.o.radius * 2));
+        const air = (vy + Math.sqrt(vy * vy - 2 * CFG.gravity * rise)) / CFG.gravity;
+        const l = b.mother.body.onLedge, cr = b.body.o.radius;
+        // Land on the near side of mum, or the far side if that has no room.
+        const gap = b.mother.body.o.radius + cr * 1.3;
+        let tx = mc.x - Math.sign(dx) * gap;
+        if (tx < l.x0 + cr * 1.2 || tx > l.x1 - cr * 1.2) tx = mc.x + Math.sign(dx) * gap;
+        tx = Math.max(l.x0 + cr * 1.2, Math.min(l.x1 - cr * 1.2, tx));
+        b.hop(Math.max(-600, Math.min(600, (tx - c.x) / air)), -vy);
+        b.nextHop = time + 1.4 + Math.random() * 1.6;
+        return;
+      }
       if (Math.abs(dx) > far) {
         b.hop(Math.sign(dx) * Math.min(600, (Math.abs(dx) - far * 0.7) * 1.8 + 120), -380 - Math.random() * 140);
         b.nextHop = time + 1.4 + Math.random() * 1.6;
@@ -1069,7 +1134,7 @@
     else if (drag || time - hoverSeen > 0.35) hovered = null;
     ctx.clearRect(0, 0, W, H);
     const list = drawOrder();
-    if (CFG.shadow) for (const b of list) D.drawShadow(ctx, b.body, floorAt(b.body.centroid().x));
+    if (CFG.shadow) for (const b of list) D.drawShadow(ctx, b.body, floorAt(b.body.centroid().x, b.body.bbox().maxY));
 
     // Goo bridge while a slime is splitting off.
     for (const b of list) {
@@ -1392,6 +1457,7 @@
     b.say(m.text, m.seconds || 4);
   });
   api.onWorld((w) => setObstacles(w.obstacles));
+  if (api.onLedges) api.onLedges(setLedges);
 
   api.onCommand((cmd) => {
     if (cmd === 'come-here') {

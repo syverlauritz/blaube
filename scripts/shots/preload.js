@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('blaube', {
 	onState: on('state'),
 	onConfig: on('config'),
 	onWorld: on('world'),
+	onLedges: on('ledges'),
 	onCommand: on('command'),
 	onSay: on('say'),
 	onNod: on('nod'),

@@ -180,6 +180,27 @@ const SCENES = {
 		size: [900, 560],
 		motion: { frames: 20, every: 150, drop: 0, still: true, hopAt: [], commandAt: { 1: 'yawn' }, huddle: true },
 	},
+	// A window on the desktop: one slime dropped onto it lands softly and
+	// stays; one thrown up from below passes through it; then the window
+	// moves and the one on top rides along.
+	ledge: {
+		sessions: [session('le1', 'blaube', 'idle'), session('le2', 'kalkis', 'idle', { color: '#5B8DEF' })],
+		config: { size: 0.85 },
+		wait: 2500,
+		size: [1000, 560],
+		motion: { frames: 28, every: 100, drop: 0, still: true, hopAt: [], ledge: true },
+	},
+	// A mother put up on a window: her helper and her pet jump up after her.
+	climb: {
+		sessions: [session('cl', 'blaube', 'working', {
+			agents: [{ id: 'h1', type: 'general-purpose', description: 'Fix the hover bubble', state: 'working', activity: 'thinking' }],
+			tasks: [{ id: 't1', command: 'npm run dev' }],
+		})],
+		config: { size: 0.85 },
+		wait: 4000,
+		size: [1000, 560],
+		motion: { frames: 32, every: 150, drop: 0, still: true, hopAt: [], climb: true },
+	},
 	// A helper finishes and heads home: happy eyes and a heart on the way.
 	helperHome: {
 		sessions: [session('hh', 'blaube', 'working', {
@@ -349,6 +370,19 @@ async function shootMotion(win, name, m) {
 		// Lift the right one onto the left one's head.
 		await js(`(() => { const l = [...__blaube.buddies.values()].sort((a, b) => a.body.centroid().x - b.body.centroid().x); const c = l[0].body.centroid(); l[1].body.teleport(c.x, c.y - l[0].body.o.radius * 2.1); })()`);
 	}
+	// A fake window, drawn behind the slimes, and its top as a ledge.
+	const fakeWindow = async (x, y) => {
+		win.webContents.send('fire', 'ledges', [{ id: 7, x0: x, x1: x + 420, y, wx: x }]);
+		await js(`(() => { let d = document.getElementById('fakewin'); if (!d) { d = document.createElement('div'); d.id = 'fakewin'; document.body.prepend(d); } d.style.cssText = 'position:fixed;left:${x}px;top:${y}px;width:420px;height:400px;background:#3a3d44;border-top:28px solid #4a4e57;box-sizing:border-box;z-index:-1'; })()`);
+	};
+	if (m.climb) {
+		await fakeWindow(250, 330);
+		await js(`[...__blaube.buddies.values()].find((b) => b.kind === 'mother').body.teleport(450, 200)`);
+	}
+	if (m.ledge) {
+		await fakeWindow(120, 300);
+		await js(`(() => { const l = [...__blaube.buddies.values()]; l[0].body.teleport(300, 120); l[1].body.teleport(800, 420); })()`);
+	}
 	if (m.huddle) {
 		await js(`(() => { const l = [...__blaube.buddies.values()]; l.forEach((b, i) => b.body.teleport(300 + i * 150, 400)); })()`);
 		await sleep(1500);
@@ -364,6 +398,8 @@ async function shootMotion(win, name, m) {
 	for (let i = 0; i < m.frames + m.drop; i++) {
 		if (m.still) {
 			if (m.hopAt.includes(i)) win.webContents.send('fire', 'command', 'hop');
+			if (m.ledge && i === 8) await js(`(() => { const b = [...__blaube.buddies.values()][1]; b.body.teleport(420, 420); b.body.impulse(0, -1200, 1 / 120); })()`);
+			if (m.ledge && i >= 18 && i <= 22) await fakeWindow(120 + (i - 17) * 40, 300 - (i - 17) * 12);
 			if (m.commandAt && m.commandAt[i]) win.webContents.send('fire', 'command', m.commandAt[i]);
 			if (m.tease) {
 				// Wiggle above it, low enough to reach.

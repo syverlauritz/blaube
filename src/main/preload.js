@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('blaube', {
   onState: (cb) => ipcRenderer.on('state', (_e, s) => cb(s)),
   onConfig: (cb) => ipcRenderer.on('config', (_e, c) => cb(c)),
   onWorld: (cb) => ipcRenderer.on('world', (_e, w) => cb(w)),
+  onLedges: (cb) => ipcRenderer.on('ledges', (_e, l) => cb(l)),
   onCommand: (cb) => ipcRenderer.on('command', (_e, c) => cb(c)),
   onSay: (cb) => ipcRenderer.on('say', (_e, m) => cb(m)),
   onReact: (cb) => ipcRenderer.on('react', (_e, m) => cb(m)),

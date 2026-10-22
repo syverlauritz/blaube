@@ -52,6 +52,8 @@
       this.areaScale = 1; // modulated for breathing
       this.bounds = { left: 0, top: 0, right: 1e9, bottom: 1e9 };
       this.obstacles = []; // [{ x0, y0, x1, y1 }] solid rectangles
+      this.ledges = []; // [{ x0, x1, y }] tops of windows: land on them from above
+      this.onLedge = null; // the ledge it's standing on, if any
       this.grab = null;
       this.angle = 0;
       this.lastImpact = 0; // strongest wall hit speed in the last step, px/s
@@ -60,6 +62,10 @@
 
     setBounds(left, top, right, bottom) {
       this.bounds = { left, top, right, bottom };
+    }
+
+    setLedges(list) {
+      this.ledges = list || [];
     }
 
     setObstacles(rects) {
@@ -106,6 +112,11 @@
         if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
       }
       return inside;
+    }
+
+    // Moves the whole body by (dx, dy), keeping its velocity.
+    shift(dx, dy) {
+      shift(this, dx, dy);
     }
 
     // Moves the whole body so its centroid sits at (x, y), keeping its velocity.
@@ -218,6 +229,7 @@
       }
 
       if (this.shoving > 0) this.shoving--;
+      this.onLedge = null;
       this.lastImpact = 0;
       this.contact.left = this.contact.right = this.contact.top = this.contact.bottom = false;
       for (let k = 0; k < o.iterations; k++) {
@@ -329,6 +341,7 @@
     collide(dt, first) {
       const { n, px, py } = this;
       const b = this.bounds;
+      if (this.ledges.length && !this.grab) this.landOnLedges(dt, first);
       for (let i = 0; i < n; i++) {
         if (py[i] > b.bottom) this.hit(i, 'y', b.bottom, first, dt), (this.contact.bottom = true);
         else if (py[i] < b.top) this.hit(i, 'y', b.top, first, dt), (this.contact.top = true);
@@ -345,6 +358,31 @@
           else if (m === dl) this.hit(i, 'x', r.x0, first, dt), (this.contact.right = true);
           else this.hit(i, 'x', r.x1, first, dt), (this.contact.left = true);
         }
+      }
+    }
+
+    // Window tops only hold a body that comes down onto them from above:
+    // going up, or standing in front of the window, it passes through. They
+    // give a little, so landing is soft.
+    landOnLedges(dt, first) {
+      const { n, px, py } = this;
+      let minX = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (let i = 0; i < n; i++) {
+        if (px[i] < minX) minX = px[i];
+        if (px[i] > maxX) maxX = px[i];
+        if (py[i] > maxY) maxY = py[i];
+      }
+      const depth = this.o.radius * 0.5;
+      for (const l of this.ledges) {
+        if (maxX < l.x0 || minX > l.x1 || maxY <= l.y || maxY > l.y + depth) continue;
+        let held = false;
+        for (let i = 0; i < n; i++) {
+          const d = py[i] - l.y;
+          if (d <= 0 || px[i] < l.x0 || px[i] > l.x1) continue;
+          this.hit(i, 'y', l.y + d * 0.35, first, dt);
+          held = true;
+        }
+        if (held) { this.contact.bottom = true; this.onLedge = l; }
       }
     }
 
