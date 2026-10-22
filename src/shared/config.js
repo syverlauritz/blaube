@@ -60,6 +60,16 @@
     ]],
   ];
 
+  // Colours you can pick for a Blaube from its right-click menu.
+  const PALETTE = [
+    ['Orange', '#D97757'],
+    ['Blue', '#5B8DEF'],
+    ['Green', '#5FB57A'],
+    ['Purple', '#9B7BD8'],
+    ['Pink', '#E07BA8'],
+    ['Yellow', '#E8B84A'],
+  ];
+
   const DEFAULTS = {};
   for (const [, params] of GROUPS) for (const [k, v] of params) DEFAULTS[k] = v;
 
@@ -79,7 +89,7 @@
     return out;
   }
 
-  const api = { GROUPS, DEFAULTS, sanitize };
+  const api = { GROUPS, DEFAULTS, PALETTE, sanitize };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.BlaubeConfig = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

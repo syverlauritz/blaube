@@ -74,3 +74,37 @@ test('a hooked session that was killed (no SessionEnd) merges back once claude a
   t.applyAgents([]);
   assert.equal(t.list().length, 0);
 });
+
+test('subagents join and leave their session', () => {
+  const t = new SessionTracker();
+  let changes = 0;
+  t.on('change', () => changes++);
+  t.handle(ev('UserPromptSubmit'));
+  t.handle(ev('SubagentStart', { agent_id: 'a1', agent_type: 'Explore' }));
+  t.handle(ev('SubagentStart', { agent_id: 'a1', agent_type: 'Explore' }));
+  assert.deepEqual(t.list()[0].agents.map((a) => [a.id, a.type, a.state]), [['a1', 'Explore', 'working']]);
+  // A tool call inside a subagent we never saw start still adds it, and
+  // doesn't change the session's own state.
+  t.handle(ev('Stop'));
+  t.handle(ev('PreToolUse', { agent_id: 'a2', agent_type: 'Plan', tool_name: 'Read' }));
+  assert.equal(t.list()[0].state, 'done');
+  assert.equal(t.list()[0].agents.length, 2);
+  // A subagent asking for permission makes the whole session need you.
+  t.handle(ev('Notification', { agent_id: 'a2', message: 'Claude needs your permission to use Bash' }));
+  assert.equal(t.list()[0].state, 'waiting');
+  assert.equal(t.list()[0].agents[1].state, 'waiting');
+  t.handle(ev('SubagentStop', { agent_id: 'a1', agent_type: 'Explore' }));
+  t.handle(ev('SubagentStop', { agent_id: 'a2', agent_type: 'Plan' }));
+  assert.equal(t.list()[0].agents.length, 0);
+  assert.ok(changes >= 6);
+});
+
+test('stale subagents are dropped', () => {
+  let now = 0;
+  const t = new SessionTracker(() => now);
+  t.handle(ev('UserPromptSubmit'));
+  t.handle(ev('SubagentStart', { agent_id: 'a1', agent_type: 'Explore' }));
+  now = 20 * 60 * 1000;
+  assert.ok(t.prune());
+  assert.equal(t.list()[0].agents.length, 0);
+});

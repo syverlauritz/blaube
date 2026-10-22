@@ -24,11 +24,25 @@ const tracker = new SessionTracker();
 // --- Preferences (config + chosen display), kept in the app's data folder ---
 
 const prefsFile = () => path.join(app.getPath('userData'), 'prefs.json');
-let prefs = { config: {}, displayId: null };
+let prefs = { config: {}, displayId: null, colors: {} };
 
 function loadPrefs() {
   try { prefs = Object.assign(prefs, JSON.parse(fs.readFileSync(prefsFile(), 'utf8'))); } catch { /* first run */ }
   prefs.config = BlaubeConfig.sanitize(prefs.config);
+  if (!prefs.colors || typeof prefs.colors !== 'object') prefs.colors = {};
+}
+
+// A colour picked for a session sticks to its project folder, so the same
+// project gets the same colour every time.
+const colorKey = (s) => s.cwd || s.id;
+
+function colorMenu(current, pick) {
+  return BlaubeConfig.PALETTE.map(([name, hex]) => ({
+    label: name,
+    type: 'radio',
+    checked: current.toLowerCase() === hex.toLowerCase(),
+    click: () => pick(hex),
+  }));
 }
 
 let saveTimer = null;
@@ -148,7 +162,7 @@ function createWindow() {
 function pushState() {
   if (!win) return;
   win.webContents.send('state', {
-    sessions: tracker.list(),
+    sessions: tracker.list().map((s) => Object.assign({}, s, { color: prefs.colors[colorKey(s)] || null })),
     settings: { hooksInstalled: claudeHooks.isInstalled(undefined, PORT) },
   });
 }
@@ -158,13 +172,18 @@ function send(cmd) {
 }
 
 function appMenu() {
+  return Menu.buildFromTemplate(appMenuTemplate());
+}
+
+function appMenuTemplate() {
   const installed = claudeHooks.isInstalled(undefined, PORT);
-  return Menu.buildFromTemplate([
+  return [
     { label: `Blaube ${app.getVersion()}`, enabled: false },
     { type: 'separator' },
     installed
       ? { label: 'Claude Code connected ✓', enabled: false }
       : { label: claudeHooks.hasAnyBlaubeHooks() ? 'Update Claude Code connection…' : 'Connect Claude Code…', click: installHooks },
+    { label: 'Colour', submenu: colorMenu(prefs.config.color, (hex) => setConfig(Object.assign({}, prefs.config, { color: hex }))) },
     { label: 'Live on display', submenu: displayMenu() },
     { label: 'Come here', click: () => send('come-here') },
     { label: 'Everyone hop!', click: () => send('hop') },
@@ -174,7 +193,7 @@ function appMenu() {
     ...(installed ? [{ label: 'Reconnect Claude Code', click: installHooks }, { label: 'Disconnect Claude Code', click: uninstallHooks }] : []),
     { type: 'separator' },
     { label: 'Quit Blaube', role: 'quit' },
-  ]);
+  ];
 }
 
 function sessionMenu(id) {
@@ -190,6 +209,9 @@ function sessionMenu(id) {
     { label: 'Resume in new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
     { label: 'Copy resume command', click: () => clipboard.writeText(`cd "${s.cwd}" && ${resumeCommand(s.id)}`) },
     { label: 'Open project folder', enabled: !!s.cwd, click: () => shell.openPath(s.cwd) },
+    { type: 'separator' },
+    { label: 'Colour', submenu: colorMenu(prefs.colors[colorKey(s)] || prefs.config.color, (hex) => { prefs.colors[colorKey(s)] = hex; savePrefs(); pushState(); }) },
+    { label: 'Blaube', submenu: appMenuTemplate() },
     { type: 'separator' },
     { label: 'Merge back in', click: () => { tracker.handle({ session_id: id, hook_event_name: 'SessionEnd' }); } },
   ]);
@@ -234,6 +256,12 @@ function runDemo() {
   at(900, () => ev(a, path.join(home, 'code', 'blaube'), 'UserPromptSubmit'));
   at(1800, () => ev(b, path.join(home, 'code', 'kalkis'), 'UserPromptSubmit'));
   at(2600, () => ev(c, path.join(home, 'code', 'website'), 'UserPromptSubmit'));
+  at(3400, () => ev(a, '', 'SubagentStart', { agent_id: 'demo-a1', agent_type: 'Explore' }));
+  at(4200, () => ev(a, '', 'SubagentStart', { agent_id: 'demo-a2', agent_type: 'general-purpose' }));
+  at(5000, () => ev(c, '', 'SubagentStart', { agent_id: 'demo-c1', agent_type: 'Plan' }));
+  at(7000, () => ev(a, '', 'SubagentStop', { agent_id: 'demo-a1', agent_type: 'Explore' }));
+  at(8200, () => ev(a, '', 'SubagentStop', { agent_id: 'demo-a2', agent_type: 'general-purpose' }));
+  at(12000, () => ev(c, '', 'SubagentStop', { agent_id: 'demo-c1', agent_type: 'Plan' }));
   at(6000, () => ev(b, '', 'Notification', { message: 'Claude needs your permission to use Bash', notification_type: 'permission_prompt' }));
   at(9000, () => ev(a, '', 'Stop'));
   at(13000, () => ev(b, '', 'PostToolUse'));

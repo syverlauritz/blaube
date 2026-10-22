@@ -1,6 +1,7 @@
-// Blaube's stage: a full-screen transparent canvas with one big slime (the
-// orchestrator) that splits off a small slime for each Claude Code session
-// and absorbs it again when the session ends.
+// Blaube's stage: a full-screen transparent canvas. Every Claude Code
+// session (one per terminal) is a big mother slime, and every subagent that
+// session runs splits off it as a small child slime and merges back in when
+// it's done. With no sessions, a single home slime sits there on its own.
 (function () {
   'use strict';
 
@@ -12,6 +13,7 @@
 
   const DT = 1 / 120;
   const SPLIT_TIME = 0.55;
+  const HOME = 'main';
   let CFG = Object.assign({}, BlaubeConfig.DEFAULTS);
   let obstacles = []; // Dock/taskbar rectangles in window coordinates
 
@@ -22,25 +24,34 @@
   let settings = { hooksInstalled: true };
   let time = 0;
 
+  // kind is 'home' (no sessions), 'mother' (a session) or 'child' (a subagent).
   class Buddy {
-    constructor(key, x, y, r, session) {
+    constructor(key, kind, x, y, r) {
       this.key = key;
-      this.isMain = key === 'main';
-      this.body = makeBody(x, y, r, this.isMain);
-      this.color = colorFor(key);
+      this.kind = kind;
+      this.body = makeBody(x, y, r, this.big);
       this.targetR = r;
-      this.session = session || null;
-      this.state = session ? session.state : 'idle';
+      this.session = null; // mothers
+      this.mother = null; // children
+      this.agent = null; // children
+      this.state = 'idle';
       this.born = time;
-      this.parent = null; // set while splitting off
+      this.parent = null; // the slime it's splitting off, while splitting
       this.merging = null; // { since }
+      this.mergeInto = null;
       this.dying = 0;
+      this.removed = false;
       this.bubble = null; // { lines, until, sticky }
       this.blink = 0;
       this.nextBlink = time + 1 + Math.random() * 4;
       this.dizzyUntil = 0;
       this.happyUntil = 0;
       this.nextHop = time + 8 + Math.random() * 10;
+      this.color = colorFor(this);
+    }
+
+    get big() {
+      return this.kind !== 'child';
     }
 
     get splitting() {
@@ -59,40 +70,43 @@
 
   const buddies = new Map();
 
-  function bodyOpts(isMain) {
-    return Object.assign({}, CFG, { points: isMain ? CFG.mainPoints : CFG.childPoints });
+  function bodyOpts(big) {
+    return Object.assign({}, CFG, { points: big ? CFG.mainPoints : CFG.childPoints });
   }
 
-  function makeBody(x, y, r, isMain) {
-    const body = new SoftBody(x, y, Object.assign(bodyOpts(isMain), { radius: r }));
+  function makeBody(x, y, r, big) {
+    const body = new SoftBody(x, y, Object.assign(bodyOpts(big), { radius: r }));
     body.setBounds(0, 0, W, H);
     body.setObstacles(CFG.dockCollision ? obstacles : []);
     return body;
   }
 
-  // Small slimes get a colour near the big one's, picked from their id.
-  function colorFor(key) {
-    if (key === 'main') return CFG.color;
+  // A mother wears the colour picked for its session (or the default one).
+  // Her children get a colour near hers, picked from their id.
+  const baseColor = (m) => (m && m.session && m.session.color) || CFG.color;
+
+  function colorFor(b) {
+    if (b.big) return baseColor(b);
     let h = 0;
-    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+    for (let i = 0; i < b.key.length; i++) h = (h * 31 + b.key.charCodeAt(i)) >>> 0;
     const u = ((h % 1000) / 999) * 2 - 1, v = (((h >>> 10) % 1000) / 999) * 2 - 1;
-    return D.vary(CFG.color, u * CFG.childHueSpread, v * CFG.childLightSpread);
+    return D.vary(baseColor(b.mother), u * CFG.childHueSpread, v * CFG.childLightSpread);
   }
 
   function applyConfig(cfg) {
     CFG = BlaubeConfig.sanitize(cfg);
     for (const b of buddies.values()) {
-      const want = b.isMain ? CFG.mainPoints : CFG.childPoints;
+      const want = b.big ? CFG.mainPoints : CFG.childPoints;
       if (b.body.n !== want) {
         // Rebuild with the new point count, keeping place and momentum.
         const c = b.body.centroid(), v = b.body.velocity(DT);
-        b.body = makeBody(c.x, c.y, b.body.o.radius, b.isMain);
+        b.body = makeBody(c.x, c.y, b.body.o.radius, b.big);
         b.body.impulse(v.x, v.y, DT);
       }
-      b.body.configure(bodyOpts(b.isMain));
+      b.body.configure(bodyOpts(b.big));
       b.body.setObstacles(CFG.dockCollision ? obstacles : []);
-      b.color = colorFor(b.key);
-      if (!b.isMain && !b.dying) b.targetR = CFG.childRadius;
+      b.color = colorFor(b);
+      if (!b.big && !b.dying) b.targetR = CFG.childRadius;
     }
   }
 
@@ -123,14 +137,37 @@
     }
   }
 
-  const main = () => buddies.get('main');
+  const bigs = () => [...buddies.values()].filter((b) => b.big && !b.dying);
 
-  // The big slime gives up some of its volume to each small one.
-  function mainRadius() {
+  // A mother gives up some of her volume to each of her children.
+  function radiusFor(m) {
     let children = 0;
-    for (const b of buddies.values()) if (!b.isMain && !b.dying) children++;
+    for (const b of buddies.values()) if (b.mother === m && !b.dying) children++;
     const R = CFG.mainRadius, r = CFG.childRadius;
     return Math.max(Math.min(CFG.mainMinRadius, R), Math.sqrt(Math.max(0, R * R - 0.5 * children * r * r)));
+  }
+
+  function nearestBig(b, filter) {
+    const c = b.body.centroid();
+    let best = null, bestD = Infinity;
+    for (const o of bigs()) {
+      if (o === b || !filter(o)) continue;
+      const oc = o.body.centroid();
+      const d = Math.hypot(oc.x - c.x, oc.y - c.y);
+      if (d < bestD) { best = o; bestD = d; }
+    }
+    return best;
+  }
+
+  function rekey(b, key) {
+    buddies.delete(b.key);
+    b.key = key;
+    buddies.set(key, b);
+  }
+
+  function remove(b) {
+    if (buddies.get(b.key) === b) buddies.delete(b.key);
+    b.removed = true;
   }
 
   // --- Sessions -----------------------------------------------------------
@@ -139,33 +176,83 @@
     const live = new Set();
     for (const s of sessions) {
       live.add(s.id);
-      let b = buddies.get(s.id);
-      if (!b) b = split(s);
-      if (b.merging && s.state !== 'gone') b.merging = null;
-      const prev = b.state;
-      b.session = s;
-      b.state = s.state;
-      if (prev !== s.state) react(b, prev);
-      if (s.seen && b.bubble && b.bubble.sticky) b.bubble = null;
+      let m = buddies.get(s.id);
+      if (!m || m.dying) m = addMother(s);
+      m.merging = null;
+      m.session = s;
+      m.color = colorFor(m);
+      setState(m, s.state);
+      if (s.seen && m.bubble && m.bubble.sticky) m.bubble = null;
+      for (const a of s.agents || []) {
+        const key = `${s.id}/${a.id}`;
+        live.add(key);
+        let c = buddies.get(key);
+        if (!c || c.dying) c = split(m, key, 'child');
+        c.merging = null;
+        c.mother = m;
+        c.agent = a;
+        c.color = colorFor(c);
+        setState(c, a.state);
+      }
     }
+    // Finished sessions and subagents head back in.
     for (const b of buddies.values()) {
-      if (!b.isMain && !live.has(b.key) && !b.merging) b.merging = { since: time };
+      if (b.kind !== 'home' && !live.has(b.key) && !b.merging && !b.dying) b.merging = { since: time };
     }
+    // With no sessions left, the biggest one stays behind as the home slime.
+    if (!sessions.length && !buddies.has(HOME)) {
+      const keep = bigs().sort((a, b) => b.body.o.radius - a.body.o.radius)[0];
+      if (keep) {
+        rekey(keep, HOME);
+        Object.assign(keep, { kind: 'home', session: null, state: 'idle', merging: null, bubble: null });
+        keep.color = colorFor(keep);
+      } else {
+        buddies.set(HOME, new Buddy(HOME, 'home', W * 0.8, H * 0.5, CFG.mainRadius));
+      }
+    }
+    for (const b of buddies.values()) if (b.merging) b.mergeInto = mergeTarget(b);
   }
 
-  function split(session) {
-    const m = main();
-    const c = m.body.centroid();
+  // The first session takes over the home slime. Later ones split off the
+  // nearest mother and grow to full size.
+  function addMother(s) {
+    const home = buddies.get(HOME);
+    if (home && !home.dying) {
+      rekey(home, s.id);
+      home.kind = 'mother';
+      return home;
+    }
+    const src = bigs()[0];
+    if (!src) return new Buddy(s.id, 'mother', W * 0.8, H * 0.5, CFG.mainRadius);
+    return split(src, s.id, 'mother');
+  }
+
+  function split(src, key, kind) {
+    const c = src.body.centroid();
     const side = Math.random() < 0.5 ? -1 : 1;
-    const r = m.body.o.radius;
-    const b = new Buddy(session.id, c.x + side * r * 0.35, c.y - r * 0.15, CFG.childRadius * 0.45, session);
+    const r = src.body.o.radius;
+    const b = new Buddy(key, kind, c.x + side * r * 0.35, c.y - r * 0.15, CFG.childRadius * 0.45);
     b.targetR = CFG.childRadius;
-    b.parent = m;
-    b.state = 'idle';
-    buddies.set(session.id, b);
+    b.parent = src;
+    if (kind === 'child') b.mother = src;
+    buddies.set(key, b);
     b.hop(side * CFG.splitImpulse * 0.7, -CFG.splitImpulse);
-    m.hop(-side * CFG.splitImpulse * 0.2, -CFG.splitImpulse * 0.25);
+    src.hop(-side * CFG.splitImpulse * 0.2, -CFG.splitImpulse * 0.25);
     return b;
+  }
+
+  // Children go back to their mother. Mothers go to the nearest other
+  // mother that's staying (or the home slime).
+  function mergeTarget(b) {
+    const ok = (o) => !o.removed && !o.dying;
+    if (b.kind === 'child' && b.mother && ok(b.mother)) return b.mother;
+    return nearestBig(b, (o) => !o.merging) || nearestBig(b, () => true);
+  }
+
+  function setState(b, state) {
+    const prev = b.state;
+    b.state = state;
+    if (prev !== state) react(b, prev);
   }
 
   function react(b, prev) {
@@ -176,7 +263,7 @@
         break;
       case 'waiting':
         b.hop(0, -CFG.waitingHopStrength);
-        b.say([{ text: `${label(b)} needs you`, color: D.STATE_COLORS.waiting }, { text: b.session.message || 'Waiting for you' }], 1e9, true);
+        if (b.session) b.say([{ text: `${label(b)} needs you`, color: D.STATE_COLORS.waiting }, { text: b.session.message || 'Waiting for you' }], 1e9, true);
         break;
       case 'done':
         b.hop((Math.random() - 0.5) * 200, -CFG.doneHopStrength * 1.1);
@@ -186,37 +273,35 @@
     }
   }
 
-  const label = (b) => (b.session && b.session.project) || 'Claude';
+  function label(b) {
+    if (b.kind === 'child') return (b.agent && b.agent.type) || 'agent';
+    return (b.session && b.session.project) || 'Claude';
+  }
+
+  const kidsOf = (m) => [...buddies.values()].filter((b) => b.mother === m && !b.dying);
 
   function summaryLines() {
-    const kids = [...buddies.values()].filter((b) => !b.isMain && !b.dying && b.session);
-    if (!kids.length) {
+    const mothers = [...buddies.values()].filter((b) => b.kind === 'mother' && !b.dying && b.session);
+    if (!mothers.length) {
       return [{ text: settings.hooksInstalled ? 'No Claude Code sessions right now' : 'Right-click me to connect Claude Code' }];
     }
     const word = { working: 'working', waiting: 'needs you', done: 'done', idle: 'idle' };
-    return kids.map((b) => ({ text: `${label(b)}: ${word[b.state] || b.state}`, color: D.STATE_COLORS[b.state] }));
+    return mothers.map((b) => {
+      const n = kidsOf(b).length;
+      return { text: `${label(b)}: ${word[b.state] || b.state}${n ? ` (${n} subagent${n > 1 ? 's' : ''})` : ''}`, color: D.STATE_COLORS[b.state] };
+    });
   }
 
-  function aggregateState() {
-    let s = 'idle';
-    for (const b of buddies.values()) {
-      if (b.isMain || b.dying) continue;
-      if (b.state === 'waiting') return 'waiting';
-      if (b.state === 'working') s = 'working';
-      else if (b.state === 'done' && s === 'idle' && !b.session.seen) s = 'done';
-    }
-    return s;
-  }
+  const unseen = (b) => !!(b.session && !b.session.seen);
 
   // --- Simulation ---------------------------------------------------------
 
   function step() {
-    const m = main();
-    m.targetR = mainRadius();
-
     for (const b of [...buddies.values()]) {
+      if (b.removed) continue;
       const body = b.body;
       const r = body.o.radius;
+      if (b.big && !b.dying) b.targetR = radiusFor(b);
       if (Math.abs(b.targetR - r) > 0.05) body.setRadius(r + (b.targetR - r) * (b.dying ? 0.08 : 0.02));
       body.areaScale = 1 + CFG.breathe * Math.sin(time * 2.2 + b.born * 3);
       body.step(DT);
@@ -224,19 +309,27 @@
       if (body.lastImpact > CFG.dizzySpeed) b.dizzyUntil = time + 0.9;
 
       if (b.merging && !b.dying) {
-        const c = body.centroid(), mc = m.body.centroid();
-        const dx = mc.x - c.x, dy = mc.y - c.y;
-        const close = Math.hypot(dx, dy) < m.body.o.radius + r * 0.4;
-        if (close || time - b.merging.since > 8) {
+        let m = b.mergeInto;
+        if (!m || m.removed || m.dying) m = b.mergeInto = mergeTarget(b);
+        if (!m) {
           b.dying = time;
           b.targetR = 2;
-          m.hop(0, -260);
-        } else if (body.onFloor() && !body.grab && time - (b.merging.lastHop || 0) > 0.6) {
-          b.merging.lastHop = time;
-          b.hop(Math.sign(dx) * Math.min(700, Math.abs(dx) * 2.2 + 120), -520 - Math.max(0, -dy) * 1.5);
+        } else {
+          const c = body.centroid(), mc = m.body.centroid();
+          const dx = mc.x - c.x, dy = mc.y - c.y;
+          const close = Math.hypot(dx, dy) < m.body.o.radius + r * 0.4;
+          if (close || time - b.merging.since > 8) {
+            b.dying = time;
+            b.targetR = 2;
+            m.hop(0, -260);
+            m.happyUntil = time + 1.2;
+          } else if (body.onFloor() && !body.grab && time - (b.merging.lastHop || 0) > 0.6) {
+            b.merging.lastHop = time;
+            b.hop(Math.sign(dx) * Math.min(700, Math.abs(dx) * 2.2 + 120), -520 - Math.max(0, -dy) * 1.5);
+          }
         }
       }
-      if (b.dying && body.o.radius < 4) buddies.delete(b.key);
+      if (b.dying && body.o.radius < 4) remove(b);
     }
 
     const list = [...buddies.values()];
@@ -250,8 +343,9 @@
     }
   }
 
-  // While splitting, a goo strand ties the new slime to the big one: a
-  // spring whose rest length grows and whose strength fades until it snaps.
+  // While splitting, a goo strand ties the new slime to the one it came
+  // from: a spring whose rest length grows and whose strength fades until
+  // it snaps.
   function pullStrand(b) {
     const p = (time - b.born) / SPLIT_TIME;
     const a = b.parent.body, c = b.body;
@@ -265,9 +359,9 @@
     a.impulse(ux * acc * 0.2 * DT, uy * acc * 0.2 * DT, DT);
   }
 
-  // Slimes that are splitting off or merging into the big one overlap it freely.
+  // Slimes that are splitting off or merging into another overlap it freely.
   function passThrough(a, b) {
-    const pair = (x, y) => x.isMain && (y.splitting || y.merging || y.dying);
+    const pair = (x, y) => (y.splitting && y.parent === x) || (y.merging && y.mergeInto === x);
     return pair(a, b) || pair(b, a) || a.dying || b.dying;
   }
 
@@ -281,12 +375,11 @@
     if (b.bubble && time > b.bubble.until) b.bubble = null;
     if (b.body.grab || !b.body.onFloor() || b.merging || time < b.nextHop) return;
 
-    const st = b.isMain ? aggregateState() : b.state;
-    const unseen = b.session && !b.session.seen;
-    if (st === 'waiting' && (b.isMain || unseen)) {
+    const st = b.state;
+    if (st === 'waiting' && (b.kind === 'child' || unseen(b))) {
       b.hop(0, -CFG.waitingHopStrength);
       b.nextHop = time + 2.2;
-    } else if (st === 'done' && unseen && !b.isMain) {
+    } else if (st === 'done' && unseen(b)) {
       // Finished: bounce up and down until someone clicks it.
       b.hop((Math.random() - 0.5) * 60, -CFG.doneHopStrength);
       b.nextHop = time + CFG.doneHopEvery;
@@ -304,7 +397,7 @@
   }
 
   function faceFor(b) {
-    const st = b.isMain ? aggregateState() : b.state;
+    const st = b.state;
     const body = b.body;
     const v = body.velocity(DT);
     const speed = Math.hypot(v.x, v.y);
@@ -314,15 +407,18 @@
     else if (speed > 900 && !body.onFloor()) { mouth = 'grin'; }
     else if (time < b.happyUntil) { expression = 'happy'; mouth = 'grin'; }
     else if (st === 'waiting') { expression = 'worried'; mouth = 'o'; }
-    else if (st === 'done' && b.session && !b.session.seen) { expression = 'happy'; mouth = 'grin'; }
-    else if (st === 'working' && !b.isMain) { expression = 'concentrate'; mouth = 'flat'; }
+    else if (st === 'done' && unseen(b)) { expression = 'happy'; mouth = 'grin'; }
+    else if (st === 'working') { expression = 'concentrate'; mouth = 'flat'; }
     else if (st === 'idle' && time - mouse.lastMove > 120) { expression = 'sleepy'; mouth = 'flat'; }
     return { expression, mouth, blink: b.blink, look: mouse, scale: CFG.faceScale };
   }
 
+  // Big slimes first, so children are drawn on top (and get clicked first).
+  const drawOrder = () => [...buddies.values()].sort((a, b) => (a.big ? 0 : 1) - (b.big ? 0 : 1));
+
   function draw() {
     ctx.clearRect(0, 0, W, H);
-    const list = [...buddies.values()].sort((a, b) => (a.isMain ? -1 : 0) - (b.isMain ? -1 : 0));
+    const list = drawOrder();
     if (CFG.shadow) for (const b of list) D.drawShadow(ctx, b.body, floorAt(b.body.centroid().x));
 
     // Goo bridge while a slime is splitting off.
@@ -343,17 +439,15 @@
     }
 
     for (const b of list) {
-      const unseen = b.session && !b.session.seen && (b.state === 'waiting' || b.state === 'done');
-      const glow = unseen && CFG.glow ? D.STATE_COLORS[b.state] : null;
+      const alert = (unseen(b) && (b.state === 'waiting' || b.state === 'done')) || (b.kind === 'child' && b.state === 'waiting');
+      const glow = alert && CFG.glow ? D.STATE_COLORS[b.state] : null;
       D.drawBody(ctx, b.body, b.color, { glow, outline: CFG.outline });
       if (b.body.o.radius > 12) D.drawFace(ctx, b.body, faceFor(b));
-      const st = b.isMain ? aggregateState() : b.state;
-      if (st === 'working' && !b.isMain && !b.dying) D.drawThinking(ctx, b.body, time);
-      if (!b.isMain && !b.dying) {
-        if (b.state === 'done' && b.session && !b.session.seen) D.drawExclaim(ctx, b.body, time, D.STATE_COLORS.done);
-        else D.drawDots(ctx, b.body, [b.state], time);
-        D.drawLabel(ctx, b.body, label(b));
-      }
+      if (b.kind === 'home' || b.dying) continue;
+      if (b.state === 'working') D.drawThinking(ctx, b.body, time);
+      if (b.state === 'done' && unseen(b)) D.drawExclaim(ctx, b.body, time, D.STATE_COLORS.done);
+      else D.drawDots(ctx, b.body, [b.state], time);
+      D.drawLabel(ctx, b.body, label(b));
     }
     for (const b of list) {
       if (b.bubble) D.drawBubble(ctx, b.body, b.bubble.lines, Math.min(1, (b.bubble.until - time) * 3), W);
@@ -413,10 +507,15 @@
   // --- Input --------------------------------------------------------------
 
   function buddyAt(x, y) {
-    const list = [...buddies.values()].filter((b) => !b.dying);
+    const list = drawOrder().filter((b) => !b.dying);
     for (let i = list.length - 1; i >= 0; i--) if (list[i].body.contains(x, y)) return list[i];
-    // Children drawn on top win; main is checked last.
     return null;
+  }
+
+  // The session a slime belongs to: its own, or its mother's.
+  function sessionOf(b) {
+    const m = b.kind === 'child' ? b.mother : b;
+    return m && m.kind === 'mother' && m.session ? m.session : null;
   }
 
   function updateIgnore() {
@@ -460,19 +559,21 @@
     e.preventDefault();
     const b = buddyAt(e.clientX, e.clientY);
     if (!b) return;
-    if (b.isMain && e.altKey) api.openTuning();
-    else if (b.isMain) api.showAppMenu();
-    else api.showSessionMenu(b.key);
+    const s = sessionOf(b);
+    if (b.big && e.altKey) api.openTuning();
+    else if (s) api.showSessionMenu(s.id);
+    else api.showAppMenu();
   });
 
   function click(b) {
-    if (b.isMain) {
+    const s = sessionOf(b);
+    if (s) {
+      // Clicking a slime (or one of its children) opens its session.
+      api.acknowledge(s.id);
+      api.openSession(s.id);
+    } else {
       b.say(summaryLines(), 5);
       api.acknowledge(null);
-    } else {
-      // Clicking a slime opens its session.
-      api.acknowledge(b.key);
-      api.openSession(b.key);
     }
     b.hop(0, -300);
   }
@@ -488,19 +589,19 @@
   api.onWorld((w) => setObstacles(w.obstacles));
 
   api.onCommand((cmd) => {
-    const m = main();
     if (cmd === 'come-here') {
       for (const b of buddies.values()) b.body.teleport(W / 2 + (Math.random() - 0.5) * 200, H / 3);
     } else if (cmd === 'hop') {
       for (const b of buddies.values()) b.hop((Math.random() - 0.5) * 600, -900);
     } else if (cmd === 'hello') {
-      m.say(summaryLines(), 6);
+      const b = buddies.get(HOME) || bigs()[0];
+      if (b) b.say(summaryLines(), 6);
     }
   });
 
   window.addEventListener('resize', resize);
   resize();
-  buddies.set('main', new Buddy('main', W * 0.8, H * 0.5, CFG.mainRadius));
+  buddies.set(HOME, new Buddy(HOME, 'home', W * 0.8, H * 0.5, CFG.mainRadius));
   api.setIgnoreMouse(true);
   ignoring = true;
   api.ready();

@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { DEFAULT_PORT, HOOK_PATH } = require('./hookServer');
 
-const EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Notification', 'Stop', 'SessionEnd'];
+const EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Notification', 'Stop', 'SubagentStart', 'SubagentStop', 'SessionEnd'];
 const TOOL_EVENTS = new Set(['PreToolUse', 'PostToolUse']);
 const MARKER = HOOK_PATH;
 

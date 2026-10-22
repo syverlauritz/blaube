@@ -3,6 +3,7 @@
 //   working - Claude is thinking or running tools
 //   waiting - Claude needs you (permission prompt, question)
 //   done    - Claude finished its turn
+// A session also keeps a list of the subagents it is running right now.
 const path = require('node:path');
 const { EventEmitter } = require('node:events');
 
@@ -33,6 +34,8 @@ class SessionTracker extends EventEmitter {
       return;
     }
 
+    if (prev && this.handleAgent(prev, payload)) return;
+
     const next = nextState(prev ? prev.state : 'idle', payload);
     if (!next) return;
 
@@ -49,12 +52,49 @@ class SessionTracker extends EventEmitter {
       // Once hooks report on a session they're the better source, so the
       // `claude agents` poller leaves it alone.
       hooked: source === 'hook' || !!(prev && prev.hooked),
+      agents: prev ? prev.agents : [],
       updatedAt: this.now(),
     };
     this.sessions.set(id, session);
     if (!prev || prev.state !== session.state) {
       this.emit('change', { session, from: prev ? prev.state : null, to: session.state });
     }
+  }
+
+  // Subagent events only touch the session's list of subagents. Returns true
+  // when the payload is fully handled here. Tool calls made inside a
+  // subagent carry its agent_id, which also catches subagents that were
+  // already running when Blaube started.
+  handleAgent(session, p) {
+    const event = p.hook_event_name;
+    const agentId = p.agent_id ? String(p.agent_id) : '';
+    if (event === 'SubagentStart' || event === 'SubagentStop') {
+      if (!agentId) return true;
+      const had = session.agents.some((a) => a.id === agentId);
+      if (event === 'SubagentStop') {
+        if (had) session.agents = session.agents.filter((a) => a.id !== agentId);
+      } else if (!had) {
+        session.agents = [...session.agents, { id: agentId, type: String(p.agent_type || 'agent'), state: 'working', updatedAt: this.now() }];
+      }
+      session.updatedAt = this.now();
+      if (had !== (event === 'SubagentStart')) this.emit('change', { session, from: session.state, to: session.state });
+      return true;
+    }
+    if (!agentId) return false;
+    const agentState = event === 'Notification' ? 'waiting' : event === 'PreToolUse' || event === 'PostToolUse' ? 'working' : null;
+    if (!agentState) return false;
+    let agent = session.agents.find((a) => a.id === agentId);
+    const changed = !agent || agent.state !== agentState;
+    if (!agent) {
+      agent = { id: agentId, type: String(p.agent_type || 'agent'), state: agentState, updatedAt: 0 };
+      session.agents = [...session.agents, agent];
+    }
+    agent.state = agentState;
+    agent.updatedAt = this.now();
+    session.updatedAt = this.now();
+    if (changed) this.emit('change', { session, from: session.state, to: session.state });
+    // A subagent asking for permission means the session needs you too.
+    return event !== 'Notification';
   }
 
   // Folds in `claude agents --json` output (busy/idle per running session).
@@ -92,8 +132,10 @@ class SessionTracker extends EventEmitter {
     const t = this.now();
     let changed = false;
     for (const [id, s] of this.sessions) {
-      if (t - s.updatedAt > FORGET_MS) { this.sessions.delete(id); changed = true; }
-      else if (s.state === 'working' && t - s.updatedAt > STALE_WORKING_MS) { s.state = 'idle'; changed = true; }
+      if (t - s.updatedAt > FORGET_MS) { this.sessions.delete(id); changed = true; continue; }
+      const agents = s.agents.filter((a) => t - a.updatedAt <= STALE_WORKING_MS);
+      if (agents.length !== s.agents.length) { s.agents = agents; changed = true; }
+      if (s.state === 'working' && t - s.updatedAt > STALE_WORKING_MS) { s.state = 'idle'; changed = true; }
     }
     return changed;
   }
