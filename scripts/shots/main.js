@@ -146,6 +146,15 @@ const SCENES = {
 		size: [1100, 560],
 		motion: { frames: 20, every: 120, drop: 0, still: true, hopAt: [1, 8, 14] },
 	},
+	// Drag one slime through two others: they should get shoved aside and
+	// keep their shape, not get dented.
+	shove: {
+		sessions: [session('s1', 'blaube', 'idle'), session('s2', 'kalkis', 'idle', { color: '#5B8DEF' }), session('s3', 'playground', 'working', { color: '#8BC34A' })],
+		config: { size: 0.85 },
+		wait: 4000,
+		size: [1100, 560],
+		motion: { frames: 24, every: 70, drop: 6, shove: true },
+	},
 	// A helper finishes and heads home: happy eyes and a heart on the way.
 	helperHome: {
 		sessions: [session('hh', 'blaube', 'working', {
@@ -306,7 +315,12 @@ async function shootMotion(win, name, m) {
 	const mouse = (type, x, y) => win.webContents.sendInputEvent({ type, x: Math.round(x), y: Math.round(y), button: 'left', clickCount: 1 });
 	const bigs = await js(`[...__blaube.buddies.values()].filter((b) => b.kind !== 'child').map((b) => b.body.centroid())`);
 	bigs.sort((a, b) => a.x - b.x);
-	const start = bigs[Math.floor(bigs.length / 2)];
+	const start = m.shove ? bigs[0] : bigs[Math.floor(bigs.length / 2)];
+	// How dented the slimes nobody is holding are: the closest any of their
+	// skin gets to their middle, in radii (a round slime is about 1).
+	const dents = () => js(`[...__blaube.buddies.values()].filter((b) => !b.body.grab).map((b) => { const c = b.body.centroid(); let m = Infinity; for (let i = 0; i < b.body.n; i++) m = Math.min(m, Math.hypot(b.body.px[i] - c.x, b.body.py[i] - c.y)); return m / b.body.o.radius; })`);
+	let dent = Infinity;
+	const rest = Math.min(...(await dents()));
 	const looks = () => js(`[...__blaube.buddies.values()].filter((b) => b.lookState).map((b) => ({ look: b.look, a: b.lookState.a, t: b.lookState.t, off: BlaubeLooks.offTop(b) }))`);
 	const drawn = () => js(`[...__blaube.buddies.values()].filter((b) => b.lookDrawn).map((b) => Object.assign({ look: b.look }, b.lookDrawn))`);
 	if (!m.orbit && !m.still) {
@@ -322,13 +336,17 @@ async function shootMotion(win, name, m) {
 			const a = i * 0.45;
 			mouse('mouseMove', start.x + Math.cos(a) * 300, start.y - 80 + Math.sin(a) * 220);
 			if (i === m.hopAt) win.webContents.send('fire', 'command', 'hop');
+		} else if (m.shove) {
+			if (i < m.frames) mouse('mouseMove', start.x + Math.min(1, i / (m.frames * 0.5)) * (win.getContentSize()[0] * 0.7 - start.x), start.y + 10);
 		} else if (i < m.frames) mouse('mouseMove', start.x + Math.sin(i * 0.6) * 170, start.y - 50 - i * 5); // about as fast as a hand
 		if (!m.orbit && !m.still && i === m.frames) mouse('mouseUp', start.x, start.y - 60 - i * 6);
 		await sleep(m.every);
 		frames.push((await win.webContents.capturePage()).toDataURL());
 		track.push(await looks());
 		spots.push(await drawn());
+		if (m.shove) dent = Math.min(dent, ...(await dents()));
 	}
+	if (m.shove) console.log(`check shove: closest skin to a bystander's middle ${dent.toFixed(2)} radii (${rest.toFixed(2)} at rest)${dent < rest * 0.8 ? ' -- dented' : ' ok'}`);
 	// Where each look was drawn, relative to its body: a jump between two
 	// frames in place, angle or length is a visible snap.
 	const spotsBy = {};
@@ -365,7 +383,7 @@ async function shootMotion(win, name, m) {
 	// Lay the frames out in a grid, half size, and save that.
 	const cols = 4, size = win.getContentSize(), fw = Math.round(size[0] / 2), fh = Math.round(size[1] / 2);
 	const sheet = new BrowserWindow({ width: fw * cols, height: fh * Math.ceil(frames.length / cols), show: false, webPreferences: { offscreen: true } });
-	const html = `<body style="margin:0;display:grid;grid-template-columns:repeat(${cols},${fw}px);background:#000">${frames.map((src, i) => `<div style="position:relative"><img src="${src}" style="width:${fw}px;height:${fh}px;display:block"><span style="position:absolute;left:6px;top:4px;color:#fff;font:12px sans-serif">${i + 1}${i >= m.frames ? ' (dropped)' : ''}</span></div>`).join('')}</body>`;
+	const html = `<body style="margin:0;overflow:hidden;display:grid;grid-template-columns:repeat(${cols},${fw}px);background:#000">${frames.map((src, i) => `<div style="position:relative"><img src="${src}" style="width:${fw}px;height:${fh}px;display:block"><span style="position:absolute;left:6px;top:4px;color:#fff;font:12px sans-serif">${i + 1}${i >= m.frames ? ' (dropped)' : ''}</span></div>`).join('')}</body>`;
 	const file = path.join(OUT, '.sheet.html');
 	fs.writeFileSync(file, html);
 	await sheet.loadFile(file);

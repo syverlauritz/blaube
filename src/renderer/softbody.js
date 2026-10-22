@@ -217,6 +217,7 @@
         this.py[i] += vy + g;
       }
 
+      if (this.shoving > 0) this.shoving--;
       this.lastImpact = 0;
       this.contact.left = this.contact.right = this.contact.top = this.contact.bottom = false;
       for (let k = 0; k < o.iterations; k++) {
@@ -412,9 +413,63 @@
       shift(b, (dx / d) * push * (1 - wa), (dy / d) * push * (1 - wa));
       return true;
     }
+    // A slime you're dragging (or one it is shoving along) pushes the other
+    // aside as a whole, so the other keeps its shape instead of getting
+    // dented. Pressing straight down on it still squishes it.
+    const pa = !!a.grab || a.shoving > 0, pb = !!b.grab || b.shoving > 0;
+    if (pa !== pb) {
+      const r = pa ? shove(a, b) : shove(b, a);
+      if (r !== null) return r;
+    }
     const hitA = pushOut(a, b);
     const hitB = pushOut(b, a);
     return hitA || hitB;
+  }
+
+  // The closest point on body b's skin to (x, y).
+  function nearestEdge(b, x, y) {
+    let best = Infinity, cx = x, cy = y;
+    for (let j = 0; j < b.n; j++) {
+      const k = (j + 1) % b.n;
+      const ex = b.px[k] - b.px[j], ey = b.py[k] - b.py[j];
+      const len2 = ex * ex + ey * ey || 1e-6;
+      let t = ((x - b.px[j]) * ex + (y - b.py[j]) * ey) / len2;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const qx = b.px[j] + ex * t, qy = b.py[j] + ey * t;
+      const d = (qx - x) * (qx - x) + (qy - y) * (qy - y);
+      if (d < best) { best = d; cx = qx; cy = qy; }
+    }
+    return { x: cx, y: cy };
+  }
+
+  // Moves body o out of the pusher p in one piece, by the deepest overlap.
+  // If a wall is in the way, o squeezes out upwards instead, like a
+  // pip pressed between two fingers. Returns null to fall back to normal
+  // squishing (pressed down onto the floor).
+  function shove(p, o) {
+    let mx = 0, my = 0, deep = 0;
+    for (let i = 0; i < o.n; i++) {
+      if (!p.contains(o.px[i], o.py[i])) continue;
+      const q = nearestEdge(p, o.px[i], o.py[i]);
+      const dx = q.x - o.px[i], dy = q.y - o.py[i], d = dx * dx + dy * dy;
+      if (d > deep) { deep = d; mx = dx; my = dy; }
+    }
+    for (let i = 0; i < p.n; i++) {
+      if (!o.contains(p.px[i], p.py[i])) continue;
+      const q = nearestEdge(o, p.px[i], p.py[i]);
+      const dx = p.px[i] - q.x, dy = p.py[i] - q.y, d = dx * dx + dy * dy;
+      if (d > deep) { deep = d; mx = dx; my = dy; }
+    }
+    if (!deep) return false;
+    if (my > Math.abs(mx) && o.onFloor()) return null;
+    if ((mx > 0 && o.contact.right) || (mx < 0 && o.contact.left)) { my -= Math.abs(mx) * 1.5; mx = 0; }
+    // Mostly a move, partly a push: it keeps some of the speed and slides on.
+    for (let i = 0; i < o.n; i++) {
+      o.px[i] += mx; o.py[i] += my;
+      o.ox[i] += mx * 0.6; o.oy[i] += my * 0.6;
+    }
+    o.shoving = 3;
+    return true;
   }
 
   // Moves a body's points without changing its velocity.
