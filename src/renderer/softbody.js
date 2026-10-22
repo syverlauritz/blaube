@@ -374,13 +374,14 @@
       }
       const depth = this.o.radius * 0.5;
       for (const l of this.ledges) {
-        if (maxX < l.x0 || minX > l.x1 || maxY <= l.y || maxY > l.y + depth) continue;
+        // Resting a hair above it still counts as standing on it.
+        if (maxX < l.x0 || minX > l.x1 || maxY <= l.y - 2 || maxY > l.y + depth) continue;
         let held = false;
         for (let i = 0; i < n; i++) {
           const d = py[i] - l.y;
-          if (d <= 0 || px[i] < l.x0 || px[i] > l.x1) continue;
-          this.hit(i, 'y', l.y + d * 0.35, first, dt);
+          if (d <= -2 || px[i] < l.x0 || px[i] > l.x1) continue;
           held = true;
+          if (d > 0) this.hit(i, 'y', l.y + d * 0.35, first, dt);
         }
         if (held) { this.contact.bottom = true; this.onLedge = l; }
       }

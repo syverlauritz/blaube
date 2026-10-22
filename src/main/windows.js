@@ -1,6 +1,7 @@
 // The other apps' windows on the desktop, so the slimes can stand on them.
 // A small PowerShell helper lists the visible top-level windows (front to
-// back) a few times a second and prints them when something changed.
+// back) and prints them when something changed: about 60 times a second
+// while a window moves, a dozen times a second otherwise.
 // Windows only; elsewhere this does nothing.
 const { spawn } = require('node:child_process');
 
@@ -43,11 +44,12 @@ public static class BlaubeWins {
 	}
 }
 "@
-$last = ''
+$last = ''; $busy = 0
 while ($true) {
 	$now = [BlaubeWins]::List(__PID__)
-	if ($now -ne $last) { $last = $now; [Console]::Out.WriteLine($now); [Console]::Out.Flush() }
-	Start-Sleep -Milliseconds 60
+	if ($now -ne $last) { $last = $now; $busy = 60; [Console]::Out.WriteLine($now); [Console]::Out.Flush() }
+	# Quick while something is moving (about 60 a second), slower when still.
+	if ($busy -gt 0) { $busy--; Start-Sleep -Milliseconds 8 } else { Start-Sleep -Milliseconds 80 }
 }`;
 
 // Calls onList([{ id, x, y, width, height }], front to back, in physical

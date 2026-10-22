@@ -411,7 +411,23 @@ async function shootMotion(win, name, m) {
 	for (let i = 0; i < m.frames + m.drop; i++) {
 		if (m.still) {
 			if (m.hopAt.includes(i)) win.webContents.send('fire', 'command', 'hop');
-			if (m.flick && i >= 4 && i <= 6) await fakeWindow(250, 400 - (i - 3) * 50);
+			if (m.flick && i === 4) {
+				// Dragged up, slowly then fast, then let go. While it moves, the
+				// slime should stay on the window top (where the app thinks it
+				// is between reports): measure the gap, and if it ever lost it.
+				// (A single miss is the slime's own little hop; three in a row is
+				// the window leaving it behind.)
+				const gaps = [];
+				for (let k = 1; k <= 24; k++) {
+					await fakeWindow(250, 400 - (k <= 12 ? k * 4 : 48 + (k - 12) * 14));
+					await sleep(16);
+					gaps.push(await js('(() => { const b = [...__blaube.buddies.values()][0], l = b.body.onLedge; return l ? l.y - b.body.bbox().maxY : null; })()'));
+				}
+				let run = 0, lost = false;
+				for (const g of gaps) { run = g === null ? run + 1 : 0; if (run >= 3) lost = true; }
+				const worst = Math.max(...gaps.filter((g) => g !== null).map(Math.abs));
+				console.log(`check ride: biggest gap between slime and window top while dragged ${worst.toFixed(1)} px${lost ? ', and it got left behind' : ''}${worst > 8 || lost ? ' -- not following smoothly' : ' ok'}`);
+			}
 			if (m.flick && i === 18) await fakeWindow(800, 120);
 			if (m.ledge && i === 8) await js(`(() => { const b = [...__blaube.buddies.values()][1]; b.body.teleport(420, 420); b.body.impulse(0, -1200, 1 / 120); })()`);
 			if (m.ledge && i >= 18 && i <= 22) await fakeWindow(120 + (i - 17) * 40, 300 - (i - 17) * 12);

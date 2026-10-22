@@ -142,46 +142,83 @@
   // Window tops (from the app): slimes and pets can land on them. A slime
   // standing on a window that moves rides along with it.
   let ledges = [], rawLedges = [];
-  // Windows that moved lately: how fast, and who is riding them. When one
-  // stops, its riders keep going (flick a window up and they fly); yank one
-  // away fast enough and they're left in the air for a moment.
-  const rides = new Map();
-  const YANK = 3000; // px/s
+  // Windows on the move. While one moves the app reports it about 60 times
+  // a second; in between, a moving window top glides on at its last speed
+  // for a moment, so whoever rides it moves smoothly with it. When a window
+  // going up stops, its riders keep going: drag a window up fast and stop,
+  // and they fly. Moved too fast (a yank), they're left in the air.
+  const YANK = 3000; // px/s: sideways faster than this leaves them behind
+  const GLIDE = 0.035; // s: how long a top glides on without news
+  const STOPPED = 0.07; // s: no news for this long means the window stopped
+  const seen = new Map(); // window id -> { wx, y, t, vx, vy }: last report
   function setLedges(list) {
     rawLedges = list || [];
-    const next = CFG.windowLedges === 'Off' ? [] : rawLedges;
-    const t = performance.now() / 1000, moved = new Map();
+    const next = (CFG.windowLedges === 'Off' ? [] : rawLedges).map((m) => Object.assign({}, m));
+    const t = performance.now() / 1000, done = new Set();
     for (const m of next) {
-      const o = ledges.find((l) => l.id === m.id);
-      if (!o || moved.has(m.id) || (o.wx === m.wx && o.y === m.y)) continue;
-      const r = rides.get(m.id), dt = Math.min(0.25, Math.max(0.03, t - (r ? r.t : t - 0.06)));
-      const mv = { dx: m.wx - o.wx, dy: m.y - o.y, vx: (m.wx - o.wx) / dt, vy: (m.y - o.y) / dt };
-      moved.set(m.id, mv);
-      rides.set(m.id, { t, vx: mv.vx, vy: mv.vy, riders: r ? r.riders : new Set() });
+      if (!done.has(m.id)) {
+        done.add(m.id);
+        const s = seen.get(m.id);
+        let vx = 0, vy = 0;
+        if (s && (s.wx !== m.wx || s.y !== m.y)) {
+          const dt = Math.min(0.1, Math.max(0.012, t - s.t)); // still windows are checked every 80 ms
+          vx = (m.wx - s.wx) / dt;
+          vy = (m.y - s.y) / dt;
+        }
+        seen.set(m.id, { wx: m.wx, y: m.y, t, vx, vy });
+      }
+      const s = seen.get(m.id);
+      m.vx = s.vx; m.vy = s.vy; m.t = t;
     }
+    for (const id of seen.keys()) if (!done.has(id)) seen.delete(id);
+    // Riders: put them right with where their window really is.
+    const match = (l) => l && next.filter((m) => m.id === l.id).sort((p, q) => Math.abs(p.y - l.y) - Math.abs(q.y - l.y))[0];
     for (const b of buddies.values()) {
-      const l = b.body.onLedge, mv = l && moved.get(l.id);
-      if (mv) {
-        if (Math.hypot(mv.vx, mv.vy) > YANK) b.surpriseUntil = time + 0.8;
-        else { b.body.shift(mv.dx, mv.dy); rides.get(l.id).riders.add(b); }
+      const l = b.body.onLedge, now = match(l);
+      if (now) {
+        if (Math.hypot(now.vx, now.vy) > YANK) b.surpriseUntil = time + 0.8;
+        else b.body.shift(now.wx - l.wx, Math.min(0, now.y - l.y));
       }
       b.body.setLedges(next);
     }
     for (const p of pets.values()) {
-      const mv = p.ledge && moved.get(p.ledge.id);
-      if (mv && Math.hypot(mv.vx, mv.vy) <= YANK) { p.x += mv.dx; p.y += mv.dy; rides.get(p.ledge.id).riders.add(p); }
+      const now = match(p.ledge);
+      if (now && Math.hypot(now.vx, now.vy) <= YANK) { p.x += now.wx - p.ledge.wx; p.y += Math.min(0, now.y - p.ledge.y); }
     }
     ledges = next;
   }
-  function stopRides() {
+  // Every physics step: moving window tops glide on, carrying their riders.
+  function glideLedges() {
     const t = performance.now() / 1000;
-    for (const [id, r] of rides) {
-      if (t - r.t < 0.15) continue;
-      rides.delete(id);
-      if (Math.hypot(r.vx, r.vy) < 300) continue;
-      for (const x of r.riders) {
-        if (x.task !== undefined) { if (x.ledge && x.ledge.id === id) { x.vx += r.vx * 0.6; x.vy = Math.min(x.vy, r.vy); } }
-        else if (x.body.onLedge && x.body.onLedge.id === id && !x.dying) x.body.impulse(r.vx * 0.6, Math.min(0, r.vy) * 1.6, DT); // springy: it bounces off a bit extra
+    for (const l of ledges) {
+      if (!l.vx && !l.vy) continue;
+      const quiet = t - l.t;
+      if (quiet > STOPPED) {
+        // It stopped: back to where it really is. Riders fly on with the
+        // speed it had (up and away), and slide on a sideways flick.
+        const s = seen.get(l.id);
+        const kick = Math.abs(l.vx) > 300 ? l.vx * 0.6 : 0, up = l.vy < -200 ? l.vy : 0;
+        for (const b of buddies.values()) {
+          if (!b.body.onLedge || b.body.onLedge.id !== l.id || b.body.grab || (!kick && !up)) continue;
+          b.body.impulse(kick, up, DT);
+        }
+        for (const p of pets.values()) if (p.ledge && p.ledge.id === l.id) { p.vx += kick; if (l.vy < -200) p.vy = Math.min(p.vy, l.vy); }
+        if (s) { const dx = s.wx - l.wx; l.x0 += dx; l.x1 += dx; l.wx = s.wx; l.y = s.y; s.vx = s.vy = 0; }
+        l.vx = l.vy = 0;
+        continue;
+      }
+      const dx = quiet < GLIDE && Math.abs(l.vx) <= YANK ? l.vx * DT : 0, dy = quiet < GLIDE ? l.vy * DT : 0;
+      l.x0 += dx; l.x1 += dx; l.wx += dx; l.y += dy;
+      for (const b of buddies.values()) {
+        if (!b.body.onLedge || b.body.onLedge.id !== l.id || b.body.grab) continue;
+        // Carried along exactly; the speed it picks up only shows when the
+        // window stops (see above).
+        b.body.shift(dx, dy);
+      }
+      for (const p of pets.values()) {
+        if (!p.ledge || p.ledge.id !== l.id || p.held) continue;
+        p.x += dx;
+        if (dy < 0) p.y += dy;
       }
     }
   }
@@ -632,6 +669,7 @@
   // --- Simulation ---------------------------------------------------------
 
   function step() {
+    glideLedges();
     stepPets();
     for (const b of [...buddies.values()]) {
       if (b.removed) continue;
@@ -1298,7 +1336,6 @@
       time += DT;
       acc -= DT;
     }
-    stopRides();
     for (const b of buddies.values()) behave(b);
     checkPetting();
     draw();
