@@ -747,6 +747,93 @@
     a.impulse(ux * acc * 0.2 * DT, uy * acc * 0.2 * DT, DT);
   }
 
+  // A big yawn with a little stretch; slimes close by may catch it a moment
+  // later (and pass it on, less and less likely).
+  function yawn(b, seconds, spread) {
+    b.yawnUntil = time + seconds;
+    if (b.body.onFloor() && !b.body.grab) b.body.impulse(0, -180, DT);
+    const c = b.body.centroid();
+    for (const o of buddies.values()) {
+      if (o === b || o.dying || o.kind === 'home' || o.catchYawnAt || time < (o.yawnUntil || -99) + 15) continue;
+      const oc = o.body.centroid();
+      if (Math.hypot(oc.x - c.x, oc.y - c.y) > (b.body.o.radius + o.body.o.radius) * 2.5) continue;
+      if (Math.random() < spread) o.catchYawnAt = time + 0.9 + Math.random() * 1.5;
+    }
+  }
+
+  // Something sitting on its head: a stranger gets glared at and, after a
+  // moment, shrugged off; one of its own helpers gets to stay a while, and
+  // they're both delighted. Whoever is on top looks pleased with itself.
+  function stackPlay(b) {
+    if (b.kind === 'home' || b.dying || b.body.grab) { b.stackedBy = null; return; }
+    const c = b.body.centroid(), r = b.body.o.radius, top = b.body.bbox().minY;
+    let on = null;
+    for (const o of buddies.values()) {
+      if (o === b || o.dying || o.body.grab || o.kind === 'home' || passThrough(o, b)) continue;
+      const oc = o.body.centroid();
+      if (Math.abs(oc.x - c.x) < r * 0.9 && oc.y < c.y - r * 0.5 && o.body.bbox().maxY > top - 6) { on = o; break; }
+    }
+    if (on !== b.stackedBy) { b.stackedBy = on; b.stackSince = time; b.stackReacted = false; b.stackPatience = Math.random() * 2; return; }
+    if (!on) return;
+    const family = on.mother === b || b.mother === on || (on.mother && on.mother === b.mother);
+    const t = time - b.stackSince;
+    if (t > 0.5 && !b.stackReacted) {
+      b.stackReacted = true;
+      on.happyUntil = time + (family ? 3 : 1.5);
+      if (family) {
+        b.happyUntil = time + 3;
+        hearts.push({ x: c.x, y: top - 10, vx: 0, born: time, size: 11 });
+      } else {
+        b.annoyedUntil = time + 1.5;
+        b.annoyedAt = on;
+      }
+    }
+    if (t > (family ? 5 : 2) + b.stackPatience * (family ? 2 : 1)) {
+      // Shrug: a bounce that tips the rider off to one side.
+      const side = Math.sign(on.body.centroid().x - c.x) || (Math.random() < 0.5 ? -1 : 1);
+      if (b.body.onFloor()) b.body.impulse(0, family ? -180 : -280, DT);
+      on.hop(side * (family ? 220 : 380), family ? -300 : -420);
+      b.stackSince = time;
+      b.stackReacted = false;
+    }
+  }
+
+  // Wave the cursor just above an idle slime, like a toy on a string: it
+  // watches, wiggles, then jumps for it. Catch it and a heart pops out.
+  function pounce(b) {
+    if (time < (b.pounceUntil || 0)) {
+      if (!b.caught && b.body.contains(mouse.x, mouse.y)) {
+        b.caught = true;
+        hearts.push({ x: mouse.x, y: mouse.y - 10, vx: 0, born: time, size: 12 });
+      }
+      return;
+    }
+    const calm = b.kind !== 'home' && (b.state === 'idle' || b.state === 'done') && !b.body.grab && !b.merging && !drag && b.body.onFloor() && !b.stackedBy;
+    const c = b.body.centroid(), r = b.body.o.radius, above = b.body.bbox().minY - mouse.y;
+    const teasing = calm && Math.abs(mouse.x - c.x) < r * 1.6 && above > r * 0.2 && above < r * 3.5 && performance.now() / 1000 - mouse.lastMove < 0.3;
+    if (!teasing) {
+      if (b.teaseSince && time - b.teaseLast > 0.5) b.teaseSince = 0;
+      return;
+    }
+    b.teaseLast = time;
+    if (!b.teaseSince) { b.teaseSince = time; b.teaseWait = 0.8 + Math.random() * 0.8; }
+    if (time - b.teaseSince < b.teaseWait || time < (b.nextPounce || 0)) {
+      // Getting ready: a little side-to-side wiggle, like a cat.
+      if (time - b.teaseSince > 0.3 && time > (b.nextWiggle || 0)) {
+        b.wiggleDir = -(b.wiggleDir || 1);
+        b.body.impulse(b.wiggleDir * 70, 30, DT);
+        b.nextWiggle = time + 0.12;
+      }
+      return;
+    }
+    const reach = Math.max(40, c.y - mouse.y);
+    b.hop(Math.max(-500, Math.min(500, (mouse.x - c.x) * 3)), -Math.sqrt(2 * CFG.gravity * reach) * 1.05);
+    b.pounceUntil = time + 0.9;
+    b.caught = false;
+    b.nextPounce = time + 1.5 + Math.random() * 1.5;
+    b.teaseSince = 0;
+  }
+
   // Slimes that are splitting off or merging into another overlap it freely.
   function passThrough(a, b) {
     const pair = (x, y) => (y.splitting && y.parent === x) || (y.merging && y.mergeInto === x);
@@ -768,12 +855,21 @@
     // A long turn (over 5 minutes) gets a yawn and a stretch now and then.
     const since = b.session && b.session.turnStart ? (Date.now() - b.session.turnStart) / 1000 : 0;
     if (b.kind === 'mother' && b.state === 'working' && since > 300 && time > (b.nextYawn || 0)) {
-      if (b.nextYawn) {
-        b.yawnUntil = time + 1.6;
-        if (b.body.onFloor() && !b.body.grab) b.body.impulse(0, -180, DT);
-      }
+      if (b.nextYawn) yawn(b, 1.6, 0.6);
       b.nextYawn = time + 20 + Math.random() * 30;
     }
+    // Left alone for a couple of minutes, idle slimes doze off and yawn.
+    if (b.kind !== 'home' && b.state === 'idle' && performance.now() / 1000 - mouse.lastMove > 120 && time > (b.nextIdleYawn || 0)) {
+      if (b.nextIdleYawn) yawn(b, 1.6, 0.5);
+      b.nextIdleYawn = time + 25 + Math.random() * 40;
+    }
+    // Yawns are catching.
+    if (b.catchYawnAt && time > b.catchYawnAt) {
+      b.catchYawnAt = 0;
+      yawn(b, 1.3, 0.35);
+    }
+    stackPlay(b);
+    pounce(b);
     // A working slime rocks a little now and then while it thinks.
     if (b.kind !== 'home' && b.state === 'working' && !b.merging && !b.body.grab && b.body.onFloor() && time > (b.nextFidget || 0)) {
       if (b.nextFidget) b.hop((Math.random() < 0.5 ? -1 : 1) * (60 + Math.random() * 60), -140 - Math.random() * 90);
@@ -856,6 +952,7 @@
     else if (nodding(b)) { expression = 'happy'; mouth = 'smile'; }
     else if (time < (b.pettedUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
     else if (speed > 900 && !body.onFloor()) { mouth = 'grin'; }
+    else if (time < (b.pounceUntil || 0) || (b.teaseSince && time - b.teaseSince > 0.3)) { mouth = b.caught ? 'grin' : 'o'; }
     else if (time < b.happyUntil) { expression = 'happy'; mouth = 'grin'; }
     else if (st === 'waiting') { expression = 'worried'; mouth = 'o'; }
     else if (b.pain > 0.05) { expression = 'pained'; mouth = 'wobble'; }
@@ -999,7 +1096,7 @@
       const face = faceFor(b);
       if (b.body.o.radius > 12) D.drawFace(ctx, b.body, face);
       b.faceTurn = { x: face.turnX || 0, y: face.turnY || 0 };
-      if (face.expression === 'sleepy') D.drawZzz(ctx, b.body, time);
+      if (face.expression === 'sleepy' && face.mouth !== 'yawn') D.drawZzz(ctx, b.body, time);
       const sweat = ramp(b.fill || 0, CFG.sweatAt, 1);
       if (sweat > 0) D.drawSweat(ctx, b.body, time, sweat);
       if (b.merging && b.kind === 'child' && !b.dying) {
@@ -1301,6 +1398,9 @@
       for (const b of buddies.values()) b.body.teleport(W / 2 + (Math.random() - 0.5) * 200, H / 3);
     } else if (cmd === 'hop') {
       for (const b of buddies.values()) b.hop((Math.random() - 0.5) * 600, -900);
+    } else if (cmd === 'yawn') {
+      const b = bigs()[0];
+      if (b) yawn(b, 1.6, 1);
     } else if (cmd === 'hello') {
       const b = buddies.get(HOME) || bigs()[0];
       if (b) b.say(summaryLines(), 6);

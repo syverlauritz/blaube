@@ -155,6 +155,31 @@ const SCENES = {
 		size: [1100, 560],
 		motion: { frames: 24, every: 70, drop: 6, shove: true },
 	},
+	// Wave the cursor above an idle slime: it watches, then jumps for it.
+	pounce: {
+		sessions: [session('po', 'blaube', 'idle')],
+		config: { size: 0.85 },
+		wait: 3000,
+		size: [900, 560],
+		motion: { frames: 24, every: 80, drop: 0, still: true, hopAt: [], tease: true },
+	},
+	// One slime dropped on another's head: the one below glares, then
+	// shrugs it off. A helper on its mother's head gets to stay, happily.
+	stack: {
+		sessions: [session('st1', 'blaube', 'idle'), session('st2', 'kalkis', 'idle', { color: '#5B8DEF' })],
+		config: { size: 0.85 },
+		wait: 3000,
+		size: [900, 560],
+		motion: { frames: 24, every: 150, drop: 0, still: true, hopAt: [], stack: true },
+	},
+	// One yawns; the ones next to it catch it.
+	yawns: {
+		sessions: [session('y1', 'blaube', 'idle'), session('y2', 'kalkis', 'idle', { color: '#5B8DEF' }), session('y3', 'playground', 'idle', { color: '#8BC34A' })],
+		config: { size: 0.8 },
+		wait: 3000,
+		size: [900, 560],
+		motion: { frames: 20, every: 150, drop: 0, still: true, hopAt: [], commandAt: { 1: 'yawn' }, huddle: true },
+	},
 	// A helper finishes and heads home: happy eyes and a heart on the way.
 	helperHome: {
 		sessions: [session('hh', 'blaube', 'working', {
@@ -320,6 +345,14 @@ async function shootMotion(win, name, m) {
 	// skin gets to their middle, in radii (a round slime is about 1).
 	const dents = () => js(`[...__blaube.buddies.values()].filter((b) => !b.body.grab).map((b) => { const c = b.body.centroid(); let m = Infinity; for (let i = 0; i < b.body.n; i++) m = Math.min(m, Math.hypot(b.body.px[i] - c.x, b.body.py[i] - c.y)); return m / b.body.o.radius; })`);
 	let dent = Infinity;
+	if (m.stack) {
+		// Lift the right one onto the left one's head.
+		await js(`(() => { const l = [...__blaube.buddies.values()].sort((a, b) => a.body.centroid().x - b.body.centroid().x); const c = l[0].body.centroid(); l[1].body.teleport(c.x, c.y - l[0].body.o.radius * 2.1); })()`);
+	}
+	if (m.huddle) {
+		await js(`(() => { const l = [...__blaube.buddies.values()]; l.forEach((b, i) => b.body.teleport(300 + i * 150, 400)); })()`);
+		await sleep(1500);
+	}
 	const rest = Math.min(...(await dents()));
 	const looks = () => js(`[...__blaube.buddies.values()].filter((b) => b.lookState).map((b) => ({ look: b.look, a: b.lookState.a, t: b.lookState.t, off: BlaubeLooks.offTop(b) }))`);
 	const drawn = () => js(`[...__blaube.buddies.values()].filter((b) => b.lookDrawn).map((b) => Object.assign({ look: b.look }, b.lookDrawn))`);
@@ -331,6 +364,12 @@ async function shootMotion(win, name, m) {
 	for (let i = 0; i < m.frames + m.drop; i++) {
 		if (m.still) {
 			if (m.hopAt.includes(i)) win.webContents.send('fire', 'command', 'hop');
+			if (m.commandAt && m.commandAt[i]) win.webContents.send('fire', 'command', m.commandAt[i]);
+			if (m.tease) {
+				// Wiggle above it, low enough to reach.
+				const top = await js(`[...__blaube.buddies.values()][0].body.bbox().minY`);
+				mouse('mouseMove', start.x + Math.sin(i * 1.3) * 25, top - 70 + Math.cos(i * 1.7) * 10);
+			}
 		} else if (m.orbit) {
 			// Round and round the slime, about a second per lap.
 			const a = i * 0.45;
