@@ -63,6 +63,8 @@ class SessionTracker extends EventEmitter {
       state: next.state,
       // While working: 'thinking' (the model) or 'tool' (running a tool).
       activity: activityAfter(event, prev && prev.activity),
+      // When the current turn started (the prompt you sent).
+      turnStart: event === 'UserPromptSubmit' ? this.now() : (prev && prev.turnStart) || 0,
       message: next.message || '',
       seen: prev && prev.state === next.state ? prev.seen : false,
       // Once hooks report on a session they're the better source, so the

@@ -3,6 +3,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('blaube', {
   setHitAreas: (rects, holding) => ipcRenderer.send('hit-areas', rects, !!holding),
   onCursor: (cb) => ipcRenderer.on('cursor', (_e, p) => cb(p)),
+  // On Windows the app reports presses itself (the window's own mouse
+  // events stop arriving after a while); elsewhere the window's are used.
+  usesPointer: process.platform === 'win32',
+  onPointer: (cb) => ipcRenderer.on('pointer', (_e, p) => cb(p)),
   acknowledge: (id) => ipcRenderer.send('acknowledge', id || null),
   showAppMenu: () => ipcRenderer.send('app-menu'),
   showSessionMenu: (id) => ipcRenderer.send('session-menu', id),
@@ -14,5 +18,6 @@ contextBridge.exposeInMainWorld('blaube', {
   onWorld: (cb) => ipcRenderer.on('world', (_e, w) => cb(w)),
   onCommand: (cb) => ipcRenderer.on('command', (_e, c) => cb(c)),
   onSay: (cb) => ipcRenderer.on('say', (_e, m) => cb(m)),
+  onReact: (cb) => ipcRenderer.on('react', (_e, m) => cb(m)),
   onNod: (cb) => ipcRenderer.on('nod', (_e, id) => cb(id)),
 });

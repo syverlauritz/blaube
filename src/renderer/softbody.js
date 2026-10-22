@@ -285,7 +285,7 @@
     // Pulls each point toward the rest shape, rotated to best fit the
     // current pose. This is what makes Blaube spring back to round.
     solveShape() {
-      const { n, px, py, rx, ry } = this;
+      const { n, px, py, ox, oy, rx, ry } = this;
       const c = this.centroid();
       let dot = 0, cross = 0;
       for (let i = 0; i < n; i++) {
@@ -308,13 +308,19 @@
       }
       // Held: turn the whole body back toward upright a little every step,
       // so it leans with the drag but can't swing round like a pendulum.
+      // Both the points and their previous positions turn together, so this
+      // only re-orients the body and adds no speed (turning the points alone
+      // pumped energy in every step and made held slimes shake).
       if (this.grab && Math.abs(this.angle) > 0.12) {
-        const turn = -(this.angle - Math.sign(this.angle) * 0.12) * 0.12;
+        const turn = -(this.angle - Math.sign(this.angle) * 0.12) * 0.03;
         const tc = Math.cos(turn), ts = Math.sin(turn);
         for (let i = 0; i < n; i++) {
           const qx = px[i] - c.x, qy = py[i] - c.y;
           px[i] = c.x + qx * tc - qy * ts;
           py[i] = c.y + qx * ts + qy * tc;
+          const ux = ox[i] - c.x, uy = oy[i] - c.y;
+          ox[i] = c.x + ux * tc - uy * ts;
+          oy[i] = c.y + ux * ts + uy * tc;
         }
       }
     }

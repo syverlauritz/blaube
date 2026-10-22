@@ -176,6 +176,15 @@
           ctx.arc(x, y, ew * 0.8, Math.PI * 0.15, Math.PI * 0.85);
           ctx.stroke();
           break;
+        case 'annoyed': {
+          // Narrowed eyes: the bottom half of an eye.
+          ctx.fillStyle = ink;
+          ctx.beginPath();
+          ctx.ellipse(x, y + eh * 0.05, ew * 0.85, eh * 0.6, 0, 0, Math.PI);
+          ctx.closePath();
+          ctx.fill();
+          break;
+        }
         case 'meditate':
           // Calm, half-closed white eyes.
           ctx.fillStyle = '#fff';
@@ -238,9 +247,10 @@
           }
         }
       }
-      if (s.brows && (face.expression === 'worried' || face.expression === 'concentrate' || face.expression === 'pained')) {
+      if (s.brows && (face.expression === 'worried' || face.expression === 'concentrate' || face.expression === 'pained' || face.expression === 'annoyed')) {
         // Concentrating: level brows that only sometimes pull together.
-        const tilt = face.expression === 'concentrate' ? 0.9 * (face.furrow || 0) : -1;
+        // Annoyed: pulled down hard at the middle.
+        const tilt = face.expression === 'concentrate' ? 0.9 * (face.furrow || 0) : face.expression === 'annoyed' ? 1.1 : -1;
         const lift = face.expression === 'concentrate' ? (face.raise || 0) * eh * 0.4 : 0;
         ctx.beginPath();
         ctx.moveTo(x - ew * side, y - eh * 1.35 + tilt * eh * 0.25 - lift);
@@ -313,6 +323,11 @@
       case 'worried':
         ctx.arc(0, my + r * 0.08, r * 0.08, Math.PI * 1.2, Math.PI * 1.8);
         ctx.stroke();
+        break;
+      case 'yawn':
+        ctx.fillStyle = ink;
+        ctx.ellipse(0, my + r * 0.05, r * 0.09, r * 0.15, 0, 0, Math.PI * 2);
+        ctx.fill();
         break;
       case 'slack':
         // Hanging open, a little lopsided.

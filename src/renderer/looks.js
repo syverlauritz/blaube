@@ -8,7 +8,7 @@
 	// [name, weight]. 'none' keeps a few Blaubes plain.
 	const LOOKS = [
 		['none', 3], ['curl', 2], ['bow', 2], ['antenna', 2], ['horns', 2],
-		['catears', 2], ['bunny', 2], ['sprout', 2],
+		['catears', 2], ['bunny', 3], ['sprout', 2],
 	];
 
 	const hash = (key) => {
@@ -220,7 +220,8 @@
 			// turning left, a look on the right grows and one on the left
 			// shrinks.
 			const near = Math.max(0.55, Math.min(1.45, 1 - (turn.x / r) * 1.6 * Math.sin(round)));
-			ctx.scale(Math.max(0.6, Math.cos(yaw)) * part.scale * near, Math.max(0.45, Math.cos(pitch)) * part.scale * near);
+			const shortest = name === 'bunny' ? 0.85 : 0.45;
+			ctx.scale(Math.max(0.6, Math.cos(yaw)) * part.scale * near, Math.max(shortest, Math.cos(pitch)) * part.scale * near);
 			// Its highest point, about 2.6 u out along the look.
 			const reach = u * 2.6 * part.scale, ang = Math.atan2(p.ny, p.nx) + Math.PI / 2 + swing;
 			const topY = p.y - p.ny * u * sink - reach * Math.cos(ang);
@@ -334,18 +335,32 @@
 					}, 0.3);
 					break;
 				case 'bunny':
-					// Long ears in the body's colour, pink inside; the right one
-					// flops over a little.
-					for (const s of [-1, 1]) at(s * 0.32, () => {
-						ctx.rotate(-s * 0.12 + (s > 0 ? 0.3 : 0) + tip * 0.6);
-						if (back) {
+					// Long floppy ears in the body's colour, pink inside: they
+					// stand up, then fold over halfway, and the folded part
+					// swings on the spring. One flops more than the other.
+					for (const s of [-1, 1]) at(s * 0.3, () => {
+						const stand = u * 3.3, flop = u * 2.9, w = u * 0.85;
+						ctx.rotate(-s * 0.1);
+						const fold = s * (s > 0 ? 1.9 : 1.2) + tip * 1.4;
+						const ear = (inset) => {
+							// Standing part: a soft upright lobe.
 							ctx.beginPath();
-							ctx.ellipse(0, -u * 1.9, u * 0.75, u * 2.4, 0, 0, Math.PI * 2);
+							ctx.ellipse(0, -stand * 0.5, w - inset, stand * 0.62 - inset, 0, 0, Math.PI * 2);
 							ctx.fill();
-						} else {
+							// Folded part: hangs from the top, out and down.
+							ctx.save();
+							ctx.translate(0, -stand * 0.92);
+							ctx.rotate(fold);
+							ctx.beginPath();
+							ctx.ellipse(0, -flop * 0.48, w * 0.95 - inset, flop * 0.58 - inset, 0, 0, Math.PI * 2);
+							ctx.fill();
+							ctx.restore();
+						};
+						if (back) ear(0);
+						else {
 							ctx.fillStyle = 'rgba(255,140,170,0.75)';
 							ctx.beginPath();
-							ctx.ellipse(0, -u * 2.0, u * 0.36, u * 1.7, 0, 0, Math.PI * 2);
+							ctx.ellipse(0, -stand * 0.52, w * 0.42, stand * 0.45, 0, 0, Math.PI * 2);
 							ctx.fill();
 						}
 					});

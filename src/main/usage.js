@@ -78,6 +78,7 @@ function addLine(u, line) {
 // the title (a /rename beats Claude's own), the git branch and the model.
 function addInfo(u, line) {
 	const own = !line.includes('"isSidechain":true');
+	if (own && line.includes('"is_error":true')) u.errors = (u.errors || 0) + 1;
 	if (line.includes('"customTitle"') || line.includes('"aiTitle"')) {
 		try {
 			const e = JSON.parse(line);
@@ -162,10 +163,36 @@ function sessionInfo(file) {
 	return { title: u.customTitle || u.aiTitle || '', branch: u.branch || '', model: u.model || '' };
 }
 
+// How many tool calls in the session have failed so far.
+function sessionErrors(file) {
+	const u = file && readNew(file);
+	return (u && u.errors) || 0;
+}
+
+// Reads on until a transcript and its helpers' are read to the end (at most
+// 64 MB per call); true once they are. A missing file counts as read.
+function catchUp(file) {
+	if (!file) return true;
+	let budget = 16;
+	const done = (f) => {
+		let st;
+		try { st = fs.statSync(f); } catch { return true; }
+		while (budget > 0) {
+			const u = readNew(f);
+			if (!u || u.offset >= st.size) return true;
+			budget--;
+		}
+		return false;
+	};
+	let all = done(file);
+	for (const f of helperFiles(file)) all = done(f) && all;
+	return all;
+}
+
 // Drops cached files that don't belong to one of the given transcripts.
 function forget(keep) {
 	const dirs = [...keep].map((f) => f.replace(/\.jsonl$/, '') + path.sep);
 	for (const f of files.keys()) if (!keep.has(f) && !dirs.some((d) => f.startsWith(d))) files.delete(f);
 }
 
-module.exports = { sessionUsage, sessionTasks, sessionEffort, sessionInfo, lastText, forget };
+module.exports = { sessionUsage, sessionTasks, sessionEffort, sessionInfo, sessionErrors, lastText, catchUp, forget };

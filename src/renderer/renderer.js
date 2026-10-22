@@ -205,7 +205,7 @@
 
   // --- Sessions -----------------------------------------------------------
 
-  function syncSessions(sessions) {
+  function syncSessions(sessions, pending = 0) {
     const live = new Set();
     for (const s of sessions) {
       live.add(s.id);
@@ -214,6 +214,12 @@
       m.merging = null;
       if (s.activity === 'tool' && m.lastActivity !== 'tool') m.pulse = true;
       m.lastActivity = s.activity;
+      const context = s.tokens ? s.tokens.context : 0;
+      if (m.lastContext > 40000 && context < m.lastContext * 0.6) {
+        m.say([{ text: '\u{1F62E}\u{200D}\u{1F4A8}', size: 30 }], 2);
+        if (m.body.onFloor()) m.hop(0, -380);
+      }
+      m.lastContext = context;
       m.session = s;
       m.color = colorFor(m);
       setEffort(m, s.effort);
@@ -240,7 +246,7 @@
       if (b.kind !== 'home' && !live.has(b.key) && !b.merging && !b.dying) b.merging = { since: time };
     }
     // With no sessions left, the biggest one stays behind as the home slime.
-    if (!sessions.length && !buddies.has(HOME)) {
+    if (!sessions.length && !pending && !buddies.has(HOME)) {
       const keep = bigs().sort((a, b) => b.body.o.radius - a.body.o.radius)[0];
       if (keep) {
         rekey(keep, HOME);
@@ -289,7 +295,12 @@
 
   function stepPets() {
     for (const [key, p] of pets) {
-      if (p.dying && time - p.dying > 0.4) { pets.delete(key); continue; }
+      if (p.dying && time - p.dying > 1.1) { pets.delete(key); continue; }
+      if (p.dying && !p.saidBye) {
+        p.saidBye = true;
+        p.vy = -320;
+        hearts.push({ x: p.x, y: p.y - petSize(), vx: 0, born: time, size: 8 });
+      }
       const PET = petSize(), h = PET / 2;
       const floor = floorAt(p.x) - h;
       // Standing on the floor, or on top of a slime.
@@ -331,6 +342,17 @@
         p.vx = Math.sign(dx) * Math.min(520, Math.abs(dx) * 2.4 + 90);
         p.vy = -360 - Math.random() * 180;
         p.va = Math.sign(dx) * 1.5; // leans into the hop
+      } else if (happy && time > (p.nextPlay || (p.nextPlay = time + 4 + Math.random() * 8))) {
+        const mates = [...pets.values()].filter((o) => o !== p && o.owner === p.owner && !o.dying);
+        const mate = mates[Math.floor(Math.random() * mates.length)];
+        if (mate) {
+          const mdx = mate.x - p.x;
+          p.vx = Math.sign(mdx) * Math.min(420, Math.abs(mdx) * 2.6 + 60);
+          p.vy = -300 - Math.random() * 120;
+          p.va = Math.sign(mdx) * 2;
+          p.happy = false; // off to play; it'll come back happy
+        }
+        p.nextPlay = time + 6 + Math.random() * 10;
       }
       p.nextHop = time + 0.5 + Math.random() * 2.2;
     }
@@ -390,7 +412,7 @@
 
   function drawPets() {
     for (const p of pets.values()) {
-      const grow = p.dying ? Math.max(0, 1 - (time - p.dying) / 0.4) : Math.min(1, (time - p.born) / 0.25);
+      const grow = p.dying ? Math.max(0, Math.min(1, 1 - (time - p.dying - 0.7) / 0.4)) : Math.min(1, (time - p.born) / 0.25);
       const color = p.owner ? familyColor(p.owner, p.key) : '#3a4258';
       let lx = 0, ly = 0;
       if (p.owner) {
@@ -402,21 +424,29 @@
       const sway = p.happy ? Math.sin((time - p.heartAt) * 1.8) * 0.13 * Math.min(1, (time - p.heartAt) * 2) : 0;
       D.drawPet(ctx, {
         x: p.x, y: p.y, size: petSize() * grow, angle: p.angle, sway, color, lx, ly,
-        blink: time > p.nextBlink - 0.13, happy: p.happy, heart: p.heartAt >= 0 ? time - p.heartAt : Infinity,
+        blink: time > p.nextBlink - 0.13, happy: p.happy || time < (p.pettedUntil || 0), heart: p.heartAt >= 0 ? time - p.heartAt : Infinity,
       }, floorAt(p.x), CFG.shadow);
     }
   }
 
+  // A new session's slime pops out of the middle of the screen, small, and
+  // grows into its full self as it flies out. Blaube on its own (no
+  // sessions) makes way.
   function addMother(s) {
     const home = buddies.get(HOME);
-    if (home && !home.dying) {
-      rekey(home, s.id);
-      home.kind = 'mother';
-      return home;
+    if (home && !home.dying) { home.dying = time; home.targetR = 2; }
+    const b = new Buddy(s.id, 'mother', W / 2, H * 0.42, CFG.mainRadius * 0.25);
+    buddies.set(s.id, b);
+    b.session = s;
+    b.hop((Math.random() - 0.5) * 700, -300 - Math.random() * 250);
+    for (const o of buddies.values()) {
+      if (o === b || o.dying || o.kind === 'home') continue;
+      o.glanceAt = b;
+      o.glanceUntil = time + 1 + Math.random();
+      o.nextGlance = o.glanceUntil + 2 + Math.random() * 3;
+      if (o.body.onFloor() && !o.body.grab && Math.random() < 0.7) o.hop(0, -250 - Math.random() * 150);
     }
-    const src = bigs()[0];
-    if (!src) return new Buddy(s.id, 'mother', W * 0.8, H * 0.5, CFG.mainRadius);
-    return split(src, s.id, 'mother');
+    return b;
   }
 
   function split(src, key, kind) {
@@ -483,11 +513,18 @@
         if (wantsAttention(b)) b.hop(0, -CFG.waitingHopStrength);
         b.nextHop = time + 2.2;
         break;
-      case 'done':
-        if (wantsAttention(b)) b.hop((Math.random() - 0.5) * 200, -CFG.doneHopStrength * 1.1);
+      case 'done': {
+        const took = b.session && b.session.turnStart ? (Date.now() - b.session.turnStart) / 1000 : 0;
+        if (took > 300) {
+          // A long one: it's earned a little party.
+          const c = b.body.centroid(), top = b.body.bbox().minY;
+          for (let i = 0; i < 7; i++) hearts.push({ x: c.x + (Math.random() - 0.5) * b.body.o.radius * 1.4, y: top - 20 - Math.random() * 30, vx: (Math.random() - 0.5) * 120, rise: 220 + Math.random() * 80, born: time + 0.15 + i * 0.08, size: 9 + Math.random() * 6 });
+          b.hop((Math.random() - 0.5) * 100, -CFG.doneHopStrength * 1.5);
+        } else if (wantsAttention(b)) b.hop((Math.random() - 0.5) * 200, -CFG.doneHopStrength * 1.1);
         b.happyUntil = time + 2.5;
         b.nextHop = time + CFG.doneHopEvery;
         break;
+      }
     }
   }
 
@@ -541,7 +578,9 @@
       b.breathPhase += DT * b.breathRate * 1.5 * b.pain;
       body.areaScale = (1 + CFG.contextInflate * b.fill * b.fill) * (1 + CFG.breathe * Math.sin(time * b.breathRate + b.breathPhase));
       // ...and firmer: more pressure inside, so a full one barely sags.
-      body.o.pressure = CFG.pressure * (1 + CFG.contextTighten * b.fill);
+      // (Capped: past about 0.85 the pressure solve overshoots and the skin
+      // jitters, worst while it's held.)
+      body.o.pressure = Math.min(0.85, CFG.pressure * (1 + CFG.contextTighten * b.fill));
       body.step(DT);
       updateGaze(b);
       b.look = lookOf(b);
@@ -587,7 +626,7 @@
       for (let i = 0; i < list.length; i++) {
         for (let j = i + 1; j < list.length; j++) {
           const a = list[i], b = list[j];
-          if (!passThrough(a, b)) collideBodies(a.body, b.body);
+          if (!passThrough(a, b) && collideBodies(a.body, b.body) && k === 0) bump(a, b);
         }
       }
     }
@@ -665,6 +704,33 @@
     body.impulse(-v.x * 2.5 * DT, ay * DT, DT);
   }
 
+  // Two slimes hit each other: if they met fast enough, the one that got
+  // hit (the slower one) sees stars for a moment.
+  function bump(a, b) {
+    if (time < (a.bumpedAt || 0) + 0.6 || time < (b.bumpedAt || 0) + 0.6) return;
+    const va = a.body.velocity(DT), vb = b.body.velocity(DT);
+    const rel = Math.hypot(va.x - vb.x, va.y - vb.y);
+    if (rel < 300) return;
+    a.bumpedAt = b.bumpedAt = time;
+    const aFaster = Math.hypot(va.x, va.y) > Math.hypot(vb.x, vb.y);
+    const hit = aFaster ? b : a, by = aFaster ? a : b;
+    const family = (a.mother === b || b.mother === a);
+    if (family && rel >= 600) {
+      // Mum catches it: a happy squish and a heart, no stars.
+      const mum = a.mother === b ? b : a, kid = mum === a ? b : a;
+      mum.happyUntil = time + 1.2;
+      kid.happyUntil = time + 1.2;
+      const top = mum.body.bbox().minY;
+      hearts.push({ x: mum.body.centroid().x, y: top - 8, vx: 0, born: time, size: 13 });
+      return;
+    }
+    if (rel >= CFG.dizzySpeed * 0.8) { hit.dizzyUntil = time + 1; return; }
+    if (hit.kind === 'home' || hit.body.grab || time < (hit.annoyCooldown || 0)) return;
+    hit.annoyedUntil = time + 1.1 + Math.random() * 0.6;
+    hit.annoyedAt = by;
+    hit.annoyCooldown = time + 7 + Math.random() * 5;
+  }
+
   // While splitting, a goo strand ties the new slime to the one it came
   // from: a spring whose rest length grows and whose strength fades until
   // it snaps.
@@ -699,12 +765,30 @@
       b.pulse = false;
       if (b.body.onFloor() && !b.body.grab) b.body.impulse(0, 260, DT);
     }
+    // A long turn (over 5 minutes) gets a yawn and a stretch now and then.
+    const since = b.session && b.session.turnStart ? (Date.now() - b.session.turnStart) / 1000 : 0;
+    if (b.kind === 'mother' && b.state === 'working' && since > 300 && time > (b.nextYawn || 0)) {
+      if (b.nextYawn) {
+        b.yawnUntil = time + 1.6;
+        if (b.body.onFloor() && !b.body.grab) b.body.impulse(0, -180, DT);
+      }
+      b.nextYawn = time + 20 + Math.random() * 30;
+    }
     // A working slime rocks a little now and then while it thinks.
     if (b.kind !== 'home' && b.state === 'working' && !b.merging && !b.body.grab && b.body.onFloor() && time > (b.nextFidget || 0)) {
       if (b.nextFidget) b.hop((Math.random() < 0.5 ? -1 : 1) * (60 + Math.random() * 60), -140 - Math.random() * 90);
       b.nextFidget = time + 1.8 + Math.random() * 3;
     }
     if (b.body.grab || !b.body.onFloor() || b.merging || time < b.nextHop) return;
+    if (b.kind === 'child' && b.mother && !b.mother.dying) {
+      const c = b.body.centroid(), mc = b.mother.body.centroid();
+      const dx = mc.x - c.x, far = b.mother.body.o.radius * 2 + b.body.o.radius * 6;
+      if (Math.abs(dx) > far) {
+        b.hop(Math.sign(dx) * Math.min(600, (Math.abs(dx) - far * 0.7) * 1.8 + 120), -380 - Math.random() * 140);
+        b.nextHop = time + 1.4 + Math.random() * 1.6;
+        return;
+      }
+    }
 
     const g = b.glasses;
     if (g) {
@@ -764,9 +848,13 @@
     const speed = Math.hypot(v.x, v.y);
     let expression = 'normal', mouth = 'smile';
     if (time < b.dizzyUntil) { expression = 'dizzy'; mouth = 'flat'; }
+    else if (time < (b.annoyedUntil || 0) && b.annoyedAt && !b.annoyedAt.dying && !body.grab) { expression = 'annoyed'; mouth = 'flat'; }
+    else if (time < (b.yawnUntil || 0)) { expression = 'sleepy'; mouth = 'yawn'; }
+    else if (time < (b.winceUntil || 0)) { expression = 'pained'; mouth = 'wobble'; }
     else if (body.grab) { mouth = 'o'; }
     else if (b.merging && b.kind === 'child') { expression = 'happy'; mouth = 'smile'; }
     else if (nodding(b)) { expression = 'happy'; mouth = 'smile'; }
+    else if (time < (b.pettedUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
     else if (speed > 900 && !body.onFloor()) { mouth = 'grin'; }
     else if (time < b.happyUntil) { expression = 'happy'; mouth = 'grin'; }
     else if (st === 'waiting') { expression = 'worried'; mouth = 'o'; }
@@ -824,14 +912,14 @@
         b.nextGlance = b.nextGlance && Math.random() < 0.2 ? b.glanceUntil + 0.25 + Math.random() * 0.4
           : time + (2 + Math.random() * Math.random() * 12) / b.curiosity;
       }
-      if (b.glanceAt && time < b.glanceUntil && !(b.glanceAt.dying)) {
-        checkIn = true;
-        expression = 'normal';
-        mouth = 'flat';
-      }
     }
-    b.gazeTarget = !checkIn || b.glanceAt === 'you' ? null : b.glanceAt.spot || b.glanceAt.body.centroid();
-    const wantLook = checkIn ? 1 : (st === 'idle' || st === 'done') && expression === 'normal' && effort !== 'low' && !body.grab && !b.bubble ? 1 : 0;
+    if (b.glanceAt && time < (b.glanceUntil || 0) && !b.glanceAt.dying && !body.grab && (expression === 'concentrate' || expression === 'normal' || expression === 'sleepy')) {
+      checkIn = true;
+      if (expression !== 'normal') { expression = 'normal'; mouth = 'flat'; }
+    }
+    const glaring = expression === 'annoyed';
+    b.gazeTarget = glaring ? b.annoyedAt.body.centroid() : !checkIn || b.glanceAt === 'you' ? null : b.glanceAt.spot || b.glanceAt.body.centroid();
+    const wantLook = checkIn || glaring ? 1 : (st === 'idle' || st === 'done') && expression === 'normal' && effort !== 'low' && !body.grab && !b.bubble ? 1 : 0;
     b.lookAmount = (b.lookAmount ?? wantLook) + (wantLook - (b.lookAmount ?? wantLook)) * 0.08;
     return { expression, mouth, blink: b.blink, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: b.pain || 0, nod: nodOf(b), scale: CFG.faceScale, style: CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal',
@@ -925,11 +1013,13 @@
       else if (b.state === 'done' && unseen(b)) D.drawExclaim(ctx, b.body, time, W);
     }
     drawPets();
+    drawHearts();
     for (const b of list) if (b.glasses) D.drawGlasses(ctx, b.glasses.x, b.glasses.y, b.glasses.r, b.glasses.a, CFG);
     // Names and status only show when you hover over a slime.
     for (const b of list) {
-      const lines = b === hovered ? hoverLines(b) : b.bubble ? b.bubble.lines : null;
-      const alpha = b === hovered ? 1 : b.bubble ? Math.min(1, (b.bubble.until - time) * 3) : 0;
+      const showHover = b === hovered && !(time < (b.pettedUntil || 0)); // not while you're petting it
+      const lines = showHover ? hoverLines(b) : b.bubble ? b.bubble.lines : null;
+      const alpha = showHover ? 1 : b.bubble ? Math.min(1, (b.bubble.until - time) * 3) : 0;
       if (lines) D.drawBubble(ctx, b.body, lines, alpha, W);
     }
     if (CFG.debugOverlay) drawDebug(list);
@@ -970,6 +1060,42 @@
   }
 
   let last = performance.now() / 1000, acc = 0;
+  // Petting: rubbing the cursor back and forth over a slime (or a pet),
+  // without clicking, makes it happy: it wiggles and hearts float up.
+  const pet = { target: null, dir: 0, flips: [], lastX: 0 };
+  function checkPetting() {
+    const target = drag ? null : petAt(mouse.x, mouse.y) || buddyAt(mouse.x, mouse.y);
+    const dx = mouse.x - pet.lastX;
+    pet.lastX = mouse.x;
+    if (target !== pet.target) { pet.target = target; pet.flips = []; pet.dir = 0; return; }
+    if (!target || Math.abs(dx) < 2) return;
+    const dir = Math.sign(dx);
+    if (dir !== pet.dir) { pet.flips.push(time); pet.dir = dir; }
+    pet.flips = pet.flips.filter((t) => time - t < 1.2);
+    if (pet.flips.length < 3) return;
+    target.pettedUntil = time + 1.2;
+    if (time > (target.nextHeart || 0)) {
+      target.nextHeart = time + 0.28;
+      const isPet = target.task !== undefined;
+      const c = isPet ? { x: target.x, y: target.y } : target.body.centroid();
+      const top = isPet ? target.y - petSize() : target.body.bbox().minY;
+      hearts.push({ x: c.x + (Math.random() - 0.5) * 30, y: top - 6, vx: (Math.random() - 0.5) * 40, born: time, size: isPet ? 7 : 10 + Math.random() * 4 });
+      if (!isPet && target.body.onFloor()) target.body.impulse(dir * 60, -40, DT);
+      if (isPet && target.vy === 0) target.vy = -140;
+    }
+  }
+
+  // Little hearts floating up and fading (from petting).
+  const hearts = [];
+  function drawHearts() {
+    for (let i = hearts.length - 1; i >= 0; i--) {
+      const h = hearts[i], age = time - h.born;
+      if (age > 1.6) { hearts.splice(i, 1); continue; }
+      if (age < 0) continue; // not out yet (a burst comes out one by one)
+      D.drawHeart(ctx, h.x + h.vx * age + Math.sin(age * 5 + h.born) * 4, h.y - age * (h.rise || 45), h.size, age);
+    }
+  }
+
   function frame() {
     const now = performance.now() / 1000;
     acc += Math.min(0.05, now - last);
@@ -980,6 +1106,7 @@
       acc -= DT;
     }
     for (const b of buddies.values()) behave(b);
+    checkPetting();
     draw();
     updateIgnore();
     requestAnimationFrame(frame);
@@ -1024,7 +1151,7 @@
     api.setHitAreas(rects, !!drag);
   }
 
-  window.addEventListener('mousemove', (e) => {
+  function onMove(e) {
     mouse.x = e.clientX;
     mouse.y = e.clientY;
     mouse.lastMove = performance.now() / 1000;
@@ -1033,9 +1160,9 @@
       if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > 5) drag.moved = true;
     }
     updateIgnore();
-  });
+  }
 
-  window.addEventListener('mousedown', (e) => {
+  function onDown(e) {
     console.log(`[blaube] mousedown ${e.button} at ${e.clientX},${e.clientY} slime=${!!buddyAt(e.clientX, e.clientY)} pet=${!!petAt(e.clientX, e.clientY)}`);
     if (e.button !== 0) return;
     const owner = glassesAt(e.clientX, e.clientY);
@@ -1058,9 +1185,9 @@
     drag = { buddy: b, x0: e.clientX, y0: e.clientY, t0: time, moved: false };
     b.body.startGrab(e.clientX, e.clientY);
     if (b.merging) b.merging.since = time; // being held resets the trip home
-  });
+  }
 
-  window.addEventListener('mouseup', (e) => {
+  function onUp(e) {
     if (e.button !== 0 || !drag) return;
     const tap = !drag.moved && time - drag.t0 < 0.35;
     if (drag.buddy) {
@@ -1089,16 +1216,35 @@
     }
     drag = null;
     updateIgnore();
-  });
+  }
 
-  window.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
+  function onContext(e) {
     const b = buddyAt(e.clientX, e.clientY);
     if (!b) return;
     const s = sessionOf(b);
     if (b.big && e.altKey) api.openTuning();
     else if (s) api.showSessionMenu(s.id);
     else api.showAppMenu();
+  }
+
+  // On Windows the app reports presses (see main.js); elsewhere, and in the
+  // shots script, the window's own mouse events drive the same handlers.
+  const fromApp = !!(api.usesPointer && api.onPointer);
+  if (fromApp) {
+    api.onPointer((p) => {
+      const e = { button: p.button, clientX: p.x, clientY: p.y, altKey: p.alt };
+      if (p.kind === 'down' && p.button === 2) onContext(e);
+      else if (p.kind === 'down') onDown(e);
+      else if (p.button === 0) onUp(e);
+    });
+  } else {
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('mouseup', onUp);
+  }
+  window.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (!fromApp) onContext(e);
   });
 
   function click(b) {
@@ -1117,7 +1263,7 @@
 
   api.onState((s) => {
     settings = s.settings || settings;
-    syncSessions(s.sessions || []);
+    syncSessions(s.sessions || [], s.pending || 0);
   });
 
   api.onConfig(applyConfig);
@@ -1128,6 +1274,14 @@
     b.nodAt = time;
     if (b.body.onFloor()) b.body.impulse(0, 260, DT);
     b.say([{ text: '👍', size: 30 }], 1.6);
+  });
+  if (api.onReact) api.onReact((m) => {
+    const b = buddies.get(m.id);
+    if (!b || m.kind !== 'oops' || time < (b.nextWince || 0)) return;
+    b.nextWince = time + 20;
+    b.winceUntil = time + 0.7;
+    if (b.body.onFloor() && !b.body.grab) b.body.impulse((Math.random() - 0.5) * 120, 120, DT);
+    if (m.count > 1) b.say([{ text: 'oops' }], 1.8);
   });
   if (api.onSay) api.onSay((m) => {
     const b = buddies.get(m.id);
@@ -1155,10 +1309,12 @@
 
   window.addEventListener('resize', resize);
   resize();
-  buddies.set(HOME, new Buddy(HOME, 'home', W * 0.8, H * 0.5, CFG.mainRadius));
+  // No slime yet: it waits for the first state, so it doesn't show Blaube on
+  // its own before we know whether there are sessions to show.
   // The app also reports the cursor, so the eyes follow it even when the
   // window isn't getting mouse moves.
   if (api.onCursor) api.onCursor((p) => {
+    if (fromApp) return onMove({ clientX: p.x, clientY: p.y });
     if (p.x !== mouse.x || p.y !== mouse.y) mouse.lastMove = performance.now() / 1000;
     mouse.x = p.x;
     mouse.y = p.y;

@@ -206,3 +206,16 @@ test('activity events: main session has an empty agentId, a helper has its own',
   t.handle(ev('Stop'));
   assert.deepStrictEqual(seen, [['PreToolUse', ''], ['PreToolUse', 'a1'], ['Notification', ''], ['Stop', '']]);
 });
+
+test('remembers when the current turn started, for "Done in 6m"', () => {
+  let now = 1000;
+  const t = new SessionTracker(() => now);
+  t.handle(ev('UserPromptSubmit'));
+  now = 5000;
+  t.handle(ev('PreToolUse', { tool_name: 'Bash' }));
+  t.handle(ev('Stop'));
+  assert.strictEqual(t.sessions.get('s1').turnStart, 1000);
+  now = 9000;
+  t.handle(ev('UserPromptSubmit'));
+  assert.strictEqual(t.sessions.get('s1').turnStart, 9000);
+});

@@ -250,10 +250,33 @@ function createWindow() {
   win.on('closed', () => { win = null; });
 }
 
+// A session's slime only appears once we know what it really looks like:
+// its transcript read (effort, tokens, title) and the background tasks it
+// left behind checked against what's actually running. Otherwise it would
+// pop in wearing the wrong things and change a moment later.
+const readySessions = new Set(), checkedTasks = new Set(), checkingTasks = new Set();
+const isReady = (s) => readySessions.has(s.id);
+
+function checkSeededTasks(s) {
+  if (checkedTasks.has(s.id) || checkingTasks.has(s.id)) return;
+  const live = s.tasks.filter((t) => !t.demo);
+  if (!live.length) { checkedTasks.add(s.id); return; }
+  checkingTasks.add(s.id);
+  runningTasks(live.map((t) => Object.assign({ pid: s.pid }, t)), (alive) => {
+    checkingTasks.delete(s.id);
+    const cur = tracker.sessions.get(s.id);
+    if (cur && alive) cur.tasks = cur.tasks.filter((t) => t.demo || alive.has(t.id));
+    checkedTasks.add(s.id);
+    refreshUsage();
+  });
+}
+
 function pushState() {
   if (!win) return;
+  const all = tracker.list();
   win.webContents.send('state', {
-    sessions: tracker.list().map((s) => Object.assign({}, s, {
+    pending: all.filter((s) => !isReady(s)).length,
+    sessions: all.filter(isReady).map((s) => Object.assign({}, s, {
       color: colorOf(s),
       tokens: tokens.get(s.id) || null,
       info: usage.sessionInfo(transcriptPath(s)),
@@ -270,6 +293,8 @@ function pushState() {
 // Token usage per session id: { total, context, limit }. Re-read from the
 // transcripts every few seconds; demo sessions get made-up numbers.
 const tokens = new Map();
+// Failed tool calls seen per session, to notice new ones.
+const errorCounts = new Map();
 const demoTokens = new Map();
 // Effort level per session id (and `${id}/${agentId}` for helpers), from
 // the newest call in their transcripts.
@@ -286,10 +311,26 @@ function refreshUsage() {
   for (const s of tracker.list()) {
     const file = transcriptPath(s);
     if (file) files.add(file);
+    for (const a of s.agents) {
+      if (helperFinished(s, a)) { tracker.handle({ session_id: s.id, hook_event_name: 'SubagentStop', agent_id: a.id }); changed = true; }
+    }
+    // Not shown yet: finish reading it first, then check its old tasks.
+    const caughtUp = readySessions.has(s.id) || s.id.startsWith('demo-') || usage.catchUp(file);
     setEffort(s.id, demoEfforts.get(s.id) || usage.sessionEffort(file));
     for (const a of s.agents) setEffort(`${s.id}/${a.id}`, demoEfforts.get(s.id) || usage.sessionEffort(file, a.id));
     const u = demoTokens.get(s.id) || usage.sessionUsage(file);
-    if (!s.tasksSeeded && file && tracker.seedTasks(s.id, usage.sessionTasks(file))) changed = true;
+    // A tool just failed: the slime winces (and says so if it keeps failing).
+    const errs = file ? usage.sessionErrors(file) : 0;
+    if (readySessions.has(s.id) && errorCounts.has(s.id) && errs > errorCounts.get(s.id) && win) {
+      win.webContents.send('react', { id: s.id, kind: 'oops', count: errs - errorCounts.get(s.id) });
+    }
+    errorCounts.set(s.id, errs);
+    if (caughtUp && !s.tasksSeeded && file && tracker.seedTasks(s.id, usage.sessionTasks(file))) changed = true;
+    if (caughtUp && !readySessions.has(s.id)) {
+      if (s.id.startsWith('demo-')) checkedTasks.add(s.id);
+      else checkSeededTasks(s);
+      if (checkedTasks.has(s.id)) { readySessions.add(s.id); changed = true; }
+    }
     const old = tokens.get(s.id);
     if (u && (!old || old.total !== u.total || old.context !== u.context || old.limit !== u.limit)) {
       tokens.set(s.id, u);
@@ -298,6 +339,7 @@ function refreshUsage() {
   }
   for (const id of tokens.keys()) if (!tracker.sessions.has(id)) tokens.delete(id);
   for (const k of efforts.keys()) if (!live.has(k)) efforts.delete(k);
+  for (const set of [readySessions, checkedTasks]) for (const id of set) if (!tracker.sessions.has(id)) set.delete(id);
   usage.forget(files);
   if (changed) pushState();
 }
@@ -351,7 +393,10 @@ function statusBubble({ session: s, agentId, payload: p }) {
     say(describeTool(p.tool_name, p.tool_input || {}), 2.5);
   } else if (event === 'Stop') {
     const said = p.last_assistant_message || usage.lastText(transcriptPath(s));
-    say(said ? 'Done: ' + shorten(said, 80) : 'Done!', 6);
+    // How long the turn took, when it was worth waiting for.
+    const secs = s.turnStart ? (Date.now() - s.turnStart) / 1000 : 0;
+    const took = secs < 20 ? '' : secs < 60 ? ` in ${Math.round(secs)}s` : secs < 3600 ? ` in ${Math.round(secs / 60)}m` : ` in ${Math.floor(secs / 3600)}h ${Math.round((secs % 3600) / 60)}m`;
+    say(said ? `Done${took}: ` + shorten(said, 80) : `Done${took}!`, 6);
   } else if (event === 'Notification' && s.state === 'waiting') {
     say(shorten(p.message || 'I need you', 80), 6);
   }
@@ -373,6 +418,17 @@ function agentDescription(s, a) {
   } catch { return ''; }
 }
 
+// Claude Code marks a helper's info file "finished" when it's done. A
+// background helper can finish without a SubagentStop reaching us, which
+// would leave its slime out forever; this lets it go home.
+function helperFinished(s, a) {
+  const file = transcriptPath(s);
+  if (!file) return false;
+  try {
+    return !!JSON.parse(fs.readFileSync(path.join(path.dirname(file), s.id, 'subagents', `agent-${a.id}.meta.json`), 'utf8')).finished;
+  } catch { return false; }
+}
+
 // Brings the session's own window to the front. If we can't find it, the
 // slime says so; it never opens a second copy of a running session.
 // A log in the app's data folder (blaube.log), for problems that only
@@ -380,6 +436,47 @@ function agentDescription(s, a) {
 const logFile = () => path.join(app.getPath('userData'), 'blaube.log');
 function log(msg) {
   fs.appendFile(logFile(), `${new Date().toISOString()} ${msg}\n`, () => {});
+}
+
+// Watches the left and right mouse buttons system-wide (Windows), calling
+// onButton(0 or 2, down, altHeld) on every change. A small PowerShell loop
+// polls them; it restarts if it ever stops.
+function startButtonWatcher(onButton) {
+  if (process.platform !== 'win32') return;
+  const script = `
+Add-Type @"
+using System.Runtime.InteropServices;
+public static class BlaubeKeys { [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int k); }
+"@
+$l = $false; $r = $false
+while ($true) {
+  $nl = ([BlaubeKeys]::GetAsyncKeyState(1) -band 0x8000) -ne 0
+  $nr = ([BlaubeKeys]::GetAsyncKeyState(2) -band 0x8000) -ne 0
+  if ($nl -ne $l -or $nr -ne $r) {
+    $alt = ([BlaubeKeys]::GetAsyncKeyState(0x12) -band 0x8000) -ne 0
+    if ($nl -ne $l) { $l = $nl; [Console]::Out.WriteLine("0 $([int]$nl) $([int]$alt)") }
+    if ($nr -ne $r) { $r = $nr; [Console]::Out.WriteLine("2 $([int]$nr) $([int]$alt)") }
+    [Console]::Out.Flush()
+  }
+  Start-Sleep -Milliseconds 12
+}`;
+  const start = () => {
+    const child = require('node:child_process').spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    let buf = '';
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      buf += chunk;
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const [b, d, a] = buf.slice(0, i).trim().split(' ').map(Number);
+        buf = buf.slice(i + 1);
+        if (b === 0 || b === 2) onButton(b, d === 1, a === 1);
+      }
+    });
+    child.on('exit', () => setTimeout(start, 2000));
+    app.on('will-quit', () => child.kill());
+  };
+  start();
 }
 
 function goToSession(s) {
@@ -560,7 +657,12 @@ app.whenReady().then(async () => {
   refreshTray();
 
   focus = startFocusWatcher(() => { if (markFrontSeen()) pushState(); });
-  tracker.on('change', () => { markFrontSeen(); pushState(); refreshTray(); });
+  tracker.on('change', () => {
+    markFrontSeen();
+    if (tracker.list().some((s) => !isReady(s))) refreshUsage();
+    pushState();
+    refreshTray();
+  });
   tracker.on('prompt', (s) => { if (win) win.webContents.send('nod', s.id); });
   tracker.on('activity', statusBubble);
   setInterval(() => { if (tracker.prune()) { pushState(); refreshTray(); } }, 30 * 1000);
@@ -607,12 +709,32 @@ app.whenReady().then(async () => {
   // so a switch Windows dropped can't leave the slimes unclickable. It also
   // tells the window where the cursor is, so the eyes can follow it.
   let hitAreas = [], holding = false, clickable = false, applied = 0, cursorX = NaN, cursorY = NaN;
+  const cursorInWindow = () => {
+    const p = screen.getCursorScreenPoint(), wb = win.getContentBounds();
+    const x = p.x - wb.x, y = p.y - wb.y;
+    return { x, y, over: hitAreas.some((r) => x >= r[0] && y >= r[1] && x <= r[2] && y <= r[3]) };
+  };
+  // On Windows the window stops getting its own mouse events after a while
+  // (it still catches the clicks, so they don't fall through), so presses
+  // are watched here and passed on. A press counts if it starts over a
+  // slime; its release always follows it.
+  const pressed = { 0: false, 2: false };
+  startButtonWatcher((button, down, alt) => {
+    if (!win || win.isDestroyed()) return;
+    const { x, y, over } = cursorInWindow();
+    if (down && (over || holding)) {
+      pressed[button] = true;
+      win.webContents.send('pointer', { kind: 'down', button, x, y, alt });
+    } else if (!down && pressed[button]) {
+      pressed[button] = false;
+      win.webContents.send('pointer', { kind: 'up', button, x, y, alt });
+    }
+  });
   ipcMain.on('hit-areas', (_e, rects, hold) => { hitAreas = Array.isArray(rects) ? rects : []; holding = !!hold; });
   setInterval(() => {
     if (!win || win.isDestroyed()) return;
-    const p = screen.getCursorScreenPoint(), wb = win.getContentBounds();
-    const x = p.x - wb.x, y = p.y - wb.y;
-    const over = holding || hitAreas.some((r) => x >= r[0] && y >= r[1] && x <= r[2] && y <= r[3]);
+    const c = cursorInWindow(), x = c.x, y = c.y;
+    const over = holding || c.over;
     const now = Date.now();
     if (over !== clickable || (over && now - applied > 500)) {
       if (over !== clickable) log(`clickable ${over} at ${x},${y}`);
@@ -624,7 +746,7 @@ app.whenReady().then(async () => {
       cursorX = x; cursorY = y;
       win.webContents.send('cursor', { x, y });
     }
-  }, 33);
+  }, 16);
   // Lines the window logs with a [blaube] tag go to blaube.log in the app's
   // data folder, for finding problems we can't see from here.
   try { if (fs.statSync(logFile()).size > 1 << 20) fs.unlinkSync(logFile()); } catch { /* none yet */ }

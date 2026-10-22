@@ -90,6 +90,62 @@ const SCENES = {
 		command: 'hop',
 		thenWait: 3000,
 	},
+	// Rubbing the cursor back and forth over an idle Blaube: it's petted.
+	petting: {
+		sessions: [session('pt', 'blaube', 'idle', { look: 'catears' })],
+		config: { size: 1 },
+		wait: 3500,
+		size: [900, 560],
+		rub: 'pt',
+	},
+	// A second session arrives: the first turns to look at it.
+	greet: {
+		sessions: [session('g1', 'blaube', 'idle', { look: 'bow' })],
+		config: { size: 0.85 },
+		wait: 3500,
+		size: [1100, 560],
+		later: { sessions: [session('g1', 'blaube', 'idle', { look: 'bow' }), session('g2', 'kalkis', 'idle', { color: '#5B8DEF', look: 'antenna' })], wait: 700 },
+	},
+	// A long turn (7 minutes) finishes: a burst of hearts and a big bounce.
+	longDone: {
+		sessions: [session('ld', 'blaube', 'working', { look: 'bunny', turnStart: Date.now() - 420000 })],
+		config: { size: 0.9 },
+		wait: 3500,
+		size: [900, 560],
+		later: { sessions: [session('ld', 'blaube', 'done', { look: 'bunny', turnStart: Date.now() - 420000 })], wait: 500 },
+	},
+	// A background task ends: its pet hops, shows a heart, then shrinks away.
+	petBye: {
+		sessions: [session('pb', 'playground', 'idle', { tasks: [{ id: 't1', command: 'npm run dev' }, { id: 't2', command: 'npm test -- --watch' }] })],
+		wait: 6000,
+		later: { sessions: [session('pb', 'playground', 'idle', { tasks: [{ id: 't1', command: 'npm run dev' }] })], wait: 300 },
+	},
+	// Bunny ears and cat ears side by side, idle and looking up.
+	ears: {
+		sessions: ['bunny', 'catears', 'bunny', 'catears'].map((look, i) => session('ears' + i, look, 'idle', { look })),
+		config: { size: 0.9 },
+		wait: 3500,
+		size: [1300, 560],
+		mouse: [650, 30],
+	},
+	// Two sessions arrive: their slimes pop out of the middle of the screen,
+	// small, already in their own colour and look, and grow as they fly out.
+	spawn: {
+		sessions: [session('sp1', 'blaube', 'working', { look: 'antenna' }), session('sp2', 'kalkis', 'idle', { color: '#5B8DEF', look: 'catears' })],
+		config: { size: 0.85 },
+		wait: 60,
+		size: [1100, 560],
+		motion: { frames: 16, every: 80, drop: 0, still: true, hopAt: [] },
+	},
+	// Helpers jostling: a gentle bump annoys the one that got bumped, and it
+	// glares at whoever did it.
+	jostle: {
+		sessions: [session('jo', 'blaube', 'working', { agents: [1, 2, 3].map((i) => ({ id: 'j' + i, type: 'general-purpose', description: 'Helper ' + i, state: 'working', activity: 'thinking' })) })],
+		config: { size: 0.85 },
+		wait: 4000,
+		size: [1100, 560],
+		motion: { frames: 20, every: 120, drop: 0, still: true, hopAt: [1, 8, 14] },
+	},
 	// A helper finishes and heads home: happy eyes and a heart on the way.
 	helperHome: {
 		sessions: [session('hh', 'blaube', 'working', {
@@ -206,6 +262,14 @@ async function shoot(win, name, scene) {
 	await win.webContents.executeJavaScript(`document.body.style.background = 'linear-gradient(transparent calc(100% - 44px), ${scene.bg ? '#d9d6d0' : '#121316'} 0)'`);
 	fire('state', { sessions: scene.sessions, settings: { hooksInstalled: true } });
 	await sleep(scene.wait || 2500);
+	if (scene.rub) {
+		// Back and forth across the slime's middle, like stroking it.
+		const c = await win.webContents.executeJavaScript(`__blaube.buddies.get(${JSON.stringify(scene.rub)}).body.centroid()`);
+		for (let i = 0; i < 24; i++) {
+			win.webContents.sendInputEvent({ type: 'mouseMove', x: Math.round(c.x + (i % 2 ? 45 : -45)), y: Math.round(c.y - 10) });
+			await sleep(45);
+		}
+	}
 	if (scene.later) {
 		fire('state', { sessions: scene.later.sessions, settings: { hooksInstalled: true } });
 		await sleep(scene.later.wait);
