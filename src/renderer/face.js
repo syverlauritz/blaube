@@ -107,11 +107,23 @@
     [lx, ly] = [lx * ca - ly * sa, lx * sa + ly * ca];
     const ll = Math.hypot(lx, ly) || 1;
     const reach = Math.min(1, ll / (r * 3));
-    const look = 0.45 * reach * s.lookAround;
+    const lookAmount = face.lookAmount ?? 1;
+    const look = 0.45 * reach * s.lookAround * lookAmount;
     const pdx = (lx / ll) * ew * look, pdy = (ly / ll) * eh * look;
+    if (!s.eyeWhites) {
+      // No whites to look around in, so the whole face turns: it slides
+      // toward the mouse and squashes a little that way, like on a ball.
+      const turn = reach * s.lookAround * lookAmount;
+      const dir = Math.atan2(ly, lx);
+      ctx.translate((lx / ll) * r * 0.32 * turn, (ly / ll) * r * 0.24 * turn);
+      ctx.rotate(dir);
+      ctx.scale(1 - 0.22 * Math.min(1, turn), 1);
+      ctx.rotate(-dir);
+    }
 
     const ink = s.faceInk;
     ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.lineWidth = r * 0.06 * s.faceLine;
     ctx.strokeStyle = ink;
 
@@ -124,12 +136,11 @@
           ctx.stroke();
           break;
         case 'dizzy':
+          // Squeezed shut: > on the left eye, < on the right, tips pointing in.
           ctx.beginPath();
-          ctx.moveTo(x - ew * 0.7, y - eh * 0.5); ctx.lineTo(x + ew * 0.5 * side, y);
-          ctx.lineTo(x - ew * 0.7, y + eh * 0.5);
-          if (side < 0) {
-            ctx.moveTo(x + ew * 0.7, y - eh * 0.5); ctx.lineTo(x - ew * 0.5, y); ctx.lineTo(x + ew * 0.7, y + eh * 0.5);
-          }
+          ctx.moveTo(x + side * ew * 0.6, y - eh * 0.55);
+          ctx.lineTo(x - side * ew * 0.6, y);
+          ctx.lineTo(x + side * ew * 0.6, y + eh * 0.55);
           ctx.stroke();
           break;
         case 'concentrate':
@@ -146,16 +157,15 @@
         default: {
           const open = Math.max(0.08, 1 - face.blink);
           if (!s.eyeWhites) {
-            // Solid eyes that move as a whole to look around.
-            const dx = pdx * 0.5, dy = pdy * 0.5;
+            // Solid eyes; the whole face turns to look around instead.
             ctx.fillStyle = ink;
             ctx.beginPath();
-            ctx.ellipse(x + dx, y + dy, ew * 0.8, eh * 0.8 * open, 0, 0, Math.PI * 2);
+            ctx.ellipse(x, y, ew * 0.8, eh * 0.8 * open, 0, 0, Math.PI * 2);
             ctx.fill();
             if (s.eyeShine && open > 0.3) {
               ctx.fillStyle = '#fff';
               ctx.beginPath();
-              ctx.arc(x + dx - ew * 0.25, y + dy - eh * 0.3 * open, ew * 0.22, 0, Math.PI * 2);
+              ctx.arc(x - ew * 0.25, y - eh * 0.3 * open, ew * 0.22, 0, Math.PI * 2);
               ctx.fill();
             }
             break;
@@ -269,6 +279,29 @@
     }
   }
 
+  // Z's that float up from a sleeping slime, growing as they fade away.
+  function drawZzz(ctx, b, t) {
+    const c = b.centroid();
+    const r = b.o.radius;
+    const top = b.bbox().minY;
+    const k = Math.max(0.6, Math.min(1.4, r / 100));
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = 'rgba(0,0,0,0.25)';
+    ctx.shadowBlur = 4;
+    for (let i = 0; i < 3; i++) {
+      const p = (t * 0.4 + i / 3) % 1;
+      const a = Math.min(1, p * 5) * (1 - p);
+      ctx.globalAlpha = a;
+      ctx.font = `800 ${Math.round((11 + p * 13) * k)}px -apple-system, "Segoe UI", system-ui, sans-serif`;
+      ctx.fillStyle = '#fff';
+      ctx.fillText('Z', c.x + r * 0.45 + p * 34 * k + Math.sin(t * 2 + i * 2) * 4, top - p * 60 * k);
+    }
+    ctx.restore();
+  }
+
   // Little "!" bubble that bobs above a slime that finished its work, or a
   // "?" one above a slime waiting for your answer.
   function drawExclaim(ctx, b, t, color, glyph = '!') {
@@ -372,5 +405,5 @@
     ctx.closePath();
   }
 
-  root.BlaubeDraw = { drawShadow, drawBody, vary, drawFace, drawDots, drawThinking, drawExclaim, drawLabel, drawBubble, STATE_COLORS };
+  root.BlaubeDraw = { drawShadow, drawBody, vary, drawFace, drawDots, drawThinking, drawZzz, drawExclaim, drawLabel, drawBubble, STATE_COLORS };
 })(globalThis);

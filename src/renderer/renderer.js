@@ -313,6 +313,7 @@
       if (Math.abs(b.targetR - r) > 0.05) body.setRadius(r + (b.targetR - r) * (b.dying ? 0.08 : 0.02));
       body.areaScale = 1 + CFG.breathe * Math.sin(time * b.breathRate + b.breathPhase);
       body.step(DT);
+      updateGaze(b);
       if (b.splitting) pullStrand(b);
       if (body.lastImpact > CFG.dizzySpeed) b.dizzyUntil = time + 0.9;
 
@@ -393,6 +394,25 @@
     }
   }
 
+  // Where a slime is looking. It chases the mouse on a soft spring (so it
+  // lags and overshoots a little), and now and then its eyes dart a bit off
+  // target and back, like real eyes never quite hold still.
+  function updateGaze(b) {
+    const g = b.gaze || (b.gaze = { x: mouse.x, y: mouse.y, vx: 0, vy: 0, jx: 0, jy: 0, nextDart: time + Math.random() });
+    if (time > g.nextDart) {
+      const r = b.body.o.radius;
+      const dart = Math.random() < 0.7;
+      g.jx = dart ? (Math.random() - 0.5) * r * 0.8 : 0;
+      g.jy = dart ? (Math.random() - 0.5) * r * 0.5 : 0;
+      g.nextDart = time + 0.3 + Math.random() * 1.6;
+    }
+    const k = 45, d = 9;
+    g.vx += (k * (mouse.x + g.jx - g.x) - d * g.vx) * DT;
+    g.vy += (k * (mouse.y + g.jy - g.y) - d * g.vy) * DT;
+    g.x += g.vx * DT;
+    g.y += g.vy * DT;
+  }
+
   function faceFor(b) {
     const st = b.state;
     const body = b.body;
@@ -407,7 +427,11 @@
     else if (st === 'done' && unseen(b)) { expression = 'happy'; mouth = 'grin'; }
     else if (st === 'working') { expression = 'concentrate'; mouth = 'flat'; }
     else if (st === 'idle' && time - mouse.lastMove > 120) { expression = 'sleepy'; mouth = 'flat'; }
-    return { expression, mouth, blink: b.blink, look: mouse, scale: CFG.faceScale, style: CFG };
+    // Only idle, awake slimes look at the mouse; busy ones mind their work.
+    // Eased, so the face glides back instead of snapping.
+    const wantLook = st === 'idle' && expression === 'normal' ? 1 : 0;
+    b.lookAmount = (b.lookAmount ?? wantLook) + (wantLook - (b.lookAmount ?? wantLook)) * 0.08;
+    return { expression, mouth, blink: b.blink, look: b.gaze || mouse, lookAmount: b.lookAmount, scale: CFG.faceScale, style: CFG };
   }
 
   // Big slimes first, so children are drawn on top (and get clicked first).
@@ -438,7 +462,9 @@
     for (const b of list) {
       const glow = wantsAttention(b) && CFG.glow ? D.STATE_COLORS[b.state] : null;
       D.drawBody(ctx, b.body, b.color, { glow, outline: CFG.outline });
-      if (b.body.o.radius > 12) D.drawFace(ctx, b.body, faceFor(b));
+      const face = faceFor(b);
+      if (b.body.o.radius > 12) D.drawFace(ctx, b.body, face);
+      if (face.expression === 'sleepy') D.drawZzz(ctx, b.body, time);
       if (b.kind === 'home' || b.dying) continue;
       if (b.state === 'working') D.drawThinking(ctx, b.body, time);
       if (b.state === 'waiting') D.drawExclaim(ctx, b.body, time, D.STATE_COLORS.waiting, '?');
