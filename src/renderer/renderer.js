@@ -142,23 +142,48 @@
   // Window tops (from the app): slimes and pets can land on them. A slime
   // standing on a window that moves rides along with it.
   let ledges = [], rawLedges = [];
+  // Windows that moved lately: how fast, and who is riding them. When one
+  // stops, its riders keep going (flick a window up and they fly); yank one
+  // away fast enough and they're left in the air for a moment.
+  const rides = new Map();
+  const YANK = 3000; // px/s
   function setLedges(list) {
     rawLedges = list || [];
     const next = CFG.windowLedges === 'Off' ? [] : rawLedges;
+    const t = performance.now() / 1000, moved = new Map();
+    for (const m of next) {
+      const o = ledges.find((l) => l.id === m.id);
+      if (!o || moved.has(m.id) || (o.wx === m.wx && o.y === m.y)) continue;
+      const r = rides.get(m.id), dt = Math.min(0.25, Math.max(0.03, t - (r ? r.t : t - 0.06)));
+      const mv = { dx: m.wx - o.wx, dy: m.y - o.y, vx: (m.wx - o.wx) / dt, vy: (m.y - o.y) / dt };
+      moved.set(m.id, mv);
+      rides.set(m.id, { t, vx: mv.vx, vy: mv.vy, riders: r ? r.riders : new Set() });
+    }
     for (const b of buddies.values()) {
-      const l = b.body.onLedge;
-      if (l) {
-        const now = next.filter((m) => m.id === l.id).sort((p, q) => Math.abs(p.y - l.y) - Math.abs(q.y - l.y))[0];
-        if (now && (now.wx !== l.wx || now.y !== l.y)) b.body.shift(now.wx - l.wx, now.y - l.y);
+      const l = b.body.onLedge, mv = l && moved.get(l.id);
+      if (mv) {
+        if (Math.hypot(mv.vx, mv.vy) > YANK) b.surpriseUntil = time + 0.8;
+        else { b.body.shift(mv.dx, mv.dy); rides.get(l.id).riders.add(b); }
       }
       b.body.setLedges(next);
     }
     for (const p of pets.values()) {
-      const l = p.ledge;
-      const now = l && next.find((m) => m.id === l.id);
-      if (now) { p.x += now.wx - l.wx; p.y += now.y - l.y; }
+      const mv = p.ledge && moved.get(p.ledge.id);
+      if (mv && Math.hypot(mv.vx, mv.vy) <= YANK) { p.x += mv.dx; p.y += mv.dy; rides.get(p.ledge.id).riders.add(p); }
     }
     ledges = next;
+  }
+  function stopRides() {
+    const t = performance.now() / 1000;
+    for (const [id, r] of rides) {
+      if (t - r.t < 0.15) continue;
+      rides.delete(id);
+      if (Math.hypot(r.vx, r.vy) < 300) continue;
+      for (const x of r.riders) {
+        if (x.task !== undefined) { if (x.ledge && x.ledge.id === id) { x.vx += r.vx * 0.6; x.vy = Math.min(x.vy, r.vy); } }
+        else if (x.body.onLedge && x.body.onLedge.id === id && !x.dying) x.body.impulse(r.vx * 0.6, Math.min(0, r.vy) * 1.6, DT); // springy: it bounces off a bit extra
+      }
+    }
   }
 
   function setObstacles(rects) {
@@ -1012,7 +1037,7 @@
     else if (time < (b.annoyedUntil || 0) && b.annoyedAt && !b.annoyedAt.dying && !body.grab) { expression = 'annoyed'; mouth = 'flat'; }
     else if (time < (b.yawnUntil || 0)) { expression = 'sleepy'; mouth = 'yawn'; }
     else if (time < (b.winceUntil || 0)) { expression = 'pained'; mouth = 'wobble'; }
-    else if (body.grab) { mouth = 'o'; }
+    else if (body.grab || time < (b.surpriseUntil || 0)) { mouth = 'o'; }
     else if (b.merging && b.kind === 'child') { expression = 'happy'; mouth = 'smile'; }
     else if (nodding(b)) { expression = 'happy'; mouth = 'smile'; }
     else if (time < (b.pettedUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
@@ -1267,6 +1292,7 @@
       time += DT;
       acc -= DT;
     }
+    stopRides();
     for (const b of buddies.values()) behave(b);
     checkPetting();
     draw();

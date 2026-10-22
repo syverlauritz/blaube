@@ -201,6 +201,15 @@ const SCENES = {
 		size: [1000, 560],
 		motion: { frames: 32, every: 150, drop: 0, still: true, hopAt: [], climb: true },
 	},
+	// Flick a window up and stop: the slime on it flies on up. Then yank
+	// the window sideways, fast: the slime is left in the air, surprised.
+	flick: {
+		sessions: [session('fl', 'blaube', 'idle')],
+		config: { size: 0.85 },
+		wait: 2500,
+		size: [1000, 560],
+		motion: { frames: 28, every: 100, drop: 0, still: true, hopAt: [], flick: true },
+	},
 	// A helper finishes and heads home: happy eyes and a heart on the way.
 	helperHome: {
 		sessions: [session('hh', 'blaube', 'working', {
@@ -375,6 +384,10 @@ async function shootMotion(win, name, m) {
 		win.webContents.send('fire', 'ledges', [{ id: 7, x0: x, x1: x + 420, y, wx: x }]);
 		await js(`(() => { let d = document.getElementById('fakewin'); if (!d) { d = document.createElement('div'); d.id = 'fakewin'; document.body.prepend(d); } d.style.cssText = 'position:fixed;left:${x}px;top:${y}px;width:420px;height:400px;background:#3a3d44;border-top:28px solid #4a4e57;box-sizing:border-box;z-index:-1'; })()`);
 	};
+	if (m.flick) {
+		await fakeWindow(250, 400);
+		await js(`[...__blaube.buddies.values()][0].body.teleport(450, 250)`);
+	}
 	if (m.climb) {
 		await fakeWindow(250, 330);
 		await js(`[...__blaube.buddies.values()].find((b) => b.kind === 'mother').body.teleport(450, 200)`);
@@ -398,6 +411,8 @@ async function shootMotion(win, name, m) {
 	for (let i = 0; i < m.frames + m.drop; i++) {
 		if (m.still) {
 			if (m.hopAt.includes(i)) win.webContents.send('fire', 'command', 'hop');
+			if (m.flick && i >= 4 && i <= 6) await fakeWindow(250, 400 - (i - 3) * 50);
+			if (m.flick && i === 18) await fakeWindow(800, 120);
 			if (m.ledge && i === 8) await js(`(() => { const b = [...__blaube.buddies.values()][1]; b.body.teleport(420, 420); b.body.impulse(0, -1200, 1 / 120); })()`);
 			if (m.ledge && i >= 18 && i <= 22) await fakeWindow(120 + (i - 17) * 40, 300 - (i - 17) * 12);
 			if (m.commandAt && m.commandAt[i]) win.webContents.send('fire', 'command', m.commandAt[i]);

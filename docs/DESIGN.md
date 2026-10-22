@@ -54,6 +54,9 @@ ships that breaks a "must".
 - Expressions and faces are the creative director's call. Judges may note
   how a face reads, but never redesign an approved face.
 - Pets get happy "^ ^" eyes and a heart when they reach their owner.
+- Other apps' windows: a Blaube set or dropped on top of one stays there
+  (falls off only if it wanders off), and can still be thrown anywhere:
+  window tops only catch things coming down onto them, softly.
 
 ## Look and taste notes
 - Simple shapes, generous roundness, consistent proportions relative to the
