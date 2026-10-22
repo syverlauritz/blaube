@@ -459,9 +459,38 @@
       const r = pa ? shove(a, b) : shove(b, a);
       if (r !== null) return r;
     }
+    // Otherwise most of the overlap is taken out by moving both bodies
+    // apart whole (the lighter one more), and only the rest by denting:
+    // squeezed between two others, a slime slides out instead of being
+    // pinched into a wedge.
+    const d = deepest(a, b);
+    if (d) {
+      const wa = b.o.radius ** 2 / (a.o.radius ** 2 + b.o.radius ** 2);
+      shift(a, -d.x * 0.6 * wa, -d.y * 0.6 * wa);
+      shift(b, d.x * 0.6 * (1 - wa), d.y * 0.6 * (1 - wa));
+    }
     const hitA = pushOut(a, b);
     const hitB = pushOut(b, a);
     return hitA || hitB;
+  }
+
+  // The deepest overlap of two bodies, as the move that would take b out
+  // of a; null when they don't overlap.
+  function deepest(a, b) {
+    let mx = 0, my = 0, deep = 0;
+    for (let i = 0; i < b.n; i++) {
+      if (!a.contains(b.px[i], b.py[i])) continue;
+      const q = nearestEdge(a, b.px[i], b.py[i]);
+      const dx = q.x - b.px[i], dy = q.y - b.py[i], dd = dx * dx + dy * dy;
+      if (dd > deep) { deep = dd; mx = dx; my = dy; }
+    }
+    for (let i = 0; i < a.n; i++) {
+      if (!b.contains(a.px[i], a.py[i])) continue;
+      const q = nearestEdge(b, a.px[i], a.py[i]);
+      const dx = a.px[i] - q.x, dy = a.py[i] - q.y, dd = dx * dx + dy * dy;
+      if (dd > deep) { deep = dd; mx = dx; my = dy; }
+    }
+    return deep ? { x: mx, y: my } : null;
   }
 
   // The closest point on body b's skin to (x, y).
@@ -485,20 +514,9 @@
   // pip pressed between two fingers. Returns null to fall back to normal
   // squishing (pressed down onto the floor).
   function shove(p, o) {
-    let mx = 0, my = 0, deep = 0;
-    for (let i = 0; i < o.n; i++) {
-      if (!p.contains(o.px[i], o.py[i])) continue;
-      const q = nearestEdge(p, o.px[i], o.py[i]);
-      const dx = q.x - o.px[i], dy = q.y - o.py[i], d = dx * dx + dy * dy;
-      if (d > deep) { deep = d; mx = dx; my = dy; }
-    }
-    for (let i = 0; i < p.n; i++) {
-      if (!o.contains(p.px[i], p.py[i])) continue;
-      const q = nearestEdge(o, p.px[i], p.py[i]);
-      const dx = p.px[i] - q.x, dy = p.py[i] - q.y, d = dx * dx + dy * dy;
-      if (d > deep) { deep = d; mx = dx; my = dy; }
-    }
-    if (!deep) return false;
+    const d = deepest(p, o);
+    if (!d) return false;
+    let mx = d.x, my = d.y;
     if (my > Math.abs(mx) && o.onFloor()) return null;
     if ((mx > 0 && o.contact.right) || (mx < 0 && o.contact.left)) { my -= Math.abs(mx) * 1.5; mx = 0; }
     // Mostly a move, partly a push: it keeps some of the speed and slides on.

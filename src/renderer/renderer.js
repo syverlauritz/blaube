@@ -583,8 +583,9 @@
         const took = b.session && b.session.turnStart ? (Date.now() - b.session.turnStart) / 1000 : 0;
         if (took > 300) {
           // A long one: it's earned a little party.
-          const c = b.body.centroid(), top = b.body.bbox().minY;
-          for (let i = 0; i < 7; i++) hearts.push({ x: c.x + (Math.random() - 0.5) * b.body.o.radius * 1.4, y: top - 20 - Math.random() * 30, vx: (Math.random() - 0.5) * 120, rise: 220 + Math.random() * 80, born: time + 0.15 + i * 0.08, size: 9 + Math.random() * 6 });
+          // The hearts come out of the top of its head as it jumps, wherever
+          // that is by then.
+          for (let i = 0; i < 7; i++) hearts.push({ from: b, dx: (Math.random() - 0.5) * 1.4, dy: 10 + Math.random() * 30, vx: (Math.random() - 0.5) * 120, rise: 220 + Math.random() * 80, born: time + 0.3 + i * 0.08, size: 9 + Math.random() * 6 });
           b.hop((Math.random() - 0.5) * 100, -CFG.doneHopStrength * 1.5);
         } else if (wantsAttention(b)) b.hop((Math.random() - 0.5) * 200, -CFG.doneHopStrength * 1.1);
         b.happyUntil = time + 2.5;
@@ -1279,6 +1280,11 @@
       const h = hearts[i], age = time - h.born;
       if (age > 1.6) { hearts.splice(i, 1); continue; }
       if (age < 0) continue; // not out yet (a burst comes out one by one)
+      if (h.from) {
+        h.x = h.from.body.centroid().x + h.dx * h.from.body.o.radius;
+        h.y = h.from.body.bbox().minY - h.dy;
+        h.from = null;
+      }
       D.drawHeart(ctx, h.x + h.vx * age + Math.sin(age * 5 + h.born) * 4, h.y - age * (h.rise || 45), h.size, age);
     }
   }
