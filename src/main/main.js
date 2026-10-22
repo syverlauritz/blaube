@@ -701,11 +701,11 @@ app.whenReady().then(async () => {
 
   // The tops of other apps' windows are ledges a slime can land on.
   let lastLedges = '';
-  watchWindows(process.pid, (list) => {
+  watchWindows(process.pid, (list, at) => {
     if (!win || win.isDestroyed()) return;
     const area = currentDisplay().workArea, wb = win.getBounds();
     const dip = list.map((w) => Object.assign({ id: w.id }, screen.screenToDipRect(null, w)));
-    const out = ledges(dip, area).map((l) => ({ id: l.id, x0: l.x0 - wb.x, x1: l.x1 - wb.x, y: l.y - wb.y, wx: l.wx - wb.x }));
+    const out = ledges(dip, area).map((l) => ({ id: l.id, x0: l.x0 - wb.x, x1: l.x1 - wb.x, y: l.y - wb.y, wx: l.wx - wb.x, at }));
     const json = JSON.stringify(out);
     if (json === lastLedges) return;
     lastLedges = json;

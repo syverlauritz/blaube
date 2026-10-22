@@ -143,14 +143,15 @@
   // standing on a window that moves rides along with it.
   let ledges = [], rawLedges = [];
   // Windows on the move. While one moves the app reports it about 60 times
-  // a second; in between, a moving window top glides on at its last speed
-  // for a moment, so whoever rides it moves smoothly with it. When a window
-  // going up stops, its riders keep going: drag a window up fast and stop,
-  // and they fly. Moved too fast (a yank), they're left in the air.
-  const YANK = 3000; // px/s: sideways faster than this leaves them behind
-  const GLIDE = 0.035; // s: how long a top glides on without news
+  // a second (each report says when it was looked at); in between, a
+  // moving window top glides on at its last speed. Riders move with their
+  // window's speed, but, like anything resting on something, they can only
+  // lose speed as fast as gravity takes it: ease off or stop a window going
+  // up and they keep going, tossed exactly as hard as you moved it. Moved
+  // too fast (a yank), they're left in the air.
+  const YANK = 3000; // px/s
   const STOPPED = 0.07; // s: no news for this long means the window stopped
-  const seen = new Map(); // window id -> { wx, y, t, vx, vy }: last report
+  const seen = new Map(); // window id -> { wx, y, t, at, vx, vy }: last report
   function setLedges(list) {
     rawLedges = list || [];
     const next = (CFG.windowLedges === 'Off' ? [] : rawLedges).map((m) => Object.assign({}, m));
@@ -159,23 +160,29 @@
       if (!done.has(m.id)) {
         done.add(m.id);
         const s = seen.get(m.id);
+        // When it was looked at: the app's own clock if it says, else now.
+        const at = m.at !== undefined ? m.at / 1000 : t;
         let vx = 0, vy = 0;
         if (s && (s.wx !== m.wx || s.y !== m.y)) {
-          const dt = Math.min(0.1, Math.max(0.012, t - s.t)); // still windows are checked every 80 ms
+          const dt = Math.min(0.1, Math.max(0.008, at - s.at)); // still windows are checked every 80 ms
           vx = (m.wx - s.wx) / dt;
           vy = (m.y - s.y) / dt;
+          // Smoothed a little: hands (and reports) are jittery.
+          if (s.vx || s.vy) { vx = vx * 0.35 + s.vx * 0.65; vy = vy * 0.35 + s.vy * 0.65; }
         }
-        seen.set(m.id, { wx: m.wx, y: m.y, t, vx, vy });
+        seen.set(m.id, { wx: m.wx, y: m.y, t, at, vx, vy });
       }
       const s = seen.get(m.id);
       m.vx = s.vx; m.vy = s.vy; m.t = t;
     }
     for (const id of seen.keys()) if (!done.has(id)) seen.delete(id);
-    // Riders: put them right with where their window really is.
+    // Riders: keep them with where their window really is (only ever lifting
+    // them: if it's lower, they're in the air above it).
     const match = (l) => l && next.filter((m) => m.id === l.id).sort((p, q) => Math.abs(p.y - l.y) - Math.abs(q.y - l.y))[0];
     for (const b of buddies.values()) {
       const l = b.body.onLedge, now = match(l);
       if (now) {
+        if (l.up !== undefined) now.up = l.up;
         if (Math.hypot(now.vx, now.vy) > YANK) b.surpriseUntil = time + 0.8;
         else b.body.shift(now.wx - l.wx, Math.min(0, now.y - l.y));
       }
@@ -191,34 +198,34 @@
   function glideLedges() {
     const t = performance.now() / 1000;
     for (const l of ledges) {
-      if (!l.vx && !l.vy) continue;
-      const quiet = t - l.t;
-      if (quiet > STOPPED) {
-        // It stopped: back to where it really is. Riders fly on with the
-        // speed it had (up and away), and slide on a sideways flick.
+      if (!l.vx && !l.vy && !l.up) continue;
+      if (t - l.t > STOPPED && (l.vx || l.vy)) {
+        // No news: it stopped. Back to where it really is; riders sliding
+        // with it slide on.
+        for (const b of buddies.values()) if (b.body.onLedge && b.body.onLedge.id === l.id && !b.body.grab && Math.abs(l.vx) > 150) b.body.impulse(l.vx, 0, DT);
+        for (const p of pets.values()) if (p.ledge && p.ledge.id === l.id) p.vx += l.vx;
         const s = seen.get(l.id);
-        const kick = Math.abs(l.vx) > 300 ? l.vx * 0.6 : 0, up = l.vy < -200 ? l.vy : 0;
-        for (const b of buddies.values()) {
-          if (!b.body.onLedge || b.body.onLedge.id !== l.id || b.body.grab || (!kick && !up)) continue;
-          b.body.impulse(kick, up, DT);
-        }
-        for (const p of pets.values()) if (p.ledge && p.ledge.id === l.id) { p.vx += kick; if (l.vy < -200) p.vy = Math.min(p.vy, l.vy); }
         if (s) { const dx = s.wx - l.wx; l.x0 += dx; l.x1 += dx; l.wx = s.wx; l.y = s.y; s.vx = s.vy = 0; }
         l.vx = l.vy = 0;
-        continue;
       }
-      const dx = quiet < GLIDE && Math.abs(l.vx) <= YANK ? l.vx * DT : 0, dy = quiet < GLIDE ? l.vy * DT : 0;
-      l.x0 += dx; l.x1 += dx; l.wx += dx; l.y += dy;
+      const fast = Math.hypot(l.vx, l.vy) > YANK;
+      const dx = fast ? 0 : l.vx * DT;
+      l.x0 += dx; l.x1 += dx; l.wx += dx;
+      if (!fast) l.y += l.vy * DT;
+      // The riders' upward speed: the window's, but never dropping faster
+      // than gravity allows.
+      const window = fast ? 0 : -l.vy;
+      l.up = Math.max(window, (l.up ?? window) - CFG.gravity * DT);
+      if (l.up <= 0 && !l.vx && !l.vy) { l.up = 0; continue; }
       for (const b of buddies.values()) {
         if (!b.body.onLedge || b.body.onLedge.id !== l.id || b.body.grab) continue;
-        // Carried along exactly; the speed it picks up only shows when the
-        // window stops (see above).
-        b.body.shift(dx, dy);
+        b.body.shift(dx, 0);
+        b.body.impulse(0, -l.up - b.body.velocity(DT).y, DT);
       }
       for (const p of pets.values()) {
         if (!p.ledge || p.ledge.id !== l.id || p.held) continue;
         p.x += dx;
-        if (dy < 0) p.y += dy;
+        if (l.up > 0) p.vy = Math.min(p.vy, -l.up);
       }
     }
   }

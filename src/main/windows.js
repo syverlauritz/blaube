@@ -44,17 +44,19 @@ public static class BlaubeWins {
 	}
 }
 "@
-$last = ''; $busy = 0
+$last = ''; $busy = 0; $clock = [Diagnostics.Stopwatch]::StartNew()
 while ($true) {
+	$at = $clock.Elapsed.TotalMilliseconds
 	$now = [BlaubeWins]::List(__PID__)
-	if ($now -ne $last) { $last = $now; $busy = 60; [Console]::Out.WriteLine($now); [Console]::Out.Flush() }
+	if ($now -ne $last) { $last = $now; $busy = 60; [Console]::Out.WriteLine("$([Math]::Round($at, 1))|$now"); [Console]::Out.Flush() }
 	# Quick while something is moving (about 60 a second), slower when still.
 	if ($busy -gt 0) { $busy--; Start-Sleep -Milliseconds 8 } else { Start-Sleep -Milliseconds 80 }
 }`;
 
-// Calls onList([{ id, x, y, width, height }], front to back, in physical
-// screen pixels) whenever the windows move, open or close. Returns a stop
-// function.
+// Calls onList([{ id, x, y, width, height }], at) whenever the windows
+// move, open or close: front to back, in physical screen pixels, and when
+// they were looked at (ms, on the helper's own clock, for working out how
+// fast a window moves). Returns a stop function.
 function watchWindows(skipPid, onList) {
 	if (process.platform !== 'win32') return () => {};
 	let child = null, stopped = false;
@@ -69,7 +71,8 @@ function watchWindows(skipPid, onList) {
 			while ((i = buf.indexOf('\n')) >= 0) {
 				const line = buf.slice(0, i).trim();
 				buf = buf.slice(i + 1);
-				onList(parse(line));
+				const bar = line.indexOf('|');
+				onList(parse(line.slice(bar + 1)), Number(line.slice(0, bar)));
 			}
 		});
 		child.on('exit', () => { if (!stopped) setTimeout(start, 2000); });

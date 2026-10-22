@@ -207,8 +207,8 @@ const SCENES = {
 		sessions: [session('fl', 'blaube', 'idle')],
 		config: { size: 0.85 },
 		wait: 2500,
-		size: [1000, 560],
-		motion: { frames: 28, every: 100, drop: 0, still: true, hopAt: [], flick: true },
+		size: [1000, 1000],
+		motion: { frames: 24, every: 100, drop: 0, still: true, hopAt: [], flick: true },
 	},
 	// A helper finishes and heads home: happy eyes and a heart on the way.
 	helperHome: {
@@ -381,12 +381,12 @@ async function shootMotion(win, name, m) {
 	}
 	// A fake window, drawn behind the slimes, and its top as a ledge.
 	const fakeWindow = async (x, y) => {
-		win.webContents.send('fire', 'ledges', [{ id: 7, x0: x, x1: x + 420, y, wx: x }]);
+		win.webContents.send('fire', 'ledges', [{ id: 7, x0: x, x1: x + 420, y, wx: x, at: Date.now() }]);
 		await js(`(() => { let d = document.getElementById('fakewin'); if (!d) { d = document.createElement('div'); d.id = 'fakewin'; document.body.prepend(d); } d.style.cssText = 'position:fixed;left:${x}px;top:${y}px;width:420px;height:400px;background:#3a3d44;border-top:28px solid #4a4e57;box-sizing:border-box;z-index:-1'; })()`);
 	};
 	if (m.flick) {
-		await fakeWindow(250, 400);
-		await js(`[...__blaube.buddies.values()][0].body.teleport(450, 250)`);
+		await fakeWindow(250, 820);
+		await js(`[...__blaube.buddies.values()][0].body.teleport(450, 650)`);
 	}
 	if (m.climb) {
 		await fakeWindow(250, 330);
@@ -417,18 +417,34 @@ async function shootMotion(win, name, m) {
 				// is between reports): measure the gap, and if it ever lost it.
 				// (A single miss is the slime's own little hop; three in a row is
 				// the window leaving it behind.)
-				const gaps = [];
-				for (let k = 1; k <= 24; k++) {
-					await fakeWindow(250, 400 - (k <= 12 ? k * 4 : 48 + (k - 12) * 14));
+				// Like a hand: speeds up, keeps going, then eases off and stops.
+				const steps = [3, 6, 9, 12, 16, 20, 24, 28, 30, 30, 30, 30, 30, 30, 18, 6];
+				const gaps = [], marks = [];
+				let y = 820;
+				for (const step of steps) {
+					y -= step;
+					await fakeWindow(250, y);
+					marks.push({ y, t: Date.now() });
 					await sleep(16);
-					gaps.push(await js('(() => { const b = [...__blaube.buddies.values()][0], l = b.body.onLedge; return l ? l.y - b.body.bbox().maxY : null; })()'));
+					if (step >= 30) gaps.push(await js('(() => { const b = [...__blaube.buddies.values()][0], l = b.body.onLedge; return l ? l.y - b.body.bbox().maxY : null; })()'));
 				}
 				let run = 0, lost = false;
 				for (const g of gaps) { run = g === null ? run + 1 : 0; if (run >= 3) lost = true; }
 				const worst = Math.max(...gaps.filter((g) => g !== null).map(Math.abs));
 				console.log(`check ride: biggest gap between slime and window top while dragged ${worst.toFixed(1)} px${lost ? ', and it got left behind' : ''}${worst > 8 || lost ? ' -- not following smoothly' : ' ok'}`);
+				// The toss: how high it flies above the window, against a slime
+				// thrown by hand as fast as the window was going (same gravity and
+				// air damping as the physics).
+				let top = Infinity;
+				for (let k = 0; k < 60; k++) { top = Math.min(top, await js('[...__blaube.buddies.values()][0].body.bbox().maxY')); await sleep(16); }
+				const fast = marks.filter((_, k) => steps[k] === 30);
+				const speed = (fast[0].y - fast[fast.length - 1].y) / ((fast[fast.length - 1].t - fast[0].t) / 1000);
+				let ball = 0;
+				for (let v = speed / 120, h = 0; v > 0; v = v * 0.994 - 1950 / 14400) { h += v; ball = h; }
+				const rise = y - top;
+				console.log(`check toss: window going ${Math.round(speed)} px/s up, slime flew ${rise.toFixed(0)} px above it; thrown by hand that fast it would rise ${ball.toFixed(0)} px${rise < ball * 0.6 ? ' -- braked' : ' ok'}`);
 			}
-			if (m.flick && i === 18) await fakeWindow(800, 120);
+			if (m.flick && i === 18) await fakeWindow(800, 500);
 			if (m.ledge && i === 8) await js(`(() => { const b = [...__blaube.buddies.values()][1]; b.body.teleport(420, 420); b.body.impulse(0, -1200, 1 / 120); })()`);
 			if (m.ledge && i >= 18 && i <= 22) await fakeWindow(120 + (i - 17) * 40, 300 - (i - 17) * 12);
 			if (m.commandAt && m.commandAt[i]) win.webContents.send('fire', 'command', m.commandAt[i]);
