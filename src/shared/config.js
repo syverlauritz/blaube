@@ -104,6 +104,7 @@
     ['onTop', 'On', ['On', 'Off'], 0, 0, 'Stay in front of other windows'],
     ['voice', 'On', ['On', 'Off'], 0, 0, 'Babble out loud when they talk'],
     ['voiceVolume', 0.5, 0, 1, 0.05, 'Babble volume'],
+    ['voiceWah', 0.8, 0, 1, 0.05, 'Wah at the start of each note'],
   ];
 
   // Colours you can pick for a Blaube from its right-click menu.

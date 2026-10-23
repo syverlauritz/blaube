@@ -109,7 +109,7 @@
       if (b.speech) b.speech.line.stop();
       const at = audio.ctx.currentTime + 0.03;
       const line = BlaubeVoice.speak(audio.ctx, text, {
-        at, out: audio.out, pitch: BlaubeVoice.pitchFor(b.body.o.radius, !b.big) * (how.higher || 1), seed: BlaubeVoice.hash(b.key), volume: CFG.voiceVolume, pace: how.pace,
+        at, out: audio.out, pitch: BlaubeVoice.pitchFor(b.body.o.radius, !b.big) * (how.higher || 1), seed: BlaubeVoice.hash(b.key), volume: CFG.voiceVolume, wah: CFG.voiceWah, pace: how.pace,
       });
       b.speech = { line, at };
     } catch (e) { b.speech = null; }
@@ -131,7 +131,7 @@
       const volume = CFG.voiceVolume * 1.4 / Math.sqrt(singers.length);
       singers.forEach((b, i) => {
         if (b.speech) b.speech.line.stop();
-        const line = BlaubeVoice.sing(audio.ctx, parts[i].notes, { at, out: audio.out, seed: BlaubeVoice.hash(b.key), volume, vibrato: 28 });
+        const line = BlaubeVoice.sing(audio.ctx, parts[i].notes, { at, out: audio.out, seed: BlaubeVoice.hash(b.key), volume, wah: CFG.voiceWah, vibrato: 28 });
         b.speech = { line, at };
         b.singing = parts[i].role;
       });

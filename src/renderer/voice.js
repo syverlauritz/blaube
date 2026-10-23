@@ -107,7 +107,7 @@
       plan.push({ t, dur, gap, f0: base * Math.pow(2, semis / 12), v: VOWELS[s.vowel], s, last });
       t += dur + gap;
     });
-    return perform(ctx, plan, { at, out, seed, base, volume: (opts.volume ?? 0.5) * (excited ? 1.15 : 1), bend: question ? 1.3 : excited ? 1 : 0.85 });
+    return perform(ctx, plan, { at, out, seed, base, wah: opts.wah, volume: (opts.volume ?? 0.5) * (excited ? 1.15 : 1), bend: question ? 1.3 : excited ? 1 : 0.85 });
   }
 
   // Sings `notes` ([{ t, dur, f0, syl }], seconds from `at`; a syl of '-'
@@ -123,7 +123,7 @@
       const y = tied ? { vowel, consonant: '' } : syllables(n.syl, 1)[0];
       vowel = y.vowel;
       const gap = next ? next.t - (n.t + n.dur) : 1;
-      return { t: at + n.t, dur: n.dur, gap, f0: n.f0, v: VOWELS[y.vowel], s: y, last: !next, legato: !!next && next.syl === '-' && gap < 0.02, hold: true };
+      return { t: at + n.t, dur: n.dur, gap, f0: n.f0, v: VOWELS[y.vowel], s: y, last: !next, legato: !!next && next.syl === '-' && gap < 0.02, tied, hold: true };
     });
     return perform(ctx, plan, Object.assign({}, opts, { at, base: opts.base || (notes[0] && notes[0].f0) || 330, volume: opts.volume ?? 0.5, bend: 1 }));
   }
@@ -161,13 +161,22 @@
     const pre = ctx.createGain();
     saw.connect(pre); sq.connect(sqGain).connect(pre);
     pre.connect(grit);
+    // The wah: a resonant filter that sweeps open at the start of every
+    // syllable ("wa-"), then stays open. o.wah 0..1 is how far shut it
+    // starts.
+    const wah = ctx.createBiquadFilter();
+    wah.type = 'lowpass';
+    wah.Q.value = 9;
+    const wahOpen = Math.min(7000, 2200 + base * 4) * formantShift;
+    wah.frequency.setValueAtTime(wahOpen, at);
+    grit.connect(wah);
 
     // The mouth: three resonances that glide between vowels.
     const mouth = [['f1', 7, 1.2], ['f2', 12, 0.9], ['f3', 14, 0.45]].map(([k, q, g]) => {
       const bp = ctx.createBiquadFilter();
       bp.type = 'bandpass'; bp.Q.value = q;
       const gain = ctx.createGain(); gain.gain.value = g;
-      grit.connect(bp).connect(gain).connect(amp);
+      wah.connect(bp).connect(gain).connect(amp);
       return { k, bp };
     });
     const tone = ctx.createBiquadFilter();
@@ -197,6 +206,11 @@
       // A swell per syllable; inside a word it dips but doesn't stop.
       const floor = p.legato ? 0.7 : p.gap < 0.02 ? 0.25 : 0.0001;
       amp.gain.setTargetAtTime(1, t0, 0.012);
+      const wahAmount = o.wah ?? 0.8;
+      if (wahAmount > 0 && !p.tied) {
+        wah.frequency.setValueAtTime(wahOpen * Math.pow(0.12, wahAmount), t0);
+        wah.frequency.setTargetAtTime(wahOpen, t0, p.hold ? 0.06 : 0.035);
+      }
       amp.gain.setTargetAtTime(floor, t1 - Math.min(p.hold ? 0.06 : 0.04, dur * 0.4), 0.018);
       if (/[stkcfhzxqjdg]/.test(p.s.consonant)) tick(ctx, bus, t0, p.s.consonant);
     }
