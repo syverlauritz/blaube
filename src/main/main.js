@@ -557,10 +557,12 @@ function createWindow() {
   if (TEST) win.setOpacity(0);
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'), TEST ? { query: { debug: '1' } } : undefined);
 
-  const refit = () => { hideTalk(); fitWindow(); refreshDock(); }; // the box would be in the wrong place
+  // The screen changed shape (the Dock, a resolution): the box stays where it
+  // is on screen; only the tail, drawn in this window, needs the new offset.
+  const refit = () => { fitWindow(); refreshDock(); sendTalkRect(); };
   screen.on('display-metrics-changed', refit);
   screen.on('display-added', refit);
-  screen.on('display-removed', refit);
+  screen.on('display-removed', () => { hideTalk(); refit(); }); // it may have been on that screen
   win.on('closed', () => { win = null; });
 }
 
