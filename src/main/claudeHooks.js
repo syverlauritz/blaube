@@ -32,7 +32,7 @@ function hookCommand(port = DEFAULT_PORT) {
 const INBOX_TIMEOUT = 86400; // Claude Code kills an asyncRewake hook after this
 
 function inboxCommand(port = DEFAULT_PORT) {
-  return `in=$(cat); sid=$(printf '%s' "$in" | sed -n 's/.*"session_id" *: *"\\([^"]*\\)".*/\\1/p' | tr -cd 'A-Za-z0-9-'); f="\${TMPDIR:-/tmp}/blaube-inbox-$sid"; echo $$ > "$f"; while :; do out=$(printf '%s' "$in" | curl -s -m ${INBOX_TIMEOUT - 60} -X POST -H "Content-Type: application/json" --data-binary @- http://127.0.0.1:${port}${INBOX_PATH}); rc=$?; if [ $rc -eq 0 ]; then [ -n "$out" ] && { printf '%s\\n' "$out" >&2; exit 2; }; exit 0; fi; [ $rc -eq 28 ] && exit 0; sleep 5; [ "$(cat "$f" 2>/dev/null)" = "$$" ] || exit 0; done`;
+  return `in=$(cat); sid=$(printf '%s' "$in" | sed -n 's/.*"session_id" *: *"\\([^"]*\\)".*/\\1/p' | tr -cd 'A-Za-z0-9-'); f="\${TMPDIR:-/tmp}/blaube-inbox-$sid"; echo $$ > "$f"; while :; do out=$(printf '%s' "$in" | curl -s -m ${INBOX_TIMEOUT - 60} -X POST -H "Content-Type: application/json" --data-binary @- http://127.0.0.1:${port}${INBOX_PATH}); rc=$?; if [ $rc -eq 0 ]; then [ -n "$out" ] && { printf '%s\\n' "$out" >&2; exit 2; }; exit 0; fi; [ $rc -eq 28 ] && exit 0; kill -0 $PPID 2>/dev/null || { rm -f "$f"; exit 0; }; sleep 5; [ "$(cat "$f" 2>/dev/null)" = "$$" ] || exit 0; done`;
 }
 
 // Asks Blaube whether to allow a tool, so you can answer from the slime.
@@ -42,7 +42,9 @@ function inboxCommand(port = DEFAULT_PORT) {
 const PERMISSION_TIMEOUT = 600;
 
 function permissionCommand(port = DEFAULT_PORT) {
-  return `out=$(curl -s -m ${PERMISSION_TIMEOUT - 10} -X POST -H "Content-Type: application/json" -H "X-Blaube-Term: $TERM_PROGRAM" -H "X-Blaube-Entry: $CLAUDE_CODE_ENTRYPOINT" --data-binary @- http://127.0.0.1:${port}${PERMISSION_PATH}); [ -n "$out" ] && printf '%s\\n' "$out"; exit 0`;
+  // (curl runs in the background so that when Claude Code stops this hook,
+  // because the terminal answered, curl stops too and the card goes.)
+  return `in=$(cat); o=$(mktemp); printf '%s' "$in" | curl -s -m ${PERMISSION_TIMEOUT - 10} -X POST -H "Content-Type: application/json" -H "X-Blaube-Term: $TERM_PROGRAM" -H "X-Blaube-Entry: $CLAUDE_CODE_ENTRYPOINT" --data-binary @- -o "$o" http://127.0.0.1:${port}${PERMISSION_PATH} & p=$!; trap 'kill $p 2>/dev/null; rm -f "$o"; exit 0' TERM INT HUP; wait $p; [ -s "$o" ] && cat "$o" && echo; rm -f "$o"; exit 0`;
 }
 
 const permissionHook = (port) => ({ type: 'command', command: permissionCommand(port), timeout: PERMISSION_TIMEOUT });

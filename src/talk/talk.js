@@ -101,7 +101,7 @@
     const e = document.createElement('div');
     e.className = 'msg ' + m.who + (m.status === 'queued' || m.status === 'unsent' ? ' ' + m.status : '') + (fresh ? ' new' : '');
     e.dataset.at = m.at;
-    const cut = m.text.length > MAX;
+    const cut = m.text.length > MAX && !current.owned; // a session Blaube started has nowhere else to read it
     rich(e, cut ? m.text.slice(0, MAX) : m.text);
     const out = [e];
     if (cut) {

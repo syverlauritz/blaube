@@ -47,7 +47,7 @@ class Inbox extends EventEmitter {
     const input = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
     const kind = payload.tool_name === 'AskUserQuestion' && Array.isArray(input.questions) ? 'question'
       : payload.tool_name === 'ExitPlanMode' ? 'plan' : 'tool';
-    list.push({ key: this.nextKey++, kind, input, tool: toolName(payload.tool_name), detail: kind === 'tool' ? describe(payload.tool_name, input) : '', always, reply });
+    list.push({ key: this.nextKey++, kind, input, raw: String(payload.tool_name || ''), tool: toolName(payload.tool_name), detail: kind === 'tool' ? describe(payload.tool_name, input) : '', always, reply });
     this.asks.set(id, list);
     this.emit('change', id);
   }
@@ -154,19 +154,20 @@ class Inbox extends EventEmitter {
     if (!q.length) return '';
     this.queue.delete(id);
     for (const e of q) e.status = 'sent';
-    const text = q.map((e) => e.text).join(' ');
-    this.typed.set(id, text);
+    // As it will be typed: one line (Return would send it early).
+    const text = q.map((e) => e.text).join(' ').replace(/\s*\n\s*/g, ' ');
+    this.typed.set(id, { text, entries: q });
     this.emit('change', id);
     return text;
   }
 
-  // Typing it didn't work: back in the queue.
+  // Typing it didn't work: exactly those messages go back in the queue.
   untake(id, text) {
-    if (this.typed.get(id) !== text) return;
+    const t = this.typed.get(id);
+    if (!t || t.text !== text) return;
     this.typed.delete(id);
-    const back = this.log(id).filter((e) => e.via === 'blaube' && e.status === 'sent' && text.includes(e.text));
-    for (const e of back) e.status = 'queued';
-    if (back.length) this.queue.set(id, back);
+    for (const e of t.entries) e.status = 'queued';
+    this.queue.set(id, [...t.entries, ...(this.queue.get(id) || [])]);
     this.emit('change', id);
   }
 
@@ -202,6 +203,12 @@ class Inbox extends EventEmitter {
     const event = payload.hook_event_name;
     // A session Blaube started tells its own story (say/replied).
     if (this.owned.has(id) && (event === 'UserPromptSubmit' || event === 'Stop')) return;
+    // The terminal answered a permission prompt (the tool ran, or the turn
+    // moved on): take its card off the slime, so it can't be answered twice.
+    if (this.asks.has(id) && (event === 'PostToolUse' || event === 'PostToolUseFailure' || event === 'UserPromptSubmit' || event === 'Stop')) {
+      const same = (a) => event.startsWith('PostToolUse') ? a.raw === payload.tool_name && JSON.stringify(a.input) === JSON.stringify(payload.tool_input || {}) : true;
+      for (const a of (this.asks.get(id) || []).filter(same)) { a.reply(null); this.unasked(id, a.reply); }
+    }
     if (event === 'UserPromptSubmit') {
       // You typed in the terminal: a turn starts, so stop the old hook
       // waiting (its message would land mid-turn); the next Stop asks again.
@@ -211,7 +218,7 @@ class Inbox extends EventEmitter {
       // <task-notification>; that's not something you typed.
       const prompt = String(payload.prompt || '');
       const echo = this.typed.get(id);
-      if (echo && prompt.trim() === echo.trim()) { this.typed.delete(id); this.emit('change', id); } // we typed that
+      if (echo && prompt.trim() === echo.text.trim()) { this.typed.delete(id); this.emit('change', id); } // we typed that
       else if (prompt && !/^\s*<task-notification>/.test(prompt)) this.add(id, { who: 'you', text: prompt, via: 'terminal' });
       else {
         // The wake-up: what the slime sent is in this turn now.
@@ -221,12 +228,13 @@ class Inbox extends EventEmitter {
     } else if (event === 'Stop' && payload.last_assistant_message) {
       // The reply answers the turn that just ended, so it goes above
       // anything sent from the slime that hasn't been read yet.
-      const log = this.logs.get(id) || [];
+      const entry = this.add(id, { who: 'claude', text: String(payload.last_assistant_message) });
+      const log = this.logs.get(id);
+      log.pop();
       let at = log.length;
       while (at > 0 && (log[at - 1].status === 'queued' || log[at - 1].status === 'delivering')) at--;
-      for (const e of log) if (e.status === 'delivering' && log.indexOf(e) < at) e.status = 'sent';
-      const entry = this.add(id, { who: 'claude', text: String(payload.last_assistant_message) });
-      if (at < log.length - 1) { log.splice(log.indexOf(entry), 1); log.splice(at, 0, entry); }
+      for (let i = 0; i < at; i++) if (log[i].status === 'delivering') log[i].status = 'sent';
+      log.splice(at, 0, entry);
       this.emit('reply', id, entry);
     } else if (event === 'SessionEnd') {
       for (const e of this.log(id)) if (e.status === 'queued' || e.status === 'delivering') e.status = 'unsent';

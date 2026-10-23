@@ -1013,7 +1013,15 @@ app.whenReady().then(async () => {
   tracker.on('prompt', (s) => { if (win) win.webContents.send('nod', s.id); });
   tracker.on('change', () => pushTalk(talkId));
   // A turn ended: anything waiting for a session without an inbox hook can be typed now.
-  tracker.on('change', () => { for (const id of inbox.queue.keys()) setTimeout(() => typeQueued(id), 1500); });
+  const typeSoon = new Map();
+  tracker.on('change', (c) => {
+    for (const id of inbox.queue.keys()) {
+      if (typeSoon.has(id)) continue; // one check per session, not one per event
+      typeSoon.set(id, setTimeout(() => { typeSoon.delete(id); typeQueued(id); }, 1500));
+    }
+    // A session gone without saying so (killed, merged back in): its inbox too.
+    if (c && c.to === 'gone' && c.session && inbox.logs.has(c.session.id) && !owned.has(c.session.id)) inbox.observe({ session_id: c.session.id, hook_event_name: 'SessionEnd' });
+  });
   inbox.on('change', (id) => pushTalk(id));
   // A message from the slime went in: its turn starts, as if typed.
   inbox.on('delivered', (id) => {

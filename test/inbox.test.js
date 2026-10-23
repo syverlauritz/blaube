@@ -219,3 +219,47 @@ test('a session without an inbox hook gets its messages typed in, once, and not 
   inbox.untake('s2', t2);
   assert.equal(inbox.view('s2').queued, 1, 'typing failed: back in the queue');
 });
+
+test('a web page can’t talk to Blaube’s server (only hooks can)', async () => {
+  const http = require('node:http');
+  const inbox = new Inbox();
+  const tracker = new SessionTracker();
+  const server = await startHookServer(tracker, 0, inbox);
+  const port = server.address().port;
+  const post = (path, headers, body) => new Promise((done) => {
+    const req = http.request({ host: '127.0.0.1', port, path, method: 'POST', headers }, (res) => { res.resume(); done(res.statusCode); });
+    req.end(body);
+  });
+  try {
+    const fake = JSON.stringify({ session_id: 'evil', hook_event_name: 'SessionStart', cwd: '/x' });
+    assert.equal(await post('/blaube/hook', { 'content-type': 'text/plain', origin: 'https://example.com' }, fake), 403);
+    assert.equal(await post('/blaube/hook/inbox', { 'sec-fetch-site': 'cross-site' }, fake), 403);
+    assert.equal(tracker.sessions.has('evil'), false);
+    assert.equal(await post('/blaube/hook', { 'content-type': 'application/json' }, fake), 204, 'curl (no origin) still works');
+    assert.equal(tracker.sessions.has('evil'), true);
+  } finally { server.closeAllConnections(); server.close(); }
+});
+
+test('a permission answered in the terminal leaves the slime; failed typing re-queues exactly what was taken', () => {
+  const inbox = new Inbox();
+  const got = [];
+  inbox.ask('s1', { tool_name: 'Bash', tool_input: { command: 'npm test' } }, (t) => got.push(t));
+  inbox.ask('s1', { tool_name: 'Bash', tool_input: { command: 'rm -rf build' } }, (t) => got.push(t));
+  inbox.observe({ session_id: 's1', hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'npm test' } });
+  assert.equal(inbox.view('s1').ask.detail, 'rm -rf build', 'only the one that ran went');
+  inbox.observe({ session_id: 's1', hook_event_name: 'Stop', last_assistant_message: 'ok' });
+  assert.equal(inbox.view('s1').ask, null, 'the turn ended: nothing left to answer');
+
+  const t = new Inbox();
+  t.send('s2', 'ok');
+  t.takeForTyping('s2');
+  t.send('s2', 'ok, now ship it');
+  const text = t.takeForTyping('s2');
+  t.untake('s2', text);
+  assert.equal(t.view('s2').queued, 1, '"ok" isn’t sent twice');
+  t.send('s3', 'line one\nline two');
+  const typed = t.takeForTyping('s3');
+  assert.equal(typed, 'line one line two');
+  t.observe({ session_id: 's3', hook_event_name: 'UserPromptSubmit', prompt: typed });
+  assert.equal(t.log('s3').length, 1, 'its echo isn’t logged twice');
+});

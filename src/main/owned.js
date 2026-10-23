@@ -104,13 +104,9 @@ class Owned extends EventEmitter {
     return id;
   }
 
-  // One line of its output.
+  // One line of its output: a finished turn is what Blaube needs.
   read(id, m) {
-    if (m.type === 'system' && m.subtype === 'init') this.emit('ready', id, m);
-    else if (m.type === 'assistant' && m.message && Array.isArray(m.message.content)) {
-      const text = m.message.content.filter((c) => c.type === 'text').map((c) => c.text).join('');
-      if (text) this.emit('text', id, text);
-    } else if (m.type === 'result') {
+    if (m.type === 'result') {
       this.emit('result', id, { text: typeof m.result === 'string' ? m.result : '', error: !!m.is_error, subtype: m.subtype || '' });
     }
   }
@@ -131,8 +127,6 @@ class Owned extends EventEmitter {
     s.proc.stdin.end();
     setTimeout(() => { if (this.sessions.get(id) === s) stop(s.proc); }, 5000);
   }
-
-  endAll() { for (const id of this.list()) this.end(id); }
 
   // Blaube is quitting: stop them now (their conversations are saved).
   killAll() {

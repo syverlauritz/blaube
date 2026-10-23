@@ -38,10 +38,15 @@ test('hook server feeds the tracker', async () => {
   const t = new SessionTracker();
   const server = await startHookServer(t, 0);
   const { port } = server.address();
-  const r = await fetch(`http://127.0.0.1:${port}/blaube/hook`, { method: 'POST', body: JSON.stringify(ev('UserPromptSubmit')) });
-  assert.equal(r.status, 204);
-  assert.equal(t.list()[0].state, 'working');
-  server.close();
+  try {
+    // As a hook sends it (curl: JSON, no browser headers).
+    const status = await new Promise((done) => {
+      const req = require('node:http').request({ host: '127.0.0.1', port, path: '/blaube/hook', method: 'POST', headers: { 'content-type': 'application/json' } }, (res) => { res.resume(); done(res.statusCode); });
+      req.end(JSON.stringify(ev('UserPromptSubmit')));
+    });
+    assert.equal(status, 204);
+    assert.equal(t.list()[0].state, 'working');
+  } finally { server.closeAllConnections(); server.close(); }
 });
 
 test('claude agents polling tracks sessions without hooks, and defers to hooks', () => {
