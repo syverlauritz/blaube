@@ -602,7 +602,7 @@ function pushState() {
         effort: efforts.get(`${s.id}/${a.id}`) || efforts.get(s.id) || defaultEffort(),
       })),
     })),
-    settings: { hooksInstalled: claudeHooks.isInstalled(undefined, PORT) },
+    settings: { hooksInstalled: claudeHooks.isInstalled(undefined, PORT), talked: !!prefs.talked, noClaude: !claudeFound() },
   });
 }
 
@@ -818,32 +818,44 @@ function appMenu() {
   return Menu.buildFromTemplate(appMenuTemplate());
 }
 
+// Blaube's menu: what you came for first (connecting, a new session), then
+// the toys, then how it looks and behaves, then quitting.
 function appMenuTemplate() {
   const installed = claudeHooks.isInstalled(undefined, PORT);
+  const noClaude = !claudeFound();
   return [
     { label: `Blaube ${app.getVersion()}`, enabled: false },
     { type: 'separator' },
-    installed
-      ? { label: 'Claude Code connected ✓', enabled: false }
-      : { label: claudeHooks.hasAnyBlaubeHooks() ? 'Update Claude Code connection…' : 'Connect Claude Code…', click: installHooks },
-    { label: 'Colour', submenu: colorMenu(prefs.config.color, (hex) => setConfig(Object.assign({}, prefs.config, { color: hex }))) },
-    { label: 'Live on display', submenu: displayMenu() },
-    { label: 'Settings…', click: openSettings },
+    ...(noClaude ? [{ label: 'Install Claude Code…', click: () => shell.openExternal(INSTALL_URL) }]
+      : installed ? [] : [{ label: claudeHooks.hasAnyBlaubeHooks() ? 'Update Claude Code connection…' : 'Connect Claude Code…', click: installHooks }]),
     ...newSessionMenu(),
+    { type: 'separator' },
     { label: 'Come here', click: () => send('come-here') },
     { label: 'Everyone hop!', click: () => send('hop') },
     { label: 'Demo sessions', click: runDemo },
     { type: 'separator' },
+    { label: 'Colour', submenu: colorMenu(prefs.config.color, (hex) => setConfig(Object.assign({}, prefs.config, { color: hex }))) },
+    { label: 'Live on display', submenu: displayMenu() },
+    { label: 'Settings…', click: openSettings },
     // Without Accessibility the Dock is a solid strip; with it, its icon row
     // is read so the slimes can bump into its ends.
     ...(process.platform === 'darwin' && !systemPreferences.isTrustedAccessibilityClient(false)
       ? [{ label: 'Bump into the Dock’s sides…', click: askDockAccess }] : []),
     { label: 'Open at login', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: (i) => app.setLoginItemSettings({ openAtLogin: i.checked }) },
-    ...(installed ? [{ label: 'Reconnect Claude Code', click: installHooks }, { label: 'Disconnect Claude Code', click: uninstallHooks }] : []),
+    ...(installed ? [{ label: 'Claude Code', submenu: [
+      { label: 'Connected ✓', enabled: false },
+      { label: 'Reconnect', click: installHooks },
+      { label: 'Disconnect…', click: uninstallHooks },
+    ] }] : []),
     { type: 'separator' },
     { label: 'Quit Blaube', role: 'quit' },
   ];
 }
+
+// Whether Claude Code is on this computer at all (where its installers put
+// it, or on your shell's PATH).
+const INSTALL_URL = 'https://docs.claude.com/en/docs/claude-code/setup';
+const claudeFound = () => !!(findClaude() || owned.shellPath() || TEST);
 
 function sessionMenu(id) {
   const s = tracker.sessions.get(id);
@@ -856,13 +868,13 @@ function sessionMenu(id) {
     { label: `${word}${s.message && s.state === 'waiting' ? ': ' + s.message : ''}`, enabled: false },
     ...(effort ? [{ label: effort, enabled: false }] : []),
     { type: 'separator' },
+    { label: 'Talk', enabled: !isDemo, click: () => win && win.webContents.send('open-talk', id) },
     ...(owned.has(id) ? [
-      { label: 'Talk', click: () => win && win.webContents.send('open-talk', id) },
       { label: 'Continue in terminal', click: () => continueInTerminal(s) },
       { label: 'End session', click: () => endOwned(s) },
     ] : [
-      { label: 'Go to session', enabled: !isDemo, click: () => goToSession(s) },
-      { label: 'Resume in new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
+      { label: 'Go to its terminal', sublabel: process.platform === 'darwin' ? '⌥-click the slime' : 'Alt-click the slime', enabled: !isDemo, click: () => goToSession(s) },
+      { label: 'Open in a new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
     ]),
     { label: 'Copy resume command', click: () => clipboard.writeText(`cd "${s.cwd}" && ${resumeCommand(s.id)}`) },
     { label: 'Open project folder', enabled: !!s.cwd, click: () => shell.openPath(s.cwd) },
@@ -870,7 +882,7 @@ function sessionMenu(id) {
     { label: 'Colour', submenu: colorMenu(colorOf(s) || prefs.config.color, (hex) => { prefs.colors[colorKey(s)] = hex; savePrefs(); pushState(); }) },
     { label: 'Blaube', submenu: appMenuTemplate() },
     { type: 'separator' },
-    { label: 'Merge back in', click: () => tracker.dismiss(id) },
+    { label: 'Hide this slime', toolTip: 'Until its session ends', click: () => tracker.dismiss(id) },
   ]);
 }
 
@@ -910,7 +922,13 @@ async function installHooks() {
   pushState();
 }
 
-function uninstallHooks() {
+async function uninstallHooks() {
+  const { response } = await dialog.showMessageBox({
+    type: 'question', buttons: ['Disconnect', 'Cancel'], defaultId: 1, cancelId: 1,
+    message: 'Disconnect Blaube from Claude Code?',
+    detail: 'Blaube’s hooks come out of your Claude Code settings. The slimes stop knowing what your sessions are doing, and you can’t talk to them from here, until you connect again.',
+  });
+  if (response !== 0) return;
   try {
     claudeHooks.uninstall();
   } catch (e) {
@@ -1053,7 +1071,12 @@ app.whenReady().then(async () => {
     log(`session ${id} ended (${signal || code})${err ? ': ' + err.slice(0, 300) : ''}`);
     // It stopped with an error before you could say anything: say why.
     if ((code || signal) && s && !TEST && inbox.log(id).length === 0) {
-      dialog.showMessageBox({ type: 'warning', message: 'Claude Code couldn’t start there.', detail: err || `It stopped right away (${signal || `exit code ${code}`}).` });
+      if (/ENOENT|not found/i.test(err) && !claudeFound()) {
+        dialog.showMessageBox({ type: 'warning', buttons: ['Install Claude Code…', 'OK'], defaultId: 0, cancelId: 1, message: 'Blaube can’t find Claude Code on this computer.', detail: 'Install it, then try New session again.' })
+          .then(({ response }) => { if (response === 0) shell.openExternal(INSTALL_URL); });
+      } else {
+        dialog.showMessageBox({ type: 'warning', message: 'Claude Code couldn’t start there.', detail: err || `It stopped right away (${signal || `exit code ${code}`}).` });
+      }
     }
     tracker.handle({ session_id: id, hook_event_name: 'SessionEnd' }, 'blaube');
     inbox.observe({ session_id: id, hook_event_name: 'SessionEnd' });
@@ -1183,6 +1206,7 @@ app.whenReady().then(async () => {
   ipcMain.on('talk', (_e, id, at) => openTalk(id, at || { x: 0, y: 0 }));
   ipcMain.on('talk-send', (_e, id, text) => {
     if (!id || id !== talkId || !tracker.sessions.has(id) || id.startsWith('demo-')) return;
+    if (!prefs.talked) { prefs.talked = true; savePrefs(); pushState(); } // no more "click to talk" hints
     // A session Blaube started: straight in, and its turn starts.
     if (owned.has(id)) {
       if (!owned.send(id, text)) { inbox.add(id, { who: 'you', text: String(text), via: 'blaube', status: 'unsent' }); return; }

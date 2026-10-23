@@ -212,6 +212,9 @@
 			E.ba += ((bwSmooth - E.bw) / dt - E.ba) * 0.3;
 			E.bw = bwSmooth;
 			let phi = base;
+			// The whole ear bends at most about 1.6 rad (it never folds flat).
+			const total = E.a.reduce((sum, x) => sum + x, 0);
+			if (Math.abs(total) > 1.6) for (let i = 0; i < EAR_JOINTS; i++) E.a[i] *= 1 - (1 - 1.6 / Math.abs(total)) * 0.2;
 			for (let i = 0; i < EAR_JOINTS; i++) {
 				phi += E.a[i];
 				// Weight and the head's shove, as a twist about this joint: about
@@ -221,7 +224,8 @@
 				const k = EAR_K[i], damp = 2.4 + 0.25 * Math.sqrt(k);
 				E.w[i] += (pull - k * (E.a[i] - rest) - damp * E.w[i] - (i === 0 ? E.ba : 0)) * dt;
 				E.w[i] = Math.max(-14, Math.min(14, E.w[i]));
-				E.a[i] = Math.max(-0.7, Math.min(0.7, E.a[i] + E.w[i] * dt));
+				// A soft limit: it gets harder to bend near it, never a hard stop.
+				E.a[i] = soft(E.a[i] + E.w[i] * dt, 0.6);
 			}
 		});
 	}

@@ -49,7 +49,7 @@
     if (s.ended) return s.log.some((m) => m.status === 'unsent') ? `${s.project} has ended, so what you sent last didn’t go in.` : `${s.project} has ended.`;
     if (s.owned) return '';
     if (s.ask) return '';
-    if (!s.connected) return 'Update the Claude Code connection in Blaube’s menu, then restart this session to talk to it.';
+    if (!s.connected && !s.typeable) return 'Update the Claude Code connection in Blaube’s menu, then restart this session to talk to it.';
     // Queued, nobody waiting, and the turn is over (interrupted, say): it
     // only gets it when it next finishes a turn.
     if (s.queued && s.inbox !== 'ready' && s.state !== 'working' && s.inbox !== 'unknown') return `${s.project} gets this when it next finishes a turn. In a hurry? Go to its terminal.`;
@@ -154,7 +154,7 @@
     $('terminal').style.display = s.demo || s.ended || s.owned ? 'none' : '';
     renderAsk(s.ask, s.asks);
     $('hint').textContent = hint(s);
-    text.disabled = !!s.demo || !s.connected || !!s.ended;
+    text.disabled = !!s.demo || (!s.connected && !s.typeable) || !!s.ended;
     text.placeholder = s.ask && s.ask.kind === 'question' ? (s.ask.questions.length === 1 ? 'Or type your answer…' : 'Say something for later…')
       : s.ask && s.ask.kind === 'plan' ? 'What should change?'
       : !s.owned && (s.state === 'working' || s.state === 'waiting') ? 'Say something for later…' : 'Say something…';

@@ -655,7 +655,8 @@
   function summaryLines() {
     const mothers = [...buddies.values()].filter((b) => b.kind === 'mother' && !b.dying && b.session);
     if (!mothers.length) {
-      return [{ text: settings.hooksInstalled ? 'No Claude Code sessions right now' : 'Right-click me to connect Claude Code' }];
+      return [{ text: settings.noClaude ? 'I can’t find Claude Code. Right-click me to install it'
+        : settings.hooksInstalled ? 'No Claude Code sessions right now' : 'Right-click me to connect Claude Code' }];
     }
     const word = { working: 'working', waiting: 'needs you', done: 'done', idle: 'idle' };
     return mothers.map((b) => {
@@ -1187,6 +1188,8 @@
     const lines = [{ text: info.title || label(b) }, { text, color: D.STATE_COLORS[b.state] }];
     const extra = [info.branch, modelName(info.model)].filter(Boolean).join(' · ');
     if (extra) lines.push({ text: extra, dim: true });
+    // Until you've talked to one, say you can.
+    if (!settings.talked && b.session && !String(b.session.id).startsWith('demo-')) lines.push({ text: 'Click to talk', dim: true });
     return lines;
   }
 
@@ -1579,9 +1582,16 @@
 
   // --- Wiring -------------------------------------------------------------
 
+  // A first look, not connected yet (or no Claude Code at all): the home
+  // slime says what to do, once, by itself.
+  let nudged = false;
   api.onState((s) => {
     settings = s.settings || settings;
     syncSessions(s.sessions || [], s.pending || 0);
+    if (!nudged && (settings.noClaude || settings.hooksInstalled === false) && !(s.sessions || []).length) {
+      nudged = true;
+      setTimeout(() => { const home = [...buddies.values()].find((b) => b.kind === 'home'); if (home) home.say(summaryLines(), 8); }, 2500);
+    }
   });
 
   api.onConfig(applyConfig);

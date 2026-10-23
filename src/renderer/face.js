@@ -480,17 +480,23 @@
   function drawBalloon(ctx, p, w, h, thought) {
     const { x, y, s } = p, rad = pillRadius(h);
     const mx = Math.max(x + rad, Math.min(x + w - rad, p.tip.x)), by = y + h - 4;
-    // The leash ends a little way short of the head, at most 30px long.
+    // The leash ends a little way short of the head, at most 24px long.
     let tx = p.tip.x - mx, ty = p.tip.y - by;
-    const len = Math.hypot(tx, ty) || 1, keep = Math.min(len, 30) / len;
+    const len = Math.hypot(tx, ty) || 1, keep = Math.min(len, 24) / len;
     const tip = { x: mx + tx * keep, y: by + ty * keep };
     // It bends away from the way the balloon is moving.
     const bend = s ? Math.max(-18, Math.min(18, -s.vx * 0.05)) : 0;
     ctx.fillStyle = '#fff';
     ctx.beginPath();
     if (thought) {
-      const ideal = [[0.4, 6.5], [0.85, 4]].map(([k, r]) => ({
-        x: mx + (tip.x - mx) * k + bend * k * (1 - k) * 2, y: by + 6 + (tip.y - by - 6) * k, r,
+      // Two separate puffs at set places under the bubble (not along the
+      // leash, which can be short: they'd merge or land on the head), never
+      // below the top of the head.
+      const dir = Math.max(-0.6, Math.min(0.6, (tip.x - mx) / 30));
+      const low = Math.min(y + h + 25, p.tip.y - 5.5); // the small one, clear of the head
+      const high = Math.min(y + h + 12, low - 10); // the bigger one, always apart from it
+      const ideal = [[high, 6, 0.4, 12], [low, 3.5, 1, 25]].map(([py, r, k, down]) => ({
+        x: mx + dir * down + bend * k * 0.3, y: py, r,
       }));
       if (s && s.puffs) s.puffs.forEach((q, i) => { q.x += (ideal[i].x - q.x) * 0.25; q.y += (ideal[i].y - q.y) * 0.25; });
       else if (s) s.puffs = ideal.map((q) => ({ x: q.x, y: q.y }));
@@ -500,16 +506,16 @@
         ctx.arc(q.x, q.y, ideal[i].r, 0, Math.PI * 2);
       });
     } else {
-      // A round-tipped tail, the same family as the talk box's.
+      // A chubby, round-tipped tail: the talk box's, smaller.
       const midX = (mx + tip.x) / 2 + bend, midY = (by + tip.y) / 2;
-      ctx.moveTo(mx - 10, by);
-      ctx.quadraticCurveTo(midX - 4, midY, tip.x - 3, tip.y);
-      ctx.lineTo(tip.x + 3, tip.y);
-      ctx.quadraticCurveTo(midX + 5, midY, mx + 10, by);
+      ctx.moveTo(mx - 14, by);
+      ctx.quadraticCurveTo(midX - 8, midY, tip.x - 5, tip.y);
+      ctx.lineTo(tip.x + 5, tip.y);
+      ctx.quadraticCurveTo(midX + 9, midY, mx + 14, by);
       ctx.closePath();
     }
     ctx.fill();
-    if (!thought) { ctx.beginPath(); ctx.arc(tip.x, tip.y, 3.5, 0, Math.PI * 2); ctx.fill(); }
+    if (!thought) { ctx.beginPath(); ctx.arc(tip.x, tip.y, 5.5, 0, Math.PI * 2); ctx.fill(); }
     ctx.beginPath();
     roundRect(ctx, x, y, w, h, rad);
     ctx.fill();

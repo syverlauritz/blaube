@@ -47,6 +47,7 @@ class Owned extends EventEmitter {
   }
 
   has(id) { return this.sessions.has(id); }
+  shellPath() { return shellClaude; } // where a login shell found claude, if it had to
   list() { return [...this.sessions.keys()]; }
 
   // Starts a session in `cwd`. `extra`: more arguments (a model);

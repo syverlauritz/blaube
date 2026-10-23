@@ -28,8 +28,9 @@ A squishy Claude-orange slime that lives on your desktop. Grab it, toss it, watc
 - **Answer permission prompts from the slime.** When Claude asks to run something, the slime's bubble shows exactly what (the command, or the file and what changes) with **Deny** and **Allow**, plus **Always allow …** naming the rule Claude Code suggests. The terminal shows its own prompt at the same time; whichever you answer first wins. Claude's multiple-choice questions come to the slime too (tap an answer, or type your own), and so do its plans in plan mode (**Go ahead**, or **Keep planning** with what to change). Sessions without a terminal (`claude -p`, the SDK) are never held up.
 - **Start a session from Blaube, no terminal needed.** **New session…** in Blaube's menu (or **New session in** a recent folder) starts Claude Code in the folder you pick, in print mode with streaming input and output (`src/main/owned.js`). Its slime pops out with its talk box open; what you type goes straight in, even while it's working. Permission prompts, questions and plans come to the slime like any other session's. **End session** or **Continue in terminal** (it resumes there with `claude --resume`) are in its right-click menu; quitting Blaube asks first, since its sessions stop with it.
 - Sessions started before you connected (or updated the connection to) Claude Code need a restart before you can talk to them.
+- **Sessions that started before you connected** (or updated the connection) can still be talked to on macOS: when such a session is idle at its prompt in Terminal or iTerm, Blaube types your message into its tab for you (macOS asks once whether Blaube may control Terminal). Elsewhere, restart the session.
 - **Alt-click a session's slime** (or **Terminal ↗** in its talk box) to jump to that session. On macOS it brings the terminal/editor the session runs in to the front (Terminal, iTerm, VS Code, Cursor, Warp, Ghostty, WezTerm). On Windows it brings the session's own window to the front, and in Windows Terminal it also picks the right tab. It never opens a new terminal: if Blaube can't find the window, the slime tells you, and **Resume in new terminal** is in its right-click menu.
-- **Right-click a session's slime** to pick its **Colour** (orange, blue, green, purple, pink, yellow; it sticks to the project folder), and for its status, "Resume in new terminal", "Copy resume command", "Open project folder" and "Merge back in" (hides it until that session really ends).
+- **Right-click a session's slime** for **Talk**, **Go to its terminal**, its **Colour** (orange, blue, green, purple, pink, yellow; it sticks to the project folder), and for its status, "Resume in new terminal", "Copy resume command", "Open project folder" and "Hide this slime" (until that session really ends).
 - **With no sessions**, click Blaube for a summary. Right-click it (or use the tray/menu bar icon, or the **Blaube** item in a session's menu) for settings, including **Colour** and **Live on display** to pick which screen it lives on.
 - **Settings…** (in that menu) has the everyday settings: overall **Size**, the **Font**, whether status bubbles pop up by themselves or only on hover, and **Fun looks** on or off.
 
@@ -69,9 +70,17 @@ npm install
 npm start
 ```
 
-Then right-click Blaube and choose **Connect Claude Code…**. That adds Blaube's hooks to `~/.claude/settings.json` (a backup is saved as `settings.json.blaube-backup`, and your existing hooks are kept). Restart any running Claude Code sessions to pick them up. **Disconnect Claude Code** removes exactly what was added.
+Then right-click Blaube and choose **Connect Claude Code…** (the slime reminds you on first run). That adds Blaube's hooks to `~/.claude/settings.json` (a backup is saved as `settings.json.blaube-backup`, and your existing hooks are kept). Restart any running Claude Code sessions to pick them up. **Claude Code → Disconnect…** removes exactly what was added. If Claude Code isn't installed, Blaube says so and offers **Install Claude Code…**.
 
 Want to see it without Claude running? Choose **Demo sessions** from the menu.
+
+### Your first five minutes
+
+1. Connect (above), then start or restart a Claude Code session: its slime pops out.
+2. Hover a slime for its name and what it's doing; **click** it to talk to the session; **⌥/Alt-click** to jump to its terminal; **right-click** for everything else.
+3. When Claude asks for permission, a question or a plan, answer on the slime (or in the terminal; first answer wins).
+4. **New session…** in Blaube's menu starts one with no terminal at all.
+5. Throw them around. They like it.
 
 ### First launch (builds aren't notarized yet)
 
