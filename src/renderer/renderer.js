@@ -63,8 +63,9 @@
       return this.parent && time - this.born < SPLIT_TIME;
     }
 
-    say(lines, seconds, sticky = false) {
+    say(lines, seconds, sticky = false, aloud = true) {
       this.bubble = { lines: typeof lines === 'string' ? [{ text: lines }] : lines, until: time + seconds, sticky };
+      if (aloud) speak(this, this.bubble.lines.map((l) => l.text).join(' '));
     }
 
     hop(vx, vy) {
@@ -86,6 +87,39 @@
   }
 
   const buddies = new Map();
+
+  // Talking out loud: a babble in its own voice (voice.js), lower the
+  // bigger it is, with the mouth moving along. One line at a time each; a
+  // new one cuts the last short.
+  let audio = null;
+  function speak(b, text) {
+    if (CFG.voice === 'Off' || !text || b.dying) return;
+    try {
+      if (!audio) {
+        const ctx = new AudioContext();
+        const out = ctx.createDynamicsCompressor(); // several at once stay soft
+        out.connect(ctx.destination);
+        audio = { ctx, out };
+      }
+      if (audio.ctx.state === 'suspended') audio.ctx.resume();
+      if (b.speech) b.speech.line.stop();
+      const at = audio.ctx.currentTime + 0.03;
+      const line = BlaubeVoice.speak(audio.ctx, text, {
+        at, out: audio.out, pitch: BlaubeVoice.pitchFor(b.body.o.radius, !b.big), seed: BlaubeVoice.hash(b.key), volume: CFG.voiceVolume,
+      });
+      b.speech = { line, at };
+    } catch (e) { b.speech = null; }
+  }
+  // How its mouth is shaped right now, while it talks (null when quiet).
+  function talkMouth(b) {
+    if (!b.speech || !audio) return null;
+    const m = BlaubeVoice.mouthAt(b.speech.line, audio.ctx.currentTime - b.speech.at);
+    if (!m) { b.speech = null; b.mouth = null; return null; }
+    // Eased, so the jaw moves instead of popping open and shut.
+    const was = b.mouth || { open: 0, wide: m.wide, round: m.round };
+    b.mouth = { open: was.open + (m.open - was.open) * 0.4, wide: was.wide + (m.wide - was.wide) * 0.3, round: was.round + (m.round - was.round) * 0.3 };
+    return b.mouth;
+  }
 
   function bodyOpts(big) {
     return Object.assign({}, CFG, { points: big ? CFG.mainPoints : CFG.childPoints });
@@ -1201,7 +1235,13 @@
       const to = b.gazeTarget || mouse;
       b.gaze.x = to.x; b.gaze.y = to.y; b.gaze.vx = 0; b.gaze.vy = 0;
     }
-    return { expression, mouth, blink: b.blink, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: b.pain || 0, nod: nodOf(b), scale: CFG.faceScale, style: CFG, bodyColor: b.color,
+    // Talking: the mouth follows its babble (not mid-yawn or seeing stars).
+    const talk = talkMouth(b);
+    if (talk && mouth !== 'yawn' && expression !== 'dizzy') {
+      mouth = 'talk';
+      if (expression === 'concentrate' || expression === 'sleepy' || expression === 'peek') expression = 'normal';
+    }
+    return { expression, mouth, talk, blink: b.blink, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: b.pain || 0, nod: nodOf(b), scale: CFG.faceScale, style: CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal',
     };
   }
@@ -1725,7 +1765,7 @@
       b.status = { text: m.text, at: time, state: b.state };
       if (CFG.statusBubbles !== 'Always') return;
     }
-    b.say(m.text, m.seconds || 4);
+    b.say(m.text, m.seconds || 4, false, !m.status);
   });
   api.onWorld((w) => setObstacles(w.obstacles));
   if (api.onLedges) api.onLedges(setLedges);

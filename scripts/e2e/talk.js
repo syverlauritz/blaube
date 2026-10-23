@@ -145,6 +145,8 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	const got = await Promise.race([waiting.done, sleep(3000).then(() => null)]);
 	check(got && got.code === 2 && /update the changelog/.test(got.err), 'sending wakes Claude with the message (exit 2)');
 	check(await until(async () => (await box(`document.querySelectorAll('#inner .dots').length`)) === 1), 'thinking dots while it works on it');
+	await hook({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: '/tmp/kalkis/CHANGELOG.md' } });
+	check(await until(async () => (await box(`(document.querySelector('#inner .dots .doing') || {}).textContent`)) === 'Editing CHANGELOG.md'), 'with what it’s doing next to them');
 	await shot('thinking');
 	await hook({ hook_event_name: 'UserPromptSubmit', prompt: '<task-notification>\n<summary>Stop hook feedback</summary>' });
 	await hook({ hook_event_name: 'Stop', last_assistant_message: 'Changelog updated.' });

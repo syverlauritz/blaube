@@ -102,6 +102,8 @@
     ['looks', 'On', ['On', 'Off'], 0, 0, 'Fun looks (bows, ears, antennas...)'],
     ['windowLedges', 'On', ['On', 'Off'], 0, 0, 'Land on top of other windows'],
     ['onTop', 'On', ['On', 'Off'], 0, 0, 'Stay in front of other windows'],
+    ['voice', 'On', ['On', 'Off'], 0, 0, 'Babble out loud when they talk'],
+    ['voiceVolume', 0.5, 0, 1, 0.05, 'Babble volume'],
   ];
 
   // Colours you can pick for a Blaube from its right-click menu.

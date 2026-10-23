@@ -13,7 +13,7 @@
   let drawn = { entries: [], thinking: -1, open: '' }, ends = []; // what the log shows, and each entry's last element
   const dots = document.createElement('div'); // the slime thinking
   dots.className = 'dots';
-  dots.innerHTML = '<i></i><i></i><i></i>';
+  dots.innerHTML = '<i></i><i></i><i></i><span class="doing"></span>'; // and what it's doing ("Editing face.js")
   const drafts = new Map(); // what you'd typed, per session
   const open = new Set(); // long replies you unfolded (by time)
 
@@ -161,12 +161,15 @@
     send.disabled = text.disabled || !text.value.trim();
     // The slime's dots while it works on something you said: after the
     // last thing it got (anything still queued comes after them).
+    // Working on something from its terminal: at the end of the log.
     let thinking = -1;
     if (s.state === 'working') {
+      thinking = -2;
       for (let i = s.log.length - 1; i >= 0 && s.log[i].who !== 'claude'; i--) {
         if (s.log[i].who === 'you' && s.log[i].status !== 'queued') { thinking = i; break; }
       }
     }
+    dots.lastChild.textContent = s.doing || '';
     // Only rebuild the log when it changed, so scrolling isn't reset; and not
     // while you're selecting text in it (it catches up after).
     // Only what changed is drawn: new entries are added at the end, so
@@ -201,6 +204,7 @@
         ends[i] = nodes[nodes.length - 1];
       }
       if (thinking >= 0 && ends[thinking]) ends[thinking].after(dots);
+      else if (thinking === -2) inner.append(dots);
       if (!switched && s.log.slice(seen).some((m) => m.who === 'claude')) {
         const w = $('wrap');
         w.classList.remove('boing'); void w.offsetWidth; w.classList.add('boing');

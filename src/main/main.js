@@ -415,6 +415,7 @@ function pushTalk(id, focusField = false) {
     // Connected if the settings say so, or if this session's hooks already
     // reached us (it was started with them, whatever the file says now).
     connected: hooksOk || inbox.reachable.has(id) || inbox.asks.has(id) || inbox.owned.has(id),
+    doing: s.state === 'working' ? doing.get(id) || '' : '',
     focus: focusField,
   }, inbox.view(id)));
 }
@@ -571,7 +572,7 @@ function createWindow() {
   applyOnTop();
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.setIgnoreMouseEvents(true, { forward: true });
-  if (TEST) win.setOpacity(0);
+  if (TEST) { win.setOpacity(0); win.webContents.setAudioMuted(true); } // tests are neither seen nor heard
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'), TEST ? { query: { debug: '1' } } : undefined);
 
   // The screen changed shape (the Dock, a resolution): the box stays where it
@@ -715,7 +716,13 @@ function describeTool(name, input = {}) {
 }
 
 const lastBubble = new Map(); // slime key -> time of its last tool bubble
+const doing = new Map(); // session id -> what its last tool was ("Editing face.js"), for its talk box
 function statusBubble({ session: s, agentId, payload: p }) {
+  if (!agentId) {
+    if (p.hook_event_name === 'PreToolUse') doing.set(s.id, describeTool(p.tool_name, p.tool_input || {}));
+    else if (p.hook_event_name === 'Stop') doing.delete(s.id);
+    if (talkId === s.id) pushTalk(s.id);
+  }
   if (!win) return;
   const key = agentId ? `${s.id}/${agentId}` : s.id;
   const say = (text, seconds) => { if (text) win.webContents.send('say', { id: key, text, seconds, status: true }); };
@@ -857,6 +864,7 @@ function appMenuTemplate() {
     { type: 'separator' },
     { label: 'Colour', submenu: colorMenu(prefs.config.color, (hex) => setConfig(Object.assign({}, prefs.config, { color: hex }))) },
     { label: 'Live on display', submenu: displayMenu() },
+    { label: 'Sounds', type: 'checkbox', checked: prefs.config.voice !== 'Off', click: (i) => setConfig(Object.assign({}, prefs.config, { voice: i.checked ? 'On' : 'Off' })) },
     { label: 'Stay in front of other windows', type: 'checkbox', checked: prefs.config.onTop !== 'Off', click: (i) => setConfig(Object.assign({}, prefs.config, { onTop: i.checked ? 'On' : 'Off' })) },
     { label: 'Settings…', click: openSettings },
     // Without Accessibility the Dock is a solid strip; with it, its icon row
@@ -1050,7 +1058,7 @@ app.whenReady().then(async () => {
     pushState();
     refreshTray();
   });
-  tracker.on('prompt', (s) => { if (win) win.webContents.send('nod', s.id); });
+  tracker.on('prompt', (s) => { doing.delete(s.id); if (win) win.webContents.send('nod', s.id); });
   tracker.on('change', () => pushTalk(talkId));
   // A turn ended: anything waiting for a session without an inbox hook can be typed now.
   const typeSoon = new Map();
