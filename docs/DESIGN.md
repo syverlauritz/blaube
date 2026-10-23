@@ -62,6 +62,15 @@ ships that breaks a "must".
   of a bubble or talk box, which uses the display font picked in Settings
   (Coiny by default; very long names fall back to Nunito to stay readable). Wanted ("more rounded", "more
   childlike in general").
+- Slimes talk out loud in a made-up babble through a talkbox: a buzzy
+  synth note shaped by a sweeping vowel filter, with a wah on the attack of
+  each syllable only (it opens and stays open; no wah-wah on held notes).
+  Bigger is deeper, helpers are higher. Wanted ("hilarious"). The talking
+  mouth: shut, it's the slime's own mouth; open, a dark oval that drops
+  from the top lip, never bigger than a yawn, a pink tongue when wide.
+- Choir mode: every slime sings in parts, fuller with more slimes, eyes
+  shut, swaying, notes floating up. Songs are public domain only.
+- A full context makes a slime round and taut, not just bigger.
 - Other apps' windows: a Blaube set or dropped on top of one stays there
   (falls off only if it wanders off), and can still be thrown anywhere:
   window tops only catch things coming down onto them, softly.
