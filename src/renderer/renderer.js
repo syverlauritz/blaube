@@ -92,7 +92,7 @@
   // bigger it is, with the mouth moving along. One line at a time each; a
   // new one cuts the last short.
   let audio = null;
-  function speak(b, text) {
+  function speak(b, text, how = {}) {
     if (CFG.voice === 'Off' || !text || b.dying) return;
     try {
       if (!audio) {
@@ -105,7 +105,7 @@
       if (b.speech) b.speech.line.stop();
       const at = audio.ctx.currentTime + 0.03;
       const line = BlaubeVoice.speak(audio.ctx, text, {
-        at, out: audio.out, pitch: BlaubeVoice.pitchFor(b.body.o.radius, !b.big), seed: BlaubeVoice.hash(b.key), volume: CFG.voiceVolume,
+        at, out: audio.out, pitch: BlaubeVoice.pitchFor(b.body.o.radius, !b.big) * (how.higher || 1), seed: BlaubeVoice.hash(b.key), volume: CFG.voiceVolume, pace: how.pace,
       });
       b.speech = { line, at };
     } catch (e) { b.speech = null; }
@@ -1404,6 +1404,7 @@
   // Petting: rubbing the cursor back and forth over a slime (or a pet),
   // without clicking, makes it happy: it wiggles and hearts float up.
   const pet = { target: null, dir: 0, flips: [], lastX: 0 };
+  const GIGGLES = ['hihihi!', 'hehehe!', 'hihi hee!', 'ahaha!', 'tee hee hee!', 'kiki!'];
   function checkPetting() {
     const target = drag ? null : petAt(mouse.x, mouse.y) || buddyAt(mouse.x, mouse.y);
     const dx = mouse.x - pet.lastX;
@@ -1415,6 +1416,12 @@
     pet.flips = pet.flips.filter((t) => time - t < 1.2);
     if (pet.flips.length < 3) return;
     target.pettedUntil = time + 1.2;
+    // Tickled: it giggles (a slime, not a pet), now and then.
+    if (target.body && !target.speech && time > (target.nextGiggle || 0)) {
+      target.nextGiggle = time + 1.4 + Math.random();
+      target.giggles = (target.giggles || 0) + 1;
+      speak(target, GIGGLES[Math.floor(Math.random() * GIGGLES.length)], { higher: 1.25, pace: 0.55 });
+    }
     if (time > (target.nextHeart || 0)) {
       target.nextHeart = time + 0.28;
       const isPet = target.task !== undefined;
@@ -1764,10 +1771,14 @@
   if (api.onSay) api.onSay((m) => {
     const b = buddies.get(m.id);
     if (!b) return;
+    // Out loud only (its talk box is showing the words).
+    if (m.voiceOnly) { speak(b, m.text); return; }
     // Status updates are kept for the hover bubble, and only pop up by
-    // themselves when the Status bubbles setting says Always.
+    // themselves when the Status bubbles setting says Always. Only the big
+    // moments (done, needs you) are said out loud, bubble or not.
     if (m.status) {
       b.status = { text: m.text, at: time, state: b.state };
+      if (m.aloud) speak(b, m.text);
       if (CFG.statusBubbles !== 'Always') return;
     }
     b.say(m.text, m.seconds || 4, false, !m.status);

@@ -486,6 +486,8 @@ async function shoot(win, name, scene) {
 			win.webContents.sendInputEvent({ type: 'mouseMove', x: Math.round(c.x + (i % 2 ? 45 : -45)), y: Math.round(c.y - 10) });
 			await sleep(45);
 		}
+		const giggled = await win.webContents.executeJavaScript(`(() => { const b = __blaube.buddies.get(${JSON.stringify(scene.rub)}); return b.giggles || 0; })()`);
+		console.log(`check tickle: ${giggled ? `it giggled ${giggled}x ok` : 'no giggle -- silent'}`);
 	}
 	if (scene.later) {
 		fire('state', { sessions: scene.later.sessions, settings: { hooksInstalled: true } });

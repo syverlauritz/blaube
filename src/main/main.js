@@ -725,7 +725,7 @@ function statusBubble({ session: s, agentId, payload: p }) {
   }
   if (!win) return;
   const key = agentId ? `${s.id}/${agentId}` : s.id;
-  const say = (text, seconds) => { if (text) win.webContents.send('say', { id: key, text, seconds, status: true }); };
+  const say = (text, seconds, aloud = false) => { if (text) win.webContents.send('say', { id: key, text, seconds, status: true, aloud }); };
   const event = p.hook_event_name;
   if (event === 'PreToolUse') {
     // Not every tool: a busy session would never stop talking.
@@ -738,9 +738,9 @@ function statusBubble({ session: s, agentId, payload: p }) {
     // How long the turn took, when it was worth waiting for.
     const secs = s.turnStart ? (Date.now() - s.turnStart) / 1000 : 0;
     const took = secs < 20 ? '' : secs < 60 ? ` in ${Math.round(secs)}s` : secs < 3600 ? ` in ${Math.round(secs / 60)}m` : ` in ${Math.floor(secs / 3600)}h ${Math.round((secs % 3600) / 60)}m`;
-    say(said ? `Done${took}: ` + shorten(said, 80) : `Done${took}!`, 6);
+    say(said ? `Done${took}: ` + shorten(said, 80) : `Done${took}!`, 6, true);
   } else if (event === 'Notification' && s.state === 'waiting') {
-    say(shorten(p.message || 'I need you', 80), 6);
+    say(shorten(p.message || 'I need you', 80), 6, true);
   }
 }
 
@@ -1083,6 +1083,8 @@ app.whenReady().then(async () => {
     for (let i = log.indexOf(entry) - 1; i >= 0 && !asked; i--) if (log[i].who !== 'note') asked = log[i];
     const open = talkWin && talkId === id && talkWin.isVisible();
     if (win && !open && asked && asked.who === 'you' && asked.via === 'blaube') win.webContents.send('say', { id, text: snippet(text), seconds: 7 });
+    // Open, the box shows it; the slime still says it out loud.
+    else if (win && open) win.webContents.send('say', { id, text: snippet(text), voiceOnly: true });
   });
   tracker.on('activity', statusBubble);
   // A few moments worth a reaction (most tools get just their icon): a push

@@ -151,6 +151,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await hook({ hook_event_name: 'UserPromptSubmit', prompt: '<task-notification>\n<summary>Stop hook feedback</summary>' });
 	await hook({ hook_event_name: 'Stop', last_assistant_message: 'Changelog updated.' });
 	check(await until(async () => (await box(`[...document.querySelectorAll('#inner .msg')].map((e) => e.textContent).join('|')`)).endsWith('and update the changelog|Changelog updated.')), 'the reply comes in after the message, in order');
+	check(await until(() => page(`(() => { const b = __blaube.buddies.get(${JSON.stringify(ID)}); return !!(b && b.speech && b.speech.line.sylls.length); })()`)), 'and the slime says it out loud (muted here)');
 	check(await box(`document.querySelectorAll('#inner .dots').length === 0`), 'and the dots go away');
 
 	// A permission prompt: Allow on the slime answers the hook.
