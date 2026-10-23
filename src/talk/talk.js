@@ -66,6 +66,7 @@
     // only gets it when it next finishes a turn.
     if (s.queued && s.inbox !== 'ready' && s.state !== 'working' && s.inbox !== 'unknown') return `${s.project} gets this when it next finishes a turn. In a hurry? Go to its terminal.`;
     // Never heard from its inbox: it may not be able to hear you at all.
+    if (s.inbox === 'unknown' && s.typeable) return s.queued ? `${s.project} started before Blaube could talk to it, so Blaube will type this into its terminal as soon as it’s free.` : '';
     if (s.inbox === 'unknown' && (s.queued || s.state !== 'working')) return `Haven’t heard from ${s.project} yet. If it doesn’t pick this up, restart the session.`;
     // Busy needs no words: the header says "working", and anything you
     // send is marked as waiting for the end of the turn.
@@ -131,7 +132,7 @@
     if (m.status === 'queued') {
       const t = document.createElement('div');
       t.className = 'meta';
-      t.textContent = current.inbox === 'unknown' ? `waiting for ${current.project} to pick this up · ` : 'after its turn · ';
+      t.textContent = current.inbox === 'unknown' ? (current.typeable ? 'goes in when it’s free · ' : `waiting for ${current.project} to pick this up · `) : 'after its turn · ';
       const undo = document.createElement('button');
       undo.className = 'unsend';
       undo.textContent = 'unsend';

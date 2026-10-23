@@ -61,4 +61,23 @@ function focusSessionApp(session, done = () => {}, platform = process.platform) 
   done(true);
 }
 
-module.exports = { openResumeTerminal, resumeCommand, focusSessionApp };
+// Types a message into the terminal tab a session runs in, as if you'd
+// typed it and pressed Return (macOS: Terminal and iTerm, found by the
+// session's tty). For sessions that can't take messages from the slime any
+// other way. Calls back with true when it went in.
+function typeIntoSession(session, text, cb) {
+  const app = { Apple_Terminal: 'Terminal', 'iTerm.app': 'iTerm2' }[session.term];
+  if (process.platform !== 'darwin' || !app || !session.pid) return cb(false, 'not a terminal Blaube can type into');
+  execFile('ps', ['-o', 'tty=', '-p', String(session.pid)], { timeout: 2000 }, (err, out) => {
+    const tty = String(out || '').trim();
+    if (err || !tty || tty === '??') return cb(false, 'no terminal for that session');
+    const dev = JSON.stringify('/dev/' + tty);
+    const msg = JSON.stringify(String(text).replace(/\s*\n\s*/g, ' ')); // Return would send it early
+    const script = app === 'Terminal'
+      ? `tell application "Terminal"\nrepeat with w in windows\nrepeat with t in tabs of w\nif tty of t is ${dev} then\ndo script ${msg} in t\nreturn "ok"\nend if\nend repeat\nend repeat\nend tell\nreturn "none"`
+      : `tell application "iTerm2"\nrepeat with w in windows\nrepeat with tb in tabs of w\nrepeat with se in sessions of tb\nif tty of se is ${dev} then\ntell se to write text ${msg}\nreturn "ok"\nend if\nend repeat\nend repeat\nend repeat\nend tell\nreturn "none"`;
+    execFile('osascript', ['-e', script], { timeout: 5000 }, (e2, res) => cb(!e2 && String(res).trim() === 'ok', e2 ? e2.message : String(res).trim()));
+  });
+}
+
+module.exports = { openResumeTerminal, resumeCommand, focusSessionApp, typeIntoSession };

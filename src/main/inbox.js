@@ -32,6 +32,7 @@ class Inbox extends EventEmitter {
     // Sessions Blaube started itself (owned.js): what you say goes straight
     // into them, and their replies come from their own output.
     this.owned = new Set();
+    this.typed = new Map(); // session id -> what was just typed into its terminal (its prompt echo isn't logged twice)
     this.nextKey = 1;
   }
 
@@ -142,6 +143,29 @@ class Inbox extends EventEmitter {
     return 'queued';
   }
 
+  // The queued messages went in by being typed into the session's own
+  // terminal (it had no inbox hook to hand them to). Returns the text.
+  takeForTyping(id) {
+    const q = this.queue.get(id) || [];
+    if (!q.length) return '';
+    this.queue.delete(id);
+    for (const e of q) e.status = 'sent';
+    const text = q.map((e) => e.text).join(' ');
+    this.typed.set(id, text);
+    this.emit('change', id);
+    return text;
+  }
+
+  // Typing it didn't work: back in the queue.
+  untake(id, text) {
+    if (this.typed.get(id) !== text) return;
+    this.typed.delete(id);
+    const back = this.log(id).filter((e) => e.via === 'blaube' && e.status === 'sent' && text.includes(e.text));
+    for (const e of back) e.status = 'queued';
+    if (back.length) this.queue.set(id, back);
+    this.emit('change', id);
+  }
+
   // Takes back a message that hasn't gone in yet (by its log entry's n).
   unsend(id, n) {
     const q = this.queue.get(id) || [];
@@ -182,7 +206,9 @@ class Inbox extends EventEmitter {
       // A wake-up from the inbox hook arrives as a prompt too, as a
       // <task-notification>; that's not something you typed.
       const prompt = String(payload.prompt || '');
-      if (prompt && !/^\s*<task-notification>/.test(prompt)) this.add(id, { who: 'you', text: prompt, via: 'terminal' });
+      const echo = this.typed.get(id);
+      if (echo && prompt.trim() === echo.trim()) { this.typed.delete(id); this.emit('change', id); } // we typed that
+      else if (prompt && !/^\s*<task-notification>/.test(prompt)) this.add(id, { who: 'you', text: prompt, via: 'terminal' });
       else {
         // The wake-up: what the slime sent is in this turn now.
         for (const e of this.log(id)) if (e.status === 'delivering') e.status = 'sent';

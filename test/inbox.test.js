@@ -203,3 +203,19 @@ test('a card with several questions only goes with every one answered; a plan se
   inbox.decide('s1', inbox.view('s1').ask.key, 'deny', { message: 'use fewer steps' });
   assert.match(got[1].hookSpecificOutput.decision.message, /use fewer steps/);
 });
+
+test('a session without an inbox hook gets its messages typed in, once, and not logged twice', () => {
+  const inbox = new Inbox();
+  inbox.send('s1', 'hello there');
+  inbox.send('s1', 'and this');
+  const text = inbox.takeForTyping('s1');
+  assert.equal(text, 'hello there and this');
+  assert.equal(inbox.view('s1').queued, 0);
+  assert.equal(inbox.takeForTyping('s1'), '', 'nothing twice');
+  inbox.observe({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: 'hello there and this' });
+  assert.deepEqual(inbox.log('s1').map((e) => e.text), ['hello there', 'and this'], 'its echo isn’t logged as a new prompt');
+  inbox.send('s2', 'try me');
+  const t2 = inbox.takeForTyping('s2');
+  inbox.untake('s2', t2);
+  assert.equal(inbox.view('s2').queued, 1, 'typing failed: back in the queue');
+});

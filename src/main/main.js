@@ -6,7 +6,7 @@ const { Inbox } = require('./inbox');
 const { placeTalk } = require('./talkPlace');
 const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
-const { openResumeTerminal, resumeCommand, focusSessionApp } = require('./terminal');
+const { openResumeTerminal, resumeCommand, focusSessionApp, typeIntoSession } = require('./terminal');
 const { startAgentsPoller, listAgents, findClaude } = require('./agents');
 const { Owned } = require('./owned');
 const { startFocusWatcher, transcriptPath } = require('./focus');
@@ -340,6 +340,8 @@ function pushTalk(id, focusField = false) {
     font: prefs.config.font,
     tail: talkTail,
     asks: inbox.asks.has(id) ? inbox.asks.get(id).length : 0,
+    // No inbox hook, but Blaube can type into its terminal for it.
+    typeable: process.platform === 'darwin' && !!s.pid && (s.term === 'Apple_Terminal' || s.term === 'iTerm.app'),
     demo: id.startsWith('demo-'),
     // Connected if the settings say so, or if this session's hooks already
     // reached us (it was started with them, whatever the file says now).
@@ -417,6 +419,24 @@ async function continueInTerminal(s) {
   const resume = (gone) => { if (gone !== id) return; owned.removeListener('exit', resume); openResumeTerminal(snapshot); };
   owned.on('exit', resume);
   if (!(await endOwned(s, 'Move it'))) owned.removeListener('exit', resume);
+}
+
+// A session that has never asked for messages (it started before Blaube's
+// inbox hook was installed) can't be handed them. When it's sitting at its
+// prompt, type them into its terminal instead, like you would.
+const typing = new Set();
+function typeQueued(id) {
+  const s = tracker.sessions.get(id), v = inbox.view(id);
+  if (!s || typing.has(id) || TEST || owned.has(id) || !v.queued || v.inbox !== 'unknown') return;
+  if (s.state !== 'done' && s.state !== 'idle') return;
+  typing.add(id);
+  const text = inbox.takeForTyping(id);
+  typeIntoSession(s, text, (ok, why) => {
+    typing.delete(id);
+    log(`typed a message into ${s.project}'s terminal: ${ok ? 'ok' : 'no (' + why + ')'}`);
+    if (ok) tracker.handle({ session_id: id, hook_event_name: 'UserPromptSubmit' }, 'blaube');
+    else inbox.untake(id, text);
+  });
 }
 
 // A reply's first sentence or so, for the slime's speech bubble.
@@ -938,6 +958,8 @@ app.whenReady().then(async () => {
   });
   tracker.on('prompt', (s) => { if (win) win.webContents.send('nod', s.id); });
   tracker.on('change', () => pushTalk(talkId));
+  // A turn ended: anything waiting for a session without an inbox hook can be typed now.
+  tracker.on('change', () => { for (const id of inbox.queue.keys()) setTimeout(() => typeQueued(id), 1500); });
   inbox.on('change', (id) => pushTalk(id));
   // A message from the slime went in: its turn starts, as if typed.
   inbox.on('delivered', (id) => {
@@ -1106,7 +1128,9 @@ app.whenReady().then(async () => {
       tracker.handle({ session_id: id, hook_event_name: 'UserPromptSubmit' }, 'blaube');
       return;
     }
-    inbox.send(id, text);
+    const how = inbox.send(id, text);
+    log(`message for ${tracker.sessions.get(id).project}: ${how} (inbox ${inbox.view(id).inbox})`);
+    setTimeout(() => typeQueued(id), 1500); // a moment for its inbox hook to ask first
   });
   ipcMain.on('talk-unsend', (_e, id, n) => { if (id && id === talkId) inbox.unsend(id, n); });
   ipcMain.on('talk-close', () => hideTalk());
