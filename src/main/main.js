@@ -1,6 +1,6 @@
 const path = require('node:path');
 const fs = require('node:fs');
-const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, shell, clipboard, globalShortcut } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, shell, clipboard, globalShortcut, systemPreferences } = require('electron');
 const { SessionTracker } = require('./sessions');
 const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
@@ -518,6 +518,10 @@ function appMenuTemplate() {
     { label: 'Everyone hop!', click: () => send('hop') },
     { label: 'Demo sessions', click: runDemo },
     { type: 'separator' },
+    // Without Accessibility the Dock is a solid strip; with it, its icon row
+    // is read so the slimes can bump into its ends.
+    ...(process.platform === 'darwin' && !systemPreferences.isTrustedAccessibilityClient(false)
+      ? [{ label: 'Bump into the Dock’s sides…', click: askDockAccess }] : []),
     { label: 'Open at login', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: (i) => app.setLoginItemSettings({ openAtLogin: i.checked }) },
     ...(installed ? [{ label: 'Reconnect Claude Code', click: installHooks }, { label: 'Disconnect Claude Code', click: uninstallHooks }] : []),
     { type: 'separator' },
@@ -546,6 +550,23 @@ function sessionMenu(id) {
     { type: 'separator' },
     { label: 'Merge back in', click: () => tracker.dismiss(id) },
   ]);
+}
+
+async function askDockAccess() {
+  const { response } = await dialog.showMessageBox({
+    type: 'question',
+    buttons: ['Open Settings', 'Cancel'],
+    defaultId: 0,
+    message: 'Let the slimes bump into the Dock’s sides?',
+    detail: 'macOS only tells Blaube where the Dock’s icons are if Blaube is allowed under Privacy & Security → Accessibility. Blaube only reads the Dock’s size and position with it.\n\nTurn Blaube on there; the Dock’s ends become solid within a few seconds.',
+  });
+  if (response !== 0) return;
+  systemPreferences.isTrustedAccessibilityClient(true);
+  // Check back for a while, so it takes effect without a restart.
+  let tries = 0;
+  const poll = setInterval(() => {
+    if (systemPreferences.isTrustedAccessibilityClient(false) || ++tries > 60) { clearInterval(poll); refreshDock(); }
+  }, 2000);
 }
 
 async function installHooks() {
@@ -697,14 +718,15 @@ app.whenReady().then(async () => {
   globalShortcut.register(TUNING_SHORTCUT, openTuning);
 
   refreshDock();
-  setInterval(refreshDock, 10 * 1000);
+  setInterval(refreshDock, 4 * 1000); // the Dock grows and shrinks as apps open and quit
 
   // The tops of other apps' windows are ledges a slime can land on.
   let lastLedges = '';
   watchWindows(process.pid, (list, at) => {
     if (!win || win.isDestroyed()) return;
     const area = currentDisplay().workArea, wb = win.getBounds();
-    const dip = list.map((w) => Object.assign({ id: w.id }, screen.screenToDipRect(null, w)));
+    // Windows reports physical pixels; macOS already reports points.
+    const dip = process.platform === 'win32' ? list.map((w) => Object.assign({ id: w.id }, screen.screenToDipRect(null, w))) : list;
     const out = ledges(dip, area).map((l) => ({ id: l.id, x0: l.x0 - wb.x, x1: l.x1 - wb.x, y: l.y - wb.y, wx: l.wx - wb.x, at }));
     const json = JSON.stringify(out);
     if (json === lastLedges) return;

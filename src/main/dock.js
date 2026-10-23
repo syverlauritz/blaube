@@ -44,12 +44,32 @@ function toWindowCoords(rect, win) {
 
 // Reads the Dock's on-screen window bounds through CoreGraphics (via
 // JavaScript for Automation). Needs no permissions; reports [] on failure.
+// Newer macOS gives the Dock one window as big as the screen, which says
+// nothing about where the icons are; with Accessibility allowed, the
+// Dock's icon row itself is read too, so its ends can be solid.
 const JXA = `
 ObjC.import('CoreGraphics');
+ObjC.import('ApplicationServices');
+ObjC.import('AppKit');
 var raw = $.CGWindowListCopyWindowInfo(17, 0);
 var list = ObjC.deepUnwrap(ObjC.castRefToObject(raw)) || [];
-JSON.stringify(list.filter(function (w) { return w.kCGWindowOwnerName === 'Dock'; })
-  .map(function (w) { var b = w.kCGWindowBounds; return { x: b.X, y: b.Y, width: b.Width, height: b.Height, layer: w.kCGWindowLayer }; }));
+var out = list.filter(function (w) { return w.kCGWindowOwnerName === 'Dock'; })
+  .map(function (w) { var b = w.kCGWindowBounds; return { x: b.X, y: b.Y, width: b.Width, height: b.Height, layer: w.kCGWindowLayer }; });
+try {
+  if ($.AXIsProcessTrusted()) {
+    var attr = function (el, name) { var r = Ref(); return $.AXUIElementCopyAttributeValue(el, $(name), r) === 0 ? r[0] : null; };
+    var dock = $.NSRunningApplication.runningApplicationsWithBundleIdentifier('com.apple.dock').firstObject;
+    var kids = ObjC.castRefToObject(attr($.AXUIElementCreateApplication(dock.processIdentifier), 'AXChildren'));
+    for (var i = 0; i < kids.count; i++) {
+      var el = kids.objectAtIndex(i);
+      if (ObjC.unwrap(ObjC.castRefToObject(attr(el, 'AXRole'))) !== 'AXList') continue;
+      // An AXValue can't be unpacked from here, but its description can be read.
+      var m = /x:([-\\d.]+) y:([-\\d.]+) w:([\\d.]+) h:([\\d.]+)/.exec(ObjC.castRefToObject(attr(el, 'AXFrame')).description.js);
+      if (m) out.push({ x: +m[1], y: +m[2], width: +m[3], height: +m[4], layer: 'icons' });
+    }
+  }
+} catch (e) {}
+JSON.stringify(out);
 `;
 
 function readDockWindows(cb) {

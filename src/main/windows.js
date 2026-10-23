@@ -1,8 +1,9 @@
 // The other apps' windows on the desktop, so the slimes can stand on them.
 // A small PowerShell helper lists the visible top-level windows (front to
 // back) and prints them when something changed: about 60 times a second
-// while a window moves, a dozen times a second otherwise.
-// Windows only; elsewhere this does nothing.
+// while a window moves, a dozen times a second otherwise. On macOS a small
+// JavaScript for Automation loop does the same through CoreGraphics (window
+// bounds need no permission). Elsewhere this does nothing.
 const { spawn } = require('node:child_process');
 
 const SCRIPT = `
@@ -53,16 +54,41 @@ while ($true) {
 	if ($busy -gt 0) { $busy--; Start-Sleep -Milliseconds 8 } else { Start-Sleep -Milliseconds 80 }
 }`;
 
+// The same loop for macOS: on-screen, normal-level windows, front to back,
+// in points (the same coordinates as Electron's screen). A scan takes about
+// a millisecond.
+const MAC_SCRIPT = `
+ObjC.import('CoreGraphics');
+ObjC.import('Foundation');
+var out = $.NSFileHandle.fileHandleWithStandardOutput;
+var last = '', busy = 0, t0 = Date.now();
+while (true) {
+	var list = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(17, 0))) || [];
+	var now = '';
+	for (var i = 0; i < list.length; i++) {
+		var w = list[i], b = w.kCGWindowBounds;
+		if (w.kCGWindowLayer !== 0 || !(w.kCGWindowAlpha > 0) || w.kCGWindowOwnerPID === __PID__) continue;
+		if (b.Width < 80 || b.Height < 40) continue;
+		now += w.kCGWindowNumber + ' ' + b.X + ' ' + b.Y + ' ' + (b.X + b.Width) + ' ' + (b.Y + b.Height) + ';';
+	}
+	if (now !== last) { last = now; busy = 60; out.writeData($((Date.now() - t0) + '|' + now + '\\n').dataUsingEncoding($.NSUTF8StringEncoding)); }
+	$.NSThread.sleepForTimeInterval(busy-- > 0 ? 0.008 : 0.08);
+}`;
+
 // Calls onList([{ id, x, y, width, height }], at) whenever the windows
 // move, open or close: front to back, in physical screen pixels, and when
 // they were looked at (ms, on the helper's own clock, for working out how
 // fast a window moves). Returns a stop function.
 function watchWindows(skipPid, onList) {
-	if (process.platform !== 'win32') return () => {};
+	if (process.platform !== 'win32' && process.platform !== 'darwin') return () => {};
 	let child = null, stopped = false;
 	const start = () => {
-		const script = SCRIPT.replace('__PID__', String(skipPid));
-		child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+		if (process.platform === 'darwin') {
+			child = spawn('osascript', ['-l', 'JavaScript', '-e', MAC_SCRIPT.replace('__PID__', String(skipPid))], { stdio: ['ignore', 'pipe', 'ignore'] });
+		} else {
+			const script = SCRIPT.replace('__PID__', String(skipPid));
+			child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+		}
 		let buf = '';
 		child.stdout.setEncoding('utf8');
 		child.stdout.on('data', (chunk) => {
