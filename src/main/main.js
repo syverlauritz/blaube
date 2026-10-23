@@ -733,7 +733,9 @@ function statusBubble({ session: s, agentId, payload: p }) {
     const now = Date.now();
     if (now - (lastBubble.get(key) || 0) < 4000) return;
     lastBubble.set(key, now);
-    say(describeTool(p.tool_name, p.tool_input || {}), 2.5);
+    // A helper murmurs it out loud too (softly); a session's own stay quiet.
+    if (agentId) win.webContents.send('say', { id: key, text: describeTool(p.tool_name, p.tool_input || {}), seconds: 2.5, status: true, aloud: true, soft: true });
+    else say(describeTool(p.tool_name, p.tool_input || {}), 2.5);
   } else if (event === 'Stop') {
     const said = p.last_assistant_message || usage.lastText(transcriptPath(s));
     // How long the turn took, when it was worth waiting for.

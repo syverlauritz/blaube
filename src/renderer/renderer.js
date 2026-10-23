@@ -109,7 +109,7 @@
       if (b.speech) b.speech.line.stop();
       const at = audio.ctx.currentTime + 0.03;
       const line = BlaubeVoice.speak(audio.ctx, text, {
-        at, out: audio.out, pitch: BlaubeVoice.pitchFor(b.body.o.radius, !b.big) * (how.higher || 1), seed: BlaubeVoice.hash(b.key), volume: CFG.voiceVolume, wah: CFG.voiceWah, pace: how.pace,
+        at, out: audio.out, pitch: BlaubeVoice.pitchFor(b.body.o.radius, !b.big) * (how.higher || 1), seed: BlaubeVoice.hash(b.key), volume: CFG.voiceVolume * (how.softer || 1), wah: CFG.voiceWah, pace: how.pace,
       });
       b.speech = { line, at };
     } catch (e) { b.speech = null; }
@@ -1844,7 +1844,7 @@
     // moments (done, needs you) are said out loud, bubble or not.
     if (m.status) {
       b.status = { text: m.text, at: time, state: b.state };
-      if (m.aloud) speak(b, m.text);
+      if (m.aloud) speak(b, m.text, { softer: m.soft ? 0.55 : 1 });
       if (CFG.statusBubbles !== 'Always') return;
     }
     b.say(m.text, m.seconds || 4, false, !m.status);
