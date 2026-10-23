@@ -100,6 +100,7 @@
     ['statusBubbles', 'On hover', ['On hover', 'Always'], 0, 0, 'Status bubbles'],
     ['looks', 'On', ['On', 'Off'], 0, 0, 'Fun looks (bows, ears, antennas...)'],
     ['windowLedges', 'On', ['On', 'Off'], 0, 0, 'Land on top of other windows'],
+    ['onTop', 'On', ['On', 'Off'], 0, 0, 'Stay in front of other windows'],
   ];
 
   // Colours you can pick for a Blaube from its right-click menu.

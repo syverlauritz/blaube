@@ -1129,6 +1129,10 @@
       b.furrowUntil = time + 0.8 + Math.random() * 1.2;
       b.nextFurrow = time + 4 + Math.random() * 8;
     }
+    // Hovered while it works: it peeks up at you, half-open eyes following
+    // the cursor, then goes back to work when you move on.
+    const peeking = expression === 'concentrate' && b === hovered && !body.grab;
+    if (peeking) { expression = 'peek'; mouth = 'flat'; }
     const moving = expression === 'concentrate' && time < b.furrowUntil;
     const wantFurrow = moving && b.browMove === 'furrow' ? 1 : 0, wantRaise = moving && b.browMove === 'raise' ? 1 : 0;
     b.furrow = (b.furrow || 0) + (wantFurrow - (b.furrow || 0)) * 0.15;
@@ -1167,7 +1171,7 @@
     }
     const glaring = expression === 'annoyed';
     b.gazeTarget = glaring ? b.annoyedAt.body.centroid() : !checkIn || b.glanceAt === 'you' ? null : b.glanceAt.spot || b.glanceAt.body.centroid();
-    const wantLook = checkIn || glaring ? 1 : (st === 'idle' || st === 'done') && expression === 'normal' && effort !== 'low' && !body.grab && !b.bubble ? 1 : 0;
+    const wantLook = checkIn || glaring || peeking ? 1 : (st === 'idle' || st === 'done') && expression === 'normal' && effort !== 'low' && !body.grab && !b.bubble ? 1 : 0;
     b.lookAmount = (b.lookAmount ?? wantLook) + (wantLook - (b.lookAmount ?? wantLook)) * 0.08;
     // While the face isn't turning (working, not looking at anything), its
     // gaze waits right on what it would look at, so a glance turns straight

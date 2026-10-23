@@ -179,8 +179,10 @@
           ctx.arc(x, y, ew * 0.8, Math.PI * 0.15, Math.PI * 0.85);
           ctx.stroke();
           break;
-        case 'annoyed': {
-          // Narrowed eyes: the bottom half of an eye.
+        case 'annoyed':
+        case 'peek': {
+          // Narrowed eyes: the bottom half of an eye (annoyed, or a busy
+          // slime peeking up at you from its work).
           ctx.fillStyle = ink;
           ctx.beginPath();
           ctx.ellipse(x, y + eh * 0.05, ew * 0.85, eh * 0.6, 0, 0, Math.PI);
@@ -250,10 +252,10 @@
           }
         }
       }
-      if (s.brows && (face.expression === 'worried' || face.expression === 'concentrate' || face.expression === 'pained' || face.expression === 'annoyed')) {
+      if (s.brows && (face.expression === 'worried' || face.expression === 'concentrate' || face.expression === 'pained' || face.expression === 'annoyed' || face.expression === 'peek')) {
         // Concentrating: level brows that only sometimes pull together.
-        // Annoyed: pulled down hard at the middle.
-        const tilt = face.expression === 'concentrate' ? 0.9 * (face.furrow || 0) : face.expression === 'annoyed' ? 1.1 : -1;
+        // Annoyed: pulled down hard at the middle. Peeking: level and calm.
+        const tilt = face.expression === 'concentrate' ? 0.9 * (face.furrow || 0) : face.expression === 'annoyed' ? 1.1 : face.expression === 'peek' ? 0 : -1;
         const lift = face.expression === 'concentrate' ? (face.raise || 0) * eh * 0.4 : 0;
         ctx.beginPath();
         ctx.moveTo(x - ew * side, y - eh * 1.35 + tilt * eh * 0.25 - lift);

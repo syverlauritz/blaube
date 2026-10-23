@@ -114,9 +114,19 @@ function savePrefs() {
   }, 300);
 }
 
+// In front of every window (the default), or behind them like the desktop,
+// when you need to see all of a window. The talk box always opens in front.
+function applyOnTop() {
+  if (!win) return;
+  const front = prefs.config.onTop !== 'Off';
+  win.setAlwaysOnTop(front, 'floating');
+  if (!front) win.blur();
+}
+
 function setConfig(next) {
   prefs.config = BlaubeConfig.sanitize(next);
   savePrefs();
+  applyOnTop();
   if (win) win.webContents.send('config', prefs.config);
   updateWorld();
 }
@@ -552,7 +562,7 @@ function createWindow() {
       backgroundThrottling: false,
     },
   });
-  win.setAlwaysOnTop(true, 'floating');
+  applyOnTop();
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.setIgnoreMouseEvents(true, { forward: true });
   if (TEST) win.setOpacity(0);
@@ -841,6 +851,7 @@ function appMenuTemplate() {
     { type: 'separator' },
     { label: 'Colour', submenu: colorMenu(prefs.config.color, (hex) => setConfig(Object.assign({}, prefs.config, { color: hex }))) },
     { label: 'Live on display', submenu: displayMenu() },
+    { label: 'Stay in front of other windows', type: 'checkbox', checked: prefs.config.onTop !== 'Off', click: (i) => setConfig(Object.assign({}, prefs.config, { onTop: i.checked ? 'On' : 'Off' })) },
     { label: 'Settings…', click: openSettings },
     // Without Accessibility the Dock is a solid strip; with it, its icon row
     // is read so the slimes can bump into its ends.
