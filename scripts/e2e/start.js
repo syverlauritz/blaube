@@ -41,6 +41,27 @@ module.exports = async function run({ win, inbox, owned, startSession, talk, tal
 	const log = inbox.log(id).map((e) => e.who).join(',');
 	check(!/you,you,you/.test(log) && inbox.log(id).filter((e) => e.who === 'you').length === 3, `no doubled entries (${log})`);
 
+	// It asks permission for something: the card shows on its slime, and
+	// Allow lets it go ahead. (The folder asks for prompts, whatever your
+	// own settings say.)
+	fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+	fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ permissions: { defaultMode: 'default' } }));
+	const pid = startSession(dir, ['--model', 'haiku']);
+	await until(() => talk().isVisible() && talkId() === pid, 8000);
+	await sleep(500);
+	await box(`(() => { const t = document.getElementById('text'); t.value = 'Use the Bash tool to run exactly: touch made-here.txt'; t.dispatchEvent(new Event('input')); document.getElementById('form').requestSubmit(); })()`);
+	check(await until(async () => !(await box(`document.getElementById('ask').hidden`)) && /touch made-here/.test(await box(`document.getElementById('askDetail').textContent`)), 60000), 'its permission prompt comes to the slime');
+	await sleep(600);
+	await box(`document.getElementById('allow').click()`);
+	check(await until(() => fs.existsSync(path.join(dir, 'made-here.txt')), 30000), 'Allow lets it run');
+	check(await until(() => tracker.sessions.get(pid) && tracker.sessions.get(pid).state === 'done', 30000), 'and it finishes');
+	owned.end(pid);
+
+	// A session that can't start (the folder's gone): no stuck slime.
+	const broken = startSession(path.join(dir, 'not-here'), ['--model', 'haiku']);
+	check(await until(() => !owned.has(broken), 8000), 'a session that can’t start ends');
+	check(await until(() => !tracker.sessions.has(broken), 3000), 'and leaves no slime behind');
+
 	owned.end(id);
 	check(await until(() => !owned.has(id), 8000), 'ending it stops it');
 	check(await until(() => !tracker.sessions.has(id), 3000), 'and its slime goes');

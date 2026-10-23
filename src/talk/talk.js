@@ -287,7 +287,7 @@
         }, 450);
       } else { updateSend(ask); focusCard(); }
     }
-    if (ask.kind === 'plan') $('deny').textContent = typedForCard() ? 'Send changes' : 'Keep planning';
+    if (ask.kind === 'plan') planButtons();
     $('askMore').textContent = count > 1 ? `+${count - 1} more after this` : '';
     $('always').textContent = ask.always || '';
     $('always').title = ask.alwaysFull || '';
@@ -298,6 +298,14 @@
   // What's in the field counts for the card only if you typed it after the
   // card came (not a draft from before).
   const typedForCard = () => { const v = text.value.trim(); return !!v && v !== cardDraft.trim() && Date.now() - cardAt > 450; };
+
+  // On a plan, a note you've typed means changes first: Go ahead waits
+  // until the note is sent (Send changes) or cleared.
+  function planButtons() {
+    const typed = typedForCard();
+    $('deny').textContent = typed ? 'Send changes' : 'Keep planning';
+    if (Date.now() - cardAt > 450) { $('allow').disabled = typed; $('always').disabled = typed; }
+  }
 
   // On a card with several questions the field is away: start at the options.
   function focusCard() {
@@ -473,7 +481,7 @@
     for (const el of [$('askQuestions'), $('askPlan'), $('askDetail')]) if (el.offsetParent) card += el.scrollHeight - el.clientHeight;
     // A hidden (squeezed) log still wants its height back; an empty one doesn't.
     if (inner.offsetHeight) innerH = inner.offsetHeight;
-    const logH = inner.children.length ? innerH + pad : 0;
+    const logH = inner.children.length && !(askKey && log.classList.contains('squeezed')) ? innerH + pad : 0;
     api.setHeight(current.id, Math.ceil(chrome + card + logH + 24 + 1)); // 24: room round the bubble
   }
 
@@ -516,7 +524,7 @@
   });
   if (api.onTail) api.onTail((t) => { placeTail(t); fitWindow(); });
   text.addEventListener('input', () => {
-    if (askKey && current.ask && current.ask.kind === 'plan') $('deny').textContent = typedForCard() ? 'Send changes' : 'Keep planning';
+    if (askKey && current.ask && current.ask.kind === 'plan') planButtons();
     fit(); send.disabled = !current || current.demo || !text.value.trim(); requestAnimationFrame(fitWindow); });
   text.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('form').requestSubmit(); }
@@ -563,14 +571,15 @@
     if (!askKey) return;
     const ask = current.ask;
     if (ask && ask.kind === 'question') return answer(ask);
-    // On a plan, what you typed after it came is your note: with Keep
-    // planning it's what to change; with Go ahead it follows the go-ahead.
-    const note = ask && ask.kind === 'plan' && typedForCard() ? text.value.trim() : '';
-    if (note) { text.value = ''; fit(); drafts.delete(current.id); }
-    if (note && choice === 'deny') return finish('deny', { message: note });
-    const id = current.id;
+    // On a plan, what you typed after it came is what to change (the go-ahead
+    // buttons wait while there's a note).
+    if (ask && ask.kind === 'plan' && typedForCard()) {
+      if (choice !== 'deny') return;
+      const note = text.value.trim();
+      text.value = ''; fit(); drafts.delete(current.id);
+      return finish('deny', { message: note });
+    }
     finish(choice);
-    if (note) api.send(id, note);
   };
   // Number keys pick an option on a one-question card (like the terminal).
   document.addEventListener('keydown', (e) => {

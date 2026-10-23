@@ -209,6 +209,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await sleep(600);
 	await box(`(() => { const t = document.getElementById('text'); t.value = 'use Web Audio, not files'; t.dispatchEvent(new Event('input')); })()`);
 	check(await box(`document.getElementById('deny').textContent`) === 'Send changes', 'Keep planning becomes Send changes when you type');
+	check(await box(`document.getElementById('allow').disabled`), 'and Go ahead waits (your note would come too late)');
 	await box(`document.getElementById('form').requestSubmit()`);
 	const back = await Promise.race([planning2.done, sleep(3000).then(() => null)]);
 	let bk = null;

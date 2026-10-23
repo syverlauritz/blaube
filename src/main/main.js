@@ -354,15 +354,14 @@ function pushTalk(id, focusField = false) {
 // its talk box open, ready for your first message.
 function startSession(cwd, extra = []) {
   if (!cwd) return null;
-  const args = [...extra];
   // Not connected yet: give this session Blaube's hooks itself, so its
   // slime still knows what it's doing and can still ask you things.
+  let settings = null;
   if (!claudeHooks.isInstalled(undefined, PORT)) {
-    const s = claudeHooks.withBlaube({}, PORT);
-    s.hooks.Stop = s.hooks.Stop.filter((g) => !g.hooks.some((h) => h.asyncRewake));
-    args.push('--settings', JSON.stringify(s));
+    settings = claudeHooks.withBlaube({}, PORT);
+    settings.hooks.Stop = settings.hooks.Stop.filter((g) => !g.hooks.some((h) => h.asyncRewake));
   }
-  const id = owned.start(cwd, args);
+  const id = owned.start(cwd, extra, settings);
   prefs.recentFolders = [cwd, ...(prefs.recentFolders || []).filter((f) => f !== cwd)].slice(0, 5);
   savePrefs();
   log(`started a session in ${cwd}: ${id}`);
@@ -396,12 +395,28 @@ function newSessionMenu() {
   ];
 }
 
-// "Continue in terminal": lets Blaube's copy finish, then resumes it there.
-function continueInTerminal(s) {
+// Ends a session Blaube started; in the middle of something, asks first.
+async function endOwned(s, what = 'End it') {
+  const cur = tracker.sessions.get(s.id);
+  if (cur && (cur.state === 'working' || cur.state === 'waiting')) {
+    const { response } = await dialog.showMessageBox({
+      type: 'question', buttons: [`${what} now`, 'Cancel'], defaultId: 1, cancelId: 1,
+      message: `${s.project} is in the middle of something.`,
+      detail: 'Stopping now cuts off what it’s doing. The conversation so far is kept.',
+    });
+    if (response !== 0) return false;
+  }
+  owned.end(s.id);
+  return true;
+}
+
+// "Continue in terminal": stops Blaube's copy, then resumes it there.
+async function continueInTerminal(s) {
   if (!owned.has(s.id)) return openResumeTerminal(s);
   const id = s.id, snapshot = Object.assign({}, s);
-  owned.once('exit', function done(gone) { if (gone !== id) return owned.once('exit', done); openResumeTerminal(snapshot); });
-  owned.end(id);
+  const resume = (gone) => { if (gone !== id) return; owned.removeListener('exit', resume); openResumeTerminal(snapshot); };
+  owned.on('exit', resume);
+  if (!(await endOwned(s, 'Move it'))) owned.removeListener('exit', resume);
 }
 
 // A reply's first sentence or so, for the slime's speech bubble.
@@ -770,7 +785,7 @@ function sessionMenu(id) {
     ...(owned.has(id) ? [
       { label: 'Talk', click: () => win && win.webContents.send('open-talk', id) },
       { label: 'Continue in terminal', click: () => continueInTerminal(s) },
-      { label: 'End session', click: () => owned.end(id) },
+      { label: 'End session', click: () => endOwned(s) },
     ] : [
       { label: 'Go to session', enabled: !isDemo, click: () => goToSession(s) },
       { label: 'Resume in new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
@@ -949,12 +964,12 @@ app.whenReady().then(async () => {
     else inbox.replied(id, r.text);
     tracker.handle({ session_id: id, hook_event_name: 'Stop', last_assistant_message: r.text }, 'blaube');
   });
-  owned.on('exit', (id, code, err) => {
+  owned.on('exit', (id, code, err, signal) => {
     const s = tracker.sessions.get(id);
-    log(`session ${id} ended (${code})${err ? ': ' + err.slice(0, 300) : ''}`);
+    log(`session ${id} ended (${signal || code})${err ? ': ' + err.slice(0, 300) : ''}`);
     // It stopped with an error before you could say anything: say why.
-    if (code && s && !TEST && inbox.log(id).length === 0) {
-      dialog.showMessageBox({ type: 'warning', message: 'Claude Code couldn’t start there.', detail: err || `It stopped right away (exit code ${code}).` });
+    if ((code || signal) && s && !TEST && inbox.log(id).length === 0) {
+      dialog.showMessageBox({ type: 'warning', message: 'Claude Code couldn’t start there.', detail: err || `It stopped right away (${signal || `exit code ${code}`}).` });
     }
     tracker.handle({ session_id: id, hook_event_name: 'SessionEnd' }, 'blaube');
     inbox.observe({ session_id: id, hook_event_name: 'SessionEnd' });
@@ -1086,7 +1101,7 @@ app.whenReady().then(async () => {
     if (!id || id !== talkId || !tracker.sessions.has(id) || id.startsWith('demo-')) return;
     // A session Blaube started: straight in, and its turn starts.
     if (owned.has(id)) {
-      if (!owned.send(id, text)) return;
+      if (!owned.send(id, text)) { inbox.add(id, { who: 'you', text: String(text), via: 'blaube', status: 'unsent' }); return; }
       inbox.say(id, text);
       tracker.handle({ session_id: id, hook_event_name: 'UserPromptSubmit' }, 'blaube');
       return;
@@ -1150,7 +1165,7 @@ app.on('before-quit', (e) => {
   if (TEST || quitAnyway || (!waiting && !mine)) return;
   e.preventDefault();
   const lines = [];
-  if (mine) lines.push(mine === 1 ? 'A session you started in Blaube will stop. You can pick it up later with “Continue in terminal” next time, or claude --resume.' : `${mine} sessions you started in Blaube will stop. You can pick them up later with claude --resume.`);
+  if (mine) lines.push(mine === 1 ? 'A session you started in Blaube will stop. You can pick it up later in a terminal with claude --resume.' : `${mine} sessions you started in Blaube will stop. You can pick them up later in a terminal with claude --resume.`);
   if (waiting) lines.push(waiting === 1 ? 'A message hasn’t gone in yet and won’t be sent.' : `${waiting} messages haven’t gone in yet and won’t be sent.`);
   dialog.showMessageBox({
     type: 'question',
@@ -1161,4 +1176,4 @@ app.on('before-quit', (e) => {
     detail: lines.join('\n\n'),
   }).then(({ response }) => { if (response === 0) { quitAnyway = true; app.quit(); } });
 });
-app.on('will-quit', () => { globalShortcut.unregisterAll(); if (focus.stop) focus.stop(); owned.endAll(); });
+app.on('will-quit', () => { globalShortcut.unregisterAll(); if (focus.stop) focus.stop(); owned.killAll(); });

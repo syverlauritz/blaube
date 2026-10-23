@@ -3,10 +3,28 @@
 // it from its slime, and what you type goes straight in, even while it's
 // working (it reads it next). It's a real Claude Code session with its own
 // id, so it can be picked up later with `claude --resume <id>`.
-const { spawn } = require('node:child_process');
+const { spawn, execFileSync } = require('node:child_process');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { EventEmitter } = require('node:events');
+
+// Where claude is when the usual places don't have it (installed with nvm,
+// bun, a custom npm prefix): ask a login shell, as a terminal would. Once.
+let shellClaude;
+function claudeFromShell() {
+  if (shellClaude !== undefined || process.platform === 'win32') return shellClaude || '';
+  try {
+    const shell = process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash');
+    shellClaude = String(execFileSync(shell, ['-ilc', 'command -v claude'], { timeout: 5000, encoding: 'utf8' })).trim().split('\n').pop() || '';
+  } catch { shellClaude = ''; }
+  return shellClaude;
+}
+
+// Windows: run a .cmd through cmd.exe ourselves, every part quoted (Node's
+// shell option would leave paths with spaces, and anything else, unquoted).
+const quote = (a) => `"${String(a).replace(/"/g, '""')}"`;
 
 class Owned extends EventEmitter {
   // findClaude: where the claude binary is (or nothing: use PATH).
@@ -19,16 +37,26 @@ class Owned extends EventEmitter {
   has(id) { return this.sessions.has(id); }
   list() { return [...this.sessions.keys()]; }
 
-  // Starts a session in `cwd`. `extra`: more arguments (a model, settings).
-  // Returns its id.
-  start(cwd, extra = []) {
+  // Starts a session in `cwd`. `extra`: more arguments (a model);
+  // `settings`: extra settings for it (written to a file, so no shell can
+  // mangle them). Returns its id.
+  start(cwd, extra = [], settings = null) {
     const id = crypto.randomUUID();
-    const bin = this.findClaude() || 'claude';
+    const bin = this.findClaude() || claudeFromShell() || 'claude';
     const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--session-id', id, ...extra];
+    let settingsFile = '';
+    if (settings) {
+      settingsFile = path.join(os.tmpdir(), `blaube-session-${id}.json`);
+      fs.writeFileSync(settingsFile, JSON.stringify(settings));
+      args.push('--settings', settingsFile);
+    }
     const env = Object.assign({}, process.env);
     for (const k of Object.keys(env)) if (k === 'CLAUDECODE' || /^CLAUDE_CODE_(CHILD_SESSION|SESSION_|ENTRYPOINT)/.test(k)) delete env[k];
-    const win = process.platform === 'win32';
-    const proc = spawn(win && !path.isAbsolute(bin) ? 'claude' : bin, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, shell: win && (!path.isAbsolute(bin) || bin.endsWith('.cmd')) });
+    const opts = { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true };
+    const viaCmd = process.platform === 'win32' && (!path.isAbsolute(bin) || /\.(cmd|bat)$/i.test(bin));
+    const proc = viaCmd
+      ? spawn('cmd.exe', ['/d', '/s', '/c', `"${[quote(bin), ...args.map(quote)].join(' ')}"`], Object.assign(opts, { windowsVerbatimArguments: true }))
+      : spawn(bin, args, opts);
     const s = { proc, cwd, startedAt: Date.now(), err: '', buf: '' };
     this.sessions.set(id, s);
     proc.stdout.setEncoding('utf8');
@@ -45,11 +73,19 @@ class Owned extends EventEmitter {
     });
     proc.stderr.setEncoding('utf8');
     proc.stderr.on('data', (d) => { s.err = (s.err + d).slice(-2000); });
-    proc.on('error', (e) => { s.err = (s.err + e.message).slice(-2000); });
-    proc.on('exit', (code) => {
+    // However it ends (it quits, is stopped, or never starts: a missing
+    // program gives 'error' and 'close' but no 'exit'), it ends once.
+    let over = false;
+    const ended = (code, signal) => {
+      if (over) return;
+      over = true;
       this.sessions.delete(id);
-      this.emit('exit', id, code, s.err.trim());
-    });
+      if (settingsFile) fs.rm(settingsFile, { force: true }, () => {});
+      this.emit('exit', id, code == null && !signal ? 1 : code, s.err.trim(), signal || null);
+    };
+    proc.on('error', (e) => { s.err = (s.err + e.message).slice(-2000); if (!proc.pid) ended(1, null); });
+    proc.on('exit', ended);
+    proc.on('close', ended);
     proc.stdin.on('error', () => { /* it went away; 'exit' says so */ });
     this.emit('start', id, cwd);
     return id;
@@ -84,6 +120,11 @@ class Owned extends EventEmitter {
   }
 
   endAll() { for (const id of this.list()) this.end(id); }
+
+  // Blaube is quitting: stop them now (their conversations are saved).
+  killAll() {
+    for (const s of this.sessions.values()) { try { s.proc.stdin.end(); s.proc.kill(); } catch { /* gone */ } }
+  }
 }
 
 module.exports = { Owned };
