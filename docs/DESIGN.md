@@ -57,7 +57,8 @@ ships that breaks a "must".
 - The talk box (a slime's chat) is rounder than the little bubbles: 30 px
   corners on the box, pill-shaped buttons, softly rounded rows and code
   boxes, a chubby round-tipped tail. All tails are round-tipped. All of
-  Blaube's words use one rounded font. Wanted ("more rounded", "more
+  Blaube's words use one rounded font: Nunito (chosen over Fredoka, Baloo 2
+  and Quicksand; not up for review). Wanted ("more rounded", "more
   childlike in general").
 - Other apps' windows: a Blaube set or dropped on top of one stays there
   (falls off only if it wanders off), and can still be thrown anywhere:
