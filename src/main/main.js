@@ -601,6 +601,8 @@ function pushState() {
       agents: s.agents.map((a) => Object.assign({}, a, {
         description: agentDescription(s, a),
         effort: efforts.get(`${s.id}/${a.id}`) || efforts.get(s.id) || defaultEffort(),
+        // Its own tokens, so its slime grows with them too.
+        tokens: demoTokens.has(s.id) ? Math.round(demoTokens.get(s.id).total / 8) : usage.helperTokens(transcriptPath(s), a.id),
       })),
     })),
     settings: { hooksInstalled: claudeHooks.isInstalled(undefined, PORT), talked: !!prefs.talked, noClaude: !claudeFound() },

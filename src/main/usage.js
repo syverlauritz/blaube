@@ -138,6 +138,13 @@ function sessionUsage(file) {
 	return { total, context: u.context, limit: u.big ? 1000000 : 200000 };
 }
 
+// Tokens one helper (subagent) has used, from its own transcript.
+function helperTokens(file, agentId) {
+	if (!file || !agentId) return 0;
+	const h = readNew(path.join(file.replace(/\.jsonl$/, ''), 'subagents', `agent-${agentId}.jsonl`));
+	return h ? h.total : 0;
+}
+
 // The last thing Claude wrote in a transcript (its own words, not tools).
 function lastText(file) {
 	const u = file && readNew(file);
@@ -195,4 +202,4 @@ function forget(keep) {
 	for (const f of files.keys()) if (!keep.has(f) && !dirs.some((d) => f.startsWith(d))) files.delete(f);
 }
 
-module.exports = { sessionUsage, sessionTasks, sessionEffort, sessionInfo, sessionErrors, lastText, catchUp, forget };
+module.exports = { helperTokens, sessionUsage, sessionTasks, sessionEffort, sessionInfo, sessionErrors, lastText, catchUp, forget };

@@ -272,6 +272,15 @@
     return Math.min(CFG.maxTokenGrowth, 1 + CFG.tokenGrowth * Math.log2(1 + total / 100000));
   }
 
+  // Helpers grow the same way with their own tokens, counted from 20k
+  // (they use far fewer), and never past three quarters of their mother.
+  function childRadius(b) {
+    const total = (b.agent && b.agent.tokens) || 0;
+    let r = CFG.childRadius * (total ? Math.min(CFG.maxTokenGrowth, 1 + CFG.tokenGrowth * Math.log2(1 + total / 20000)) : 1);
+    if (b.mother && !b.mother.dying) r = Math.min(r, Math.max(CFG.childRadius, b.mother.body.o.radius * 0.75));
+    return r;
+  }
+
   // How full the session's context window is, 0..1.
   function contextFill(b) {
     const t = b.kind === 'mother' && b.session && b.session.tokens;
@@ -282,10 +291,11 @@
   const ramp = (v, from, to) => Math.max(0, Math.min(1, (v - from) / Math.max(0.001, to - from)));
 
   function radiusFor(m) {
-    let children = 0;
-    for (const b of buddies.values()) if (b.mother === m && !b.dying) children++;
-    const R = CFG.mainRadius * tokenScale(m), r = CFG.childRadius;
-    return Math.max(Math.min(CFG.mainMinRadius, R), Math.sqrt(Math.max(0, R * R - 0.5 * children * r * r)));
+    // She gives up some of her volume to each child (as big as it is now).
+    let given = 0;
+    for (const b of buddies.values()) if (b.mother === m && !b.dying) given += b.body.o.radius * b.body.o.radius;
+    const R = CFG.mainRadius * tokenScale(m);
+    return Math.max(Math.min(CFG.mainMinRadius, R), Math.sqrt(Math.max(0, R * R - 0.5 * given)));
   }
 
   function nearestBig(b, filter) {
@@ -686,6 +696,7 @@
       const body = b.body;
       const r = body.o.radius;
       if (b.big && !b.dying) b.targetR = radiusFor(b);
+      else if (b.kind === 'child' && !b.dying && !b.splitting) b.targetR = childRadius(b);
       if (Math.abs(b.targetR - r) > 0.05) body.setRadius(r + (b.targetR - r) * (b.dying ? 0.08 : 0.02));
       // A fuller context puffs the slime up tight; in pain it pants.
       b.fill = (b.fill || 0) + (contextFill(b) - (b.fill || 0)) * 0.01;
@@ -1158,6 +1169,14 @@
     b.gazeTarget = glaring ? b.annoyedAt.body.centroid() : !checkIn || b.glanceAt === 'you' ? null : b.glanceAt.spot || b.glanceAt.body.centroid();
     const wantLook = checkIn || glaring ? 1 : (st === 'idle' || st === 'done') && expression === 'normal' && effort !== 'low' && !body.grab && !b.bubble ? 1 : 0;
     b.lookAmount = (b.lookAmount ?? wantLook) + (wantLook - (b.lookAmount ?? wantLook)) * 0.08;
+    // While the face isn't turning (working, not looking at anything), its
+    // gaze waits right on what it would look at, so a glance turns straight
+    // there (it used to start from wherever the mouse was, often the
+    // other way first).
+    if (b.gaze && b.lookAmount < 0.15) {
+      const to = b.gazeTarget || mouse;
+      b.gaze.x = to.x; b.gaze.y = to.y; b.gaze.vx = 0; b.gaze.vy = 0;
+    }
     return { expression, mouth, blink: b.blink, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: b.pain || 0, nod: nodOf(b), scale: CFG.faceScale, style: CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal',
     };
@@ -1193,6 +1212,9 @@
     const lines = [{ text: info.title || label(b) }, { text, color: D.STATE_COLORS[b.state] }];
     const extra = [info.branch, modelName(info.model)].filter(Boolean).join(' · ');
     if (extra) lines.push({ text: extra, dim: true });
+    // How full its context window is.
+    const tk = b.kind === 'mother' && b.session && b.session.tokens;
+    if (tk && tk.limit && tk.context) lines.push({ text: `${Math.min(100, Math.round((tk.context / tk.limit) * 100))}% of context used`, dim: true });
     // Until you've talked to one, say you can.
     if (b.session && !String(b.session.id).startsWith('demo-')) {
       if (settings.hooksInstalled === false) lines.push({ text: 'Connect Claude Code in my menu for more', dim: true });

@@ -54,6 +54,19 @@ const SCENES = {
 		})],
 		wait: 4000,
 	},
+	// Helpers grow with their own tokens: a fresh one, a busy one, a big one.
+	helperSizes: {
+		sessions: [session('hs', 'kalkis', 'working', {
+			tokens: { total: 900000, context: 90000, limit: 200000 },
+			agents: [
+				{ id: 'k1', type: 'Explore', description: 'Quick look', state: 'working', activity: 'thinking', tokens: 5000 },
+				{ id: 'k2', type: 'general-purpose', description: 'Busy one', state: 'working', activity: 'tool', action: 'read', tokens: 80000 },
+				{ id: 'k3', type: 'general-purpose', description: 'Big job', state: 'working', activity: 'tool', action: 'edit', tokens: 600000 },
+			],
+		})],
+		wait: 5000,
+		size: [1100, 560],
+	},
 	pets: {
 		sessions: [session('a', 'playground', 'idle', {
 			tasks: [{ id: 't1', command: 'npm run dev' }, { id: 't2', command: 'npm test -- --watch' }, { id: 't3', command: 'npm run toy -- strands' }],
@@ -315,7 +328,7 @@ const SCENES = {
 		wait: 4000,
 		size: [1100, 520],
 	},
-	hover: { sessions: [session('a', 'blaube', 'working', { activity: 'tool' })], hover: true },
+	hover: { sessions: [session('a', 'blaube', 'working', { activity: 'tool', tokens: { total: 400000, context: 124000, limit: 200000 } })], hover: true },
 	// The talk box (a click on a slime), drawn where the app would put it.
 	talkChat: {
 		sessions: [session('tc', 'vergence-studios-playground', 'done', { look: 'bunny' }), session('tc2', 'kalkis', 'idle', { color: '#5B8DEF', look: 'bow' })],
