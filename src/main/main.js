@@ -4,6 +4,7 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, sh
 const { SessionTracker } = require('./sessions');
 const { Inbox, STYLE } = require('./inbox');
 const { classify } = require('../shared/actions');
+const { SONGS } = require('../shared/songs');
 const { placeTalk } = require('./talkPlace');
 const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
@@ -859,6 +860,12 @@ function appMenuTemplate() {
     { label: 'Play', submenu: [
       { label: 'Come here', click: () => send('come-here') },
       { label: 'Everyone hop!', click: () => send('hop') },
+      // Everyone sings, in parts: the more slimes, the fuller.
+      { label: 'Choir', submenu: [
+        ...SONGS.map((s) => ({ label: s.title, click: () => send('choir:' + s.id) })),
+        { type: 'separator' },
+        { label: 'Stop singing', click: () => send('choir-stop') },
+      ] },
       { label: 'Demo sessions', click: runDemo },
     ] },
     { type: 'separator' },

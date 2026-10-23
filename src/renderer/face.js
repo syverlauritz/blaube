@@ -758,6 +758,30 @@
   }
 
   // A small heart that pops up, floats a little and fades.
+  // A quaver (eighth note) about s px tall, its head at (0, 0): drawn
+  // twice, a white edge under the colour.
+  function drawNote(ctx, s, color) {
+    const shape = () => {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, s * 0.3, s * 0.22, -0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(s * 0.24, -s * 0.08);
+      ctx.lineTo(s * 0.24, -s);
+      ctx.quadraticCurveTo(s * 0.32, -s * 0.62, s * 0.66, -s * 0.5);
+      ctx.stroke();
+    };
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.fillStyle = ctx.strokeStyle = '#fff';
+    ctx.lineWidth = s * 0.14 + 4;
+    shape();
+    ctx.save(); ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(0, 0, s * 0.3, s * 0.22, -0.4, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+    ctx.fillStyle = ctx.strokeStyle = color;
+    ctx.lineWidth = s * 0.14;
+    shape();
+  }
+
   function drawHeart(ctx, x, y, s, t) {
     // Pops in with a little overshoot.
     const k = Math.min(1, t / 0.25) - 1;
@@ -960,5 +984,5 @@
     ctx.closePath();
   }
 
-  root.BlaubeDraw = { setFont, setCrowd, drawHeart, drawShadow, drawBody, vary, drawFace, drawGlasses, drawDots, drawThinking, drawZzz, drawFlush, drawSweat, drawPet, drawExclaim, drawLabel, drawBubble, STATE_COLORS };
+  root.BlaubeDraw = { setFont, setCrowd, drawHeart, drawNote, drawShadow, drawBody, vary, drawFace, drawGlasses, drawDots, drawThinking, drawZzz, drawFlush, drawSweat, drawPet, drawExclaim, drawLabel, drawBubble, STATE_COLORS };
 })(globalThis);

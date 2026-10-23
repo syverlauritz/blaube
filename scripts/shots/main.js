@@ -53,6 +53,20 @@ const SCENES = {
 		size: [1000, 460],
 		motion: { frames: 16, every: 70, drop: 0, still: true, hopAt: [], sayAt: { 0: [{ id: 't1', text: 'Okay! I fixed the bug, and the tests pass.', seconds: 4 }, { id: 't2', text: 'Want me to push it?', seconds: 4 }] } },
 	},
+	// The choir: five slimes sing Silent Night in parts (biggest on the bass),
+	// eyes shut, mouths open on the notes, swaying, little notes rising.
+	choir: {
+		sessions: [
+			session('c1', 'blaube', 'idle', { tokens: { total: 6000000, context: 20000, limit: 200000 } }),
+			session('c2', 'kalkis', 'idle', { color: '#5B8DEF' }),
+			session('c3', 'playground', 'idle', { color: '#5FB57A', agents: [{ id: 'ca', type: 'general-purpose', description: 'Helper', state: 'working', activity: 'thinking' }] }),
+			session('c4', 'notes', 'idle', { color: '#9B7BD8' }),
+		],
+		config: { size: 0.75 },
+		wait: 4500,
+		size: [1200, 520],
+		motion: { frames: 16, every: 160, drop: 0, still: true, hopAt: [], commandAt: { 0: 'choir:silent-night' } },
+	},
 	// The same slime at four context fills: the fuller, the rounder and firmer.
 	fills: {
 		sessions: [0.05, 0.4, 0.75, 1].map((f, i) => session('f' + i, 'fill' + Math.round(f * 100), 'idle', { tokens: full(f) })),

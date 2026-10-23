@@ -87,10 +87,8 @@
     const seed = opts.seed ?? hash(text);
     const rand = rng(seed ^ hash(text));
     const character = rng(seed); // the same for every line of one slime
-    const formantShift = 1.15 + character() * 0.25 + (opts.pitch > 400 ? 0.1 : 0);
     const pace = (0.9 + character() * 0.25) * (opts.pace || 1);
     const base = opts.pitch || 330;
-    const vol = (opts.volume ?? 0.5) * 0.75;
     const list = syllables(text, opts.max || 14);
     const question = /\?\s*$/.test(text), excited = /!\s*$/.test(text);
 
@@ -109,11 +107,41 @@
       plan.push({ t, dur, gap, f0: base * Math.pow(2, semis / 12), v: VOWELS[s.vowel], s, last });
       t += dur + gap;
     });
+    return perform(ctx, plan, { at, out, seed, base, volume: (opts.volume ?? 0.5) * (excited ? 1.15 : 1), bend: question ? 1.3 : excited ? 1 : 0.85 });
+  }
+
+  // Sings `notes` ([{ t, dur, f0, syl }], seconds from `at`; a syl of '-'
+  // carries on the one before, over a new note). Held notes, a deeper
+  // vibrato, words sung as written. opts as for speak, plus vibrato
+  // (cents). Returns what speak returns, its syllables marked `hold`.
+  function sing(ctx, notes, opts = {}) {
+    const at = opts.at ?? ctx.currentTime + 0.02;
+    let vowel = 'a';
+    const plan = notes.map((n, i) => {
+      const next = notes[i + 1];
+      const tied = n.syl === '-';
+      const y = tied ? { vowel, consonant: '' } : syllables(n.syl, 1)[0];
+      vowel = y.vowel;
+      const gap = next ? next.t - (n.t + n.dur) : 1;
+      return { t: at + n.t, dur: n.dur, gap, f0: n.f0, v: VOWELS[y.vowel], s: y, last: !next, legato: !!next && next.syl === '-' && gap < 0.02, hold: true };
+    });
+    return perform(ctx, plan, Object.assign({}, opts, { at, base: opts.base || (notes[0] && notes[0].f0) || 330, volume: opts.volume ?? 0.5, bend: 1 }));
+  }
+
+  // The talkbox itself, playing a planned line: [{ t, dur, gap, f0, v,
+  // s: { consonant, vowel, stress }, last, legato, hold }].
+  function perform(ctx, plan, o) {
+    const { at, base } = o;
+    const out = o.out || ctx.destination;
+    const character = rng(o.seed ?? 1);
+    const formantShift = 1.15 + character() * 0.25 + (base > 400 ? 0.1 : 0);
+    const last = plan[plan.length - 1];
+    const t = last.t + last.dur;
     const end = t + 0.12;
 
     // The buzz: a saw and a slightly detuned square, with a little vibrato.
     const bus = ctx.createGain();
-    bus.gain.value = vol * (excited ? 1.15 : 1);
+    bus.gain.value = o.volume * 0.75;
     const amp = ctx.createGain();
     amp.gain.setValueAtTime(0, at);
     const saw = ctx.createOscillator(), sq = ctx.createOscillator();
@@ -123,7 +151,7 @@
     sqGain.gain.value = 0.35;
     const vib = ctx.createOscillator(), vibDepth = ctx.createGain();
     vib.frequency.value = 5.5 + character();
-    vibDepth.gain.value = 14; // cents
+    vibDepth.gain.value = o.vibrato || 14; // cents
     vib.connect(vibDepth); vibDepth.connect(saw.detune); vibDepth.connect(sq.detune);
     // A bit of grit, like a speaker driven through a tube.
     const grit = ctx.createWaveShaper();
@@ -148,17 +176,17 @@
     amp.connect(tone).connect(bus).connect(out);
 
     const first = plan[0];
-    for (const o of [saw, sq]) o.frequency.setValueAtTime(first.f0 * 0.9, at);
+    for (const osc of [saw, sq]) osc.frequency.setValueAtTime(first.f0 * 0.9, at);
     for (const m of mouth) m.bp.frequency.setValueAtTime(formant(first.v, m.k) * formantShift * 0.6, at);
     for (const p of plan) {
       const { t: t0, dur, v } = p, t1 = t0 + dur;
       // Pitch slides into each syllable (the talkbox glide), and bends at
       // the end of the line: up for a question, down otherwise.
       const lip = /[bmpw]/.test(p.s.consonant) ? 0.9 : 1;
-      for (const o of [saw, sq]) {
-        o.frequency.setTargetAtTime(p.f0 * lip, t0, 0.008);
-        o.frequency.setTargetAtTime(p.f0, t0 + 0.02, 0.03);
-        if (p.last) o.frequency.setTargetAtTime(p.f0 * (question ? 1.3 : 0.85), t0 + dur * 0.4, dur * 0.4);
+      for (const osc of [saw, sq]) {
+        osc.frequency.setTargetAtTime(p.f0 * lip, t0, 0.008);
+        osc.frequency.setTargetAtTime(p.f0, t0 + 0.02, 0.03);
+        if (p.last && o.bend !== 1) osc.frequency.setTargetAtTime(p.f0 * o.bend, t0 + dur * 0.4, dur * 0.4);
       }
       // The mouth opens into the vowel ("b", "m": from nearly shut).
       for (const m of mouth) {
@@ -167,15 +195,15 @@
         m.bp.frequency.setTargetAtTime(f, t0, 0.025);
       }
       // A swell per syllable; inside a word it dips but doesn't stop.
-      const floor = p.gap < 0.02 ? 0.25 : 0.0001;
+      const floor = p.legato ? 0.7 : p.gap < 0.02 ? 0.25 : 0.0001;
       amp.gain.setTargetAtTime(1, t0, 0.012);
-      amp.gain.setTargetAtTime(floor, t1 - Math.min(0.04, dur * 0.4), 0.018);
+      amp.gain.setTargetAtTime(floor, t1 - Math.min(p.hold ? 0.06 : 0.04, dur * 0.4), 0.018);
       if (/[stkcfhzxqjdg]/.test(p.s.consonant)) tick(ctx, bus, t0, p.s.consonant);
     }
     amp.gain.setTargetAtTime(0, t - 0.02, 0.02);
-    for (const o of [saw, sq, vib]) { o.start(at); o.stop(end); }
+    for (const osc of [saw, sq, vib]) { osc.start(at); osc.stop(end); }
 
-    const sylls = plan.map((p) => ({ t0: p.t - at, t1: p.t + p.dur - at, vowel: p.s.vowel, open: p.s.stress ? 1 : 0.75 }));
+    const sylls = plan.map((p) => ({ t0: p.t - at, t1: p.t + p.dur - at, vowel: p.s.vowel, open: p.hold || p.s.stress ? 1 : 0.75, hold: !!p.hold }));
     // stop(): cut it short with a quick fade (for a new line over it).
     const stop = () => { const now = ctx.currentTime; bus.gain.cancelScheduledValues(now); bus.gain.setTargetAtTime(0, now, 0.015); };
     return { sylls, length: t - at, stop };
@@ -209,13 +237,15 @@
       // Between syllables: shut, already shaped for the next one (a short
       // gap inside a word only half closes it, so it doesn't flicker).
       if (s < y.t0) return { open: prev && y.t0 - prev.t1 < 0.04 ? 0.25 : 0, wide: v.wide, round: v.round };
-      if (s <= y.t1) return { open: y.open * Math.sin(Math.PI * (s - y.t0) / (y.t1 - y.t0)), wide: v.wide, round: v.round };
+      // A sung note stays open; a spoken syllable opens and shuts.
+      const k = (s - y.t0) / (y.t1 - y.t0);
+      if (s <= y.t1) return { open: y.open * (y.hold ? Math.min(1, (s - y.t0) / 0.05, (y.t1 - s) / 0.05) : Math.sin(Math.PI * k)), wide: v.wide, round: v.round };
       prev = y;
     }
     return null; // done
   }
 
-  const api = { speak, syllables, pitchFor, mouthAt, hash, VOWELS };
+  const api = { speak, sing, syllables, pitchFor, mouthAt, hash, VOWELS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.BlaubeVoice = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

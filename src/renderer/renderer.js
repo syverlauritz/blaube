@@ -92,16 +92,20 @@
   // bigger it is, with the mouth moving along. One line at a time each; a
   // new one cuts the last short.
   let audio = null;
+  function ensureAudio() {
+    if (!audio) {
+      const ctx = new AudioContext();
+      const out = ctx.createDynamicsCompressor(); // several at once stay soft
+      out.connect(ctx.destination);
+      audio = { ctx, out };
+    }
+    if (audio.ctx.state === 'suspended') audio.ctx.resume();
+    return audio;
+  }
   function speak(b, text, how = {}) {
-    if (CFG.voice === 'Off' || !text || b.dying) return;
+    if (CFG.voice === 'Off' || !text || b.dying || b.singing) return;
     try {
-      if (!audio) {
-        const ctx = new AudioContext();
-        const out = ctx.createDynamicsCompressor(); // several at once stay soft
-        out.connect(ctx.destination);
-        audio = { ctx, out };
-      }
-      if (audio.ctx.state === 'suspended') audio.ctx.resume();
+      ensureAudio();
       if (b.speech) b.speech.line.stop();
       const at = audio.ctx.currentTime + 0.03;
       const line = BlaubeVoice.speak(audio.ctx, text, {
@@ -110,6 +114,56 @@
       b.speech = { line, at };
     } catch (e) { b.speech = null; }
   }
+  // The choir (Play > Choir): everyone sings a song together, each its own
+  // part (shared/choir.js): the biggest take the bass, the smallest the
+  // top. One slime sings the tune; every one more adds a harmony. They sway
+  // to the beat, eyes shut, little notes floating up.
+  let choir = null;
+  function startChoir(id) {
+    const song = BlaubeSongs.SONGS.find((s) => s.id === id);
+    stopChoir();
+    const singers = [...buddies.values()].filter((b) => !b.dying && !b.removed).sort((a, b) => b.body.o.radius - a.body.o.radius);
+    if (!song || !singers.length || CFG.voice === 'Off') return;
+    try {
+      ensureAudio();
+      const parts = BlaubeChoir.arrange(song, singers.length);
+      const at = audio.ctx.currentTime + 0.8; // a breath in first
+      const volume = CFG.voiceVolume * 1.4 / Math.sqrt(singers.length);
+      singers.forEach((b, i) => {
+        if (b.speech) b.speech.line.stop();
+        const line = BlaubeVoice.sing(audio.ctx, parts[i].notes, { at, out: audio.out, seed: BlaubeVoice.hash(b.key), volume, vibrato: 28 });
+        b.speech = { line, at };
+        b.singing = parts[i].role;
+      });
+      const length = BlaubeChoir.length(song);
+      choir = { singers, start: time + 0.8, until: time + 0.8 + length + 0.3, beat: 60 / song.bpm, lastBeat: -1 };
+    } catch (e) { stopChoir(); }
+  }
+  function stopChoir() {
+    if (!choir) return;
+    for (const b of choir.singers) {
+      if (b.singing && b.speech) b.speech.line.stop();
+      b.singing = null;
+    }
+    choir = null;
+  }
+  // Each frame: sway on the beat, notes float up, and the end.
+  function stepChoir() {
+    if (!choir) return;
+    if (time > choir.until) { for (const b of choir.singers) b.singing = null; choir = null; return; }
+    const beat = Math.floor((time - choir.start) / choir.beat);
+    if (beat < 0 || beat === choir.lastBeat) return;
+    choir.lastBeat = beat;
+    for (const b of choir.singers) {
+      if (!b.singing || b.dying || b.body.grab) continue;
+      if (b.body.onFloor()) b.body.impulse((beat % 2 ? 1 : -1) * 55, -25, DT);
+      if (Math.random() < 0.35) {
+        const c = b.body.centroid();
+        hearts.push({ note: true, x: c.x + (Math.random() - 0.5) * b.body.o.radius, y: b.body.bbox().minY - 8, vx: (Math.random() - 0.5) * 30, born: time, size: 24 + Math.random() * 8, color: b.color });
+      }
+    }
+  }
+
   // How its mouth is shaped right now, while it talks (null when quiet).
   function talkMouth(b) {
     if (!b.speech || !audio) return null;
@@ -744,6 +798,7 @@
   function step() {
     glideLedges();
     stepPets();
+    stepChoir();
     for (const b of [...buddies.values()]) {
       if (b.removed) continue;
       const body = b.body;
@@ -1242,6 +1297,7 @@
     // Talking: the mouth follows its babble (not mid-yawn or seeing stars).
     // Shut between syllables, it's its own mouth (a smile, mostly).
     const talk = talkMouth(b);
+    if (b.singing && expression !== 'dizzy') expression = 'happy'; // eyes shut, singing its heart out
     if (talk && mouth !== 'yawn' && expression !== 'dizzy') {
       if (talk.open >= 0.06) mouth = 'talk';
       if (expression === 'concentrate' || expression === 'sleepy' || expression === 'peek') expression = 'normal';
@@ -1348,7 +1404,7 @@
       if (b.kind === 'home' || b.dying) continue;
       if (b === hovered || b.bubble) continue; // the bubble sits where these go
       if (b === buddies.get(talkingTo)) continue; // its talk box is there instead
-      if (b.state === 'working' && !nodding(b) && !b.merging) D.drawThinking(ctx, b.body, time, activityOf(b), W);
+      if (b.state === 'working' && !nodding(b) && !b.merging && !b.singing) D.drawThinking(ctx, b.body, time, activityOf(b), W);
       if (b.state === 'working' && nodding(b) && b.nodQuiet && !b.merging) D.drawThinking(ctx, b.body, time, activityOf(b), W); // a commit's nod keeps its sign
       if (b.state === 'waiting') D.drawExclaim(ctx, b.body, time, W, '?');
       else if (b.state === 'done' && unseen(b)) D.drawExclaim(ctx, b.body, time, W);
@@ -1445,7 +1501,17 @@
         h.y = h.from.body.bbox().minY - h.dy;
         h.from = null;
       }
-      D.drawHeart(ctx, h.x + h.vx * age + Math.sin(age * 5 + h.born) * 4, h.y - age * (h.rise || 45), h.size, age);
+      const hx = h.x + h.vx * age + Math.sin(age * 5 + h.born) * 4, hy = h.y - age * (h.rise || 45);
+      if (h.note) {
+        // A sung note: a little ♪ in the singer's colour, white edged,
+        // rocking as it rises.
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, age * 6, (1.6 - age) * 2));
+        ctx.translate(hx, hy);
+        ctx.rotate(Math.sin(age * 4 + h.born) * 0.25);
+        D.drawNote(ctx, h.size, h.color);
+        ctx.restore();
+      } else D.drawHeart(ctx, hx, hy, h.size, age);
     }
   }
 
@@ -1787,7 +1853,9 @@
   if (api.onLedges) api.onLedges(setLedges);
 
   api.onCommand((cmd) => {
-    if (cmd === 'come-here') {
+    if (cmd.startsWith('choir:')) startChoir(cmd.slice(6));
+    else if (cmd === 'choir-stop') stopChoir();
+    else if (cmd === 'come-here') {
       for (const b of buddies.values()) b.body.teleport(W / 2 + (Math.random() - 0.5) * 200, H / 3);
     } else if (cmd === 'hop') {
       for (const b of buddies.values()) b.hop((Math.random() - 0.5) * 600, -900);
