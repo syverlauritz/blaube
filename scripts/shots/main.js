@@ -17,6 +17,7 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(ROOT, 'shots');
 const W = 900, H = 560;
+const { placeTalk } = require(path.join(ROOT, 'src', 'main', 'talkPlace.js'));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const session = (id, project, state, extra = {}) => Object.assign({ id, project, state, activity: 'thinking', agents: [], tasks: [] }, extra);
@@ -302,6 +303,56 @@ const SCENES = {
 		size: [1100, 520],
 	},
 	hover: { sessions: [session('a', 'blaube', 'working', { activity: 'tool' })], hover: true },
+	// The talk box (a click on a slime), drawn where the app would put it.
+	talkChat: {
+		sessions: [session('tc', 'vergence-studios-playground', 'done', { look: 'bunny' }), session('tc2', 'kalkis', 'idle', { color: '#5B8DEF', look: 'bow' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1000, 640],
+		talk: { key: 'tc', inbox: 'ready', log: [
+			{ who: 'you', text: 'run the tests and tell me if anything fails', via: 'terminal' },
+			{ who: 'claude', text: 'All 66 tests pass. I also fixed a flaky timeout in the e2e test: it was waiting on the wrong event.' },
+			{ who: 'you', text: 'nice. can you commit that?', via: 'blaube', status: 'sent' },
+			{ who: 'note', text: 'Allowed Bash: git commit -m "Fix flaky e2e timeout"' },
+			{ who: 'claude', text: 'Committed as f3a91c2 “Fix flaky e2e timeout”.' },
+		] },
+	},
+	talkAsk: {
+		sessions: [session('ta', 'blaube', 'waiting', { color: '#5B8DEF', look: 'antenna', message: 'Claude needs your permission to use Bash' })],
+		wait: 3500,
+		size: [1000, 640],
+		talk: { key: 'ta', inbox: 'busy', log: [
+			{ who: 'you', text: 'clean out the build folder and rebuild', via: 'blaube', status: 'sent' },
+		], ask: { key: 1, tool: 'Bash', detail: 'rm -rf dist && npm run build:mac:local', always: 'Always allow npm run build:*' }, asks: 2 },
+	},
+	talkThinking: {
+		sessions: [session('tt', 'website', 'working', { color: '#E07BA8', look: 'catears' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1000, 640],
+		talk: { key: 'tt', inbox: 'busy', log: [
+			{ who: 'claude', text: 'Here’s what changed:\n\n## Summary\n- Moved the **hero image** to `public/hero.webp`\n- Lazy-loads the gallery\n- Fixed the nav on mobile\n\n```\nnpm run build  ✓ 2.1s\n```' },
+			{ who: 'you', text: 'looks good, ship it', via: 'blaube', status: 'sent' },
+		] },
+	},
+	talkLong: {
+		sessions: [session('tl', 'blaube', 'done', { look: 'horns' })],
+		wait: 3500,
+		size: [1000, 640],
+		talk: { key: 'tl', inbox: 'ready', log: [
+			{ who: 'you', text: 'why is the window ledge code slow on mac?', via: 'blaube', status: 'sent' },
+			{ who: 'claude', at: 5, text: 'It isn’t the scan itself: listing windows through CoreGraphics takes about a millisecond.\n\nThe slow part was elsewhere:\n1. We spawned a new osascript process for every scan.\n2. Each spawn costs ~90 ms before it runs anything.\n3. At 60 scans a second that queues up and lags.\n\nNow one long-running loop prints changes only, so it costs almost nothing while windows sit still and stays smooth while you drag one. I also skip windows smaller than 80×40, since nothing can stand on them, and the menu bar and Dock layers.\n\nLet me know if you want me to add a setting for how often it checks.' },
+		] },
+	},
+	talkBusy: {
+		sessions: [session('tb', 'kalkis', 'working', { color: '#5FB57A', look: 'sprout' })],
+		wait: 3500,
+		size: [1000, 640],
+		talk: { key: 'tb', inbox: 'busy', queued: 1, log: [
+			{ who: 'you', text: 'add the new 2027 tax brackets to the calculator', via: 'terminal' },
+			{ who: 'you', text: 'and update the changelog when you’re done', via: 'blaube', status: 'queued' },
+		] },
+	},
 	crowd: {
 		sessions: [
 			session('a', 'blaube', 'working'),
@@ -358,9 +409,61 @@ async function shoot(win, name, scene) {
 		await sleep(600);
 	}
 	if (scene.motion) return shootMotion(win, name, scene.motion);
-	const img = await win.webContents.capturePage();
-	fs.writeFileSync(path.join(OUT, `${name}.png`), img.toPNG());
+	const png = scene.talk ? await addTalk(win, scene) : (await win.webContents.capturePage()).toPNG();
+	fs.writeFileSync(path.join(OUT, `${name}.png`), png);
 	console.log('saved', path.join('shots', `${name}.png`));
+}
+
+// Draws the talk box over the scene, where the app would open it for a
+// click on the slime named by talk.key, with the given conversation.
+async function addTalk(win, scene) {
+	const [w, h] = scene.size || [W, H];
+	const t = scene.talk, sess = scene.sessions.find((x) => x.id === t.key) || scene.sessions[0];
+	const at = await win.webContents.executeJavaScript(`(() => {
+		const b = __blaube.buddies.get(${JSON.stringify(t.key)}) || [...__blaube.buddies.values()][0];
+		const c = b.body.centroid(), r = b.body.o.radius;
+		return { x: c.x, y: Math.min(b.body.lookTop ?? Infinity, c.y - r), r };
+	})()`);
+	win.webContents.send('fire', 'talking', t.key);
+	await sleep(100);
+	const area = { x: 0, y: 0, width: w, height: h - 44 };
+	let place = placeTalk(at, area, 384, 400);
+	const tw = new BrowserWindow({ width: 384, height: 400, show: false, frame: false, transparent: true, webPreferences: { preload: path.join(ROOT, 'src', 'main', 'talkPreload.js'), contextIsolation: true, sandbox: true } });
+	let wantH = 400;
+	const onHeight = (e, _id, v) => { if (e.sender === tw.webContents) wantH = v; };
+	ipcMain.on('talk-height', onHeight);
+	await tw.loadFile(path.join(ROOT, 'src', 'talk', 'talk.html'));
+	tw.webContents.send('talk-state', Object.assign({ id: sess.id, project: sess.project, state: sess.state, color: sess.color || '#D97757', font: 'Coiny', connected: true, queued: 0, ask: null, asks: 0, tail: place.tail }, t));
+	await sleep(500);
+	// The box hugs its content, like in the app (170-440 px, plus its tail).
+	const th = Math.round(Math.max(190, Math.min(460, wantH)));
+	place = placeTalk(at, area, 384, th);
+	tw.setContentSize(384, place.h);
+	tw.webContents.send('talk-tail', place.tail);
+	await sleep(400);
+	// It measures again for the side it ended up on (as in the app).
+	place = placeTalk(at, area, 384, Math.round(Math.max(190, Math.min(460, wantH))), place.tail.side);
+	tw.setContentSize(384, place.h);
+	await sleep(400);
+	ipcMain.removeListener('talk-height', onHeight);
+	const fg = (await tw.webContents.capturePage()).toDataURL();
+	tw.destroy();
+	// The renderer's CSP blocks data: images, so compose in a blank window.
+	const bg = (await win.webContents.capturePage()).toDataURL();
+	const cw = new BrowserWindow({ width: w, height: h, show: false });
+	await cw.loadURL('about:blank');
+	const png = await cw.webContents.executeJavaScript(`(async () => {
+		const load = (src) => new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.src = src; });
+		const [b, f] = await Promise.all([load(${JSON.stringify(bg)}), load(${JSON.stringify(fg)})]);
+		const k = b.width / ${w}, c = document.createElement('canvas');
+		c.width = b.width; c.height = b.height;
+		const g = c.getContext('2d');
+		g.drawImage(b, 0, 0);
+		g.drawImage(f, ${place.x} * k, ${place.y} * k, 384 * k, ${place.h} * k);
+		return c.toDataURL('image/png');
+	})()`);
+	cw.destroy();
+	return Buffer.from(png.split(',')[1], 'base64');
 }
 
 // Grabs the middle slime, shakes it left and right while lifting it, then

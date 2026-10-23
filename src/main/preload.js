@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('blaube', {
   showSessionMenu: (id) => ipcRenderer.send('session-menu', id),
   openSession: (id) => ipcRenderer.send('open-session', id),
   talk: (id, at) => ipcRenderer.send('talk', id, at),
+  talkAt: (id, at) => ipcRenderer.send('talk-at', id, at),
   openTuning: () => ipcRenderer.send('open-tuning'),
   ready: () => ipcRenderer.send('ready'),
   onState: (cb) => ipcRenderer.on('state', (_e, s) => cb(s)),
@@ -21,5 +22,6 @@ contextBridge.exposeInMainWorld('blaube', {
   onCommand: (cb) => ipcRenderer.on('command', (_e, c) => cb(c)),
   onSay: (cb) => ipcRenderer.on('say', (_e, m) => cb(m)),
   onReact: (cb) => ipcRenderer.on('react', (_e, m) => cb(m)),
+  onTalking: (cb) => ipcRenderer.on('talking', (_e, id) => cb(id)),
   onNod: (cb) => ipcRenderer.on('nod', (_e, id) => cb(id)),
 });

@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, shell, clipboard, globalShortcut, systemPreferences } = require('electron');
 const { SessionTracker } = require('./sessions');
 const { Inbox } = require('./inbox');
+const { placeTalk } = require('./talkPlace');
 const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
 const { openResumeTerminal, resumeCommand, focusSessionApp } = require('./terminal');
@@ -190,17 +191,37 @@ function openTuning() {
 
 // --- Talk box: message a session from its slime (see inbox.js) ---------------
 
-let talkWin = null, talkId = null;
-const TALK_W = 360, TALK_H = 400;
+let talkWin = null, talkId = null, talkTail = null;
+let talkSpot = null; // the top of the slime, in screen coordinates
+let talkHiddenAt = 0, talkHiddenId = null, talkReady = null, talkBefore = 0;
+let lastOtherApp = 0; // the app in front before you reached for a slime (macOS)
+let frontLookup = Promise.resolve(); // that lookup, while it runs
+const talkHeights = new Map(); // session id -> how tall its box wants to be (without the tail)
+const TALK_W = 384, TALK_MIN_H = 190, TALK_MAX_H = 460;
+const talkH = () => talkHeights.get(talkId) || 280;
+
+// Puts the box where it belongs for its slime and its current height.
+function placeTalkWin() {
+  if (!talkWin || !talkSpot) return;
+  const place = placeTalk(talkSpot, screen.getDisplayNearestPoint(talkSpot).workArea, TALK_W, talkH(), talkTail && talkTail.side);
+  const moved = !talkTail || place.tail.side !== talkTail.side || Math.abs(place.tail.at - talkTail.at) > 0.5;
+  talkTail = place.tail;
+  talkWin.setBounds({ x: place.x, y: place.y, width: TALK_W, height: place.h });
+  if (moved && talkId) talkWin.webContents.send('talk-tail', talkTail);
+}
 
 // Opens the talk box for a session, next to its slime (`at`: the top of the
-// slime, in the overlay window's coordinates).
+// slime, in the overlay window's coordinates). Clicking the same slime
+// again closes it.
 function openTalk(id, at) {
   if (!tracker.sessions.get(id)) return;
+  // Clicking its slime took focus and hid it: that click meant "close".
+  if (talkHiddenId === id && Date.now() - talkHiddenAt < 350) { activateApp(talkBefore); return; }
   if (!talkWin) {
     talkWin = new BrowserWindow({
       width: TALK_W,
-      height: TALK_H,
+      height: 300,
+      backgroundThrottling: false,
       show: false,
       frame: false,
       transparent: true,
@@ -214,37 +235,85 @@ function openTalk(id, at) {
       webPreferences: { preload: path.join(__dirname, 'talkPreload.js'), contextIsolation: true, sandbox: true },
     });
     talkWin.loadFile(path.join(__dirname, '..', 'talk', 'talk.html'));
-    talkWin.on('blur', () => { if (talkWin && !talkWin.webContents.isDevToolsFocused()) talkWin.hide(); });
+    talkWin.on('blur', () => {
+      if (!talkWin || !talkWin.isVisible() || talkWin.webContents.isDevToolsFocused()) return;
+      hideTalk();
+      talkHiddenAt = Date.now(); // a click on its slime right now means "close"
+      talkHiddenId = talkId;
+    });
     talkWin.on('closed', () => { talkWin = null; talkId = null; });
   }
+  if (talkWin.isVisible() && talkId === id) { hideTalk(); return; }
+  if (talkWin.isVisible()) hideTalk(true);
   talkId = id;
-  // Above the slime if there's room, otherwise beside it; always on screen.
-  const wb = win.getBounds(), area = screen.getDisplayNearestPoint({ x: wb.x + at.x, y: wb.y + at.y }).workArea;
-  let x = wb.x + at.x - TALK_W / 2, y = wb.y + at.y - TALK_H - 6;
-  if (y < area.y) { y = wb.y + at.y + 10; x = wb.x + at.x + (at.r || 60) + 10; }
-  x = Math.max(area.x, Math.min(area.x + area.width - TALK_W, x));
-  y = Math.max(area.y, Math.min(area.y + area.height - TALK_H, y));
-  talkWin.setBounds({ x: Math.round(x), y: Math.round(y), width: TALK_W, height: TALK_H });
+  talkTail = null;
+  const wb = win.getBounds();
+  talkSpot = { x: wb.x + at.x, y: wb.y + at.y, r: at.r };
+  // Fill it in while it's still hidden, and show it once it has measured
+  // itself, so it never flashes the last slime's conversation or jumps.
   const show = () => {
-    if (process.platform === 'darwin') app.focus({ steal: true });
-    talkWin.show();
+    if (talkId !== id) return;
+    placeTalkWin();
+    talkWin.show(); // already filled in while hidden
     talkWin.focus();
     pushTalk(id, true);
+    if (win) win.webContents.send('talking', id);
   };
-  if (talkWin.webContents.isLoading()) talkWin.webContents.once('did-finish-load', show);
-  else show();
+  const render = () => {
+    talkReady = show;
+    pushTalk(id, false);
+    setTimeout(() => { if (talkReady === show) { talkReady = null; show(); } }, 250); // in case it never answers
+  };
+  const start = () => (talkWin.webContents.isLoading() ? talkWin.webContents.once('did-finish-load', render) : render());
+  // Typing needs Blaube in front; remember who was (from when the cursor
+  // reached the slime: a quick click may beat that lookup, so wait a bit).
+  if (process.platform === 'darwin') {
+    Promise.race([frontLookup, new Promise((r) => setTimeout(r, 500))]).then(() => {
+      if (talkId !== id) return;
+      talkBefore = lastOtherApp;
+      app.focus({ steal: true });
+      start();
+    });
+  } else start();
 }
 
+// The app in front (macOS), and giving focus back to it. No permissions.
+function frontmostApp(cb) {
+  require('node:child_process').execFile('osascript', ['-l', 'JavaScript', '-e', "ObjC.import('AppKit'); $.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier"], { timeout: 1500 }, (err, out) => cb(err ? 0 : Number(String(out).trim()) || 0));
+}
+function activateApp(pid) {
+  if (!pid || pid === process.pid) return;
+  require('node:child_process').execFile('osascript', ['-l', 'JavaScript', '-e', `ObjC.import('AppKit'); var a = $.NSRunningApplication.runningApplicationWithProcessIdentifier(${pid}); if (a) a.activateWithOptions(0);`], { timeout: 1500 }, () => {});
+}
+
+// Hides the talk box. Closed on purpose (Esc, ✕, clicking its slime) it
+// hands focus back to the app you were in; when you clicked away, you're
+// already there.
+function hideTalk(switching = false) {
+  if (!talkWin || !talkWin.isVisible()) return;
+  const onPurpose = talkWin.isFocused();
+  talkWin.hide();
+  if (win && !switching) win.webContents.send('talking', null);
+  if (onPurpose && !switching && process.platform === 'darwin') activateApp(talkBefore);
+}
+
+let hooksOk = null; // whether Claude Code is connected, checked when the box opens
 function pushTalk(id, focusField = false) {
   if (!talkWin || talkWin.isDestroyed() || id !== talkId) return;
+  if (!talkWin.isVisible() && !talkReady) return; // it catches up when it opens
+  if (hooksOk === null || talkReady) hooksOk = claudeHooks.isInstalled(undefined, PORT);
   const s = tracker.sessions.get(id);
-  if (!s) { talkWin.hide(); return; }
+  if (!s) { hideTalk(); return; }
   talkWin.webContents.send('talk-state', Object.assign({
     id,
     project: s.project,
     state: s.state,
+    color: colorOf(s) || prefs.config.color || '#D97757',
+    font: prefs.config.font,
+    tail: talkTail,
+    asks: inbox.asks.has(id) ? inbox.asks.get(id).length : 0,
     demo: id.startsWith('demo-'),
-    connected: claudeHooks.isInstalled(undefined, PORT),
+    connected: hooksOk,
     focus: focusField,
   }, inbox.view(id)));
 }
@@ -762,12 +831,14 @@ app.whenReady().then(async () => {
   inbox.on('delivered', (id) => {
     if (tracker.sessions.has(id)) tracker.handle({ session_id: id, hook_event_name: 'UserPromptSubmit' }, 'blaube');
   });
-  // Replies to what you said from the slime (or while its talk box is open)
-  // pop up as a speech bubble.
-  inbox.on('reply', (id, text) => {
-    const log = inbox.log(id), asked = log[log.length - 2];
+  // Replies to what you said from the slime pop up as a speech bubble,
+  // unless its talk box is open (it shows them, and would cover the bubble).
+  inbox.on('reply', (id, entry) => {
+    const log = inbox.log(id), text = entry.text;
+    let asked = null;
+    for (let i = log.indexOf(entry) - 1; i >= 0 && !asked; i--) if (log[i].who !== 'note') asked = log[i];
     const open = talkWin && talkId === id && talkWin.isVisible();
-    if (win && (open || (asked && asked.via === 'blaube'))) win.webContents.send('say', { id, text: snippet(text), seconds: 7 });
+    if (win && !open && asked && asked.who === 'you' && asked.via === 'blaube') win.webContents.send('say', { id, text: snippet(text), seconds: 7 });
   });
   tracker.on('activity', statusBubble);
   setInterval(() => { if (tracker.prune()) { pushState(); refreshTray(); } }, 30 * 1000);
@@ -859,6 +930,11 @@ app.whenReady().then(async () => {
     const now = Date.now();
     if (over !== clickable || (over && now - applied > 500)) {
       if (over !== clickable) log(`clickable ${over} at ${x},${y}`);
+      // Reaching for a slime: note the app in front, to give focus back to
+      // after you've talked to it.
+      if (over && !clickable && process.platform === 'darwin' && !(talkWin && talkWin.isVisible())) {
+        frontLookup = new Promise((done) => frontmostApp((pid) => { if (pid && pid !== process.pid) lastOtherApp = pid; done(); }));
+      }
       win.setIgnoreMouseEvents(!over, { forward: true });
       clickable = over;
       applied = now;
@@ -887,11 +963,32 @@ app.whenReady().then(async () => {
     goToSession(s);
   });
   ipcMain.on('talk', (_e, id, at) => openTalk(id, at || { x: 0, y: 0 }));
-  ipcMain.on('talk-send', (_e, text) => { if (talkId && tracker.sessions.has(talkId) && !talkId.startsWith('demo-')) inbox.send(talkId, text); });
-  ipcMain.on('talk-close', () => { if (talkWin) talkWin.hide(); });
+  ipcMain.on('talk-send', (_e, id, text) => { if (id && id === talkId && tracker.sessions.has(id) && !id.startsWith('demo-')) inbox.send(id, text); });
+  ipcMain.on('talk-unsend', (_e, id, n) => { if (id && id === talkId) inbox.unsend(id, n); });
+  ipcMain.on('talk-close', () => hideTalk());
+  // The slime moved: the box follows it.
+  ipcMain.on('talk-at', (_e, id, at) => {
+    if (id !== talkId || !talkWin || !talkWin.isVisible() || !at) return;
+    const wb = win.getBounds();
+    talkSpot = { x: wb.x + at.x, y: wb.y + at.y, r: at.r };
+    placeTalkWin();
+  });
+  // The box grew or shrank to fit what's in it (its first measurement is
+  // what it opens at).
+  ipcMain.on('talk-height', (_e, id, h) => {
+    if (!id || id !== talkId) return;
+    const next = Math.round(Math.max(TALK_MIN_H, Math.min(TALK_MAX_H, Number(h) || talkH())));
+    const changed = next !== talkHeights.get(id);
+    talkHeights.set(id, next);
+    if (talkReady) { const show = talkReady; talkReady = null; show(); return; }
+    if (changed && talkWin && talkWin.isVisible()) placeTalkWin();
+  });
+  // If it wasn't decided (gone already, another session), the box is told
+  // again what's really waiting.
+  ipcMain.on('talk-permission', (_e, id, key, choice) => { if (!id || id !== talkId || !inbox.decide(id, key, choice)) pushTalk(talkId); });
   ipcMain.on('talk-terminal', () => {
     const s = talkId && tracker.sessions.get(talkId);
-    if (talkWin) talkWin.hide();
+    hideTalk();
     if (s && !s.id.startsWith('demo-')) goToSession(s);
   });
   ipcMain.on('app-menu', () => appMenu().popup({ window: win }));

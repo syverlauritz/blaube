@@ -775,7 +775,7 @@
     const padX = 18, padY = 11;
     const named = lines.length > 1;
     const font = (l, i) => (l.size ? `${l.size}px "Segoe UI Emoji", "Apple Color Emoji", system-ui, sans-serif`
-      : named && i === 0 ? `700 17px ${family}` : l.dim ? `600 13px ${SYSTEM_FONT}` : `600 15px ${SYSTEM_FONT}`);
+      : named && i === 0 ? `700 17px ${family}` : l.dim ? `600 14px ${SYSTEM_FONT}` : `600 15px ${SYSTEM_FONT}`);
     const lineH = (l, i) => (l.size ? l.size + 8 : named && i === 0 ? 24 : 22);
     const w = Math.min(360, Math.max(...lines.map((l, i) => { ctx.font = font(l, i); return ctx.measureText(l.text).width + (l.color ? 16 : 0); })) + padX * 2);
     const h = lines.reduce((sum, l, i) => sum + lineH(l, i), 0) + padY * 2 - 2;

@@ -6,7 +6,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { DEFAULT_PORT, HOOK_PATH, INBOX_PATH } = require('./hookServer');
+const { DEFAULT_PORT, HOOK_PATH, INBOX_PATH, PERMISSION_PATH } = require('./hookServer');
 
 const EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Notification', 'Stop', 'SubagentStart', 'SubagentStop', 'SessionEnd'];
 const TOOL_EVENTS = new Set(['PreToolUse', 'PostToolUse']);
@@ -26,12 +26,26 @@ function hookCommand(port = DEFAULT_PORT) {
 // message comes back as text, which goes to stderr with exit code 2 so
 // Claude wakes up and reads it (asyncRewake). An empty answer means stop
 // waiting. If Blaube isn't running (or quits) it tries again every few
-// seconds, so a session reconnects when Blaube comes back.
+// seconds, so a session reconnects when Blaube comes back. Only the
+// newest one per session keeps trying: each writes its pid to a file named
+// after the session, and an older one that finds someone else's there quits.
 const INBOX_TIMEOUT = 86400; // Claude Code kills an asyncRewake hook after this
 
 function inboxCommand(port = DEFAULT_PORT) {
-  return `in=$(cat); while :; do out=$(printf '%s' "$in" | curl -s -m ${INBOX_TIMEOUT - 60} -X POST -H "Content-Type: application/json" --data-binary @- http://127.0.0.1:${port}${INBOX_PATH}); rc=$?; if [ $rc -eq 0 ]; then [ -n "$out" ] && { printf '%s\\n' "$out" >&2; exit 2; }; exit 0; fi; [ $rc -eq 28 ] && exit 0; sleep 5; done`;
+  return `in=$(cat); sid=$(printf '%s' "$in" | sed -n 's/.*"session_id" *: *"\\([^"]*\\)".*/\\1/p' | tr -cd 'A-Za-z0-9-'); f="\${TMPDIR:-/tmp}/blaube-inbox-$sid"; echo $$ > "$f"; while :; do out=$(printf '%s' "$in" | curl -s -m ${INBOX_TIMEOUT - 60} -X POST -H "Content-Type: application/json" --data-binary @- http://127.0.0.1:${port}${INBOX_PATH}); rc=$?; if [ $rc -eq 0 ]; then [ -n "$out" ] && { printf '%s\\n' "$out" >&2; exit 2; }; exit 0; fi; [ $rc -eq 28 ] && exit 0; sleep 5; [ "$(cat "$f" 2>/dev/null)" = "$$" ] || exit 0; done`;
 }
+
+// Asks Blaube whether to allow a tool, so you can answer from the slime.
+// The terminal shows its own prompt at the same time and whichever is
+// answered first wins (answering in the terminal cancels this hook). No
+// answer, or no Blaube, prints nothing and the terminal prompt carries on.
+const PERMISSION_TIMEOUT = 600;
+
+function permissionCommand(port = DEFAULT_PORT) {
+  return `out=$(curl -s -m ${PERMISSION_TIMEOUT - 10} -X POST -H "Content-Type: application/json" -H "X-Blaube-Term: $TERM_PROGRAM" -H "X-Blaube-Entry: $CLAUDE_CODE_ENTRYPOINT" --data-binary @- http://127.0.0.1:${port}${PERMISSION_PATH}); [ -n "$out" ] && printf '%s\\n' "$out"; exit 0`;
+}
+
+const permissionHook = (port) => ({ type: 'command', command: permissionCommand(port), timeout: PERMISSION_TIMEOUT });
 
 const inboxHook = (port) => ({ type: 'command', command: inboxCommand(port), asyncRewake: true, timeout: INBOX_TIMEOUT });
 
@@ -62,6 +76,7 @@ function withBlaube(settings, port = DEFAULT_PORT) {
     out.hooks[ev] = [...(out.hooks[ev] || []), group];
   }
   out.hooks.Stop.push({ hooks: [inboxHook(port)] });
+  out.hooks.PermissionRequest = [...(out.hooks.PermissionRequest || []), { matcher: '*', hooks: [permissionHook(port)] }];
   return out;
 }
 
@@ -84,7 +99,7 @@ function isInstalled(file = settingsPath(), port = DEFAULT_PORT) {
     // Exact match, so an older Blaube's hooks show up as needing an update.
     const cmd = hookCommand(port);
     const has = (ev, c) => (s.hooks?.[ev] || []).some((g) => (g.hooks || []).some((h) => isOurs(h) && h.command === c));
-    return EVENTS.every((ev) => has(ev, cmd)) && has('Stop', inboxCommand(port));
+    return EVENTS.every((ev) => has(ev, cmd)) && has('Stop', inboxCommand(port)) && has('PermissionRequest', permissionCommand(port));
   } catch {
     return false;
   }
@@ -108,4 +123,4 @@ function uninstall(file = settingsPath()) {
   write(file, withoutBlaube(read(file)));
 }
 
-module.exports = { install, uninstall, isInstalled, hasAnyBlaubeHooks, withBlaube, withoutBlaube, hookCommand, inboxCommand, settingsPath, EVENTS };
+module.exports = { install, uninstall, isInstalled, hasAnyBlaubeHooks, withBlaube, withoutBlaube, hookCommand, inboxCommand, permissionCommand, settingsPath, EVENTS };

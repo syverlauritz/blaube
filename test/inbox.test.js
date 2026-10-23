@@ -4,7 +4,7 @@ const { spawn } = require('node:child_process');
 const { Inbox } = require('../src/main/inbox.js');
 const { SessionTracker } = require('../src/main/sessions.js');
 const { startHookServer } = require('../src/main/hookServer.js');
-const { inboxCommand } = require('../src/main/claudeHooks.js');
+const { inboxCommand, permissionCommand } = require('../src/main/claudeHooks.js');
 
 test('a message goes straight to a waiting session, or queues until it asks', () => {
   const inbox = new Inbox();
@@ -20,7 +20,7 @@ test('a message goes straight to a waiting session, or queues until it asks', ()
   assert.equal(inbox.view('s1').queued, 1);
   inbox.wait('s1', (t) => got.push(t));
   assert.match(got[1], /second$/);
-  assert.deepEqual(inbox.log('s1').map((e) => [e.who, e.status]), [['you', 'sent'], ['you', 'sent']]);
+  assert.deepEqual(inbox.log('s1').map((e) => [e.who, e.status]), [['you', 'delivering'], ['you', 'delivering']]);
 });
 
 test('a newer hook replaces an older one, and typing in the terminal lets it go', () => {
@@ -34,7 +34,8 @@ test('a newer hook replaces an older one, and typing in the terminal lets it go'
   assert.equal(inbox.send('s1', 'later'), 'queued');
   inbox.observe({ session_id: 's1', hook_event_name: 'Stop', last_assistant_message: 'All done.' });
   inbox.observe({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: '<task-notification>\n<summary>Stop hook feedback</summary>' });
-  assert.deepEqual(inbox.log('s1').map((e) => e.who + ':' + e.text), ['you:from the terminal', 'you:later', 'claude:All done.']);
+  // The reply answers the terminal prompt; the queued message comes after it.
+  assert.deepEqual(inbox.log('s1').map((e) => e.who + ':' + e.text), ['you:from the terminal', 'claude:All done.', 'you:later']);
 });
 
 test('end to end: the installed hook command wakes Claude with the message', async () => {
@@ -66,5 +67,101 @@ test('end to end: the installed hook command wakes Claude with the message', asy
     assert.equal(r2.err, '');
   } finally {
     server.close();
+  }
+});
+
+test('a permission prompt is answered from the slime: allow, always or deny', () => {
+  const inbox = new Inbox();
+  const got = [];
+  const ask = (extra = {}) => inbox.ask('s1', Object.assign({ tool_name: 'Bash', tool_input: { command: 'npm test' } }, extra), (t) => got.push(t && JSON.parse(t)));
+  ask();
+  const v = inbox.view('s1').ask;
+  assert.deepEqual([v.tool, v.detail, v.always], ['Bash', 'npm test', '']);
+  inbox.decide('s1', v.key, 'allow');
+  assert.deepEqual(got[0].hookSpecificOutput.decision, { behavior: 'allow' });
+  assert.equal(inbox.view('s1').ask, null);
+  const rule = { type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm test' }], behavior: 'allow', destination: 'localSettings' };
+  ask({ permission_suggestions: [rule] });
+  inbox.decide('s1', inbox.view('s1').ask.key, 'always');
+  assert.deepEqual(got[1].hookSpecificOutput.decision.updatedPermissions, [rule]);
+  ask();
+  inbox.decide('s1', inbox.view('s1').ask.key, 'deny');
+  assert.equal(got[2].hookSpecificOutput.decision.behavior, 'deny');
+  assert.deepEqual(inbox.log('s1').map((e) => e.text), ['Allowed Bash: npm test', 'Always allowed Bash: npm test', 'Denied Bash: npm test']);
+});
+
+test('answering in the terminal takes the prompt off the slime', () => {
+  const inbox = new Inbox();
+  const reply = () => true;
+  inbox.ask('s1', { tool_name: 'Edit', tool_input: { file_path: '/x/a.js' } }, reply);
+  assert.equal(inbox.view('s1').ask.detail, '/x/a.js');
+  inbox.unasked('s1', reply);
+  assert.equal(inbox.view('s1').ask, null);
+});
+
+test('end to end: the permission hook prints the decision, and never waits without a terminal', async () => {
+  const inbox = new Inbox();
+  const tracker = new SessionTracker();
+  tracker.handle({ session_id: 'p1', hook_event_name: 'SessionStart', cwd: '/tmp/x' });
+  const server = await startHookServer(tracker, 0, inbox);
+  const port = server.address().port;
+  const run = (entry) => new Promise((resolve) => {
+    const p = spawn('sh', ['-c', permissionCommand(port)], { env: Object.assign({}, process.env, { CLAUDE_CODE_ENTRYPOINT: entry }) });
+    let out = '';
+    p.stdout.on('data', (d) => { out += d; });
+    p.on('exit', (code) => resolve({ code, out }));
+    p.stdin.end(JSON.stringify({ session_id: 'p1', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'ls' } }));
+  });
+  try {
+    const asked = new Promise((r) => inbox.once('change', r));
+    const pending = run('cli');
+    await asked;
+    assert.equal(tracker.sessions.get('p1').state, 'waiting');
+    inbox.decide('p1', inbox.view('p1').ask.key, 'allow');
+    const r = await pending;
+    assert.equal(r.code, 0);
+    assert.equal(JSON.parse(r.out).hookSpecificOutput.decision.behavior, 'allow');
+    const headless = await run('sdk-cli');
+    assert.deepEqual(headless, { code: 0, out: '' });
+  } finally {
+    server.close();
+  }
+});
+
+test('permission cards name tools and rules the way a person would', () => {
+  const { toolName, alwaysLabel } = require('../src/main/inbox.js');
+  assert.equal(toolName('mcp__claude_ai_Gmail__send_message'), 'Gmail: send message');
+  assert.equal(toolName('Bash'), 'Bash');
+  assert.equal(alwaysLabel([{ type: 'addRules', behavior: 'allow', rules: [{ toolName: 'Bash', ruleContent: 'npm run build:*' }] }]), 'Always allow npm run build:*');
+  assert.equal(alwaysLabel([{ type: 'addDirectories', directories: ['/Users/me/proj/'] }]), 'Always allow files in proj');
+  assert.equal(alwaysLabel([{ type: 'setMode', mode: 'acceptEdits' }]), 'Always allow edits for this session');
+});
+
+test('a queued message can be taken back before it goes in', () => {
+  const inbox = new Inbox();
+  inbox.send('s1', 'oops');
+  inbox.send('s1', 'keep');
+  const oops = inbox.log('s1')[0];
+  assert.ok(inbox.unsend('s1', oops.n));
+  const got = [];
+  inbox.wait('s1', (t) => got.push(t));
+  assert.match(got[0], /keep$/);
+  assert.doesNotMatch(got[0], /oops/);
+  assert.deepEqual(inbox.log('s1').map((e) => e.text), ['keep']);
+});
+
+test('a reply to the turn before lands above what the slime sent meanwhile, either way round', () => {
+  for (const hookFirst of [false, true]) {
+    const inbox = new Inbox();
+    inbox.observe({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: 'P' });
+    inbox.send('s1', 'Q'); // queued: Claude is busy with P
+    const stop = () => inbox.observe({ session_id: 's1', hook_event_name: 'Stop', last_assistant_message: 'R1' });
+    const ask = () => inbox.wait('s1', () => true);
+    if (hookFirst) { ask(); stop(); } else { stop(); ask(); }
+    assert.deepEqual(inbox.log('s1').map((e) => e.text), ['P', 'R1', 'Q'], hookFirst ? 'hook first' : 'stop first');
+    inbox.observe({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: '<task-notification>x' });
+    inbox.observe({ session_id: 's1', hook_event_name: 'Stop', last_assistant_message: 'R2' });
+    assert.deepEqual(inbox.log('s1').map((e) => e.text), ['P', 'R1', 'Q', 'R2']);
+    assert.equal(inbox.log('s1')[2].status, 'sent');
   }
 });

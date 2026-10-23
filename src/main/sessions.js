@@ -254,6 +254,9 @@ function nextState(current, p) {
       }
       return { state: 'waiting', message: p.message || 'Claude needs you' };
     }
+    case 'PermissionRequest':
+      // Sent the moment Claude asks (the Notification comes ~6 s later).
+      return { state: 'waiting', message: `Claude needs your permission to use ${p.tool_name || 'a tool'}` };
     case 'Stop':
       return { state: 'done' };
     default:

@@ -69,6 +69,7 @@
 
     hop(vx, vy) {
       if (this.body.grab) return;
+      if (talkingTo && buddies.get(talkingTo) === this) return; // stays put while you talk to it
       // Up on a window it minds the edge: a hop that would land past it
       // turns back (mothers wander off now and then; helpers never).
       const l = this.body.onLedge;
@@ -1172,6 +1173,7 @@
 
   // The slime under the mouse, if any (not while dragging).
   let hovered = null, hoverSeen = 0;
+  let talkingTo = null; // the session whose talk box is open: its balloons would sit under it
 
   // What a slime says when you hover over it: its name, and what it's doing.
   const STATE_WORDS = { working: 'Working', waiting: 'Needs you', done: 'Done', idle: 'Idle' };
@@ -1241,6 +1243,7 @@
       }
       if (b.kind === 'home' || b.dying) continue;
       if (b === hovered || b.bubble) continue; // the bubble sits where these go
+      if (b === buddies.get(talkingTo)) continue; // its talk box is there instead
       if (b.state === 'working' && !nodding(b) && !b.merging) D.drawThinking(ctx, b.body, time, activityOf(b) === 'tool', W);
       if (b.state === 'waiting') D.drawExclaim(ctx, b.body, time, W, '?');
       else if (b.state === 'done' && unseen(b)) D.drawExclaim(ctx, b.body, time, W);
@@ -1253,7 +1256,7 @@
       const showHover = b === hovered && !(time < (b.pettedUntil || 0)); // not while you're petting it
       const lines = showHover ? hoverLines(b) : b.bubble ? b.bubble.lines : null;
       const alpha = showHover ? 1 : b.bubble ? Math.min(1, (b.bubble.until - time) * 3) : 0;
-      if (lines) D.drawBubble(ctx, b.body, lines, alpha, W);
+      if (lines && b !== buddies.get(talkingTo)) D.drawBubble(ctx, b.body, lines, alpha, W);
     }
     if (CFG.debugOverlay) drawDebug(list);
   }
@@ -1334,6 +1337,25 @@
     }
   }
 
+  // While its talk box is open, tells the app where the slime's head is, so
+  // the box (and its tail) stays with it when it's nudged or carried.
+  let talkSent = null;
+  function followTalk() {
+    const b = talkingTo && buddies.get(talkingTo);
+    if (!b || !api.talkAt) { talkSent = null; return; }
+    const at = headTop(b);
+    if (talkSent && Math.abs(at.x - talkSent.x) < 1.5 && Math.abs(at.y - talkSent.y) < 1.5) return;
+    talkSent = at;
+    api.talkAt(talkingTo, at);
+  }
+
+  // The top of a slime (its accessory included) and its size: where a talk
+  // box's tail points.
+  function headTop(b) {
+    const c = b.body.centroid(), r = b.body.o.radius;
+    return { x: c.x, y: Math.min(b.body.lookTop ?? Infinity, c.y - r), r };
+  }
+
   function frame() {
     const now = performance.now() / 1000;
     acc += Math.min(0.05, now - last);
@@ -1347,6 +1369,7 @@
     checkPetting();
     draw();
     updateIgnore();
+    followTalk();
     requestAnimationFrame(frame);
   }
 
@@ -1491,9 +1514,8 @@
       // Clicking a slime (or one of its children) opens its talk box;
       // Alt-click goes to its terminal instead.
       api.acknowledge(s.id);
-      const mum = buddies.get(s.id) || b, c = mum.body.centroid(), r = mum.body.o.radius;
       if ((e && e.altKey) || !api.talk) api.openSession(s.id);
-      else api.talk(s.id, { x: c.x, y: Math.min(mum.body.lookTop ?? Infinity, c.y - r), r });
+      else api.talk(s.id, headTop(buddies.get(s.id) || b));
     } else {
       b.say(summaryLines(), 5);
       api.acknowledge(null);
@@ -1524,6 +1546,7 @@
     if (b.body.onFloor() && !b.body.grab) b.body.impulse((Math.random() - 0.5) * 120, 120, DT);
     if (m.count > 1) b.say([{ text: 'oops' }], 1.8);
   });
+  if (api.onTalking) api.onTalking((id) => { talkingTo = id; });
   if (api.onSay) api.onSay((m) => {
     const b = buddies.get(m.id);
     if (!b) return;

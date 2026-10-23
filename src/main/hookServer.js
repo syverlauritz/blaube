@@ -5,6 +5,28 @@ const { findClaudeAncestor } = require('./win/procs');
 const DEFAULT_PORT = 47821;
 const HOOK_PATH = '/blaube/hook';
 const INBOX_PATH = HOOK_PATH + '/inbox';
+const PERMISSION_PATH = HOOK_PATH + '/permission';
+
+// Reads a request's JSON body, then calls back with it (null if junk).
+function readJson(req, cb) {
+  let body = '';
+  req.setEncoding('utf8');
+  req.on('data', (c) => { body += c; if (body.length > 1e6) req.destroy(); });
+  req.on('end', () => { try { cb(JSON.parse(body)); } catch { cb(null); } });
+}
+
+// A held-open response that's answered once: text (200) or nothing (204).
+function once(res, onGone) {
+  let done = false;
+  const reply = (text) => {
+    if (done) return false;
+    done = true;
+    if (text) { res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }); res.end(text); } else { res.writeHead(204); res.end(); }
+    return true;
+  };
+  res.on('close', () => { if (!done) { done = true; onGone(reply); } });
+  return reply;
+}
 
 function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
   const server = http.createServer((req, res) => {
@@ -15,24 +37,31 @@ function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
     // A session's inbox hook waiting for a message from its slime: held open
     // until there is one (200, the text) or it's let go (204).
     if (req.method === 'POST' && req.url === INBOX_PATH && inbox) {
-      let body = '';
-      req.setEncoding('utf8');
-      req.on('data', (c) => { body += c; if (body.length > 1e6) req.destroy(); });
-      req.on('end', () => {
-        let id = '';
-        try { id = String(JSON.parse(body).session_id || ''); } catch { /* junk */ }
+      return readJson(req, (payload) => {
+        const id = payload ? String(payload.session_id || '') : '';
         if (!id) { res.writeHead(204); return res.end(); }
-        let done = false;
-        const reply = (text) => {
-          if (done) return false;
-          done = true;
-          if (text) { res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }); res.end(text); } else { res.writeHead(204); res.end(); }
-          return true;
-        };
-        res.on('close', () => { if (!done) { done = true; inbox.gone(id, reply); } });
-        inbox.wait(id, reply);
+        inbox.wait(id, once(res, (reply) => inbox.gone(id, reply)));
       });
-      return;
+    }
+    // A session asking permission for a tool: shown on its slime and held
+    // open until you answer there (200, the decision) or in the terminal
+    // (the hook is cancelled). Only interactive sessions wait: one without
+    // a terminal (claude -p, the SDK) gets no answer right away, so a
+    // missing Blaube decision never holds it up.
+    if (req.method === 'POST' && req.url === PERMISSION_PATH) {
+      return readJson(req, (payload) => {
+        if (!payload || !payload.session_id) { res.writeHead(204); return res.end(); }
+        const entry = String(req.headers['x-blaube-entry'] || '');
+        if (entry) payload._entry = entry.slice(0, 64);
+        const term = req.headers['x-blaube-term'];
+        if (term) payload._term = String(term).slice(0, 64);
+        tracker.handle(payload);
+        const id = String(payload.session_id);
+        // Questions and plans aren't yes/no: they stay in the terminal.
+        const ownUI = payload.tool_name === 'AskUserQuestion' || payload.tool_name === 'ExitPlanMode';
+        if (!inbox || ownUI || (entry && entry !== 'cli') || !tracker.sessions.has(id)) { res.writeHead(204); return res.end(); }
+        inbox.ask(id, payload, once(res, (reply) => inbox.unasked(id, reply)));
+      });
     }
     if (req.method !== 'POST' || !req.url.startsWith(HOOK_PATH)) {
       res.writeHead(404);
@@ -77,4 +106,4 @@ function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
   });
 }
 
-module.exports = { startHookServer, DEFAULT_PORT, HOOK_PATH, INBOX_PATH };
+module.exports = { startHookServer, DEFAULT_PORT, HOOK_PATH, INBOX_PATH, PERMISSION_PATH };

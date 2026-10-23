@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('blaube', {
 	onCommand: on('command'),
 	onSay: on('say'),
 	onNod: on('nod'),
+	onTalking: on('talking'),
 });
 
 ipcRenderer.on('fire', (_e, name, value) => { if (handlers[name]) handlers[name](value); });
