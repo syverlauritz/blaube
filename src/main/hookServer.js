@@ -4,12 +4,35 @@ const { findClaudeAncestor } = require('./win/procs');
 
 const DEFAULT_PORT = 47821;
 const HOOK_PATH = '/blaube/hook';
+const INBOX_PATH = HOOK_PATH + '/inbox';
 
-function startHookServer(tracker, port = DEFAULT_PORT) {
+function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
   const server = http.createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/blaube/ping') {
       res.writeHead(200, { 'content-type': 'application/json' });
       return res.end(JSON.stringify({ ok: true, app: 'blaube' }));
+    }
+    // A session's inbox hook waiting for a message from its slime: held open
+    // until there is one (200, the text) or it's let go (204).
+    if (req.method === 'POST' && req.url === INBOX_PATH && inbox) {
+      let body = '';
+      req.setEncoding('utf8');
+      req.on('data', (c) => { body += c; if (body.length > 1e6) req.destroy(); });
+      req.on('end', () => {
+        let id = '';
+        try { id = String(JSON.parse(body).session_id || ''); } catch { /* junk */ }
+        if (!id) { res.writeHead(204); return res.end(); }
+        let done = false;
+        const reply = (text) => {
+          if (done) return false;
+          done = true;
+          if (text) { res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }); res.end(text); } else { res.writeHead(204); res.end(); }
+          return true;
+        };
+        res.on('close', () => { if (!done) { done = true; inbox.gone(id, reply); } });
+        inbox.wait(id, reply);
+      });
+      return;
     }
     if (req.method !== 'POST' || !req.url.startsWith(HOOK_PATH)) {
       res.writeHead(404);
@@ -29,6 +52,7 @@ function startHookServer(tracker, port = DEFAULT_PORT) {
         const entry = req.headers['x-blaube-entry'];
         if (entry) payload._entry = String(entry).slice(0, 64);
         tracker.handle(payload);
+        if (inbox) inbox.observe(payload);
         // The first time we hear from a session, find its claude.exe while
         // the hook's shell is still alive, so a click can focus its window.
         const s = tracker.sessions.get(String(payload.session_id));
@@ -53,4 +77,4 @@ function startHookServer(tracker, port = DEFAULT_PORT) {
   });
 }
 
-module.exports = { startHookServer, DEFAULT_PORT, HOOK_PATH };
+module.exports = { startHookServer, DEFAULT_PORT, HOOK_PATH, INBOX_PATH };

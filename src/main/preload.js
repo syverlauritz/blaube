@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('blaube', {
   showAppMenu: () => ipcRenderer.send('app-menu'),
   showSessionMenu: (id) => ipcRenderer.send('session-menu', id),
   openSession: (id) => ipcRenderer.send('open-session', id),
+  talk: (id, at) => ipcRenderer.send('talk', id, at),
   openTuning: () => ipcRenderer.send('open-tuning'),
   ready: () => ipcRenderer.send('ready'),
   onState: (cb) => ipcRenderer.on('state', (_e, s) => cb(s)),

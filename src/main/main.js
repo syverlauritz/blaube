@@ -2,6 +2,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, shell, clipboard, globalShortcut, systemPreferences } = require('electron');
 const { SessionTracker } = require('./sessions');
+const { Inbox } = require('./inbox');
 const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
 const { openResumeTerminal, resumeCommand, focusSessionApp } = require('./terminal');
@@ -31,6 +32,7 @@ let tuningWin = null;
 let world = { obstacles: [] };
 let dockWindows = [];
 const tracker = new SessionTracker();
+const inbox = new Inbox();
 let focus = { front: () => [] };
 
 // Sessions whose window you're looking at count as seen, so their slimes
@@ -184,6 +186,74 @@ function openTuning() {
   tuningWin.setMenuBarVisibility(false);
   tuningWin.loadFile(path.join(__dirname, '..', 'tuning', 'tuning.html'));
   tuningWin.on('closed', () => { tuningWin = null; });
+}
+
+// --- Talk box: message a session from its slime (see inbox.js) ---------------
+
+let talkWin = null, talkId = null;
+const TALK_W = 360, TALK_H = 400;
+
+// Opens the talk box for a session, next to its slime (`at`: the top of the
+// slime, in the overlay window's coordinates).
+function openTalk(id, at) {
+  if (!tracker.sessions.get(id)) return;
+  if (!talkWin) {
+    talkWin = new BrowserWindow({
+      width: TALK_W,
+      height: TALK_H,
+      show: false,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      hasShadow: false,
+      webPreferences: { preload: path.join(__dirname, 'talkPreload.js'), contextIsolation: true, sandbox: true },
+    });
+    talkWin.loadFile(path.join(__dirname, '..', 'talk', 'talk.html'));
+    talkWin.on('blur', () => { if (talkWin && !talkWin.webContents.isDevToolsFocused()) talkWin.hide(); });
+    talkWin.on('closed', () => { talkWin = null; talkId = null; });
+  }
+  talkId = id;
+  // Above the slime if there's room, otherwise beside it; always on screen.
+  const wb = win.getBounds(), area = screen.getDisplayNearestPoint({ x: wb.x + at.x, y: wb.y + at.y }).workArea;
+  let x = wb.x + at.x - TALK_W / 2, y = wb.y + at.y - TALK_H - 6;
+  if (y < area.y) { y = wb.y + at.y + 10; x = wb.x + at.x + (at.r || 60) + 10; }
+  x = Math.max(area.x, Math.min(area.x + area.width - TALK_W, x));
+  y = Math.max(area.y, Math.min(area.y + area.height - TALK_H, y));
+  talkWin.setBounds({ x: Math.round(x), y: Math.round(y), width: TALK_W, height: TALK_H });
+  const show = () => {
+    if (process.platform === 'darwin') app.focus({ steal: true });
+    talkWin.show();
+    talkWin.focus();
+    pushTalk(id, true);
+  };
+  if (talkWin.webContents.isLoading()) talkWin.webContents.once('did-finish-load', show);
+  else show();
+}
+
+function pushTalk(id, focusField = false) {
+  if (!talkWin || talkWin.isDestroyed() || id !== talkId) return;
+  const s = tracker.sessions.get(id);
+  if (!s) { talkWin.hide(); return; }
+  talkWin.webContents.send('talk-state', Object.assign({
+    id,
+    project: s.project,
+    state: s.state,
+    demo: id.startsWith('demo-'),
+    connected: claudeHooks.isInstalled(undefined, PORT),
+    focus: focusField,
+  }, inbox.view(id)));
+}
+
+// A reply's first sentence or so, for the slime's speech bubble.
+function snippet(text) {
+  const line = String(text).replace(/[`*_#>]+/g, '').split(/\n+/).map((l) => l.trim()).find(Boolean) || '';
+  const sentence = (line.match(/^.{20,}?[.!?](\s|$)/) || [line])[0].trim();
+  return sentence.length > 70 ? sentence.slice(0, 68).trimEnd() + '…' : sentence;
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -665,7 +735,7 @@ app.whenReady().then(async () => {
   loadPrefs();
 
   try {
-    await startHookServer(tracker, PORT);
+    await startHookServer(tracker, PORT, inbox);
   } catch (e) {
     dialog.showErrorBox('Blaube', `Could not listen on 127.0.0.1:${PORT} (${e.code || e.message}). Is another Blaube running? Set BLAUBE_PORT to use a different port.`);
   }
@@ -686,6 +756,19 @@ app.whenReady().then(async () => {
     refreshTray();
   });
   tracker.on('prompt', (s) => { if (win) win.webContents.send('nod', s.id); });
+  tracker.on('change', () => pushTalk(talkId));
+  inbox.on('change', (id) => pushTalk(id));
+  // A message from the slime went in: its turn starts, as if typed.
+  inbox.on('delivered', (id) => {
+    if (tracker.sessions.has(id)) tracker.handle({ session_id: id, hook_event_name: 'UserPromptSubmit' }, 'blaube');
+  });
+  // Replies to what you said from the slime (or while its talk box is open)
+  // pop up as a speech bubble.
+  inbox.on('reply', (id, text) => {
+    const log = inbox.log(id), asked = log[log.length - 2];
+    const open = talkWin && talkId === id && talkWin.isVisible();
+    if (win && (open || (asked && asked.via === 'blaube'))) win.webContents.send('say', { id, text: snippet(text), seconds: 7 });
+  });
   tracker.on('activity', statusBubble);
   setInterval(() => { if (tracker.prune()) { pushState(); refreshTray(); } }, 30 * 1000);
   setInterval(refreshUsage, 3000);
@@ -802,6 +885,14 @@ app.whenReady().then(async () => {
     log(`open session ${id}: ${s ? 'known' : 'unknown'}`);
     if (!s || id.startsWith('demo-')) return;
     goToSession(s);
+  });
+  ipcMain.on('talk', (_e, id, at) => openTalk(id, at || { x: 0, y: 0 }));
+  ipcMain.on('talk-send', (_e, text) => { if (talkId && tracker.sessions.has(talkId) && !talkId.startsWith('demo-')) inbox.send(talkId, text); });
+  ipcMain.on('talk-close', () => { if (talkWin) talkWin.hide(); });
+  ipcMain.on('talk-terminal', () => {
+    const s = talkId && tracker.sessions.get(talkId);
+    if (talkWin) talkWin.hide();
+    if (s && !s.id.startsWith('demo-')) goToSession(s);
   });
   ipcMain.on('app-menu', () => appMenu().popup({ window: win }));
   ipcMain.on('session-menu', (_e, id) => {

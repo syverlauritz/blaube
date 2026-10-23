@@ -20,7 +20,10 @@ test('installs alongside existing hooks and uninstalls cleanly', () => {
   hooks.install(file); // idempotent
   const s = JSON.parse(fs.readFileSync(file, 'utf8'));
   assert.equal(s.model, 'opus');
-  assert.equal(s.hooks.Stop.length, 2);
+  assert.equal(s.hooks.Stop.length, 3, 'theirs, ours, and the inbox');
+  const waiting = s.hooks.Stop[2].hooks[0];
+  assert.equal(waiting.asyncRewake, true);
+  assert.ok(waiting.timeout >= 3600);
   assert.equal(s.hooks.PreToolUse[0].matcher, '*');
   assert.ok(fs.existsSync(file + '.blaube-backup'));
 
@@ -47,5 +50,5 @@ test('hooks from an older Blaube count as needing an update', () => {
   hooks.install(file);
   assert.ok(hooks.isInstalled(file));
   const s = JSON.parse(fs.readFileSync(file, 'utf8'));
-  assert.equal(s.hooks.Stop.length, 1, 'old hook replaced, not duplicated');
+  assert.equal(s.hooks.Stop.length, 2, 'old hook replaced, not duplicated (plus the inbox)');
 });

@@ -1450,7 +1450,7 @@
       }
     } else {
       drag.buddy.body.endGrab();
-      if (tap) click(drag.buddy);
+      if (tap) click(drag.buddy, e);
     }
     drag = null;
     updateIgnore();
@@ -1485,12 +1485,15 @@
     if (!fromApp) onContext(e);
   });
 
-  function click(b) {
+  function click(b, e) {
     const s = sessionOf(b);
     if (s) {
-      // Clicking a slime (or one of its children) opens its session.
+      // Clicking a slime (or one of its children) opens its talk box;
+      // Alt-click goes to its terminal instead.
       api.acknowledge(s.id);
-      api.openSession(s.id);
+      const mum = buddies.get(s.id) || b, c = mum.body.centroid(), r = mum.body.o.radius;
+      if ((e && e.altKey) || !api.talk) api.openSession(s.id);
+      else api.talk(s.id, { x: c.x, y: Math.min(mum.body.lookTop ?? Infinity, c.y - r), r });
     } else {
       b.say(summaryLines(), 5);
       api.acknowledge(null);
