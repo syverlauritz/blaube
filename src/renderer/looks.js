@@ -56,7 +56,8 @@
 		for (let i = 0; i < n; i++) {
 			const slot = n === 1 ? 0 : (i / (n - 1) - 0.5) * 0.9; // spread over the crown
 			parts.push({
-				shift: slot + (rnd() - 0.5) * (n === 1 ? 0.5 : 0.2),
+				// Ears stay near the crown, or the lower one flops out like a fin.
+				shift: (slot + (rnd() - 0.5) * (n === 1 ? 0.5 : 0.2)) * (name === 'bunny' ? 0.35 : 1),
 				spread: 0.8 + rnd() * 0.5,
 				scale: (n === 1 ? 0.8 : 0.65) + rnd() * 0.45,
 			});
@@ -183,6 +184,46 @@
 		L.hvy += (30 * (ft.y - L.hy) - 9 * L.hvy) * dt;
 		L.hx += L.hvx * dt;
 		L.hy += L.hvy * dt;
+		if (b.look === 'bunny') stepEars(b, L, dt);
+	}
+
+	// Bunny ears are chains of stiff-ish joints with real weight: gravity
+	// pulls every joint over, the head's acceleration drags them the other
+	// way (so they flop out on a landing, float up when thrown, and trail
+	// when dragged), and each joint springs back toward a soft outward
+	// curve. Stiffer at the root, floppier at the tip.
+	const EAR_JOINTS = 6;
+	const earSlope = (p) => { const a = Math.atan2(p.ny, p.nx) + Math.PI / 2; return Math.atan2(Math.sin(a), Math.cos(a)); };
+	const EAR_K = [240, 210, 185, 165, 150, 140];
+	function stepEars(b, L, dt) {
+		const body = b.body, g = 2400;
+		const parts = b.lookParts || partsOf(b.key, 'bunny');
+		if (!L.ears) L.ears = [-1, 1].map(() => ({ a: new Array(EAR_JOINTS).fill(0), w: new Array(EAR_JOINTS).fill(0), base: null, bw: 0, ba: 0 }));
+		[-1, 1].forEach((s, e) => {
+			const E = L.ears[e];
+			const p = spotFor(body, s * 0.3 * parts[0].spread + parts[0].shift);
+			// Ears follow only half the skin's slope, so they stand up from the
+			// head instead of sticking out of its side.
+			const base = earSlope(p) * 0.5 + soft(L.a, 0.45);
+			if (E.base === null) E.base = base;
+			const bw = Math.atan2(Math.sin(base - E.base), Math.cos(base - E.base)) / dt;
+			E.base = base;
+			const bwSmooth = E.bw + (bw - E.bw) * 0.3;
+			E.ba += ((bwSmooth - E.bw) / dt - E.ba) * 0.3;
+			E.bw = bwSmooth;
+			let phi = base;
+			for (let i = 0; i < EAR_JOINTS; i++) {
+				phi += E.a[i];
+				// Weight and the head's shove, as a twist about this joint: about
+				// 20 rad/s² per g, so standing still they only droop a little.
+				const pull = ((g - L.ay) * Math.sin(phi) - L.ax * Math.cos(phi)) / g * 20;
+				const rest = s * (i === 0 ? -0.05 : 0.02);
+				const k = EAR_K[i], damp = 2.4 + 0.25 * Math.sqrt(k);
+				E.w[i] += (pull - k * (E.a[i] - rest) - damp * E.w[i] - (i === 0 ? E.ba : 0)) * dt;
+				E.w[i] = Math.max(-14, Math.min(14, E.w[i]));
+				E.a[i] = Math.max(-0.7, Math.min(0.7, E.a[i] + E.w[i] * dt));
+			}
+		});
 	}
 
 	// Swings ease into their limit instead of stopping dead at it.
@@ -223,7 +264,7 @@
 			const shortest = name === 'bunny' ? 0.85 : 0.45;
 			ctx.scale(Math.max(0.6, Math.cos(yaw)) * part.scale * near, Math.max(shortest, Math.cos(pitch)) * part.scale * near);
 			// Its highest point, about 2.6 u out along the look.
-			const reach = u * 2.6 * part.scale, ang = Math.atan2(p.ny, p.nx) + Math.PI / 2 + swing;
+			const reach = u * (name === 'bunny' ? 5 : 2.6) * part.scale, ang = Math.atan2(p.ny, p.nx) + Math.PI / 2 + swing;
 			const topY = p.y - p.ny * u * sink - reach * Math.cos(ang);
 			if (body.lookTop == null || topY < body.lookTop) body.lookTop = topY;
 			if (part === b.lookParts[0]) {
@@ -335,35 +376,37 @@
 					}, 0.3);
 					break;
 				case 'bunny':
-					// Long floppy ears in the body's colour, pink inside: they
-					// stand up, then fold over halfway, and the folded part
-					// swings on the spring. One flops more than the other.
-					for (const s of [-1, 1]) at(s * 0.3, () => {
-						const stand = u * 3.3, flop = u * 2.9, w = u * 0.85;
-						ctx.rotate(-s * 0.1);
-						const fold = s * (s > 0 ? 1.9 : 1.2) + tip * 1.4;
-						const ear = (inset) => {
-							// Standing part: a soft upright lobe.
-							ctx.beginPath();
-							ctx.ellipse(0, -stand * 0.5, w - inset, stand * 0.62 - inset, 0, 0, Math.PI * 2);
-							ctx.fill();
-							// Folded part: hangs from the top, out and down.
-							ctx.save();
-							ctx.translate(0, -stand * 0.92);
-							ctx.rotate(fold);
-							ctx.beginPath();
-							ctx.ellipse(0, -flop * 0.48, w * 0.95 - inset, flop * 0.58 - inset, 0, 0, Math.PI * 2);
-							ctx.fill();
-							ctx.restore();
-						};
-						if (back) ear(0);
-						else {
-							ctx.fillStyle = 'rgba(255,140,170,0.75)';
-							ctx.beginPath();
-							ctx.ellipse(0, -stand * 0.52, w * 0.42, stand * 0.45, 0, 0, Math.PI * 2);
-							ctx.fill();
+					// Long ears in the body's colour, one smooth shape each,
+					// bending along the joints stepEars swings.
+					if (back) [-1, 1].forEach((s, e) => at(s * 0.3, () => {
+						const E = L.ears && L.ears[e];
+						ctx.rotate(-earSlope(spotFor(body, s * 0.3 * part.spread + part.shift)) * 0.5);
+						const len = u * 5, w = u * 0.85, steps = 24;
+						// The spine: the bend eases from joint to joint.
+						const spine = [];
+						let x = 0, y = u * 0.6, phi = 0;
+						for (let k = 0; k <= steps; k++) {
+							const t = k / steps;
+							if (k > 0) {
+								const f = t * EAR_JOINTS - 0.5, i = Math.max(0, Math.min(EAR_JOINTS - 1, Math.floor(f)));
+								const bend = E ? E.a[i] + (E.a[Math.min(EAR_JOINTS - 1, i + 1)] - E.a[i]) * Math.max(0, Math.min(1, f - i)) : s * 0.08;
+								phi += bend * EAR_JOINTS / steps;
+								x += Math.sin(phi) * len / steps;
+								y -= Math.cos(phi) * len / steps;
+							}
+							// Narrow at the root, fullest in the middle, a rounded point at the tip.
+							const half = w * (0.5 + 0.55 * Math.sin(Math.PI * t)) * (1 - 0.32 * t * t * t);
+							spine.push({ x, y, nx: Math.cos(phi), ny: Math.sin(phi), half, phi });
 						}
-					});
+						const end = spine[steps];
+						ctx.beginPath();
+						ctx.moveTo(spine[0].x - spine[0].nx * spine[0].half, spine[0].y - spine[0].ny * spine[0].half);
+						for (const q of spine) ctx.lineTo(q.x - q.nx * q.half, q.y - q.ny * q.half);
+						ctx.arc(end.x, end.y, end.half, end.phi + Math.PI, end.phi + Math.PI * 2);
+						for (let k = steps; k >= 0; k--) ctx.lineTo(spine[k].x + spine[k].nx * spine[k].half, spine[k].y + spine[k].ny * spine[k].half);
+						ctx.closePath();
+						ctx.fill();
+					}));
 					break;
 			}
 		}
