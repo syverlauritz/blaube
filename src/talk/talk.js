@@ -46,10 +46,10 @@
 
   function hint(s) {
     if (s.demo) return 'Demo slimes can’t talk back. Try a real session!';
-    if (s.ended) return s.log.some((m) => m.status === 'unsent') ? `${s.project} has ended, so what you sent last didn’t go in.` : `${s.project} has ended.`;
-    if (s.owned) return '';
+    if (s.ended) return (s.log.some((m) => m.status === 'unsent') ? `${s.project} has ended, so what you sent last didn’t go in.` : `${s.project} has ended.`) + ' Right-click its slime next time to resume it in a new terminal.';
+    if (s.owned) return s.log.length ? '' : 'Started by Blaube. Right-click me to end it or move it to a terminal.';
     if (s.ask) return '';
-    if (!s.connected && !s.typeable) return 'Update the Claude Code connection in Blaube’s menu, then restart this session to talk to it.';
+    if (!s.connected && !s.typeable) return 'Connect Claude Code from Blaube’s menu, then restart this session to talk to it.';
     // Queued, nobody waiting, and the turn is over (interrupted, say): it
     // only gets it when it next finishes a turn.
     if (s.queued && s.inbox !== 'ready' && s.state !== 'working' && s.inbox !== 'unknown') return `${s.project} gets this when it next finishes a turn. In a hurry? Go to its terminal.`;
@@ -188,7 +188,7 @@
       if (!extends_) {
         inner.textContent = '';
         ends = [];
-        if (!s.log.length && !s.ask) {
+        if (!s.log.length && !s.ask && (s.connected || s.typeable || s.owned)) {
           const e = document.createElement('div');
           e.className = 'empty';
           e.textContent = s.owned ? `What should we do in ${s.project}?` : `Say hi to ${s.project}! It hears you even when you’re not at its terminal.`;

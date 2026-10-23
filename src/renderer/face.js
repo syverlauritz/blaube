@@ -129,6 +129,9 @@
       const dir = Math.atan2(ly, lx);
       turnX = (lx / ll) * r * 0.32 * turn;
       turnY = (ly / ll) * r * 0.24 * turn;
+      // Not past the edge of the body (a narrow, stretched one has less room).
+      const bx = b.bbox(), roomX = ((bx.maxX - bx.minX) / 2) / (Math.min(1.4, st.x) * fs) * 0.92 - ex - ew;
+      turnX = Math.max(-Math.max(0, roomX), Math.min(Math.max(0, roomX), turnX));
       face.turnX = turnX * fs;
       face.turnY = turnY * fs;
       ctx.translate(turnX, turnY);
@@ -432,13 +435,13 @@
   const pillRadius = (h) => Math.min(h / 2, 16);
   const GAP = 8;
 
-  function placeBalloon(b, w, h, W) {
+  function placeBalloon(b, w, h, W, gap = 14) {
     const c = b.centroid(), box = b.bbox();
     // The tail points down at the top of the head, or of what it's wearing.
     const top = b.lookTop != null ? Math.min(box.minY, b.lookTop) : box.minY;
     const tip = { x: c.x, y: top - 8 };
     const x = Math.max(8, Math.min(W - w - 8, c.x - w / 2));
-    let y = tip.y - 14 - h;
+    let y = tip.y - gap - h;
     for (let tries = 0; tries < 6; tries++) {
       const hit = placed.find((o) => x < o.x + o.w + GAP && x + w + GAP > o.x && y < o.y + o.h + GAP && y + h + GAP > o.y);
       if (!hit) break;
@@ -446,7 +449,7 @@
     }
     y = Math.max(8, y);
     placed.push({ x, y, w, h });
-    return { tip, x, y };
+    return { tip, x, y, gap };
   }
 
   // A balloon has weight: it chases its spot on a spring, so when its slime
@@ -469,8 +472,10 @@
     if (d > LEASH) { s.x = target.tip.x + (dx / d) * LEASH; s.y = target.tip.y + (dy / d) * LEASH - h / 2; }
     // The leash is stiff the other way: the balloon never sinks onto the
     // head, even when the slime jumps up into it.
-    const lowest = target.tip.y - 14 - h / 2;
+    const lowest = target.tip.y - (target.gap || 14) - h / 2;
     if (s.y > lowest) { s.y = lowest; if (s.vy > 0) s.vy = 0; }
+    // And never off the top of the screen.
+    if (s.y < 8 + h / 2) { s.y = 8 + h / 2; if (s.vy < 0) s.vy = 0; }
     return { tip: target.tip, x: s.x - w / 2, y: s.y - h / 2, s };
   }
 
@@ -493,9 +498,9 @@
       // leash, which can be short: they'd merge or land on the head), never
       // below the top of the head.
       const dir = Math.max(-0.6, Math.min(0.6, (tip.x - mx) / 30));
-      const low = Math.min(y + h + 25, p.tip.y - 5.5); // the small one, clear of the head
-      const high = Math.min(y + h + 12, low - 10); // the bigger one, always apart from it
-      const ideal = [[high, 6, 0.4, 12], [low, 3.5, 1, 25]].map(([py, r, k, down]) => ({
+      const low = Math.min(y + h + 22, p.tip.y - 4.5); // the small one, clear of the head
+      const high = Math.min(y + h + 9, low - 11); // the bigger one, always apart from it
+      const ideal = [[high, 6, 0.4, 10], [low, 3.8, 1, 22]].map(([py, r, k, down]) => ({
         x: mx + dir * down + bend * k * 0.3, y: py, r,
       }));
       if (s && s.puffs) s.puffs.forEach((q, i) => { q.x += (ideal[i].x - q.x) * 0.25; q.y += (ideal[i].y - q.y) * 0.25; });
@@ -526,7 +531,7 @@
   function drawIconBalloon(ctx, b, t, W, thought, draw) {
     // One size for every sign balloon, to match a one-line text bubble.
     const h = 44, w = 58;
-    const p = settle(b, placeBalloon(b, w, h, W), w, h);
+    const p = settle(b, placeBalloon(b, w, h, W, thought ? 30 : 14), w, h);
     ctx.save();
     drawBalloon(ctx, p, w, h, thought);
     ctx.fillStyle = ctx.strokeStyle = INK;
@@ -785,7 +790,7 @@
     const padX = 18, padY = 11;
     const named = lines.length > 1;
     const font = (l, i) => (l.size ? `${l.size}px "Segoe UI Emoji", "Apple Color Emoji", system-ui, sans-serif`
-      : named && i === 0 ? `700 17px ${family}` : l.dim ? `600 14px ${SYSTEM_FONT}` : `600 15px ${SYSTEM_FONT}`);
+      : named && i === 0 ? `700 17px ${l.text.length > 16 ? SYSTEM_FONT : family}` : l.dim ? `600 14px ${SYSTEM_FONT}` : `600 15px ${SYSTEM_FONT}`);
     const lineH = (l, i) => (l.size ? l.size + 8 : named && i === 0 ? 24 : 22);
     const w = Math.min(360, Math.max(...lines.map((l, i) => { ctx.font = font(l, i); return ctx.measureText(l.text).width + (l.color ? 16 : 0); })) + padX * 2);
     const h = lines.reduce((sum, l, i) => sum + lineH(l, i), 0) + padY * 2 - 2;

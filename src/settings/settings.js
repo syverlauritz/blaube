@@ -13,7 +13,7 @@
 			row.className = 'row';
 			if (Array.isArray(min)) {
 				// Pick one, with a preview in that font.
-				const preview = key === 'font' ? '<div class="preview">Done! All tests pass 👍</div>' : '';
+				const preview = key === 'font' ? '<div class="preview">kalkis</div>' : '';
 				row.innerHTML = `<label><span>${label}</span></label><select></select>${preview}`;
 				const select = row.querySelector('select'), shown = row.querySelector('.preview');
 				for (const name of min) select.add(new Option(name, name));

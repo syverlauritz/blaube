@@ -798,7 +798,7 @@ while ($true) {
 function goToSession(s) {
   const focus = () => focusSessionApp(s, (ok, info) => {
     log(`go to session ${s.id} pid=${s.pid || '-'}: ${ok ? 'found' : 'not found'} ${info || ''}`);
-    if (!ok && win) win.webContents.send('say', { id: s.id, text: "Can't find its window. Right-click me to resume it." });
+    if (!ok && win) win.webContents.send('say', { id: s.id, text: "Can't find its window. Right-click me to resume it in a new terminal." });
   });
   if (s.pid || process.platform !== 'win32') return focus();
   // No process id yet (older hooks, and the poller hasn't caught it):
@@ -830,9 +830,11 @@ function appMenuTemplate() {
       : installed ? [] : [{ label: claudeHooks.hasAnyBlaubeHooks() ? 'Update Claude Code connection…' : 'Connect Claude Code…', click: installHooks }]),
     ...newSessionMenu(),
     { type: 'separator' },
-    { label: 'Come here', click: () => send('come-here') },
-    { label: 'Everyone hop!', click: () => send('hop') },
-    { label: 'Demo sessions', click: runDemo },
+    { label: 'Play', submenu: [
+      { label: 'Come here', click: () => send('come-here') },
+      { label: 'Everyone hop!', click: () => send('hop') },
+      { label: 'Demo sessions', click: runDemo },
+    ] },
     { type: 'separator' },
     { label: 'Colour', submenu: colorMenu(prefs.config.color, (hex) => setConfig(Object.assign({}, prefs.config, { color: hex }))) },
     { label: 'Live on display', submenu: displayMenu() },
@@ -874,7 +876,7 @@ function sessionMenu(id) {
       { label: 'End session', click: () => endOwned(s) },
     ] : [
       { label: 'Go to its terminal', sublabel: process.platform === 'darwin' ? '⌥-click the slime' : 'Alt-click the slime', enabled: !isDemo, click: () => goToSession(s) },
-      { label: 'Open in a new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
+      { label: 'Resume in a new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
     ]),
     { label: 'Copy resume command', click: () => clipboard.writeText(`cd "${s.cwd}" && ${resumeCommand(s.id)}`) },
     { label: 'Open project folder', enabled: !!s.cwd, click: () => shell.openPath(s.cwd) },
@@ -910,7 +912,7 @@ async function installHooks() {
     buttons: ['Connect', 'Cancel'],
     defaultId: 0,
     message: 'Connect Blaube to Claude Code?',
-    detail: `Blaube adds a few hooks to ${file} so Claude Code tells it when a session starts, is working, needs you, or is done.\n\nThe hooks only talk to Blaube on this computer (127.0.0.1:${PORT}). No API calls, no tokens. A backup is saved next to the file.\n\nRestart any running Claude Code sessions to pick them up.`,
+    detail: `Blaube adds a few hooks to ${file} so Claude Code tells it when a session starts, is working, needs you, or is done.\n\nThe hooks only talk to Blaube on this computer (127.0.0.1:${PORT}). No API calls, no tokens. A backup is saved next to the file.\n\nSessions already running pick them up when you restart them (on macOS, Blaube can still talk to them in Terminal or iTerm meanwhile).`,
   });
   if (response !== 0) return;
   try {

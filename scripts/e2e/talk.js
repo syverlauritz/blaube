@@ -80,6 +80,8 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 		fs.writeFileSync(path.join(OUT, `e2e-${name}.png`), Buffer.from(png.split(',')[1], 'base64'));
 	};
 
+	const consoleLines = [];
+	win.webContents.on('console-message', (...a) => { const m = a[a.length - 1] && a[a.length - 1].message ? a[a.length - 1].message : a[2]; consoleLines.push(String(m)); if (consoleLines.length > 40) consoleLines.shift(); });
 	const ID = 'e2e-' + Date.now();
 	let last = { x: 0, y: 0 };
 	await until(() => !win.webContents.isLoading(), 8000);
@@ -283,7 +285,9 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	check(await until(() => !talk().isVisible()), 'Esc closes it');
 	check(await page(`(() => { const b = __blaube.buddies.get(${JSON.stringify(ID)}); return !!b; })()`), 'the slime is fine');
 	await clickSlime();
-	check(await until(() => talk().isVisible()), 'clicking the slime opens it again');
+	const reopened = await until(() => talk().isVisible());
+	check(reopened, 'clicking the slime opens it again');
+	if (!reopened) console.log('     last page logs:\n       ' + consoleLines.slice(-8).join('\n       '), '\n     talkId', talkId(), 'last', JSON.stringify(last));
 	await sleep(500);
 	await clickSlime();
 	check(await until(() => !talk().isVisible()), 'clicking it again closes it');

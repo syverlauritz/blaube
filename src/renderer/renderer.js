@@ -656,7 +656,7 @@
     const mothers = [...buddies.values()].filter((b) => b.kind === 'mother' && !b.dying && b.session);
     if (!mothers.length) {
       return [{ text: settings.noClaude ? 'I can’t find Claude Code. Right-click me to install it'
-        : settings.hooksInstalled ? 'No Claude Code sessions right now' : 'Right-click me to connect Claude Code' }];
+        : settings.hooksInstalled ? 'Nothing running. Right-click me to start a session' : 'Right-click me to connect Claude Code, or start a session' }];
     }
     const word = { working: 'working', waiting: 'needs you', done: 'done', idle: 'idle' };
     return mothers.map((b) => {
@@ -1189,7 +1189,10 @@
     const extra = [info.branch, modelName(info.model)].filter(Boolean).join(' · ');
     if (extra) lines.push({ text: extra, dim: true });
     // Until you've talked to one, say you can.
-    if (!settings.talked && b.session && !String(b.session.id).startsWith('demo-')) lines.push({ text: 'Click to talk', dim: true });
+    if (b.session && !String(b.session.id).startsWith('demo-')) {
+      if (settings.hooksInstalled === false) lines.push({ text: 'Connect Claude Code in my menu for more', dim: true });
+      else if (!settings.talked) lines.push({ text: 'Click to talk', dim: true });
+    }
     return lines;
   }
 
@@ -1362,7 +1365,7 @@
     let base, tip, across; // where it leaves the bubble, where it ends, and which way its base runs
     if (talkRect.side === 'bottom') {
       base = { x: Math.max(bx + 30, Math.min(bx + bw - 30, c.x)), y: by + bh - 18 }; // well inside: no gap while it moves
-      tip = { x: c.x, y: b.body.bbox().minY + 6 }; // just inside the top of the body
+      tip = { x: c.x, y: headTop(b).y - 9 }; // just above the head and what it wears
       across = { x: 1, y: 0 };
     } else {
       const left = talkRect.side === 'left';
@@ -1388,7 +1391,7 @@
     ctx.closePath();
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(tip.x, tip.y, 7.5, 0, Math.PI * 2);
+    ctx.arc(tip.x, tip.y, 8.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -1588,9 +1591,14 @@
   api.onState((s) => {
     settings = s.settings || settings;
     syncSessions(s.sessions || [], s.pending || 0);
-    if (!nudged && (settings.noClaude || settings.hooksInstalled === false) && !(s.sessions || []).length) {
+    if (!nudged && (settings.noClaude || settings.hooksInstalled === false)) {
       nudged = true;
-      setTimeout(() => { const home = [...buddies.values()].find((b) => b.kind === 'home'); if (home) home.say(summaryLines(), 8); }, 2500);
+      setTimeout(() => {
+        const first = [...buddies.values()].find((b) => b.kind === 'home') || [...buddies.values()].find((b) => b.kind === 'mother');
+        if (!first) return;
+        first.say(settings.noClaude ? [{ text: 'I can’t find Claude Code. Right-click me to install it' }]
+          : [{ text: 'Right-click me to connect Claude Code' }, { text: 'so I can tell what your sessions are up to', dim: true }], 9);
+      }, 2500);
     }
   });
 
