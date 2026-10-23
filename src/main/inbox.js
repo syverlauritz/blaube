@@ -153,6 +153,7 @@ class Inbox extends EventEmitter {
       if (at < log.length - 1) { log.splice(log.indexOf(entry), 1); log.splice(at, 0, entry); }
       this.emit('reply', id, entry);
     } else if (event === 'SessionEnd') {
+      for (const e of this.log(id)) if (e.status === 'queued' || e.status === 'delivering') e.status = 'unsent';
       const w = this.waiters.get(id);
       if (w) w(null);
       this.waiters.delete(id);

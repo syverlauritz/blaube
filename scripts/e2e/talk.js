@@ -42,6 +42,18 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 			await sleep(60);
 		}
 	};
+	// Clicks where the slime is once it stands still (like a person aiming).
+	const clickSlime = async () => {
+		let a = await slime();
+		for (let i = 0; i < 60; i++) {
+			await sleep(100);
+			const b = await slime();
+			if (Math.hypot(b.x - a.x, b.y - a.y) < 1) { a = b; break; }
+			a = b;
+		}
+		last = a;
+		await click(a.x, a.y);
+	};
 	const slime = () => page(`(() => { const b = __blaube.buddies.get(${JSON.stringify(ID)}); if (!b) return null; const c = b.body.centroid(), r = b.body.o.radius; return { x: c.x, y: c.y, r, top: Math.min(b.body.lookTop ?? Infinity, c.y - r) }; })()`);
 	const shot = async (name) => {
 		const wb = win.getBounds(), tw = talk(), shown = tw && tw.isVisible();
@@ -84,7 +96,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	last = await slime();
 
 	// Click it: the talk box opens above it, tail pointing at it.
-	await click(last.x, last.y);
+	await clickSlime();
 	check(await until(() => talk() && talk().isVisible()), 'clicking the slime opens its talk box');
 	check(talkId() === ID, 'for that session');
 	await sleep(400);
@@ -141,18 +153,34 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
 	check(await until(() => !talk().isVisible()), 'Esc closes it');
 	check(await page(`(() => { const b = __blaube.buddies.get(${JSON.stringify(ID)}); return !!b; })()`), 'the slime is fine');
-	last = await slime();
-	await click(last.x, last.y);
+	await clickSlime();
 	check(await until(() => talk().isVisible()), 'clicking the slime opens it again');
 	await sleep(500);
-	await click(last.x, last.y);
+	await clickSlime();
 	check(await until(() => !talk().isVisible()), 'clicking it again closes it');
 
-	// The session ends while the box is open.
-	await click(last.x, last.y);
+	// New entries are added, not redrawn: an unfolded reply stays open and
+	// the elements already there are the same ones.
+	await clickSlime();
 	await until(() => talk().isVisible());
+	await box(`document.querySelector('#inner .msg').dataset.mark = 'kept'`);
+	await hook({ hook_event_name: 'UserPromptSubmit', prompt: 'thanks!' });
+	await hook({ hook_event_name: 'Stop', last_assistant_message: 'Any time.' });
+	check(await until(() => box(`document.querySelector('#inner .msg:last-of-type')?.textContent === 'Any time.' || [...document.querySelectorAll('#inner .msg')].pop().textContent === 'Any time.'`)), 'a new reply shows up');
+	check(await box(`document.querySelector('#inner .msg').dataset.mark === 'kept'`), 'without redrawing what was there');
+
+	// The session ends while the box is open, with something typed and
+	// something queued: the box stays and says so, and keeps the draft.
+	await hook({ hook_event_name: 'UserPromptSubmit', prompt: 'one more thing' });
+	await box(`(() => { const t = document.getElementById('text'); t.value = 'also bump the version'; t.dispatchEvent(new Event('input')); document.getElementById('form').requestSubmit(); })()`);
+	await box(`(() => { const t = document.getElementById('text'); t.value = 'half-typed'; t.dispatchEvent(new Event('input')); })()`);
 	await hook({ hook_event_name: 'SessionEnd' });
-	check(await until(() => !talk().isVisible()), 'the box closes when its session ends');
+	check(await until(async () => (await box(`document.getElementById('state').textContent`)) === 'Ended'), 'the box stays when its session ends, saying it ended');
+	check(await box(`document.getElementById('text').disabled && document.getElementById('text').value === 'half-typed'`), 'the field is off, the draft kept');
+	check(await box(`/didn’t go in/.test(document.getElementById('hint').textContent) && [...document.querySelectorAll('.meta')].some((e) => e.textContent === 'not sent')`), 'and the queued message is marked not sent');
+	await shot('ended');
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
+	check(await until(() => !talk().isVisible()), 'Esc closes it');
 
 	waiting.kill(); asking.kill();
 	console.log(failed ? `\n${failed} failed` : '\nall passed');

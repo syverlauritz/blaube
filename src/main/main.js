@@ -306,12 +306,21 @@ function hideTalk(switching = false) {
 }
 
 let hooksOk = null; // whether Claude Code is connected, checked when the box opens
+let talkLast = null; // the session the box last showed, for when it ends
 function pushTalk(id, focusField = false) {
   if (!talkWin || talkWin.isDestroyed() || id !== talkId) return;
   if (!talkWin.isVisible() && !talkReady) return; // it catches up when it opens
   if (hooksOk === null || talkReady) hooksOk = claudeHooks.isInstalled(undefined, PORT);
   const s = tracker.sessions.get(id);
-  if (!s) { hideTalk(); return; }
+  // It ended while you were talking to it: say so, keep what you'd typed.
+  if (!s) {
+    if (!talkLast || talkLast.id !== id) { hideTalk(); return; }
+    talkWin.webContents.send('talk-state', Object.assign({}, talkLast, inbox.view(id), { ended: true, state: 'ended', ask: null, asks: 0, tail: talkTail, focus: false }));
+    return;
+  }
+  talkLast = {
+    id, project: s.project, color: colorOf(s) || prefs.config.color || '#D97757', font: prefs.config.font, demo: id.startsWith('demo-'), connected: true,
+  };
   talkWin.webContents.send('talk-state', Object.assign({
     id,
     project: s.project,
@@ -1020,4 +1029,19 @@ app.whenReady().then(async () => {
 
 app.on('second-instance', () => send('come-here'));
 app.on('window-all-closed', () => app.quit());
+// Messages still waiting to go in would be lost: ask first.
+let quitAnyway = false;
+app.on('before-quit', (e) => {
+  const waiting = [...inbox.queue.values()].reduce((n, q) => n + q.length, 0);
+  if (TEST || quitAnyway || !waiting) return;
+  e.preventDefault();
+  dialog.showMessageBox({
+    type: 'question',
+    buttons: ['Quit anyway', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    message: waiting === 1 ? 'A message hasn’t gone in yet.' : `${waiting} messages haven’t gone in yet.`,
+    detail: 'They’re waiting for their sessions to finish a turn. If Blaube quits now, they won’t be sent.',
+  }).then(({ response }) => { if (response === 0) { quitAnyway = true; app.quit(); } });
+});
 app.on('will-quit', () => { globalShortcut.unregisterAll(); if (focus.stop) focus.stop(); });

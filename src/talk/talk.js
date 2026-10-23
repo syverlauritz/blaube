@@ -6,10 +6,14 @@
   const $ = (id) => document.getElementById(id);
   const text = $('text'), send = $('send'), log = $('log'), inner = $('inner');
   // The same words and colours as the slime's hover bubble (renderer.js, face.js).
-  const WORDS = { working: 'Working', waiting: 'Needs you', done: 'Done', idle: 'Idle' };
-  const DOTS = { working: '#f5a623', waiting: '#ff4d6d', done: '#2ecc71', idle: '#a0aec0' };
+  const WORDS = { working: 'Working', waiting: 'Needs you', done: 'Done', idle: 'Idle', ended: 'Ended' };
+  const DOTS = { working: '#f5a623', waiting: '#ff4d6d', done: '#2ecc71', idle: '#a0aec0', ended: '#c3c8d2' };
   const MAX = 4000; // longer replies are cut, with a way to the rest
-  let current = null, shown = '', askKey = 0, seen = 0;
+  let current = null, askKey = 0, seen = 0;
+  let drawn = { entries: [], thinking: -1, open: '' }, ends = []; // what the log shows, and each entry's last element
+  const dots = document.createElement('div'); // the slime thinking
+  dots.className = 'dots';
+  dots.innerHTML = '<i></i><i></i><i></i>';
   const drafts = new Map(); // what you'd typed, per session
   const open = new Set(); // long replies you unfolded (by time)
 
@@ -54,6 +58,7 @@
 
   function hint(s) {
     if (s.demo) return 'Demo slimes can’t talk back. Try a real session!';
+    if (s.ended) return s.log.some((m) => m.status === 'unsent') ? `${s.project} has ended, so what you sent last didn’t go in.` : `${s.project} has ended.`;
     if (s.ask) return '';
     if (!s.connected) return 'Update the Claude Code connection in Blaube’s menu, then restart this session to talk to it.';
     // Queued, nobody waiting, and the turn is over (interrupted, say): it
@@ -104,7 +109,7 @@
       return [e];
     }
     const e = document.createElement('div');
-    e.className = 'msg ' + m.who + (m.status === 'queued' ? ' queued' : '') + (fresh ? ' new' : '');
+    e.className = 'msg ' + m.who + (m.status === 'queued' || m.status === 'unsent' ? ' ' + m.status : '') + (fresh ? ' new' : '');
     e.dataset.at = m.at;
     const cut = m.text.length > MAX;
     rich(e, cut ? m.text.slice(0, MAX) : m.text);
@@ -115,6 +120,12 @@
       more.textContent = '…the rest is in the terminal ↗';
       more.onclick = () => api.terminal();
       out.push(more);
+    }
+    if (m.status === 'unsent') {
+      const t = document.createElement('div');
+      t.className = 'meta';
+      t.textContent = 'not sent';
+      out.push(t);
     }
     if (m.status === 'queued') {
       const t = document.createElement('div');
@@ -153,10 +164,10 @@
       root.setProperty('--nameWeight', s.font === 'System' || s.font === 'DynaPuff' ? '700' : '400');
     }
     if (s.tail) placeTail(s.tail);
-    $('terminal').style.display = s.demo ? 'none' : '';
+    $('terminal').style.display = s.demo || s.ended ? 'none' : '';
     renderAsk(s.ask, s.asks);
     $('hint').textContent = hint(s);
-    text.disabled = !!s.demo || !s.connected;
+    text.disabled = !!s.demo || !s.connected || !!s.ended;
     text.placeholder = s.state === 'working' ? 'Say something for later…' : 'Say something…';
     send.disabled = text.disabled || !text.value.trim();
     // The slime's dots while it works on something you said: after the
@@ -169,42 +180,55 @@
     }
     // Only rebuild the log when it changed, so scrolling isn't reset; and not
     // while you're selecting text in it (it catches up after).
-    const key = s.id + JSON.stringify(s.log) + thinking + [...open].join();
+    // Only what changed is drawn: new entries are added at the end, so
+    // scrolling, text you're selecting and replies you unfolded stay put.
+    // Anything else (another session, a status change) redraws it all, but
+    // never while you're selecting text in it (it catches up after).
+    const entries = s.log.map((m) => JSON.stringify(m));
+    const openKey = [...open].join();
     const sel = window.getSelection();
     const selecting = !switched && sel && !sel.isCollapsed && log.contains(sel.anchorNode);
-    if (key !== shown && !selecting) {
-      shown = key;
+    const extends_ = !switched && openKey === drawn.open && drawn.entries.length > 0 && entries.length >= drawn.entries.length
+      && drawn.entries.every((j, i) => j === entries[i]);
+    const changed = switched || !extends_ || entries.length !== drawn.entries.length || thinking !== drawn.thinking;
+    if (changed && (!selecting || switched)) {
       const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
-      inner.textContent = '';
-      if (!s.log.length) {
-        const e = document.createElement('div');
-        e.className = 'empty';
-        e.textContent = `Say hi to ${s.project}! It hears you even when you’re not at its terminal.`;
-        inner.append(e);
+      const from = extends_ ? drawn.entries.length : 0;
+      dots.remove();
+      if (!extends_) {
+        inner.textContent = '';
+        ends = [];
+        if (!s.log.length) {
+          const e = document.createElement('div');
+          e.className = 'empty';
+          e.textContent = `Say hi to ${s.project}! It hears you even when you’re not at its terminal.`;
+          inner.append(e);
+        }
+      } else if (from === 0) inner.textContent = '';
+      for (let i = from; i < s.log.length; i++) {
+        const nodes = message(s.log[i], !switched && i >= seen);
+        inner.append(...nodes);
+        ends[i] = nodes[nodes.length - 1];
       }
-      const dots = document.createElement('div');
-      dots.className = 'dots';
-      dots.innerHTML = '<i></i><i></i><i></i>';
+      if (thinking >= 0 && ends[thinking]) ends[thinking].after(dots);
       if (!switched && s.log.slice(seen).some((m) => m.who === 'claude')) {
         const w = $('wrap');
         w.classList.remove('boing'); void w.offsetWidth; w.classList.add('boing');
       }
-      s.log.forEach((m, i) => {
-        inner.append(...message(m, !switched && i >= seen));
-        if (i === thinking) inner.append(dots);
-      });
       seen = s.log.length;
       // Long replies fold, with Show more (by how tall they are).
-      for (const e of inner.querySelectorAll('.msg.claude')) {
+      for (const e of inner.querySelectorAll('.msg.claude:not([data-measured])')) {
+        e.dataset.measured = '1';
         const at = Number(e.dataset.at);
         if (e.offsetHeight < 280 || open.has(at)) continue;
         e.classList.add('folded');
         const more = document.createElement('button');
         more.className = 'more';
         more.textContent = 'Show more';
-        more.onclick = () => { open.add(at); shown = ''; render(current); };
+        more.onclick = () => { open.add(at); drawn.entries = []; render(current); };
         e.after(more);
       }
+      drawn = { entries, thinking, open: openKey };
       if (atBottom || switched) log.scrollTop = log.scrollHeight;
     }
     fitWindow(); // reading sizes lays it out, even while hidden
