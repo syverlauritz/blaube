@@ -1,0 +1,160 @@
+// End-to-end check of talking to a slime, in the real app but invisible:
+//
+//   npm run e2e
+//
+// Fakes a session through the hook server, clicks its slime with real mouse
+// events, types into the talk box, runs the same hook commands Claude Code
+// would (the inbox and permission hooks), and checks what happens at each
+// step. Saves pictures to shots/e2e-*.png. Exits non-zero on a failure.
+const http = require('node:http');
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawn } = require('node:child_process');
+const { BrowserWindow } = require('electron');
+const { inboxCommand, permissionCommand } = require('../../src/main/claudeHooks');
+
+const ROOT = path.join(__dirname, '..', '..');
+const OUT = path.join(ROOT, 'shots');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
+	let failed = 0;
+	const check = (ok, what) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) failed++; };
+	const until = async (fn, ms = 4000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return true; await sleep(50); } return false; };
+	const page = (js) => win.webContents.executeJavaScript(js);
+	const box = (js) => talk().webContents.executeJavaScript(js);
+	const hook = (payload) => new Promise((done) => {
+		const req = http.request({ host: '127.0.0.1', port: PORT, path: '/blaube/hook', method: 'POST', headers: { 'content-type': 'application/json', 'x-blaube-entry': 'cli' } }, (res) => { res.resume(); res.on('end', done); });
+		req.end(JSON.stringify(Object.assign({ session_id: ID, cwd: '/tmp/kalkis' }, payload)));
+	});
+	const runHook = (cmd, payload, env = {}) => {
+		const p = spawn('sh', ['-c', cmd], { env: Object.assign({}, process.env, env) });
+		let out = '', err = '';
+		p.stdout.on('data', (d) => { out += d; });
+		p.stderr.on('data', (d) => { err += d; });
+		const done = new Promise((r) => p.on('exit', (code) => r({ code, out, err })));
+		p.stdin.end(JSON.stringify(payload));
+		return { done, kill: () => p.kill() };
+	};
+	const click = async (x, y) => {
+		for (const type of ['mouseDown', 'mouseUp']) {
+			win.webContents.sendInputEvent({ type, x: Math.round(x), y: Math.round(y), button: 'left', clickCount: 1 });
+			await sleep(60);
+		}
+	};
+	const slime = () => page(`(() => { const b = __blaube.buddies.get(${JSON.stringify(ID)}); if (!b) return null; const c = b.body.centroid(), r = b.body.o.radius; return { x: c.x, y: c.y, r, top: Math.min(b.body.lookTop ?? Infinity, c.y - r) }; })()`);
+	const shot = async (name) => {
+		const wb = win.getBounds(), tw = talk(), shown = tw && tw.isVisible();
+		const bg = (await win.webContents.capturePage()).toDataURL();
+		const fg = shown ? (await tw.webContents.capturePage()).toDataURL() : null;
+		const tb = shown ? tw.getBounds() : null;
+		const cw = new BrowserWindow({ width: 400, height: 300, show: false });
+		await cw.loadURL('about:blank');
+		const png = await cw.webContents.executeJavaScript(`(async () => {
+			const load = (src) => new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.src = src; });
+			const b = await load(${JSON.stringify(bg)}), f = ${fg ? `await load(${JSON.stringify(fg)})` : 'null'};
+			const k = b.width / ${wb.width};
+			// Just the part of the screen around the slime and its box.
+			const x0 = ${Math.max(0, (tb ? Math.min(tb.x, wb.x + last.x - 200) : wb.x + last.x - 300) - wb.x)}, y0 = ${Math.max(0, (tb ? tb.y : wb.y + last.y - 450) - wb.y - 20)};
+			const w = 760, h = ${Math.round(wb.height)} - y0;
+			const c = document.createElement('canvas'); c.width = w * k; c.height = h * k;
+			const g = c.getContext('2d');
+			g.fillStyle = '#2a2c31'; g.fillRect(0, 0, c.width, c.height);
+			g.drawImage(b, -x0 * k, -y0 * k);
+			${tb ? `g.drawImage(f, (${tb.x - wb.x} - x0) * k, (${tb.y - wb.y} - y0) * k, ${tb.width} * k, ${tb.height} * k);` : ''}
+			return c.toDataURL('image/png');
+		})()`);
+		cw.destroy();
+		fs.writeFileSync(path.join(OUT, `e2e-${name}.png`), Buffer.from(png.split(',')[1], 'base64'));
+	};
+
+	const ID = 'e2e-' + Date.now();
+	let last = { x: 0, y: 0 };
+	await until(() => !win.webContents.isLoading(), 8000);
+	await sleep(800);
+
+	// A session that's done a turn.
+	await hook({ hook_event_name: 'SessionStart' });
+	await hook({ hook_event_name: 'UserPromptSubmit', prompt: 'add the 2027 tax brackets' });
+	await hook({ hook_event_name: 'Stop', last_assistant_message: 'Done! The **2027 brackets** are in `src/tax.js`.' });
+	// After a turn its inbox hook waits for a message, as in Claude Code.
+	const waiting = runHook(inboxCommand(PORT), { session_id: ID, hook_event_name: 'Stop' });
+	check(await until(async () => !!(await slime()), 6000), 'its slime appears');
+	await sleep(2500); // landed
+	last = await slime();
+
+	// Click it: the talk box opens above it, tail pointing at it.
+	await click(last.x, last.y);
+	check(await until(() => talk() && talk().isVisible()), 'clicking the slime opens its talk box');
+	check(talkId() === ID, 'for that session');
+	await sleep(400);
+	const wb = win.getBounds(), tb = talk().getBounds();
+	last = await slime(); // where it is now (it may have been mid-hop when clicked; the box follows)
+	const tail = await box(`(() => { const t = document.getElementById('tail').getBoundingClientRect(); return { x: t.left + t.width / 2, y: t.bottom, side: document.body.className }; })()`);
+	check(tail.side === 'bottom', 'the box sits above the slime');
+	check(Math.abs(tb.x + tail.x - (wb.x + last.x)) < 30, `its tail points at the slime (off by ${Math.round(tb.x + tail.x - (wb.x + last.x))} px)`);
+	check(tb.y + tail.y <= wb.y + last.top + 4 && tb.y + tail.y > wb.y + last.top - 30, `the tail ends just above its head (tip ${Math.round(tb.y + tail.y)}, head ${Math.round(wb.y + last.top)})`);
+	const texts = await box(`[...document.querySelectorAll('#inner .msg')].map((e) => e.textContent)`);
+	check(texts.length === 2 && /2027 brackets/.test(texts[1]), 'it shows the conversation so far');
+	check(await box(`document.getElementById('hint').textContent === ''`), 'no “update the connection” note for a session whose hooks reach us');
+	check(await box(`!!document.querySelector('#inner .msg.claude b')`), 'with formatting (bold)');
+	check(await page(`__blaube.buddies.get(${JSON.stringify(ID)}) && true`), 'the slime is still there');
+	await shot('open');
+
+	// Send a message: the session's inbox hook gets it.
+	check(await until(() => inbox.view(ID).inbox === 'ready'), 'the session’s inbox hook is waiting');
+	await box(`(() => { const t = document.getElementById('text'); t.value = 'and update the changelog'; t.dispatchEvent(new Event('input')); document.getElementById('form').requestSubmit(); })()`);
+	const got = await Promise.race([waiting.done, sleep(3000).then(() => null)]);
+	check(got && got.code === 2 && /update the changelog/.test(got.err), 'sending wakes Claude with the message (exit 2)');
+	check(await until(async () => (await box(`document.querySelectorAll('#inner .dots').length`)) === 1), 'thinking dots while it works on it');
+	await shot('thinking');
+	await hook({ hook_event_name: 'UserPromptSubmit', prompt: '<task-notification>\n<summary>Stop hook feedback</summary>' });
+	await hook({ hook_event_name: 'Stop', last_assistant_message: 'Changelog updated.' });
+	check(await until(async () => (await box(`[...document.querySelectorAll('#inner .msg')].map((e) => e.textContent).join('|')`)).endsWith('and update the changelog|Changelog updated.')), 'the reply comes in after the message, in order');
+	check(await box(`document.querySelectorAll('#inner .dots').length === 0`), 'and the dots go away');
+
+	// A permission prompt: Allow on the slime answers the hook.
+	const asking = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'npm test' }, permission_suggestions: [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm test' }], behavior: 'allow', destination: 'localSettings' }] }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	check(await until(async () => !(await box(`document.getElementById('ask').hidden`))), 'the permission card shows');
+	check(await box(`document.getElementById('askDetail').textContent`) === 'npm test', 'with the command');
+	check(await box(`document.getElementById('always').textContent`) === 'Always allow npm test', 'and what “always” would allow');
+	check(await box(`document.getElementById('allow').disabled`), 'its buttons wait a moment (no accidental double-click)');
+	await sleep(500);
+	check(!(await box(`document.getElementById('allow').disabled`)), 'then they work');
+	check(await box(`document.getElementById('hint').textContent === ''`), 'no other notes compete with the card');
+	await shot('ask');
+	await box(`document.getElementById('allow').click()`);
+	const answer = await Promise.race([asking.done, sleep(3000).then(() => null)]);
+	let decision = null;
+	try { decision = JSON.parse(answer.out).hookSpecificOutput.decision; } catch { /* checked below */ }
+	check(decision && decision.behavior === 'allow', 'Allow answers the hook with allow');
+	check(await box(`document.getElementById('ask').hidden`), 'and the card goes away');
+	check(await box(`[...document.querySelectorAll('#inner .note')].some((e) => /Allowed Bash: npm test/.test(e.textContent))`), 'the log notes it');
+
+	// A long reply folds; Show more opens it.
+	await hook({ hook_event_name: 'Stop', last_assistant_message: Array.from({ length: 30 }, (_, i) => `Line ${i + 1} of a long answer.`).join('\n') });
+	check(await until(() => box(`!!document.querySelector('.msg.folded')`)), 'a long reply folds');
+	await box(`document.querySelector('.more').click()`);
+	check(await until(() => box(`!document.querySelector('.msg.folded')`)), 'Show more opens it');
+
+	// Esc closes it (after its little shrink); clicking the slime again opens and closes it.
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
+	check(await until(() => !talk().isVisible()), 'Esc closes it');
+	check(await page(`(() => { const b = __blaube.buddies.get(${JSON.stringify(ID)}); return !!b; })()`), 'the slime is fine');
+	last = await slime();
+	await click(last.x, last.y);
+	check(await until(() => talk().isVisible()), 'clicking the slime opens it again');
+	await sleep(500);
+	await click(last.x, last.y);
+	check(await until(() => !talk().isVisible()), 'clicking it again closes it');
+
+	// The session ends while the box is open.
+	await click(last.x, last.y);
+	await until(() => talk().isVisible());
+	await hook({ hook_event_name: 'SessionEnd' });
+	check(await until(() => !talk().isVisible()), 'the box closes when its session ends');
+
+	waiting.kill(); asking.kill();
+	console.log(failed ? `\n${failed} failed` : '\nall passed');
+	return failed ? 1 : 0;
+};

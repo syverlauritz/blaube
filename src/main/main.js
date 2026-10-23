@@ -17,6 +17,13 @@ const BlaubeConfig = require('../shared/config');
 
 const PORT = Number(process.env.BLAUBE_PORT) || DEFAULT_PORT;
 
+// Test mode (BLAUBE_TEST=<script>): the real app, but invisible (every
+// window fully transparent), never catching the real mouse or taking focus,
+// with no tray icon, its own data folder, and none of your real sessions.
+// The script is run with the app's insides once it's up (scripts/e2e).
+const TEST = process.env.BLAUBE_TEST || '';
+if (TEST) app.setPath('userData', fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'blaube-test-')));
+
 // When Blaube is started from inside a Claude Code session (e.g. `npm start`
 // run by Claude), it inherits that session's markers. A `claude --resume` it
 // opens would then think it's a child session and stop saving transcripts.
@@ -216,7 +223,7 @@ function placeTalkWin() {
 function openTalk(id, at) {
   if (!tracker.sessions.get(id)) return;
   // Clicking its slime took focus and hid it: that click meant "close".
-  if (talkHiddenId === id && Date.now() - talkHiddenAt < 350) { activateApp(talkBefore); return; }
+  if (talkHiddenId === id && Date.now() - talkHiddenAt < 350) { if (!TEST) activateApp(talkBefore); return; }
   if (!talkWin) {
     talkWin = new BrowserWindow({
       width: TALK_W,
@@ -235,6 +242,7 @@ function openTalk(id, at) {
       webPreferences: { preload: path.join(__dirname, 'talkPreload.js'), contextIsolation: true, sandbox: true },
     });
     talkWin.loadFile(path.join(__dirname, '..', 'talk', 'talk.html'));
+    if (TEST) talkWin.setOpacity(0);
     talkWin.on('blur', () => {
       if (!talkWin || !talkWin.isVisible() || talkWin.webContents.isDevToolsFocused()) return;
       hideTalk();
@@ -254,8 +262,8 @@ function openTalk(id, at) {
   const show = () => {
     if (talkId !== id) return;
     placeTalkWin();
-    talkWin.show(); // already filled in while hidden
-    talkWin.focus();
+    if (TEST) talkWin.showInactive(); // never takes your focus
+    else { talkWin.show(); talkWin.focus(); } // already filled in while hidden
     pushTalk(id, true);
     if (win) win.webContents.send('talking', id);
   };
@@ -267,7 +275,7 @@ function openTalk(id, at) {
   const start = () => (talkWin.webContents.isLoading() ? talkWin.webContents.once('did-finish-load', render) : render());
   // Typing needs Blaube in front; remember who was (from when the cursor
   // reached the slime: a quick click may beat that lookup, so wait a bit).
-  if (process.platform === 'darwin') {
+  if (process.platform === 'darwin' && !TEST) {
     Promise.race([frontLookup, new Promise((r) => setTimeout(r, 500))]).then(() => {
       if (talkId !== id) return;
       talkBefore = lastOtherApp;
@@ -294,7 +302,7 @@ function hideTalk(switching = false) {
   const onPurpose = talkWin.isFocused();
   talkWin.hide();
   if (win && !switching) win.webContents.send('talking', null);
-  if (onPurpose && !switching && process.platform === 'darwin') activateApp(talkBefore);
+  if (onPurpose && !switching && process.platform === 'darwin' && !TEST) activateApp(talkBefore);
 }
 
 let hooksOk = null; // whether Claude Code is connected, checked when the box opens
@@ -313,7 +321,9 @@ function pushTalk(id, focusField = false) {
     tail: talkTail,
     asks: inbox.asks.has(id) ? inbox.asks.get(id).length : 0,
     demo: id.startsWith('demo-'),
-    connected: hooksOk,
+    // Connected if the settings say so, or if this session's hooks already
+    // reached us (it was started with them, whatever the file says now).
+    connected: hooksOk || inbox.reachable.has(id) || inbox.asks.has(id),
     focus: focusField,
   }, inbox.view(id)));
 }
@@ -325,7 +335,7 @@ function snippet(text) {
   return sentence.length > 70 ? sentence.slice(0, 68).trimEnd() + '…' : sentence;
 }
 
-if (!app.requestSingleInstanceLock()) app.quit();
+if (!TEST && !app.requestSingleInstanceLock()) app.quit();
 
 // While developing (not in the packaged app): any code change restarts the
 // app. A file with a syntax error is skipped, so a half-saved edit can't
@@ -381,7 +391,8 @@ function createWindow() {
   win.setAlwaysOnTop(true, 'floating');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.setIgnoreMouseEvents(true, { forward: true });
-  win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  if (TEST) win.setOpacity(0);
+  win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'), TEST ? { query: { debug: '1' } } : undefined);
 
   const refit = () => { fitWindow(); refreshDock(); };
   screen.on('display-metrics-changed', refit);
@@ -810,11 +821,13 @@ app.whenReady().then(async () => {
   }
 
   createWindow();
-  if (!app.isPackaged) watchForChanges();
+  if (!app.isPackaged && !TEST) watchForChanges();
 
-  tray = new Tray(trayIcon());
-  tray.on('click', () => tray.popUpContextMenu(appMenu()));
-  tray.on('right-click', () => tray.popUpContextMenu(appMenu()));
+  if (!TEST) {
+    tray = new Tray(trayIcon());
+    tray.on('click', () => tray.popUpContextMenu(appMenu()));
+    tray.on('right-click', () => tray.popUpContextMenu(appMenu()));
+  }
   refreshTray();
 
   focus = startFocusWatcher(() => { if (markFrontSeen()) pushState(); });
@@ -876,7 +889,7 @@ app.whenReady().then(async () => {
 
   // The tops of other apps' windows are ledges a slime can land on.
   let lastLedges = '';
-  watchWindows(process.pid, (list, at) => {
+  if (!TEST) watchWindows(process.pid, (list, at) => {
     if (!win || win.isDestroyed()) return;
     const area = currentDisplay().workArea, wb = win.getBounds();
     // Windows reports physical pixels; macOS already reports points.
@@ -890,7 +903,7 @@ app.whenReady().then(async () => {
     win.webContents.send('ledges', out);
   });
 
-  startAgentsPoller(
+  if (!TEST) startAgentsPoller(
     (agents) => tracker.applyAgents(agents),
     () => prefs.config.pollClaudeAgents,
   );
@@ -928,7 +941,7 @@ app.whenReady().then(async () => {
     const c = cursorInWindow(), x = c.x, y = c.y;
     const over = holding || c.over;
     const now = Date.now();
-    if (over !== clickable || (over && now - applied > 500)) {
+    if (TEST) { /* invisible: never catches the real mouse (tests send clicks to the page) */ } else if (over !== clickable || (over && now - applied > 500)) {
       if (over !== clickable) log(`clickable ${over} at ${x},${y}`);
       // Reaching for a slime: note the app in front, to give focus back to
       // after you've talked to it.
@@ -998,6 +1011,11 @@ app.whenReady().then(async () => {
   });
 
   if (process.env.BLAUBE_DEMO) runDemo();
+  if (TEST) {
+    const run = require(path.resolve(TEST));
+    Promise.resolve(run({ app, win, tracker, inbox, PORT, talk: () => talkWin, talkId: () => talkId, log }))
+      .then((code) => app.exit(code || 0), (e) => { console.error(e); app.exit(1); });
+  }
 });
 
 app.on('second-instance', () => send('come-here'));

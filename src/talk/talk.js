@@ -54,8 +54,8 @@
 
   function hint(s) {
     if (s.demo) return 'Demo slimes can’t talk back. Try a real session!';
-    if (!s.connected) return 'Update the Claude Code connection in Blaube’s menu, then restart this session to talk to it.';
     if (s.ask) return '';
+    if (!s.connected) return 'Update the Claude Code connection in Blaube’s menu, then restart this session to talk to it.';
     // Queued, nobody waiting, and the turn is over (interrupted, say): it
     // only gets it when it next finishes a turn.
     if (s.queued && s.inbox !== 'ready' && s.state !== 'working' && s.inbox !== 'unknown') return `${s.project} gets this when it next finishes a turn. In a hurry? Go to its terminal.`;

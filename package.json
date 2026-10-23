@@ -13,7 +13,8 @@
     "dist:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
     "dist:win": "electron-builder --win --x64 && electron-builder --win --arm64",
     "build:mac:local": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir --publish never",
-    "shots": "electron scripts/shots/main.js"
+    "shots": "electron scripts/shots/main.js",
+    "e2e": "BLAUBE_TEST=scripts/e2e/talk.js BLAUBE_PORT=47870 electron ."
   },
   "build": {
     "appId": "app.blaube.desktop",
