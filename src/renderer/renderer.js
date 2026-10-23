@@ -113,8 +113,12 @@
   // How its mouth is shaped right now, while it talks (null when quiet).
   function talkMouth(b) {
     if (!b.speech || !audio) return null;
-    const m = BlaubeVoice.mouthAt(b.speech.line, audio.ctx.currentTime - b.speech.at);
-    if (!m) { b.speech = null; b.mouth = null; return null; }
+    let m = BlaubeVoice.mouthAt(b.speech.line, audio.ctx.currentTime - b.speech.at);
+    // Done: it eases shut before it lets go.
+    if (!m) {
+      if (!b.mouth || b.mouth.open < 0.05) { b.speech = null; b.mouth = null; return null; }
+      m = { open: 0, wide: b.mouth.wide, round: b.mouth.round };
+    }
     // Eased, so the jaw moves instead of popping open and shut.
     const was = b.mouth || { open: 0, wide: m.wide, round: m.round };
     b.mouth = { open: was.open + (m.open - was.open) * 0.4, wide: was.wide + (m.wide - was.wide) * 0.3, round: was.round + (m.round - was.round) * 0.3 };
@@ -1236,9 +1240,10 @@
       b.gaze.x = to.x; b.gaze.y = to.y; b.gaze.vx = 0; b.gaze.vy = 0;
     }
     // Talking: the mouth follows its babble (not mid-yawn or seeing stars).
+    // Shut between syllables, it's its own mouth (a smile, mostly).
     const talk = talkMouth(b);
     if (talk && mouth !== 'yawn' && expression !== 'dizzy') {
-      mouth = 'talk';
+      if (talk.open >= 0.06) mouth = 'talk';
       if (expression === 'concentrate' || expression === 'sleepy' || expression === 'peek') expression = 'normal';
     }
     return { expression, mouth, talk, blink: b.blink, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: b.pain || 0, nod: nodOf(b), scale: CFG.faceScale, style: CFG, bodyColor: b.color,

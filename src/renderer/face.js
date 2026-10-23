@@ -335,30 +335,26 @@
         ctx.fill();
         break;
       case 'talk': {
-        // Babbling: opens with each syllable, wider for "ee", rounder for
-        // "oo", never bigger than a yawn; shut, it's the plain short line.
+        // Babbling: the jaw drops with each syllable (the top lip stays),
+        // a little wider for "ee", rounder for "oo", never bigger than a
+        // yawn. Shut, the slime's own mouth is drawn instead.
         const m = face.talk || {}, open = m.open || 0, wide = m.wide ?? 0.6, round = m.round ?? 0.3;
-        if (open < 0.12) {
-          ctx.lineCap = 'round';
-          ctx.moveTo(-r * 0.065, my); ctx.lineTo(r * 0.065, my);
-          ctx.stroke();
-          break;
-        }
-        const h = r * (0.03 + 0.085 * open);
-        let w = r * (0.055 + 0.04 * (0.6 + (wide - 0.6) * open));
-        w += (h * 0.8 - w) * round * open;
+        const h = r * (0.045 + 0.075 * open);
+        let w = r * (0.075 + 0.03 * (wide - 0.6) * open);
+        w += (h * 0.85 - w) * round * open * 0.6;
         w = Math.max(w, h / 1.5);
-        const cy = my + h * 0.3;
+        const cy = my - ctx.lineWidth / 2 + h;
         ctx.fillStyle = ink;
         ctx.ellipse(0, cy, w, h, 0, 0, Math.PI * 2);
         ctx.fill();
         if (open > 0.6) {
+          // The tongue rises from the bottom lip as it opens.
+          const k = Math.min(1, (open - 0.6) * 4);
           ctx.save();
           ctx.clip();
-          ctx.globalAlpha = Math.min(1, (open - 0.6) * 4);
           ctx.fillStyle = '#e86a82';
           ctx.beginPath();
-          ctx.ellipse(0, cy + h * 0.55, w * 0.75, h * 0.5, 0, 0, Math.PI * 2);
+          ctx.ellipse(0, cy + h * (1.05 - 0.5 * k), w * 0.75 * k, h * 0.5 * k, 0, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
         }
