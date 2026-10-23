@@ -740,7 +740,7 @@
   }
 
   // The font for all text: names, bubbles, Z's. Set from the Font setting.
-  const SYSTEM_FONT = '-apple-system, "Segoe UI", system-ui, sans-serif';
+  const SYSTEM_FONT = '"Nunito", -apple-system, "Segoe UI", system-ui, sans-serif'; // rounded letters (bundled)
   let family = SYSTEM_FONT;
   function setFont(name) {
     family = !name || name === 'System' ? SYSTEM_FONT : `"${name}", ${SYSTEM_FONT}`;

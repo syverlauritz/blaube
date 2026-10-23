@@ -122,6 +122,7 @@
     D.setFont(CFG.font);
     // Canvas text doesn't load a font by itself; ask for it.
     if (CFG.font !== 'System' && document.fonts) document.fonts.load(`13px "${CFG.font}"`).catch(() => {});
+    if (document.fonts) for (const w of [600, 700]) document.fonts.load(`${w} 15px "Nunito"`).catch(() => {}); // the bubbles' rounded letters
     // The Size setting scales every slime (and pet) at once.
     for (const k of ['mainRadius', 'childRadius', 'mainMinRadius']) CFG[k] *= CFG.size;
     for (const b of buddies.values()) {
@@ -1373,13 +1374,18 @@
     // against the bubble's movement.
     const bend = Math.max(-18, Math.min(18, -(talkRect.vx || 0) * 0.05));
     const mx = (base.x + tip.x) / 2 + bend * across.x, my = (base.y + tip.y) / 2 + bend * across.y;
+    // Chubby, with a round tip: a cartoon tail, not a pointer.
     ctx.save();
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.moveTo(base.x - across.x * 9, base.y - across.y * 9);
-    ctx.quadraticCurveTo(mx - across.x * 3, my - across.y * 3, tip.x, tip.y);
-    ctx.quadraticCurveTo(mx + across.x * 4, my + across.y * 4, base.x + across.x * 9, base.y + across.y * 9);
+    ctx.moveTo(base.x - across.x * 15, base.y - across.y * 15);
+    ctx.quadraticCurveTo(mx - across.x * 6, my - across.y * 6, tip.x - across.x * 3, tip.y - across.y * 3);
+    ctx.lineTo(tip.x + across.x * 3, tip.y + across.y * 3);
+    ctx.quadraticCurveTo(mx + across.x * 7, my + across.y * 7, base.x + across.x * 15, base.y + across.y * 15);
     ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(tip.x, tip.y, 3.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }

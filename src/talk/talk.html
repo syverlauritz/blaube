@@ -8,6 +8,7 @@
   @font-face { font-family: "Coiny"; src: url(../renderer/fonts/Coiny.woff2) format("woff2"); font-weight: 400; }
   @font-face { font-family: "Concert One"; src: url(../renderer/fonts/ConcertOne.woff2) format("woff2"); font-weight: 400; }
   @font-face { font-family: "DynaPuff"; src: url(../renderer/fonts/DynaPuff.woff2) format("woff2"); font-weight: 400 700; }
+  @font-face { font-family: "Nunito"; src: url(../renderer/fonts/Nunito.woff2) format("woff2"); font-weight: 200 1000; }
   @font-face { font-family: "Rubik Spray Paint"; src: url(../renderer/fonts/RubikSprayPaint.woff2) format("woff2"); font-weight: 400; }
   /* The same flat white bubble as everything Blaube says (docs/DESIGN.md),
      kept as plain as the bubbles on the desktop: white, ink #1b2440, one
@@ -17,12 +18,13 @@
      slime), since the bubble drifts after the slime in its own window. */
   :root {
     --ink: #1b2440; --dim: #5b6270; --faint: #9aa0ad; --soft: #f1f2f6; --on: #fff;
-    --color: #d97757; --name: -apple-system, "Segoe UI", system-ui, sans-serif;
-    --ui: -apple-system, "Segoe UI", system-ui, sans-serif;
+    --color: #d97757; --name: "Nunito", system-ui, sans-serif;
+    /* Rounded letters, like everything else about a slime (Nunito, bundled). */
+    --ui: "Nunito", system-ui, sans-serif;
     --ox: 50%; --oy: 100%;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: transparent; font: 500 15px/1.45 var(--ui); color: var(--ink); overflow: hidden; user-select: none; }
+  html, body { margin: 0; height: 100%; background: transparent; font: 600 16px/1.45 var(--ui); color: var(--ink); overflow: hidden; user-select: none; }
   .wrap { position: absolute; inset: 0; transform-origin: var(--ox) var(--oy); }
   .wrap.pop { animation: pop .26s cubic-bezier(.3, 1.5, .5, 1); }
   @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -32,12 +34,12 @@
   @keyframes boing { 35% { transform: scale(1.02, .975); } 70% { transform: scale(.995, 1.01); } }
   @keyframes squish { from { transform: scale(.8, .6); opacity: 0; } to { transform: none; opacity: 1; } }
   /* 12 px clear round the bubble, so its pop and wobble never get cut off. */
-  .bubble { position: absolute; inset: 12px; display: flex; flex-direction: column; background: #fff; border-radius: 16px; overflow: hidden; }
+  .bubble { position: absolute; inset: 12px; display: flex; flex-direction: column; background: #fff; border-radius: 30px; overflow: hidden; }
 
-  header { display: flex; align-items: center; gap: 8px; padding: 14px 10px 6px 18px; }
+  header { display: flex; align-items: center; gap: 8px; padding: 16px 14px 6px 22px; }
   /* Display fonts that come in one weight are drawn at it (a faked bold smudges). */
-  .name.plain { font-family: var(--ui); --nameWeight: 700; }
-  .name { font: var(--nameWeight, 700) 17px var(--name); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+  .name.plain { font-family: var(--ui); --nameWeight: 800; }
+  .name { font: var(--nameWeight, 700) 18px var(--name); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
   /* The slime's face says how it is: no state words up here. */
   .state { display: none; }
   .spacer { flex: 1; min-width: 12px; }
@@ -49,7 +51,7 @@
   header:hover #terminal, #terminal:focus-visible { opacity: 1; }
 
   /* The log takes what's left; a tall card scrolls instead of pushing the field out. */
-  #log { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 4px 18px 10px; }
+  #log { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 4px 22px 10px; }
   #log.scrolled { -webkit-mask-image: linear-gradient(to bottom, transparent 0, transparent 4px, #000 18px); }
   #log.squeezed { display: none; }
   #log::-webkit-scrollbar { width: 6px; }
@@ -60,21 +62,21 @@
   /* The slime talks in plain text, like its bubbles; you get a soft pill. */
   .msg { overflow-wrap: anywhere; user-select: text; white-space: pre-wrap; }
   .msg.claude { align-self: stretch; }
-  .msg.you { align-self: flex-end; max-width: 82%; background: var(--soft); padding: 7px 12px; border-radius: 14px; }
+  .msg.you { align-self: flex-end; max-width: 82%; background: var(--soft); padding: 9px 15px; border-radius: 22px; }
   .msg.you.queued, .msg.you.unsent { color: var(--dim); }
   .msg.new { animation: squish .3s cubic-bezier(.3, 1.6, .5, 1); }
   .msg.claude.new { transform-origin: 0 100%; }
   .msg.you.new { transform-origin: 100% 100%; }
   .msg code { font: 14px ui-monospace, Menlo, Consolas, monospace; background: var(--soft); border-radius: 5px; padding: 1px 4px; }
-  .msg pre { margin: 4px 0; padding: 8px 10px; background: var(--soft); border-radius: 10px; font: 14px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: pre; overflow-x: auto; }
+  .msg pre { margin: 4px 0; padding: 9px 12px; background: var(--soft); border-radius: 16px; font: 14px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: pre; overflow-x: auto; }
   .msg .head { font-weight: 700; }
   .msg.folded { max-height: 15.5em; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); }
   .more { align-self: flex-start; border: 0; background: none; padding: 0; margin-top: -4px; font: 600 14px var(--ui); color: var(--dim); cursor: pointer; }
   .more:hover { color: var(--ink); }
-  .meta { font: 500 14px var(--ui); color: var(--dim); margin: -6px 2px 0; align-self: flex-end; }
+  .meta { font: 600 14px var(--ui); color: var(--dim); margin: -6px 2px 0; align-self: flex-end; }
   .unsend { border: 0; background: none; padding: 0; font: inherit; color: var(--dim); cursor: pointer; }
   .unsend:hover { color: var(--ink); }
-  .note { align-self: center; font: 500 14px var(--ui); color: var(--dim); text-align: center; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .note { align-self: center; font: 600 14px var(--ui); color: var(--dim); text-align: center; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dots { align-self: flex-start; display: flex; gap: 5px; padding: 6px 0; }
   .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--color); animation: bob 1.1s ease-in-out infinite; transform-origin: 50% 100%; }
   .dots i:nth-child(2) { animation-delay: .15s; }
@@ -82,19 +84,19 @@
   /* Each dot hops like a tiny slime: squashed on landing, stretched in the air. */
   @keyframes bob { 0%, 68%, 100% { transform: none; } 12% { transform: scale(1.15, .85); } 35% { transform: translateY(-5px) scale(.9, 1.1); } 55% { transform: scale(1.25, .75); } }
 
-  .hint { margin: 0 18px 8px; color: var(--dim); font: 500 14px/1.4 var(--ui); text-align: center; text-wrap: balance; }
+  .hint { margin: 0 22px 8px; color: var(--dim); font: 600 14px/1.4 var(--ui); text-align: center; text-wrap: balance; }
   .hint:empty { display: none; }
 
   /* A question for you (permission, a choice, a plan): no box of its own,
      just room, the question, and the choices. */
-  .ask { margin: 2px 18px 12px; flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .ask { margin: 2px 22px 14px; flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
   .ask[hidden] { display: none; }
   .ask.new { animation: squish .3s cubic-bezier(.3, 1.6, .5, 1); transform-origin: 50% 100%; }
   .ask .what { display: flex; gap: 6px; align-items: baseline; margin-bottom: 8px; }
   .ask .what b { font-weight: 700; }
-  .ask .what span { font: 500 14px var(--ui); color: var(--dim); }
-  .ask[data-kind="question"] .what b { font: 500 14px var(--ui); color: var(--dim); }
-  #askDetail { display: block; font: 14px/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--soft); border-radius: 10px; padding: 8px 11px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 78px; overflow-y: auto; user-select: text; }
+  .ask .what span { font: 600 14px var(--ui); color: var(--dim); }
+  .ask[data-kind="question"] .what b { font: 600 14px var(--ui); color: var(--dim); }
+  #askDetail { display: block; font: 14px/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--soft); border-radius: 16px; padding: 9px 13px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 78px; overflow-y: auto; user-select: text; }
   #askDetail[hidden] { display: none; }
   #askQuestions, .ask .plan { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
   #askQuestions::-webkit-scrollbar { width: 0; } /* the fade says there's more */
@@ -102,16 +104,16 @@
   .ask .plan::-webkit-scrollbar-thumb, #askDetail::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
   .ask .plan:hover::-webkit-scrollbar-thumb, #askDetail:hover::-webkit-scrollbar-thumb { background: #dfe2ea; }
   #askQuestions.overflowing, .ask .plan.overflowing { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
-  .ask .plan { max-width: none; background: var(--soft); border-radius: 12px; padding: 9px 12px; user-select: text; }
+  .ask .plan { max-width: none; background: var(--soft); border-radius: 18px; padding: 11px 14px; user-select: text; }
   .ask .plan[hidden] { display: none; }
   .q + .q { margin-top: 14px; }
   .q .text { font-weight: 700; margin: 0 0 8px; }
-  .q .text span { font: 500 14px var(--ui); color: var(--dim); }
+  .q .text span { font: 600 14px var(--ui); color: var(--dim); }
   .opts { display: flex; flex-direction: column; gap: 6px; }
   .opts.chips { flex-direction: row; flex-wrap: wrap; }
-  .opt { text-align: left; border: 0; border-radius: 12px; padding: 8px 12px; background: var(--soft); color: var(--ink); font: 600 15px/1.3 var(--ui); cursor: pointer; transition: background .12s, transform .12s; }
+  .opt { text-align: left; border: 0; border-radius: 20px; padding: 10px 16px; background: var(--soft); color: var(--ink); font: 700 16px/1.3 var(--ui); cursor: pointer; transition: background .12s, transform .12s; }
   .chips .opt { border-radius: 999px; padding: 7px 14px; }
-  .opt small { display: block; font: 500 14px/1.3 var(--ui); color: var(--dim); margin-top: 1px; }
+  .opt small { display: block; font: 600 14px/1.3 var(--ui); color: var(--dim); margin-top: 1px; }
   .opt:hover { background: #e8eaf0; }
   .opt:active { transform: scale(.98); }
   .opt.on { background: var(--color); color: var(--on); }
@@ -123,13 +125,13 @@
   .otherchip { margin-top: 4px; border: 0; background: none; padding: 4px 0; font: 600 14px var(--ui); color: var(--dim); cursor: pointer; text-align: left; }
   .otherchip:hover { color: var(--ink); }
   .otherchip[hidden], .other[hidden] { display: none; }
-  .other { width: 100%; margin-top: 6px; border: 0; border-radius: 999px; padding: 8px 14px; font: 500 15px var(--ui); color: var(--ink); background: var(--soft); outline: none; user-select: text; }
+  .other { width: 100%; margin-top: 6px; border: 0; border-radius: 999px; padding: 9px 16px; font: 600 16px var(--ui); color: var(--ink); background: var(--soft); outline: none; user-select: text; }
   .other::placeholder { color: var(--faint); }
-  .asknote { font: 500 14px var(--ui); color: var(--dim); margin-top: 8px; }
+  .asknote { font: 600 14px var(--ui); color: var(--dim); margin-top: 8px; }
   .asknote:empty { display: none; }
   .ask .row { display: flex; gap: 8px; margin-top: 10px; }
   .ask .row[hidden] { display: none; }
-  .ask .row button { flex: 1; border: 0; border-radius: 12px; padding: 9px 0; font: 700 14px var(--ui); cursor: pointer; background: var(--soft); color: var(--ink); }
+  .ask .row button { flex: 1; border: 0; border-radius: 999px; padding: 11px 0; font: 700 15px var(--ui); cursor: pointer; background: var(--soft); color: var(--ink); }
   .ask .row button.allow { background: var(--color); color: var(--on); }
   .ask .row button:hover { filter: brightness(0.97); }
   .ask button:disabled { opacity: .5; cursor: default; }
@@ -141,11 +143,11 @@
   body.carding form { display: none; }
   body.carding .ask { margin-bottom: 16px; }
 
-  form { display: flex; gap: 8px; align-items: flex-end; padding: 2px 14px 14px; }
-  textarea { flex: 1; resize: none; border: 0; border-radius: 20px; padding: 9px 15px; font: 500 15px/1.4 var(--ui); color: var(--ink); background: var(--soft); max-height: 104px; outline: none; overflow-y: hidden; user-select: text; }
+  form { display: flex; gap: 8px; align-items: flex-end; padding: 2px 16px 16px; }
+  textarea { flex: 1; resize: none; border: 0; border-radius: 22px; padding: 10px 16px; font: 600 16px/1.4 var(--ui); color: var(--ink); background: var(--soft); max-height: 104px; outline: none; overflow-y: hidden; user-select: text; }
   textarea::placeholder { color: var(--faint); }
   textarea:disabled { opacity: .6; }
-  form button { flex: none; width: 39px; height: 39px; border: 0; border-radius: 50%; background: var(--color); color: var(--on); cursor: pointer; display: grid; place-items: center; transition: background .15s, color .15s, transform .15s; }
+  form button { flex: none; width: 42px; height: 42px; border: 0; border-radius: 50%; background: var(--color); color: var(--on); cursor: pointer; display: grid; place-items: center; transition: background .15s, color .15s, transform .15s; }
   form button svg { width: 18px; height: 18px; }
   form button:disabled { background: var(--soft); color: var(--faint); cursor: default; }
   form button:not(:disabled):active { transform: scale(.88); }
@@ -177,7 +179,7 @@
     <div class="hint" id="hint"></div>
     <form id="form">
       <textarea id="text" rows="1" placeholder="Say something…"></textarea>
-      <button id="send" type="submit" disabled aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
+      <button id="send" type="submit" disabled aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
     </form>
   </div>
 </div>

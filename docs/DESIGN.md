@@ -54,6 +54,9 @@ ships that breaks a "must".
 - Expressions and faces are the creative director's call. Judges may note
   how a face reads, but never redesign an approved face.
 - Pets get happy "^ ^" eyes and a heart when they reach their owner.
+- The talk box (a slime's chat) is rounder than the little bubbles: 26 px
+  corners on the box, pill-shaped buttons, softly rounded rows and code
+  boxes. Wanted ("more rounded").
 - Other apps' windows: a Blaube set or dropped on top of one stays there
   (falls off only if it wanders off), and can still be thrown anywhere:
   window tops only catch things coming down onto them, softly.
