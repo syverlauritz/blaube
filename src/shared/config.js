@@ -32,13 +32,13 @@
       ['cheekColor', '#e0001a', 0, 0, 0, 'Blush colour'],
     ]],
     ['Size', [
-      ['mainRadius', 129, 30, 220, 1, 'Big slime radius'],
-      ['childRadius', 86, 15, 120, 1, 'Small slime radius'],
+      ['mainRadius', 112, 30, 220, 1, 'Big slime radius'],
+      ['childRadius', 96, 15, 120, 1, 'Small slime radius'],
       ['mainMinRadius', 64, 20, 200, 1, 'Big slime min radius (after splits)'],
-      ['mainPoints', 27, 12, 80, 1, 'Big slime skin points'],
+      ['mainPoints', 29, 12, 80, 1, 'Big slime skin points'],
       ['childPoints', 28, 10, 64, 1, 'Small slime skin points'],
       ['tokenGrowth', 0.15, 0, 0.5, 0.01, 'Growth each time tokens used double (from 100k)'],
-      ['maxTokenGrowth', 1.6, 1, 2.5, 0.05, 'Biggest size from tokens (×)'],
+      ['maxTokenGrowth', 2.5, 1, 2.5, 0.05, 'Biggest size from tokens (×)'],
     ]],
     ['Body physics', [
       ['gravity', 1950, 0, 6000, 50, 'Gravity (px/s²)'],
@@ -65,7 +65,7 @@
       ['doneHopStrength', 750, 0, 2000, 10, 'Done bounce strength'],
       ['doneHopEvery', 0.8, 0.3, 4, 0.05, 'Done bounce interval (s)'],
       ['waitingHopStrength', 600, 0, 2000, 10, 'Needs-you hop strength'],
-      ['splitImpulse', 1120, 0, 2000, 10, 'Split launch speed'],
+      ['splitImpulse', 700, 0, 2000, 10, 'Split launch speed'],
       ['dizzySpeed', 2300, 500, 8000, 50, 'Dizzy after impact over (px/s)'],
       ['glassesSpeed', 1700, 300, 8000, 50, 'High effort loses its glasses over (px/s)'],
       ['levitateHeight', 70, 0, 300, 1, 'Extra high effort float height (px)'],
@@ -95,7 +95,7 @@
   // A list in place of min means "pick one of these".
   const FONTS = ['System', 'Coiny', 'Concert One', 'DynaPuff', 'Rubik Spray Paint'];
   const SETTINGS = [
-    ['size', 0.75, 0.5, 2, 0.05, 'Size'],
+    ['size', 0.7, 0.5, 2, 0.05, 'Size'],
     ['font', 'Coiny', FONTS, 0, 0, 'Name font'],
     ['statusBubbles', 'On hover', ['On hover', 'Always'], 0, 0, 'Status bubbles'],
     ['looks', 'On', ['On', 'Off'], 0, 0, 'Fun looks (bows, ears, antennas...)'],

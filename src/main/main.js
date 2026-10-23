@@ -232,6 +232,12 @@ function placeTalkWin(jump = false) {
   const moved = !talkTail || place.tail.side !== talkTail.side || Math.abs(place.tail.at - talkTail.at) > 0.5;
   // Switching sides isn't a drift: it goes straight there.
   if (talkTail && place.tail.side !== talkTail.side) jump = true;
+  // Short of room above its slime, its height follows the slime's position:
+  // small moves don't re-size it (that read as stretching while you read).
+  if (!jump && talkGoal && talkWin.isVisible() && place.tail.side === talkGoal.tail.side && place.h !== talkGoal.h && place.h < talkH() && Math.abs(place.h - talkGoal.h) < 40) {
+    if (place.tail.side === 'bottom') place.y += place.h - talkGoal.h;
+    place.h = talkGoal.h;
+  }
   // Growing or shrinking keeps the edge its tail leaves from where it is
   // (a taller box grows up, away from the slime, never down over it).
   if (!jump && talkAt && talkGoal && place.h !== talkGoal.h) {

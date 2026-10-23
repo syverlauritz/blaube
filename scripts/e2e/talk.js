@@ -43,7 +43,16 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 		}
 	};
 	// Clicks where the slime is once it stands still (like a person aiming).
+	// A slime that's done hops for attention, so a click can catch it taking
+	// off: then aim and click again, as a person would.
 	const clickSlime = async () => {
+		const wasOpen = !!(talk() && talk().isVisible());
+		for (let attempt = 0; attempt < 3; attempt++) {
+			await clickSlimeOnce();
+			if (await until(() => !!(talk() && talk().isVisible()) !== wasOpen, 1200)) return;
+		}
+	};
+	const clickSlimeOnce = async () => {
 		let a = await slime();
 		for (let i = 0; i < 60; i++) {
 			await sleep(100);
@@ -99,7 +108,9 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 
 	// Click it: the talk box opens above it, tail pointing at it.
 	await clickSlime();
-	check(await until(() => talk() && talk().isVisible()), 'clicking the slime opens its talk box');
+	const opened = await until(() => talk() && talk().isVisible());
+	check(opened, 'clicking the slime opens its talk box');
+	if (!opened) console.log('     last page logs:\n       ' + consoleLines.slice(-10).join('\n       '), '\n     slime now', JSON.stringify(await slime()), 'clicked at', JSON.stringify(last), 'talkId', talkId());
 	check(talkId() === ID, 'for that session');
 	await sleep(400);
 	const wb = win.getBounds(), tb = talk().getBounds();

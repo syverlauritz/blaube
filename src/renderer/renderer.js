@@ -234,7 +234,22 @@
 
   function setObstacles(rects) {
     obstacles = (rects || []).map((r) => ({ x0: r.x, y0: r.y, x1: r.x + r.width, y1: r.y + r.height }));
-    for (const b of buddies.values()) b.body.setObstacles(CFG.dockCollision ? obstacles : []);
+    for (const b of buddies.values()) {
+      // The Dock grew (an app started) right where a slime stands: lift the
+      // slime gently onto it. Left to the collisions, the slime would be
+      // shoved out of it at speed, flung across the screen.
+      if (CFG.dockCollision && !b.body.grab) {
+        const box = b.body.bbox(), c = b.body.centroid();
+        for (const r of obstacles) {
+          const inside = Math.min(box.maxX, r.x1) - Math.max(box.minX, r.x0) > 4 && box.maxY > r.y0 + 4 && box.minY < r.y1;
+          if (!inside) continue;
+          b.body.teleport(c.x, c.y - (box.maxY - r.y0) - 1);
+          b.body.impulse(-b.body.velocity(DT).x, -b.body.velocity(DT).y, DT); // no speed from it
+          break;
+        }
+      }
+      b.body.setObstacles(CFG.dockCollision ? obstacles : []);
+    }
   }
 
   // The surface under x: the top of an obstacle there, or the screen bottom.
@@ -1436,8 +1451,16 @@
   function followTalk() {
     const b = talkingTo && buddies.get(talkingTo);
     if (!b || !api.talkAt) { talkSent = null; return; }
-    const at = headTop(b);
-    if (talkSent && Math.hypot(at.x - talkSent.x, at.y - talkSent.y) < 12) return;
+    // Smoothed hard: breathing (fast when it's in pain), squishes and an
+    // ear's sway mustn't move the box (or stretch it, when it's short of
+    // room): only the slime really moving does.
+    const raw = headTop(b);
+    const sm = b.talkAnchor || (b.talkAnchor = { x: raw.x, y: raw.y });
+    if (Math.hypot(raw.x - sm.x, raw.y - sm.y) > 80) { sm.x = raw.x; sm.y = raw.y; } // a real jump: follow at once
+    sm.x += (raw.x - sm.x) * 0.04;
+    sm.y += (raw.y - sm.y) * 0.04;
+    const at = { x: sm.x, y: sm.y, r: raw.r };
+    if (talkSent && Math.hypot(at.x - talkSent.x, at.y - talkSent.y) < 16) return;
     talkSent = at;
     api.talkAt(talkingTo, at);
   }
@@ -1681,7 +1704,7 @@
     if (b.body.onFloor() && !b.body.grab) b.body.impulse((Math.random() - 0.5) * 120, 120, DT);
     if (m.count > 1) b.say([{ text: 'oops' }], 1.8);
   });
-  if (api.onTalking) api.onTalking((id) => { talkingTo = id; });
+  if (api.onTalking) api.onTalking((id) => { talkingTo = id; const b = id && buddies.get(id); if (b) b.talkAnchor = null; });
   // The app wants a slime's talk box open (a session you just started).
   if (api.onOpenTalk) api.onOpenTalk((id) => {
     let tries = 0;
