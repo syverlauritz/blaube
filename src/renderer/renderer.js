@@ -722,6 +722,11 @@
       // (Capped: past about 0.85 the pressure solve overshoots and the skin
       // jitters, worst while it's held.)
       body.o.pressure = Math.min(0.85, CFG.pressure * (1 + CFG.contextTighten * b.fill));
+      // Pressure alone tops out early, so a full one also holds its round
+      // shape harder and its skin goes taut: it barely squashes or sags.
+      const firm = b.fill * b.fill * CFG.contextFirm;
+      body.o.shapeStiffness = CFG.shapeStiffness + 0.08 * firm;
+      body.o.edgeStiffness = CFG.edgeStiffness + 0.4 * firm;
       body.step(DT);
       updateGaze(b);
       b.look = lookOf(b);

@@ -44,6 +44,13 @@ const SCENES = {
 	done: { sessions: [session('a', 'blaube', 'done')] },
 	waiting: { sessions: [session('a', 'blaube', 'waiting', { message: 'Claude needs your permission to use Bash' })] },
 	sweat: { sessions: [session('a', 'blaube', 'working', { tokens: full(0.75) })], wait: 4000 },
+	// The same slime at four context fills: the fuller, the rounder and firmer.
+	fills: {
+		sessions: [0.05, 0.4, 0.75, 1].map((f, i) => session('f' + i, 'fill' + Math.round(f * 100), 'idle', { tokens: full(f) })),
+		config: { size: 0.6 },
+		wait: 9000,
+		size: [1300, 520],
+	},
 	pain: { sessions: [session('a', 'blaube', 'working', { tokens: full(0.97) })], wait: 4000 },
 	helpers: {
 		sessions: [session('a', 'playground', 'done', {

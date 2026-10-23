@@ -71,6 +71,7 @@
       ['levitateHeight', 70, 0, 300, 1, 'Extra high effort float height (px)'],
       ['contextInflate', 0.56, 0, 1, 0.01, 'Puff up as context fills'],
       ['contextTighten', 2.5, 0, 6, 0.1, 'Get firmer as context fills (× pressure)'],
+      ['contextFirm', 1, 0, 2, 0.05, 'Hold round and taut as context fills'],
       ['redAt', 0.3, 0, 1, 0.01, 'Red tint from this much context'],
       ['flushColor', '#ff1e32', 0, 0, 0, 'Red tint colour'],
       ['flushRadius', 0.2, 0.05, 1.5, 0.01, 'Red tint size, when it starts (× radius)'],
