@@ -204,7 +204,7 @@ let talkHiddenAt = 0, talkHiddenId = null, talkReady = null, talkBefore = 0;
 let lastOtherApp = 0; // the app in front before you reached for a slime (macOS)
 let frontLookup = Promise.resolve(); // that lookup, while it runs
 const talkHeights = new Map(); // session id -> how tall its box wants to be (without the tail)
-const TALK_W = 384, TALK_MIN_H = 190, TALK_MAX_H = 460;
+const TALK_W = 384, TALK_MIN_H = 190, TALK_MAX_H = 580;
 const talkH = () => talkHeights.get(talkId) || 280;
 
 // Puts the box where it belongs for its slime and its current height.
@@ -999,7 +999,9 @@ app.whenReady().then(async () => {
   // what it opens at).
   ipcMain.on('talk-height', (_e, id, h) => {
     if (!id || id !== talkId) return;
-    const next = Math.round(Math.max(TALK_MIN_H, Math.min(TALK_MAX_H, Number(h) || talkH())));
+    // A question or plan may need more room than a chat; the screen decides.
+    const max = inbox.asks.has(id) ? 900 : TALK_MAX_H;
+    const next = Math.round(Math.max(TALK_MIN_H, Math.min(max, Number(h) || talkH())));
     const changed = next !== talkHeights.get(id);
     talkHeights.set(id, next);
     if (talkReady) { const show = talkReady; talkReady = null; show(); return; }
@@ -1007,7 +1009,11 @@ app.whenReady().then(async () => {
   });
   // If it wasn't decided (gone already, another session), the box is told
   // again what's really waiting.
-  ipcMain.on('talk-permission', (_e, id, key, choice) => { if (!id || id !== talkId || !inbox.decide(id, key, choice)) pushTalk(talkId); });
+  ipcMain.on('talk-permission', (_e, id, key, choice, answers) => {
+    if (id && id === talkId && inbox.decide(id, key, choice, answers)) return;
+    if (talkWin) talkWin.webContents.send('talk-refused', key);
+    pushTalk(talkId);
+  });
   ipcMain.on('talk-terminal', () => {
     const s = talkId && tracker.sessions.get(talkId);
     hideTalk();

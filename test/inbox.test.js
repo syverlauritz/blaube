@@ -165,3 +165,41 @@ test('a reply to the turn before lands above what the slime sent meanwhile, eith
     assert.equal(inbox.log('s1')[2].status, 'sent');
   }
 });
+
+test('Claude’s questions are answered with the chosen labels, plans approved or sent back', () => {
+  const inbox = new Inbox();
+  const got = [];
+  const questions = [{ question: 'Which pet?', header: 'Pet', options: [{ label: 'Cats', description: 'Purr' }, { label: 'Dogs', description: 'Woof' }], multiSelect: false }];
+  inbox.ask('s1', { tool_name: 'AskUserQuestion', tool_input: { questions } }, (t) => got.push(JSON.parse(t)));
+  const v = inbox.view('s1').ask;
+  assert.equal(v.kind, 'question');
+  assert.deepEqual(v.questions[0].options.map((o) => o.label), ['Cats', 'Dogs']);
+  assert.equal(inbox.decide('s1', v.key, 'answer', {}), false, 'no answer, no reply');
+  assert.equal(inbox.decide('s1', v.key, 'answer', { 'Something else?': 'x' }), false, 'an answer to another question is no answer');
+  inbox.decide('s1', v.key, 'answer', { 'Which pet?': 'Cats' });
+  assert.deepEqual(got[0].hookSpecificOutput.decision, { behavior: 'allow', updatedInput: { questions, answers: { 'Which pet?': 'Cats' } } });
+  inbox.ask('s1', { tool_name: 'ExitPlanMode', tool_input: { plan: '1. Do it', planFilePath: '/p.md' } }, (t) => got.push(JSON.parse(t)));
+  assert.equal(inbox.view('s1').ask.plan, '1. Do it');
+  inbox.decide('s1', inbox.view('s1').ask.key, 'allow');
+  assert.deepEqual(got[1].hookSpecificOutput.decision, { behavior: 'allow', updatedInput: { plan: '1. Do it', planFilePath: '/p.md' } });
+  inbox.ask('s1', { tool_name: 'ExitPlanMode', tool_input: { plan: '1. Do it' } }, (t) => got.push(JSON.parse(t)));
+  inbox.decide('s1', inbox.view('s1').ask.key, 'deny');
+  assert.equal(got[2].hookSpecificOutput.decision.behavior, 'deny');
+  assert.deepEqual(inbox.log('s1').map((e) => e.text), ['Answered: Which pet? → Cats', 'Approved the plan', 'Kept planning']);
+});
+
+test('a card with several questions only goes with every one answered; a plan sent back carries what to change', () => {
+  const inbox = new Inbox();
+  const got = [];
+  const questions = [{ question: 'A?', options: [{ label: 'x' }] }, { question: 'B?', options: [{ label: 'y' }] }];
+  inbox.ask('s1', { tool_name: 'AskUserQuestion', tool_input: { questions } }, (t) => got.push(JSON.parse(t)));
+  const key = inbox.view('s1').ask.key;
+  assert.equal(inbox.decide('s1', key, 'answer', { 'A?': 'x' }), false);
+  assert.equal(got.length, 0);
+  assert.equal(inbox.decide('s1', key, 'answer', { 'A?': 'x', 'B?': 'y, and more' }), true);
+  assert.deepEqual(got[0].hookSpecificOutput.decision.updatedInput.answers, { 'A?': 'x', 'B?': 'y, and more' });
+  inbox.ask('s1', { tool_name: 'ExitPlanMode', tool_input: { plan: 'p' }, permission_suggestions: [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }] }, (t) => got.push(JSON.parse(t)));
+  assert.equal(inbox.view('s1').ask.always, 'Go ahead, and auto-accept edits');
+  inbox.decide('s1', inbox.view('s1').ask.key, 'deny', { message: 'use fewer steps' });
+  assert.match(got[1].hookSpecificOutput.decision.message, /use fewer steps/);
+});

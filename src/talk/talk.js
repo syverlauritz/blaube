@@ -41,7 +41,7 @@
   // box pops open from there.
   function placeTail(tail) {
     const t = $('tail'), path = t.firstElementChild, root = document.documentElement.style;
-    document.body.className = tail.side;
+    for (const side of ['bottom', 'left', 'right']) document.body.classList.toggle(side, side === tail.side);
     if (tail.side !== 'bottom') {
       const left = tail.side === 'left';
       t.setAttribute('viewBox', '0 0 23 18');
@@ -168,7 +168,9 @@
     renderAsk(s.ask, s.asks);
     $('hint').textContent = hint(s);
     text.disabled = !!s.demo || !s.connected || !!s.ended;
-    text.placeholder = s.state === 'working' ? 'Say something for later…' : 'Say something…';
+    text.placeholder = s.ask && s.ask.kind === 'question' ? (s.ask.questions.length === 1 ? 'Or type your answer…' : 'Say something for later…')
+      : s.ask && s.ask.kind === 'plan' ? 'What should change?'
+      : s.state === 'working' || s.state === 'waiting' ? 'Say something for later…' : 'Say something…';
     send.disabled = text.disabled || !text.value.trim();
     // The slime's dots while it works on something you said: after the
     // last thing it got (anything still queued comes after them).
@@ -185,6 +187,7 @@
     // Anything else (another session, a status change) redraws it all, but
     // never while you're selecting text in it (it catches up after).
     const entries = s.log.map((m) => JSON.stringify(m));
+    if (!s.log.length) entries.push(s.ask ? 'asking' : 'empty'); // the greeting comes and goes with a card
     const openKey = [...open].join();
     const sel = window.getSelection();
     const selecting = !switched && sel && !sel.isCollapsed && log.contains(sel.anchorNode);
@@ -198,7 +201,7 @@
       if (!extends_) {
         inner.textContent = '';
         ends = [];
-        if (!s.log.length) {
+        if (!s.log.length && !s.ask) {
           const e = document.createElement('div');
           e.className = 'empty';
           e.textContent = `Say hi to ${s.project}! It hears you even when you’re not at its terminal.`;
@@ -232,27 +235,204 @@
       if (atBottom || switched) log.scrollTop = log.scrollHeight;
     }
     fitWindow(); // reading sizes lays it out, even while hidden
+    squeeze();
   }
+
+  // A card can leave the log only a sliver: hide it rather than show half a line.
+  function squeeze() {
+    const bubble = document.querySelector('.bubble');
+    let used = 0;
+    for (const el of bubble.children) if (el !== log && el.offsetParent) used += el.offsetHeight + parseFloat(getComputedStyle(el).marginTop) + parseFloat(getComputedStyle(el).marginBottom);
+    log.classList.toggle('squeezed', !inner.children.length || bubble.clientHeight - used < 32);
+  }
+  new ResizeObserver(squeeze).observe(document.querySelector('.bubble'));
+
+  // What you've picked so far on a question card, per question:
+  // { labels: Set, other: 'what you typed' }.
+  let picks = {};
+  let innerH = 0; // how tall the log's content was, last time it showed
+  const answered = new Set(); // cards you've answered (a late update mustn't bring one back)
+  let cardDraft = '', cardAt = 0;
 
   function renderAsk(ask, count) {
     const card = $('ask');
+    if (ask && answered.has(ask.key)) ask = null;
     card.hidden = !ask;
-    if (!ask) { askKey = 0; return; }
+    if (!ask) { askKey = 0; document.body.classList.remove('carding'); return; }
     if (ask.key !== askKey) {
       // A new question: make it look new, and don't let a double-click
       // that answered the last one answer this one too.
       askKey = ask.key;
+      picks = {};
       card.classList.remove('new'); void card.offsetWidth; card.classList.add('new');
+      buildAsk(ask);
       for (const b of card.querySelectorAll('button')) b.disabled = true;
-      setTimeout(() => { if (askKey === ask.key) for (const b of card.querySelectorAll('button')) b.disabled = false; }, 450);
+      setTimeout(() => {
+        if (askKey !== ask.key) return;
+        for (const b of card.querySelectorAll('button')) b.disabled = false;
+        updateSend(ask);
+      }, 450);
+      // What was in the field when it came, so a draft you were writing
+      // doesn't turn into an answer.
+      cardDraft = text.value;
+      cardAt = Date.now();
     }
-    $('askWhat').textContent = `Can I use ${ask.tool}?`;
     $('askMore').textContent = count > 1 ? `+${count - 1} more after this` : '';
-    $('askDetail').textContent = ask.detail || '';
-    $('askDetail').hidden = !ask.detail;
     $('always').textContent = ask.always || '';
     $('always').title = ask.alwaysFull || '';
-    $('always').hidden = !ask.always;
+    $('always').hidden = !ask.always || ask.kind === 'question';
+    requestAnimationFrame(fadeCard);
+  }
+
+  // A card that scrolls fades at the bottom, so it's clear there's more.
+  function fadeCard() {
+    for (const el of [$('askQuestions'), $('askPlan')]) el.classList.toggle('overflowing', el.scrollHeight - el.scrollTop - el.clientHeight > 4);
+  }
+  for (const el of [$('askQuestions'), $('askPlan')]) {
+    el.addEventListener('scroll', fadeCard);
+    new ResizeObserver(fadeCard).observe(el); // the box grew: maybe it all fits now
+  }
+
+  // Lays the card out for what's being asked: a tool, a question, a plan.
+  function buildAsk(ask) {
+    const kind = ask.kind || 'tool';
+    const card = $('ask');
+    card.dataset.kind = kind;
+    $('askWhat').textContent = kind === 'question' ? (ask.questions.length > 1 ? 'A couple of things first:' : 'Quick question:')
+      : kind === 'plan' ? 'Here’s my plan. Shall I go ahead?' : `Can I use ${ask.tool}?`;
+    $('askDetail').textContent = ask.detail || '';
+    $('askDetail').hidden = kind !== 'tool' || !ask.detail;
+    const plan = $('askPlan');
+    plan.hidden = kind !== 'plan';
+    plan.textContent = '';
+    if (kind === 'plan') rich(plan, ask.plan || '(no plan text)');
+    const qs = $('askQuestions');
+    qs.textContent = '';
+    $('deny').textContent = kind === 'plan' ? 'Keep planning' : 'Deny';
+    $('allow').textContent = kind === 'plan' ? 'Go ahead' : kind === 'question' ? 'Send' : 'Allow';
+    $('deny').hidden = kind === 'question';
+    const oneTap = kind === 'question' && ask.questions.length === 1 && !ask.questions[0].multiSelect;
+    $('askNote').textContent = kind === 'plan' ? 'Want changes? Type them below.' : oneTap ? 'Tap one to answer, or type below.' : '';
+    // Several questions (or picking several): everything happens on the card.
+    document.body.classList.toggle('carding', kind === 'question' && !oneTap);
+    if (kind !== 'question') { $('askRow').hidden = false; return; }
+    // One question you answer with a single pick: a tap sends it.
+    $('askRow').hidden = oneTap;
+    ask.questions.forEach((q, qi) => {
+      const pick = picks[q.question] = { labels: new Set(), other: '' };
+      const box = document.createElement('div');
+      box.className = 'q';
+      const line = document.createElement('div');
+      line.className = 'text';
+      line.append(q.question);
+      const aside = [ask.questions.length > 1 ? q.header : '', q.multiSelect ? 'pick any' : ''].filter(Boolean).join(' · ');
+      if (aside) { const a = document.createElement('span'); a.textContent = ' ' + aside; line.append(a); }
+      const opts = document.createElement('div');
+      // Short options with nothing to explain are round chips; others rows.
+      opts.className = 'opts' + (q.options.every((o) => !o.description || o.description === o.label) && q.options.every((o) => o.label.length <= 24) ? ' chips' : '');
+      q.options.forEach((o, oi) => {
+        const b = document.createElement('button');
+        b.className = 'opt';
+        b.textContent = o.label;
+        if (o.description && o.description !== o.label) { const d = document.createElement('small'); d.textContent = o.description; b.append(d); }
+        b.onclick = () => {
+          if (q.multiSelect) {
+            if (pick.labels.has(o.label)) pick.labels.delete(o.label); else pick.labels.add(o.label);
+            b.classList.toggle('on', pick.labels.has(o.label));
+          } else {
+            pick.labels = new Set([o.label]);
+            pick.other = '';
+            other.value = '';
+            for (const x of opts.children) x.classList.toggle('on', x === b);
+          }
+          if (oneTap) {
+            // Let you see it land, then send.
+            b.classList.remove('picked'); void b.offsetWidth; b.classList.add('picked');
+            for (const x of opts.children) x.disabled = true;
+            const key = ask.key;
+            setTimeout(() => { if (askKey === key) answer(ask); }, 280);
+            return;
+          }
+          updateSend(ask);
+        };
+        b.dataset.n = String(oi + 1);
+        opts.append(b);
+      });
+      // Or say it your own way.
+      const other = document.createElement('input');
+      other.className = 'other';
+      other.placeholder = 'Or say it your way…';
+      other.addEventListener('input', () => {
+        pick.other = other.value;
+        if (!q.multiSelect && other.value.trim()) { pick.labels.clear(); for (const x of opts.children) x.classList.remove('on'); }
+        if (oneTap) $('askRow').hidden = !other.value.trim();
+        updateSend(ask);
+      });
+      other.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && other.value) { e.stopPropagation(); other.value = ''; other.dispatchEvent(new Event('input')); return; }
+        if (e.key !== 'Enter' || e.isComposing) return;
+        e.preventDefault();
+        // Only a complete answer goes; otherwise on to the next question.
+        if (!$('allow').disabled) answer(ask);
+        else nextUnanswered(ask, qi);
+      });
+      // Your own words: behind a small "something else" chip until you want it
+      // (one plain question uses the main field below instead).
+      box.append(line, opts);
+      if (!oneTap) {
+        const chip = document.createElement('button');
+        chip.className = 'otherchip';
+        chip.textContent = 'Something else…';
+        other.hidden = true;
+        chip.onclick = () => { chip.hidden = true; other.hidden = false; other.focus(); };
+        box.append(chip, other);
+      }
+      box.dataset.q = String(qi);
+      qs.append(box);
+    });
+  }
+
+  const hasAnswer = (q) => { const p = picks[q.question]; return !!p && (p.labels.size > 0 || !!p.other.trim()); };
+
+  // Send is ready once every question has an answer; until then it says
+  // how many are left.
+  function updateSend(ask) {
+    if (ask.kind !== 'question' || askKey !== ask.key) return;
+    const left = ask.questions.filter((q) => !hasAnswer(q)).length;
+    $('allow').disabled = left > 0;
+    $('allow').textContent = left ? `${left} to go` : 'Send';
+  }
+
+  function nextUnanswered(ask, after = -1) {
+    const i = ask.questions.findIndex((q, k) => k > after && !hasAnswer(q));
+    const j = i >= 0 ? i : ask.questions.findIndex((q) => !hasAnswer(q));
+    const box = document.querySelector(`#askQuestions .q[data-q="${j}"]`);
+    if (!box) return;
+    box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    const first = box.querySelector('.opt');
+    if (first) first.focus();
+  }
+
+  function answer(ask) {
+    if (!askKey || askKey !== ask.key) return;
+    if (ask.questions.some((q) => !hasAnswer(q))) { nextUnanswered(ask); return; }
+    const answers = {};
+    for (const q of ask.questions) {
+      const p = picks[q.question];
+      answers[q.question] = [...p.labels, p.other.trim()].filter(Boolean).join(', ');
+    }
+    finish('answer', answers);
+  }
+
+  // Sends your choice for the card that's up, and puts it away for good.
+  function finish(choice, extra) {
+    if (!askKey) return;
+    answered.add(askKey);
+    api.decide(current.id, askKey, choice, extra);
+    $('ask').hidden = true;
+    askKey = 0;
+    document.body.classList.remove('carding');
+    text.focus();
   }
 
   // The window hugs what's in it (the app keeps it between a min and max,
@@ -260,9 +440,14 @@
   function fitWindow() {
     if (!current) return;
     const bubble = document.querySelector('.bubble');
-    const chrome = bubble.offsetHeight - log.clientHeight; // everything but the log
-    const pad = parseFloat(getComputedStyle(log).paddingTop) + parseFloat(getComputedStyle(log).paddingBottom);
-    api.setHeight(current.id, Math.ceil(chrome + inner.offsetHeight + pad + 24 + 1)); // 24: room round the bubble
+    const chrome = bubble.offsetHeight - log.offsetHeight; // everything but the log
+    const pad = 16; // the log's own padding
+    // A card's questions or plan may be scrolled: ask for their full height.
+    let card = 0;
+    for (const el of [$('askQuestions'), $('askPlan'), $('askDetail')]) if (el.offsetParent) card += el.scrollHeight - el.clientHeight;
+    // A hidden (squeezed) log still wants its height back.
+    if (inner.offsetHeight) innerH = inner.offsetHeight;
+    api.setHeight(current.id, Math.ceil(chrome + card + innerH + pad + 24 + 1)); // 24: room round the bubble
   }
 
   // When the log gets shorter (a permission card, a taller field), keep the
@@ -295,8 +480,17 @@
   });
   // Beside the slime the bubble is narrower (the tail takes room), so text
   // wraps differently: measure again.
+  // The app couldn't use an answer (already answered in the terminal, say):
+  // let the card come back if it's still there, and say so.
+  if (api.onRefused) api.onRefused((key) => {
+    answered.delete(key);
+    $('hint').textContent = 'That didn’t go through. If it’s still asking, try again.';
+    setTimeout(() => { if (current) $('hint').textContent = hint(current); }, 4000);
+  });
   if (api.onTail) api.onTail((t) => { placeTail(t); fitWindow(); });
-  text.addEventListener('input', () => { fit(); send.disabled = !current || current.demo || !text.value.trim(); requestAnimationFrame(fitWindow); });
+  text.addEventListener('input', () => {
+    if (askKey && current.ask && current.ask.kind === 'plan') $('deny').textContent = text.value.trim() ? 'Send changes' : 'Keep planning';
+    fit(); send.disabled = !current || current.demo || !text.value.trim(); requestAnimationFrame(fitWindow); });
   text.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('form').requestSubmit(); }
   });
@@ -304,6 +498,19 @@
     e.preventDefault();
     const v = text.value.trim();
     if (!v || !current || current.demo) return;
+    // A card is up and you typed this after it came: it's for the card.
+    const ask = askKey && current.ask;
+    const forCard = ask && v !== cardDraft.trim() && Date.now() - cardAt > 450;
+    if (forCard && ask.kind === 'plan') {
+      text.value = ''; fit(); drafts.delete(current.id);
+      return finish('deny', { message: v }); // what to change
+    }
+    if (forCard && ask.kind === 'question' && ask.questions.length === 1) {
+      const p = picks[ask.questions[0].question] || (picks[ask.questions[0].question] = { labels: new Set(), other: '' });
+      p.other = v; // added to any picks, not instead of them
+      text.value = ''; fit(); drafts.delete(current.id);
+      return answer(ask);
+    }
     api.send(current.id, v);
     text.value = '';
     drafts.delete(current.id);
@@ -327,11 +534,24 @@
   $('terminal').addEventListener('click', () => api.terminal());
   const decide = (choice) => () => {
     if (!askKey) return;
-    api.decide(current.id, askKey, choice);
-    $('ask').hidden = true;
-    askKey = 0;
-    text.focus();
+    const ask = current.ask;
+    if (ask && ask.kind === 'question') return answer(ask);
+    // Keep planning takes what you typed below as what to change.
+    if (ask && ask.kind === 'plan' && choice === 'deny' && text.value.trim()) {
+      const msg = text.value.trim();
+      text.value = ''; fit(); drafts.delete(current.id);
+      return finish('deny', { message: msg });
+    }
+    finish(choice);
   };
+  // Number keys pick an option on a one-question card (like the terminal).
+  document.addEventListener('keydown', (e) => {
+    if (!askKey || !current.ask || current.ask.kind !== 'question' || current.ask.questions.length !== 1) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || text.value) return;
+    if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+    const b = document.querySelector(`#askQuestions .opt[data-n="${e.key}"]`);
+    if (b && !b.disabled) { e.preventDefault(); b.click(); }
+  });
   $('allow').addEventListener('click', decide('allow'));
   $('deny').addEventListener('click', decide('deny'));
   $('always').addEventListener('click', decide('always'));

@@ -5,7 +5,9 @@
 // Claude is busy nobody is waiting, so messages queue until the turn ends.
 //
 // Permission prompts come in the same way: a PermissionRequest hook asks
-// and waits, and Allow or Deny on the slime answers it.
+// and waits, and Allow or Deny on the slime answers it. So do Claude's
+// multiple-choice questions (answered with the chosen labels) and its plans
+// in plan mode (approved, or sent back to keep planning).
 //
 // It also keeps a short log of each session's conversation since Blaube
 // started (prompts typed in the terminal, messages sent from the slime and
@@ -34,7 +36,10 @@ class Inbox extends EventEmitter {
   ask(id, payload, reply) {
     const list = this.asks.get(id) || [];
     const always = Array.isArray(payload.permission_suggestions) && payload.permission_suggestions.length ? payload.permission_suggestions : null;
-    list.push({ key: this.nextKey++, tool: toolName(payload.tool_name), detail: describe(payload.tool_name, payload.tool_input), always, reply });
+    const input = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
+    const kind = payload.tool_name === 'AskUserQuestion' && Array.isArray(input.questions) ? 'question'
+      : payload.tool_name === 'ExitPlanMode' ? 'plan' : 'tool';
+    list.push({ key: this.nextKey++, kind, input, tool: toolName(payload.tool_name), detail: kind === 'tool' ? describe(payload.tool_name, input) : '', always, reply });
     this.asks.set(id, list);
     this.emit('change', id);
   }
@@ -46,16 +51,39 @@ class Inbox extends EventEmitter {
     this.emit('change', id);
   }
 
-  // Allow ('allow'), allow from now on ('always') or deny ('deny').
-  decide(id, key, choice) {
+  // Allow ('allow'), allow from now on ('always') or deny ('deny'). A
+  // question is answered with `answers` ({ question text: label }); a plan
+  // is approved ('allow' / 'always') or sent back to keep planning ('deny').
+  decide(id, key, choice, answers) {
     const list = this.asks.get(id) || [];
     const a = list.find((x) => x.key === key);
     if (!a) return false;
-    const decision = choice === 'deny'
-      ? { behavior: 'deny', message: 'The user denied this from Blaube, their desktop buddy.' }
-      : Object.assign({ behavior: 'allow' }, choice === 'always' && a.always ? { updatedPermissions: a.always } : {});
+    const always = choice === 'always' && a.always ? { updatedPermissions: a.always } : {};
+    let decision, note;
+    if (a.kind === 'question') {
+      if (!answers || typeof answers !== 'object') return false;
+      const clean = {};
+      for (const q of a.input.questions) if (answers[q.question] != null && String(answers[q.question]).trim()) clean[q.question] = String(answers[q.question]).trim();
+      // Every question answered, or nothing goes (no half answers).
+      if (Object.keys(clean).length !== a.input.questions.length) return false;
+      decision = { behavior: 'allow', updatedInput: Object.assign({}, a.input, { answers: clean }) };
+      note = 'Answered: ' + Object.entries(clean).map(([q, v]) => `${q} → ${v}`).join(' · ');
+    } else if (a.kind === 'plan') {
+      const change = answers && answers.message ? String(answers.message).trim() : '';
+      decision = choice === 'deny'
+        ? { behavior: 'deny', message: change
+          ? `The user wants changes to the plan (sent from Blaube, their desktop buddy): ${change}`
+          : 'The user wants to keep planning (sent from Blaube, their desktop buddy). Ask what to change, or refine the plan.' }
+        : Object.assign({ behavior: 'allow', updatedInput: a.input }, always);
+      note = choice === 'deny' ? (change ? `Kept planning: ${change}` : 'Kept planning') : choice === 'always' ? 'Approved the plan, auto-accepting edits' : 'Approved the plan';
+    } else {
+      decision = choice === 'deny'
+        ? { behavior: 'deny', message: 'The user denied this from Blaube, their desktop buddy.' }
+        : Object.assign({ behavior: 'allow' }, always);
+      note = `${choice === 'deny' ? 'Denied' : choice === 'always' ? 'Always allowed' : 'Allowed'} ${a.tool}${a.detail ? ': ' + a.detail : ''}`;
+    }
     a.reply(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision } }));
-    this.add(id, { who: 'note', text: `${choice === 'deny' ? 'Denied' : choice === 'always' ? 'Always allowed' : 'Allowed'} ${a.tool}${a.detail ? ': ' + a.detail : ''}` });
+    this.add(id, { who: 'note', text: note });
     this.unasked(id, a.reply);
     return true;
   }
@@ -190,8 +218,18 @@ class Inbox extends EventEmitter {
         const a = (this.asks.get(id) || [])[0];
         if (!a) return null;
         // No "always" for something too long to show in full.
-        const always = a.always && !a.detail.endsWith('…') ? alwaysLabel(a.always) : '';
-        return { key: a.key, tool: a.tool, detail: a.detail, always, alwaysFull: always ? alwaysLabel(a.always, Infinity) : '' };
+        let always = a.always && !a.detail.endsWith('…') ? alwaysLabel(a.always) : '';
+        // On a plan, the "always" choice is going ahead in a more trusting mode.
+        if (always && a.kind === 'plan') always = a.always.some((u) => u.type === 'setMode' && u.mode === 'acceptEdits') ? 'Go ahead, and auto-accept edits' : always.replace(/^Always allow/, 'Go ahead, and always allow');
+        const out = { key: a.key, kind: a.kind, tool: a.tool, detail: a.detail, always, alwaysFull: always ? alwaysLabel(a.always, Infinity) : '' };
+        if (a.kind === 'question') {
+          out.questions = a.input.questions.slice(0, 4).map((q) => ({
+            question: String(q.question || ''), header: String(q.header || ''), multiSelect: !!q.multiSelect,
+            options: (Array.isArray(q.options) ? q.options : []).map((o) => ({ label: String(o.label || ''), description: String(o.description || '') })),
+          }));
+        }
+        if (a.kind === 'plan') out.plan = clip(String(a.input.plan || ''));
+        return out;
       })(),
       asks: (this.asks.get(id) || []).length,
     };

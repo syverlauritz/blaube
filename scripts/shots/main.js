@@ -344,6 +344,58 @@ const SCENES = {
 			{ who: 'claude', at: 5, text: 'It isn’t the scan itself: listing windows through CoreGraphics takes about a millisecond.\n\nThe slow part was elsewhere:\n1. We spawned a new osascript process for every scan.\n2. Each spawn costs ~90 ms before it runs anything.\n3. At 60 scans a second that queues up and lags.\n\nNow one long-running loop prints changes only, so it costs almost nothing while windows sit still and stays smooth while you drag one. I also skip windows smaller than 80×40, since nothing can stand on them, and the menu bar and Dock layers.\n\nLet me know if you want me to add a setting for how often it checks.' },
 		] },
 	},
+	talkQuestion: {
+		sessions: [session('tq', 'website', 'waiting', { color: '#E07BA8', look: 'catears' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1000, 900],
+		talk: { key: 'tq', inbox: 'busy', log: [
+			{ who: 'you', text: 'give the landing page a fresh look', via: 'terminal' },
+		], ask: { key: 1, kind: 'question', tool: 'AskUserQuestion', detail: '', always: '', questions: [
+			{ question: 'Which direction should the new look take?', header: 'Style', multiSelect: false, options: [
+				{ label: 'Soft and playful', description: 'Rounded type, pastel colours' },
+				{ label: 'Clean and minimal', description: 'Lots of white, one accent' },
+				{ label: 'Bold and loud', description: 'Big type, strong colour blocks' },
+			] },
+		] } },
+	},
+	talkQuestions: {
+		sessions: [session('tqs', 'kalkis', 'waiting', { color: '#5FB57A', look: 'sprout' })],
+		wait: 3500,
+		size: [1000, 1000],
+		talk: { key: 'tqs', inbox: 'busy', log: [], ask: { key: 1, kind: 'question', tool: 'AskUserQuestion', detail: '', always: '', questions: [
+			{ question: 'Which calculators should get the 2027 rates?', header: 'Scope', multiSelect: true, options: [
+				{ label: 'Income tax', description: '' }, { label: 'VAT', description: '' }, { label: 'Car tax', description: '' },
+			] },
+			{ question: 'Ship today?', header: 'Release', multiSelect: false, options: [
+				{ label: 'Yes', description: 'Deploy when the tests pass' }, { label: 'No', description: 'Leave it on a branch' },
+			] },
+		] } },
+	},
+	// The same card with answers being picked (after the click guard).
+	talkQuestionsPicked: {
+		sessions: [session('tqp', 'kalkis', 'waiting', { color: '#E8B84A', look: 'bow' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1000, 1000],
+		talkJs: `setTimeout(() => { const o = document.querySelectorAll('#askQuestions .opt'); o[1].click(); o[2].click(); document.querySelectorAll('#askQuestions .otherchip')[0].click(); document.querySelectorAll('#askQuestions .other')[0].value = 'and the payroll one'; document.querySelectorAll('#askQuestions .other')[0].dispatchEvent(new Event('input')); }, 500)`,
+		talk: { key: 'tqp', inbox: 'busy', log: [], ask: { key: 1, kind: 'question', tool: 'AskUserQuestion', detail: '', always: '', questions: [
+			{ question: 'Which calculators should get the 2027 rates?', header: 'Scope', multiSelect: true, options: [
+				{ label: 'Income tax', description: '' }, { label: 'VAT', description: '' }, { label: 'Car tax', description: '' },
+			] },
+			{ question: 'Ship today?', header: 'Release', multiSelect: false, options: [
+				{ label: 'Yes', description: 'Deploy when the tests pass' }, { label: 'No', description: 'Leave it on a branch' },
+			] },
+		] } },
+	},
+	talkPlan: {
+		sessions: [session('tp', 'blaube', 'waiting', { look: 'bunny' })],
+		wait: 3500,
+		size: [1000, 900],
+		talk: { key: 'tp', inbox: 'busy', log: [
+			{ who: 'you', text: 'plan how to add sounds', via: 'blaube', status: 'sent' },
+		], ask: { key: 1, kind: 'plan', tool: 'ExitPlanMode', detail: '', always: 'Go ahead, and auto-accept edits', plan: '## Add sounds\n1. Add a `sounds/` folder with squish, boing and chime (short, soft).\n2. Play squish on landing, boing on a throw, chime when a session is done.\n3. A **Sounds** switch in Settings, off by default.\n4. Keep it quiet: never more than one sound at a time.' } },
+	},
 	talkBusy: {
 		sessions: [session('tb', 'kalkis', 'working', { color: '#5FB57A', look: 'sprout' })],
 		wait: 3500,
@@ -409,14 +461,14 @@ async function shoot(win, name, scene) {
 		await sleep(600);
 	}
 	if (scene.motion) return shootMotion(win, name, scene.motion);
-	const png = scene.talk ? await addTalk(win, scene) : (await win.webContents.capturePage()).toPNG();
+	const png = scene.talk ? await addTalk(win, scene, name) : (await win.webContents.capturePage()).toPNG();
 	fs.writeFileSync(path.join(OUT, `${name}.png`), png);
 	console.log('saved', path.join('shots', `${name}.png`));
 }
 
 // Draws the talk box over the scene, where the app would open it for a
 // click on the slime named by talk.key, with the given conversation.
-async function addTalk(win, scene) {
+async function addTalk(win, scene, name) {
 	const [w, h] = scene.size || [W, H];
 	const t = scene.talk, sess = scene.sessions.find((x) => x.id === t.key) || scene.sessions[0];
 	const at = await win.webContents.executeJavaScript(`(() => {
@@ -435,14 +487,15 @@ async function addTalk(win, scene) {
 	await tw.loadFile(path.join(ROOT, 'src', 'talk', 'talk.html'));
 	tw.webContents.send('talk-state', Object.assign({ id: sess.id, project: sess.project, state: sess.state, color: sess.color || '#D97757', font: 'Coiny', connected: true, queued: 0, ask: null, asks: 0, tail: place.tail }, t));
 	await sleep(500);
+	if (scene.talkJs) { await tw.webContents.executeJavaScript(scene.talkJs); await sleep(900); }
 	// The box hugs its content, like in the app (170-440 px, plus its tail).
-	const th = Math.round(Math.max(190, Math.min(460, wantH)));
+	const th = Math.round(Math.max(190, Math.min(t.ask ? 900 : 580, wantH)));
 	place = placeTalk(at, area, 384, th);
 	tw.setContentSize(384, place.h);
 	tw.webContents.send('talk-tail', place.tail);
 	await sleep(400);
 	// It measures again for the side it ended up on (as in the app).
-	place = placeTalk(at, area, 384, Math.round(Math.max(190, Math.min(460, wantH))), place.tail.side);
+	place = placeTalk(at, area, 384, Math.round(Math.max(190, Math.min(t.ask ? 900 : 580, wantH))), place.tail.side);
 	tw.setContentSize(384, place.h);
 	await sleep(400);
 	ipcMain.removeListener('talk-height', onHeight);

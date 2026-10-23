@@ -49,7 +49,8 @@
   .round { border: 0; background: none; color: var(--dim); width: 28px; height: 28px; border-radius: 50%; padding: 0; cursor: pointer; flex: none; display: grid; place-items: center; }
   .round svg { width: 16px; height: 16px; }
   .round:hover { background: var(--soft); color: var(--ink); }
-  #log { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 6px 14px 10px; }
+  /* The log takes what's left; a tall card scrolls instead of pushing the field out. */
+  #log { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 6px 14px 10px; }
   #log.scrolled { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px); }
   #log::-webkit-scrollbar { width: 6px; }
   #log::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
@@ -83,16 +84,60 @@
   @keyframes bob { 0%, 68%, 100% { transform: none; } 12% { transform: scale(1.15, .85); } 35% { transform: translateY(-5px) scale(.9, 1.1); } 55% { transform: scale(1.25, .75); } }
   .hint { margin: 0 14px 8px; color: var(--dim); font: 500 14px/1.35 var(--ui); text-align: center; text-wrap: balance; }
   .hint:empty { display: none; }
-  .ask { margin: 2px 14px 10px; padding: 12px 14px 12px; border-radius: 16px; background: var(--wash); }
+  /* The card's questions or plan scroll if they must; its buttons always show. */
+  .ask { margin: 2px 14px 10px; padding: 12px 14px 12px; border-radius: 16px; background: var(--wash); flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .ask[hidden] { display: none; }
+  #askQuestions, .ask .plan { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+  #askQuestions::-webkit-scrollbar, .ask .plan::-webkit-scrollbar, #askDetail::-webkit-scrollbar { width: 6px; }
+  #askQuestions::-webkit-scrollbar-thumb, .ask .plan::-webkit-scrollbar-thumb, #askDetail::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
+  #askQuestions:hover::-webkit-scrollbar-thumb, .ask .plan:hover::-webkit-scrollbar-thumb, #askDetail:hover::-webkit-scrollbar-thumb { background: rgba(27, 36, 64, .15); }
+  #log.squeezed { display: none; }
+  #askDetail[hidden] { display: none; }
   .ask[hidden] { display: none; }
   .ask.new { animation: squish .3s cubic-bezier(.3, 1.6, .5, 1); transform-origin: 50% 100%; }
   .ask .what { font-weight: 700; margin-bottom: 7px; display: flex; gap: 6px; align-items: baseline; }
   .ask .what span { font: 500 14px var(--ui); color: var(--dim); }
-  .ask code { display: block; font: 14px/1.4 ui-monospace, Menlo, Consolas, monospace; background: rgba(255, 255, 255, .65); border-radius: 10px; padding: 8px 11px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 78px; overflow-y: auto; user-select: text; }
+  #askDetail { display: block; font: 14px/1.4 ui-monospace, Menlo, Consolas, monospace; background: rgba(255, 255, 255, .65); border-radius: 10px; padding: 8px 11px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 78px; overflow-y: auto; user-select: text; }
   .ask .row { display: flex; gap: 8px; margin-top: 10px; }
   .ask .row button { flex: 1; border: 0; border-radius: 12px; padding: 9px 0; font: 700 14px var(--ui); cursor: pointer; background: #fff; color: var(--ink); }
   .ask .row button.allow { background: var(--color); color: var(--on); }
   .ask button:disabled { opacity: .5; cursor: default; }
+  .ask .row button.allow:disabled { opacity: 1; background: rgba(255, 255, 255, .7); color: var(--dim); }
+  /* Claude's questions: each option a round pill; yours fills with the slime's colour. */
+  .q + .q { margin-top: 12px; }
+  .q .text { font-weight: 700; margin: 0 0 7px; }
+  .q .text span { font: 500 14px var(--ui); color: var(--dim); }
+  /* On a question card the title is just a quiet label: the question is the headline. */
+  .ask[data-kind="question"] .what b { font: 600 14px var(--ui); color: var(--dim); }
+  .opts.chips { flex-direction: row; flex-wrap: wrap; }
+  .chips .opt { border-radius: 999px; padding: 7px 14px; }
+  .opt.picked { animation: squish .3s cubic-bezier(.3, 1.6, .5, 1); }
+  .opt:focus-visible { outline: 2px solid var(--color); outline-offset: 1px; }
+  #askQuestions::-webkit-scrollbar { width: 0; } /* the fade says there's more */
+  .otherchip { margin-top: 6px; border: 0; background: none; padding: 4px 2px; font: 600 14px var(--ui); color: var(--dim); cursor: pointer; text-decoration: underline; text-decoration-color: rgba(91, 98, 112, .35); text-underline-offset: 3px; }
+  .otherchip:hover { color: var(--ink); }
+  .otherchip[hidden], .other[hidden] { display: none; }
+  /* Several questions: the card is the whole conversation for now. */
+  body.carding form { display: none; }
+  #askQuestions.overflowing, .ask .plan.overflowing { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
+  .asknote { font: 500 14px var(--ui); color: var(--dim); margin-top: 8px; }
+  .asknote:empty { display: none; }
+  .opts { display: flex; flex-direction: column; gap: 6px; }
+  .opt { text-align: left; border: 0; border-radius: 14px; padding: 8px 12px; background: rgba(255, 255, 255, .7); color: var(--ink); font: 600 15px/1.3 var(--ui); cursor: pointer; transition: background .12s, transform .12s; }
+  .opt small { display: block; font: 500 14px/1.3 var(--ui); color: var(--dim); margin-top: 1px; }
+  .opt:hover { background: #fff; }
+  .opt:active { transform: scale(.98); }
+  .opt.on { background: var(--color); color: var(--on); }
+  .opt.on small { color: inherit; opacity: .8; }
+  .opt:disabled { opacity: .5; cursor: default; }
+  /* A place to type, not a fourth option: like the main field, lighter. */
+  .other { width: 100%; margin-top: 6px; border: 0; border-radius: 999px; padding: 8px 14px; font: 500 15px var(--ui); color: var(--ink); background: rgba(255, 255, 255, .38); outline: none; user-select: text; }
+  .other::placeholder { color: var(--dim); }
+  .other:focus { background: #fff; }
+  /* A plan reads like one of the slime's replies, in a box that scrolls. */
+  .ask .plan { max-width: none; background: rgba(255, 255, 255, .7); border-radius: 12px; padding: 9px 12px; user-select: text; }
+  .ask .plan[hidden] { display: none; }
+  .ask .row[hidden] { display: none; }
   .ask .always { display: block; margin: 8px auto 0; border: 0; background: rgba(255, 255, 255, .5); padding: 5px 14px; border-radius: 999px; font: 600 14px var(--ui); color: var(--ink); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ask .always:hover { background: rgba(255, 255, 255, .85); }
   .ask .always[hidden] { display: none; }
@@ -120,7 +165,10 @@
     <div class="ask" id="ask" hidden>
       <div class="what"><b id="askWhat"></b><span id="askMore"></span></div>
       <code id="askDetail"></code>
-      <div class="row">
+      <div id="askQuestions"></div>
+      <div class="plan msg" id="askPlan" hidden></div>
+      <div class="asknote" id="askNote"></div>
+      <div class="row" id="askRow">
         <button id="deny">Deny</button>
         <button id="allow" class="allow">Allow</button>
       </div>

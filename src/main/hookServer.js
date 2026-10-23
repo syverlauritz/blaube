@@ -57,9 +57,7 @@ function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
         if (term) payload._term = String(term).slice(0, 64);
         tracker.handle(payload);
         const id = String(payload.session_id);
-        // Questions and plans aren't yes/no: they stay in the terminal.
-        const ownUI = payload.tool_name === 'AskUserQuestion' || payload.tool_name === 'ExitPlanMode';
-        if (!inbox || ownUI || (entry && entry !== 'cli') || !tracker.sessions.has(id)) { res.writeHead(204); return res.end(); }
+        if (!inbox || (entry && entry !== 'cli') || !tracker.sessions.has(id)) { res.writeHead(204); return res.end(); }
         inbox.ask(id, payload, once(res, (reply) => inbox.unasked(id, reply)));
       });
     }

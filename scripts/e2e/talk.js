@@ -143,6 +143,79 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	check(await box(`document.getElementById('ask').hidden`), 'and the card goes away');
 	check(await box(`[...document.querySelectorAll('#inner .note')].some((e) => /Allowed Bash: npm test/.test(e.textContent))`), 'the log notes it');
 
+	// Claude asks a question: one tap on an option answers it.
+	const questions = [{ question: 'Which pet?', header: 'Pet', options: [{ label: 'Cats', description: 'Purr' }, { label: 'Dogs', description: 'Woof' }], multiSelect: false }];
+	const quiz = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	check(await until(async () => (await box(`document.querySelectorAll('#askQuestions .opt').length`)) === 2), 'a question shows its options');
+	await sleep(500);
+	await shot('question');
+	await box(`document.querySelectorAll('#askQuestions .opt')[0].click()`);
+	const picked = await Promise.race([quiz.done, sleep(3000).then(() => null)]);
+	let qd = null;
+	try { qd = JSON.parse(picked.out).hookSpecificOutput.decision; } catch { /* checked below */ }
+	check(qd && qd.behavior === 'allow' && qd.updatedInput.answers['Which pet?'] === 'Cats', 'tapping an option answers it');
+
+	// A plan: Go ahead approves it, with the plan passed back.
+	const planning = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'ExitPlanMode', tool_input: { plan: '1. Add **sounds**\n2. A switch in Settings', planFilePath: '/tmp/plan.md' } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	check(await until(async () => /Add sounds/.test(await box(`document.getElementById('askPlan').textContent`))), 'a plan shows');
+	check(await box(`document.getElementById('allow').textContent === 'Go ahead' && document.getElementById('deny').textContent === 'Keep planning'`), 'with Go ahead and Keep planning');
+	await sleep(500);
+	await box(`document.getElementById('allow').click()`);
+	const went = await Promise.race([planning.done, sleep(3000).then(() => null)]);
+	let pd = null;
+	try { pd = JSON.parse(went.out).hookSpecificOutput.decision; } catch { /* checked below */ }
+	check(pd && pd.behavior === 'allow' && pd.updatedInput.planFilePath === '/tmp/plan.md', 'Go ahead approves the plan');
+
+	// Several questions with picking several: picks and typed words both go;
+	// nothing goes until every question has an answer.
+	const multi = [
+		{ question: 'Which ones?', header: 'Scope', multiSelect: true, options: [{ label: 'VAT', description: '' }, { label: 'Car tax', description: '' }] },
+		{ question: 'Ship today?', header: 'Release', multiSelect: false, options: [{ label: 'Yes', description: '' }, { label: 'No', description: '' }] },
+	];
+	const quiz2 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions: multi } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	check(await until(async () => (await box(`document.querySelectorAll('#askQuestions .q').length`)) === 2), 'a card with two questions shows');
+	check(await box(`getComputedStyle(document.getElementById('form')).display === 'none'`), 'and the main field steps aside for it');
+	await sleep(500);
+	await box(`(() => { const o = document.querySelectorAll('#askQuestions .opt'); o[0].click(); o[1].click(); const chip = document.querySelectorAll('#askQuestions .otherchip')[0]; chip.click(); const f = document.querySelectorAll('#askQuestions .other')[0]; f.value = 'and payroll'; f.dispatchEvent(new Event('input')); f.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })); })()`);
+	await sleep(300);
+	check(!(await box(`document.getElementById('ask').hidden`)), 'Enter with a question left doesn’t send half an answer');
+	check(await box(`document.getElementById('allow').textContent`) === '1 to go', 'the button says what’s left');
+	await box(`document.querySelectorAll('#askQuestions .opt')[2].click()`);
+	await box(`document.getElementById('allow').click()`);
+	const both = await Promise.race([quiz2.done, sleep(3000).then(() => null)]);
+	let bd = null;
+	try { bd = JSON.parse(both.out).hookSpecificOutput.decision.updatedInput.answers; } catch { /* checked below */ }
+	check(bd && bd['Which ones?'] === 'VAT, Car tax, and payroll' && bd['Ship today?'] === 'Yes', `picks and typed words both go (${JSON.stringify(bd)})`);
+	check(await box(`getComputedStyle(document.getElementById('form')).display !== 'none'`), 'and the main field is back');
+
+	// A draft you were writing when a question came stays a message, not an answer.
+	await box(`(() => { const t = document.getElementById('text'); t.value = 'also run the tests'; t.dispatchEvent(new Event('input')); })()`);
+	const quiz3 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	check(await until(async () => !(await box(`document.getElementById('ask').hidden`))), 'another question shows');
+	await sleep(600);
+	await box(`document.getElementById('form').requestSubmit()`);
+	await sleep(300);
+	check(!(await box(`document.getElementById('ask').hidden`)), 'a draft from before it came isn’t taken as the answer');
+	check(inbox.view(ID).queued === 1, 'it’s kept as a message for later');
+	await box(`(() => { const t = document.getElementById('text'); t.value = 'Dogs, obviously'; t.dispatchEvent(new Event('input')); document.getElementById('form').requestSubmit(); })()`);
+	const typed = await Promise.race([quiz3.done, sleep(3000).then(() => null)]);
+	let td = null;
+	try { td = JSON.parse(typed.out).hookSpecificOutput.decision.updatedInput.answers; } catch { /* checked below */ }
+	check(td && td['Which pet?'] === 'Dogs, obviously', 'typing after it came answers it');
+
+	// Enter on a plan card sends it back with what to change.
+	const planning2 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'ExitPlanMode', tool_input: { plan: '1. Add sounds' } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	check(await until(async () => !(await box(`document.getElementById('askPlan').hidden`))), 'a plan shows again');
+	await sleep(600);
+	await box(`(() => { const t = document.getElementById('text'); t.value = 'use Web Audio, not files'; t.dispatchEvent(new Event('input')); })()`);
+	check(await box(`document.getElementById('deny').textContent`) === 'Send changes', 'Keep planning becomes Send changes when you type');
+	await box(`document.getElementById('form').requestSubmit()`);
+	const back = await Promise.race([planning2.done, sleep(3000).then(() => null)]);
+	let bk = null;
+	try { bk = JSON.parse(back.out).hookSpecificOutput.decision; } catch { /* checked below */ }
+	check(bk && bk.behavior === 'deny' && /Web Audio/.test(bk.message), 'Enter sends the plan back with what to change');
+	for (const e of inbox.queue.get(ID) || []) inbox.unsend(ID, e.n); // tidy up the queued draft
+
 	// A long reply folds; Show more opens it.
 	await hook({ hook_event_name: 'Stop', last_assistant_message: Array.from({ length: 30 }, (_, i) => `Line ${i + 1} of a long answer.`).join('\n') });
 	check(await until(() => box(`!!document.querySelector('.msg.folded')`)), 'a long reply folds');
