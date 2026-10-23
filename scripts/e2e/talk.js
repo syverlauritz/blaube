@@ -290,7 +290,9 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	if (!reopened) console.log('     last page logs:\n       ' + consoleLines.slice(-8).join('\n       '), '\n     talkId', talkId(), 'last', JSON.stringify(last));
 	await sleep(500);
 	await clickSlime();
-	check(await until(() => !talk().isVisible()), 'clicking it again closes it');
+	const closedAgain = await until(() => !talk().isVisible());
+	check(closedAgain, 'clicking it again closes it');
+	if (!closedAgain) console.log('     last page logs:\n       ' + consoleLines.slice(-8).join('\n       '), '\n     slime', JSON.stringify(await slime()), 'clicked at', JSON.stringify(last));
 
 	// New entries are added, not redrawn: an unfolded reply stays open and
 	// the elements already there are the same ones.
