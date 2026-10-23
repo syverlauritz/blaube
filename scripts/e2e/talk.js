@@ -102,12 +102,25 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await sleep(400);
 	const wb = win.getBounds(), tb = talk().getBounds();
 	last = await slime(); // where it is now (it may have been mid-hop when clicked; the box follows)
-	const tail = await box(`(() => { const t = document.getElementById('tail').getBoundingClientRect(); return { x: t.left + t.width / 2, y: t.bottom, side: document.body.className }; })()`);
-	check(tail.side === 'bottom', 'the box sits above the slime');
-	check(Math.abs(tb.x + tail.x - (wb.x + last.x)) < 30, `its tail points at the slime (off by ${Math.round(tb.x + tail.x - (wb.x + last.x))} px)`);
-	check(tb.y + tail.y <= wb.y + last.top + 4 && tb.y + tail.y > wb.y + last.top - 30, `the tail ends just above its head (tip ${Math.round(tb.y + tail.y)}, head ${Math.round(wb.y + last.top)})`);
+	// It drifts after its slime, so let it settle first.
+	await sleep(1800);
+	last = await slime();
+	const wbs = win.getBounds(), tbs = talk().getBounds();
+	Object.assign(tb, tbs); Object.assign(wb, wbs);
+	// The bubble floats a little above the head (its tail is drawn by the
+	// slime's layer, from under the bubble down to the head).
+	const bubbleBottom = tb.y + tb.height - 12, headTop = wb.y + last.top;
+	check(bubbleBottom < headTop - 15 && bubbleBottom > headTop - 60, `the bubble floats just above its head (${Math.round(headTop - bubbleBottom)} px)`);
+	check(tb.x + 12 < wb.x + last.x && tb.x + tb.width - 12 > wb.x + last.x, 'right over it');
+	// When a reply makes it taller it grows up, away from the slime: watch it
+	// frame by frame, it never comes down over the head.
+	await hook({ hook_event_name: 'Stop', last_assistant_message: 'A longer answer, so the box has to grow.\n\nIt keeps going for a few lines.\nAnd a few more.\nAnd one more.' });
+	let lowest = -Infinity;
+	for (let i = 0; i < 30; i++) { const b = talk().getBounds(); lowest = Math.max(lowest, b.y + b.height - 12); await sleep(40); }
+	const head2 = win.getBounds().y + (await slime()).top;
+	check(lowest < head2 - 10, `growing, it never covers the head (closest ${Math.round(head2 - lowest)} px above)`);
 	const texts = await box(`[...document.querySelectorAll('#inner .msg')].map((e) => e.textContent)`);
-	check(texts.length === 2 && /2027 brackets/.test(texts[1]), 'it shows the conversation so far');
+	check(texts.length === 3 && /2027 brackets/.test(texts[1]), 'it shows the conversation so far');
 	check(await box(`document.getElementById('hint').textContent === ''`), 'no “update the connection” note for a session whose hooks reach us');
 	check(await box(`!!document.querySelector('#inner .msg.claude b')`), 'with formatting (bold)');
 	check(await page(`__blaube.buddies.get(${JSON.stringify(ID)}) && true`), 'the slime is still there');

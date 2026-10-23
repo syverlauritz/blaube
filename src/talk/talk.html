@@ -9,150 +9,149 @@
   @font-face { font-family: "Concert One"; src: url(../renderer/fonts/ConcertOne.woff2) format("woff2"); font-weight: 400; }
   @font-face { font-family: "DynaPuff"; src: url(../renderer/fonts/DynaPuff.woff2) format("woff2"); font-weight: 400 700; }
   @font-face { font-family: "Rubik Spray Paint"; src: url(../renderer/fonts/RubikSprayPaint.woff2) format("woff2"); font-weight: 400; }
-  /* The same flat white bubble as everything Blaube says (docs/DESIGN.md):
-     no outline, no shadow, ink #1b2440, 16 px corners, a soft tail that
-     points at its slime. Always white, like the bubbles on the desktop.
-     The slime's own words wear its colour; yours stay neutral. */
+  /* The same flat white bubble as everything Blaube says (docs/DESIGN.md),
+     kept as plain as the bubbles on the desktop: white, ink #1b2440, one
+     soft grey for things you can touch or type in, and the slime's own
+     colour only on the one thing to press. No outlines, no shadows. Its
+     tail is drawn by the slime's layer (from under the bubble to the
+     slime), since the bubble drifts after the slime in its own window. */
   :root {
-    --ink: #1b2440; --dim: #5b6270; --on: #fff; --soft: #f0f2f7; --tint: #fbeee8; --wash: #f7ddd2;
+    --ink: #1b2440; --dim: #5b6270; --faint: #9aa0ad; --soft: #f1f2f6; --on: #fff;
     --color: #d97757; --name: -apple-system, "Segoe UI", system-ui, sans-serif;
     --ui: -apple-system, "Segoe UI", system-ui, sans-serif;
     --ox: 50%; --oy: 100%;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: transparent; font: 500 15px/1.4 var(--ui); color: var(--ink); overflow: hidden; user-select: none; }
+  html, body { margin: 0; height: 100%; background: transparent; font: 500 15px/1.45 var(--ui); color: var(--ink); overflow: hidden; user-select: none; }
   .wrap { position: absolute; inset: 0; transform-origin: var(--ox) var(--oy); }
   .wrap.pop { animation: pop .26s cubic-bezier(.3, 1.5, .5, 1); }
+  @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   .wrap.shut { animation: shut .17s cubic-bezier(.5, 0, .8, .4) forwards; }
   @keyframes shut { to { transform: scale(.7, .6); opacity: 0; } }
-  @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-  /* A little jelly wobble when the slime answers. */
   .wrap.boing { animation: boing .34s cubic-bezier(.3, 1.6, .5, 1); }
   @keyframes boing { 35% { transform: scale(1.02, .975); } 70% { transform: scale(.995, 1.01); } }
-  .bubble { position: absolute; inset: 12px 12px 32px 12px; display: flex; flex-direction: column; background: #fff; border-radius: 16px; overflow: hidden; }
-  body.left .bubble { inset: 12px 12px 12px 32px; }
-  body.right .bubble { inset: 12px 32px 12px 12px; }
-  .tail { position: absolute; fill: #fff; }
-  body.bottom .tail { bottom: 10px; width: 18px; height: 23px; transform: translateX(-50%); }
-  body.left .tail, body.right .tail { width: 23px; height: 18px; transform: translateY(-50%); }
-  body.left .tail { left: 10px; }
-  body.right .tail { right: 10px; }
-  header { display: flex; align-items: center; gap: 8px; padding: 12px 10px 10px 16px; }
-  /* The bubble keeps 12 px clear inside its window, so its pop and wobble
-     never get cut off at the edges; the tail side has room for the tail. */
+  @keyframes squish { from { transform: scale(.8, .6); opacity: 0; } to { transform: none; opacity: 1; } }
+  /* 12 px clear round the bubble, so its pop and wobble never get cut off. */
+  .bubble { position: absolute; inset: 12px; display: flex; flex-direction: column; background: #fff; border-radius: 16px; overflow: hidden; }
+
+  header { display: flex; align-items: center; gap: 8px; padding: 14px 10px 6px 18px; }
   /* Display fonts that come in one weight are drawn at it (a faked bold smudges). */
   .name.plain { font-family: var(--ui); --nameWeight: 700; }
   .name { font: var(--nameWeight, 700) 17px var(--name); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
-  .state { font: 600 14px var(--ui); color: var(--dim); white-space: nowrap; flex: none; display: flex; align-items: center; gap: 6px; }
-  .state i { width: 9px; height: 9px; border-radius: 50%; }
+  /* The slime's face says how it is: no state words up here. */
+  .state { display: none; }
   .spacer { flex: 1; min-width: 12px; }
-  .round { border: 0; background: none; color: var(--dim); width: 28px; height: 28px; border-radius: 50%; padding: 0; cursor: pointer; flex: none; display: grid; place-items: center; }
-  .round svg { width: 16px; height: 16px; }
+  .round { border: 0; background: none; color: var(--faint); width: 28px; height: 28px; border-radius: 50%; padding: 0; cursor: pointer; flex: none; display: grid; place-items: center; }
+  .round svg { width: 15px; height: 15px; }
   .round:hover { background: var(--soft); color: var(--ink); }
+  /* Going to the terminal is there when you want it, not in the way. */
+  #terminal { opacity: 0; transition: opacity .2s; position: absolute; right: 44px; top: 13px; }
+  header:hover #terminal, #terminal:focus-visible { opacity: 1; }
+
   /* The log takes what's left; a tall card scrolls instead of pushing the field out. */
-  #log { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 6px 14px 10px; }
-  #log.scrolled { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px); }
+  #log { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 4px 18px 10px; }
+  #log.scrolled { -webkit-mask-image: linear-gradient(to bottom, transparent 0, transparent 4px, #000 18px); }
+  #log.squeezed { display: none; }
   #log::-webkit-scrollbar { width: 6px; }
   #log::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
   #log:hover::-webkit-scrollbar-thumb { background: #dfe2ea; }
-  #inner { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
-  .empty { color: var(--dim); text-align: center; padding: 14px 18px 8px; font-weight: 600; }
-  .msg { max-width: 86%; padding: 8px 12px; border-radius: 16px; overflow-wrap: anywhere; user-select: text; white-space: pre-wrap; }
-  .msg.claude { align-self: flex-start; background: var(--tint); }
-  .msg.you { align-self: flex-end; background: #e8ebf2; }
-  .msg.you.queued, .msg.you.unsent { background: var(--soft); color: #4a5168; }
+  #inner { display: flex; flex-direction: column; gap: 10px; padding-top: 2px; }
+  .empty { color: var(--dim); padding: 4px 0 2px; }
+  /* The slime talks in plain text, like its bubbles; you get a soft pill. */
+  .msg { overflow-wrap: anywhere; user-select: text; white-space: pre-wrap; }
+  .msg.claude { align-self: stretch; }
+  .msg.you { align-self: flex-end; max-width: 82%; background: var(--soft); padding: 7px 12px; border-radius: 14px; }
+  .msg.you.queued, .msg.you.unsent { color: var(--dim); }
   .msg.new { animation: squish .3s cubic-bezier(.3, 1.6, .5, 1); }
-  @keyframes squish { from { transform: scale(.8, .6); opacity: 0; } to { transform: none; opacity: 1; } }
   .msg.claude.new { transform-origin: 0 100%; }
-  .msg.claude code, .msg.claude pre { background: rgba(255, 255, 255, .65); }
   .msg.you.new { transform-origin: 100% 100%; }
-  .msg code { font: 14px ui-monospace, Menlo, Consolas, monospace; background: rgba(27, 36, 64, .07); border-radius: 5px; padding: 1px 4px; }
-  .msg pre { margin: 4px 0; padding: 7px 9px; background: rgba(27, 36, 64, .07); border-radius: 10px; font: 14px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: pre; overflow-x: auto; }
+  .msg code { font: 14px ui-monospace, Menlo, Consolas, monospace; background: var(--soft); border-radius: 5px; padding: 1px 4px; }
+  .msg pre { margin: 4px 0; padding: 8px 10px; background: var(--soft); border-radius: 10px; font: 14px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: pre; overflow-x: auto; }
   .msg .head { font-weight: 700; }
   .msg.folded { max-height: 15.5em; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); }
-  .more { align-self: flex-start; border: 0; background: none; padding: 0 4px; font: 700 14px var(--ui); color: var(--ink); cursor: pointer; margin: -2px 0 0 8px; text-decoration: underline; text-decoration-color: var(--color); text-decoration-thickness: 2px; text-underline-offset: 3px; }
-  /* Small print stays quiet. */
-  .meta { font: 500 14px var(--ui); color: var(--dim); margin: -2px 12px 0; align-self: flex-end; }
-  .unsend { border: 0; background: none; padding: 0; font: inherit; color: var(--dim); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+  .more { align-self: flex-start; border: 0; background: none; padding: 0; margin-top: -4px; font: 600 14px var(--ui); color: var(--dim); cursor: pointer; }
+  .more:hover { color: var(--ink); }
+  .meta { font: 500 14px var(--ui); color: var(--dim); margin: -6px 2px 0; align-self: flex-end; }
+  .unsend { border: 0; background: none; padding: 0; font: inherit; color: var(--dim); cursor: pointer; }
   .unsend:hover { color: var(--ink); }
-  .note { align-self: center; font: 500 14px var(--ui); color: var(--dim); text-align: center; padding: 2px 12px; max-width: 92%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .dots { align-self: flex-start; background: var(--tint); border-radius: 16px; padding: 12px 14px; display: flex; gap: 5px; }
+  .note { align-self: center; font: 500 14px var(--ui); color: var(--dim); text-align: center; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dots { align-self: flex-start; display: flex; gap: 5px; padding: 6px 0; }
   .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--color); animation: bob 1.1s ease-in-out infinite; transform-origin: 50% 100%; }
   .dots i:nth-child(2) { animation-delay: .15s; }
   .dots i:nth-child(3) { animation-delay: .3s; }
   /* Each dot hops like a tiny slime: squashed on landing, stretched in the air. */
   @keyframes bob { 0%, 68%, 100% { transform: none; } 12% { transform: scale(1.15, .85); } 35% { transform: translateY(-5px) scale(.9, 1.1); } 55% { transform: scale(1.25, .75); } }
-  .hint { margin: 0 14px 8px; color: var(--dim); font: 500 14px/1.35 var(--ui); text-align: center; text-wrap: balance; }
+
+  .hint { margin: 0 18px 8px; color: var(--dim); font: 500 14px/1.4 var(--ui); text-align: center; text-wrap: balance; }
   .hint:empty { display: none; }
-  /* The card's questions or plan scroll if they must; its buttons always show. */
-  .ask { margin: 2px 14px 10px; padding: 12px 14px 12px; border-radius: 16px; background: var(--wash); flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
-  .ask[hidden] { display: none; }
-  #askQuestions, .ask .plan { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
-  #askQuestions::-webkit-scrollbar, .ask .plan::-webkit-scrollbar, #askDetail::-webkit-scrollbar { width: 6px; }
-  #askQuestions::-webkit-scrollbar-thumb, .ask .plan::-webkit-scrollbar-thumb, #askDetail::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
-  #askQuestions:hover::-webkit-scrollbar-thumb, .ask .plan:hover::-webkit-scrollbar-thumb, #askDetail:hover::-webkit-scrollbar-thumb { background: rgba(27, 36, 64, .15); }
-  #log.squeezed { display: none; }
-  #askDetail[hidden] { display: none; }
+
+  /* A question for you (permission, a choice, a plan): no box of its own,
+     just room, the question, and the choices. */
+  .ask { margin: 2px 18px 12px; flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
   .ask[hidden] { display: none; }
   .ask.new { animation: squish .3s cubic-bezier(.3, 1.6, .5, 1); transform-origin: 50% 100%; }
-  .ask .what { font-weight: 700; margin-bottom: 7px; display: flex; gap: 6px; align-items: baseline; }
+  .ask .what { display: flex; gap: 6px; align-items: baseline; margin-bottom: 8px; }
+  .ask .what b { font-weight: 700; }
   .ask .what span { font: 500 14px var(--ui); color: var(--dim); }
-  #askDetail { display: block; font: 14px/1.4 ui-monospace, Menlo, Consolas, monospace; background: rgba(255, 255, 255, .65); border-radius: 10px; padding: 8px 11px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 78px; overflow-y: auto; user-select: text; }
-  .ask .row { display: flex; gap: 8px; margin-top: 10px; }
-  .ask .row button { flex: 1; border: 0; border-radius: 12px; padding: 9px 0; font: 700 14px var(--ui); cursor: pointer; background: #fff; color: var(--ink); }
-  .ask .row button.allow { background: var(--color); color: var(--on); }
-  .ask button:disabled { opacity: .5; cursor: default; }
-  .ask .row button.allow:disabled { opacity: 1; background: rgba(255, 255, 255, .7); color: var(--dim); }
-  /* Claude's questions: each option a round pill; yours fills with the slime's colour. */
-  .q + .q { margin-top: 12px; }
-  .q .text { font-weight: 700; margin: 0 0 7px; }
-  .q .text span { font: 500 14px var(--ui); color: var(--dim); }
-  /* On a question card the title is just a quiet label: the question is the headline. */
-  .ask[data-kind="question"] .what b { font: 600 14px var(--ui); color: var(--dim); }
-  .opts.chips { flex-direction: row; flex-wrap: wrap; }
-  .chips .opt { border-radius: 999px; padding: 7px 14px; }
-  .opt.picked { animation: squish .3s cubic-bezier(.3, 1.6, .5, 1); }
-  .opt:focus-visible { outline: 2px solid var(--color); outline-offset: 1px; }
+  .ask[data-kind="question"] .what b { font: 500 14px var(--ui); color: var(--dim); }
+  #askDetail { display: block; font: 14px/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--soft); border-radius: 10px; padding: 8px 11px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 78px; overflow-y: auto; user-select: text; }
+  #askDetail[hidden] { display: none; }
+  #askQuestions, .ask .plan { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
   #askQuestions::-webkit-scrollbar { width: 0; } /* the fade says there's more */
-  .otherchip { margin-top: 6px; border: 0; background: rgba(255, 255, 255, .38); padding: 7px 14px; border-radius: 999px; font: 600 14px var(--ui); color: var(--dim); cursor: pointer; }
-  .otherchip:hover { color: var(--ink); background: rgba(255, 255, 255, .7); }
-  body.carding .ask { margin-bottom: 14px; }
-  .otherchip[hidden], .other[hidden] { display: none; }
-  /* Several questions: the card is the whole conversation for now. */
-  body.carding form { display: none; }
+  .ask .plan::-webkit-scrollbar, #askDetail::-webkit-scrollbar { width: 6px; }
+  .ask .plan::-webkit-scrollbar-thumb, #askDetail::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
+  .ask .plan:hover::-webkit-scrollbar-thumb, #askDetail:hover::-webkit-scrollbar-thumb { background: #dfe2ea; }
   #askQuestions.overflowing, .ask .plan.overflowing { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
-  .asknote { font: 500 14px var(--ui); color: var(--dim); margin-top: 8px; }
-  .asknote:empty { display: none; }
+  .ask .plan { max-width: none; background: var(--soft); border-radius: 12px; padding: 9px 12px; user-select: text; }
+  .ask .plan[hidden] { display: none; }
+  .q + .q { margin-top: 14px; }
+  .q .text { font-weight: 700; margin: 0 0 8px; }
+  .q .text span { font: 500 14px var(--ui); color: var(--dim); }
   .opts { display: flex; flex-direction: column; gap: 6px; }
-  .opt { text-align: left; border: 0; border-radius: 14px; padding: 8px 12px; background: rgba(255, 255, 255, .7); color: var(--ink); font: 600 15px/1.3 var(--ui); cursor: pointer; transition: background .12s, transform .12s; }
+  .opts.chips { flex-direction: row; flex-wrap: wrap; }
+  .opt { text-align: left; border: 0; border-radius: 12px; padding: 8px 12px; background: var(--soft); color: var(--ink); font: 600 15px/1.3 var(--ui); cursor: pointer; transition: background .12s, transform .12s; }
+  .chips .opt { border-radius: 999px; padding: 7px 14px; }
   .opt small { display: block; font: 500 14px/1.3 var(--ui); color: var(--dim); margin-top: 1px; }
-  .opt:hover { background: #fff; }
+  .opt:hover { background: #e8eaf0; }
   .opt:active { transform: scale(.98); }
   .opt.on { background: var(--color); color: var(--on); }
   .opt.on small { color: inherit; opacity: .8; }
+  .opt.picked { animation: squish .3s cubic-bezier(.3, 1.6, .5, 1); }
   .opt:disabled { opacity: .5; cursor: default; }
-  /* A place to type, not a fourth option: like the main field, lighter. */
-  .other { width: 100%; margin-top: 6px; border: 0; border-radius: 999px; padding: 8px 14px; font: 500 15px var(--ui); color: var(--ink); background: rgba(255, 255, 255, .38); outline: none; user-select: text; }
-  .other::placeholder { color: var(--dim); }
-  .other:focus { background: #fff; }
-  /* A plan reads like one of the slime's replies, in a box that scrolls. */
-  .ask .plan { max-width: none; background: rgba(255, 255, 255, .7); border-radius: 12px; padding: 9px 12px; user-select: text; }
-  .ask .plan[hidden] { display: none; }
+  .opt:focus-visible { outline: 2px solid var(--color); outline-offset: 1px; }
+  /* Every text button looks the same: dim, 600, ink on hover. */
+  .otherchip { margin-top: 4px; border: 0; background: none; padding: 4px 0; font: 600 14px var(--ui); color: var(--dim); cursor: pointer; text-align: left; }
+  .otherchip:hover { color: var(--ink); }
+  .otherchip[hidden], .other[hidden] { display: none; }
+  .other { width: 100%; margin-top: 6px; border: 0; border-radius: 999px; padding: 8px 14px; font: 500 15px var(--ui); color: var(--ink); background: var(--soft); outline: none; user-select: text; }
+  .other::placeholder { color: var(--faint); }
+  .asknote { font: 500 14px var(--ui); color: var(--dim); margin-top: 8px; }
+  .asknote:empty { display: none; }
+  .ask .row { display: flex; gap: 8px; margin-top: 10px; }
   .ask .row[hidden] { display: none; }
-  .ask .always { display: block; margin: 8px auto 0; border: 0; background: rgba(255, 255, 255, .5); padding: 5px 14px; border-radius: 999px; font: 600 14px var(--ui); color: var(--ink); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ask .always:hover { background: rgba(255, 255, 255, .85); }
+  .ask .row button { flex: 1; border: 0; border-radius: 12px; padding: 9px 0; font: 700 14px var(--ui); cursor: pointer; background: var(--soft); color: var(--ink); }
+  .ask .row button.allow { background: var(--color); color: var(--on); }
+  .ask .row button:hover { filter: brightness(0.97); }
+  .ask button:disabled { opacity: .5; cursor: default; }
+  .ask .row button.allow:disabled { opacity: 1; background: var(--soft); color: var(--faint); }
+  .ask .always { display: block; margin: 8px auto 0; border: 0; background: none; padding: 4px 0; font: 600 14px var(--ui); color: var(--dim); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ask .always:hover { color: var(--ink); }
   .ask .always[hidden] { display: none; }
+  /* Several questions: the card is the whole conversation for now. */
+  body.carding form { display: none; }
+  body.carding .ask { margin-bottom: 16px; }
+
   form { display: flex; gap: 8px; align-items: flex-end; padding: 2px 14px 14px; }
-  textarea { flex: 1; resize: none; border: 0; border-radius: 18px; padding: 9px 14px; font: 500 15px/1.4 var(--ui); color: var(--ink); background: var(--soft); max-height: 104px; outline: none; overflow-y: hidden; user-select: text; }
-  textarea::placeholder { color: var(--dim); }
+  textarea { flex: 1; resize: none; border: 0; border-radius: 20px; padding: 9px 15px; font: 500 15px/1.4 var(--ui); color: var(--ink); background: var(--soft); max-height: 104px; outline: none; overflow-y: hidden; user-select: text; }
+  textarea::placeholder { color: var(--faint); }
   textarea:disabled { opacity: .6; }
   form button { flex: none; width: 39px; height: 39px; border: 0; border-radius: 50%; background: var(--color); color: var(--on); cursor: pointer; display: grid; place-items: center; transition: background .15s, color .15s, transform .15s; }
   form button svg { width: 18px; height: 18px; }
-  form button:disabled { background: var(--soft); color: #9aa0ad; cursor: default; }
+  form button:disabled { background: var(--soft); color: var(--faint); cursor: default; }
   form button:not(:disabled):active { transform: scale(.88); }
 </style>
 </head>
-<body class="bottom">
+<body>
 <div class="wrap" id="wrap">
   <div class="bubble">
     <header>
@@ -181,7 +180,6 @@
       <button id="send" type="submit" disabled aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
     </form>
   </div>
-  <svg class="tail" id="tail" viewBox="0 0 18 23"><path d="M0 0 Q6 12 9 23 Q12 12 18 0 Z"/></svg>
 </div>
 <script src="talk.js"></script>
 </body>

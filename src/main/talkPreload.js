@@ -9,5 +9,6 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   unsend: (id, n) => ipcRenderer.send('talk-unsend', id, n),
   decide: (id, key, choice, answers) => ipcRenderer.send('talk-permission', id, key, choice, answers),
   close: () => ipcRenderer.send('talk-close'),
+  closing: () => ipcRenderer.send('talk-closing'),
   terminal: () => ipcRenderer.send('talk-terminal'),
 });

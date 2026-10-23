@@ -36,24 +36,12 @@
     return (x + 0.05) / (y + 0.05);
   }
 
-  // The tail points at the slime: from the bottom edge (box above it) or
-  // the left or right edge (box beside it), `at` px along that edge. The
-  // box pops open from there.
+  // The box pops open from (and shrinks back into) the edge its tail leaves
+  // from, `at` px along it (the tail itself is drawn by the slime's layer).
   function placeTail(tail) {
-    const t = $('tail'), path = t.firstElementChild, root = document.documentElement.style;
-    for (const side of ['bottom', 'left', 'right']) document.body.classList.toggle(side, side === tail.side);
-    if (tail.side !== 'bottom') {
-      const left = tail.side === 'left';
-      t.setAttribute('viewBox', '0 0 23 18');
-      path.setAttribute('d', left ? 'M23 0 Q11 6 0 9 Q11 12 23 18 Z' : 'M0 0 Q12 6 23 9 Q12 12 0 18 Z');
-      t.style.left = ''; t.style.top = tail.at + 'px';
-      root.setProperty('--ox', left ? '0px' : '100%'); root.setProperty('--oy', tail.at + 'px');
-    } else {
-      t.setAttribute('viewBox', '0 0 18 23');
-      path.setAttribute('d', 'M0 0 Q6 12 9 23 Q12 12 18 0 Z');
-      t.style.top = ''; t.style.left = tail.at + 'px';
-      root.setProperty('--ox', tail.at + 'px'); root.setProperty('--oy', '100%');
-    }
+    const root = document.documentElement.style;
+    if (tail.side === 'bottom') { root.setProperty('--ox', tail.at + 'px'); root.setProperty('--oy', '100%'); }
+    else { root.setProperty('--ox', tail.side === 'left' ? '0px' : '100%'); root.setProperty('--oy', tail.at + 'px'); }
   }
 
   function hint(s) {
@@ -156,9 +144,6 @@
     const root = document.documentElement.style;
     const color = s.color || '#d97757';
     root.setProperty('--color', color);
-    root.setProperty('--tint', tint(color, 0.11));
-    root.setProperty('--wash', tint(color, 0.24));
-    root.setProperty('--faint', tint(color, 0.45));
     // White on the slime's colour only where it reads; ink otherwise.
     root.setProperty('--on', contrast(color, '#ffffff') >= 4.5 ? '#fff' : '#1b2440');
     if (s.font) {
@@ -240,13 +225,21 @@
     squeeze();
   }
 
+  // Whatever changes size inside (a plan laid out, a font arriving), the
+  // window fits it again.
+  new ResizeObserver(() => requestAnimationFrame(fitWindow)).observe(inner);
+  new ResizeObserver(() => requestAnimationFrame(fitWindow)).observe($('ask'));
+  if (document.fonts) document.fonts.ready.then(() => fitWindow());
+
   // A card can leave the log only a sliver: hide it rather than show half a line.
   function squeeze() {
     const bubble = document.querySelector('.bubble');
     let used = 0;
     for (const el of bubble.children) if (el !== log && el.offsetParent) used += el.offsetHeight + parseFloat(getComputedStyle(el).marginTop) + parseFloat(getComputedStyle(el).marginBottom);
-    const last = inner.lastElementChild;
-    log.classList.toggle('squeezed', !inner.children.length || bubble.clientHeight - used < Math.max(56, last ? last.offsetHeight + 16 : 0));
+    // (Less room than a line and its padding: hide it; a long reply that
+    // doesn't fit just scrolls.)
+    if (inner.offsetHeight) innerH = inner.offsetHeight;
+    log.classList.toggle('squeezed', !inner.children.length || bubble.clientHeight - used < Math.min(56, innerH + 14) - 1);
   }
   new ResizeObserver(squeeze).observe(document.querySelector('.bubble'));
 
@@ -344,7 +337,7 @@
     $('allow').textContent = kind === 'plan' ? 'Go ahead' : kind === 'question' ? 'Send' : 'Allow';
     $('deny').hidden = kind === 'question';
     const oneTap = kind === 'question' && ask.questions.length === 1 && !ask.questions[0].multiSelect;
-    $('askNote').textContent = kind === 'plan' ? 'Want changes? Type them below.' : oneTap ? 'Tap one to answer, or type below.' : '';
+    $('askNote').textContent = kind === 'plan' ? 'Want changes? Type them below.' : '';
     // Several questions (or picking several): everything happens on the card.
     document.body.classList.toggle('carding', kind === 'question' && !oneTap);
     if (kind !== 'question') { $('askRow').hidden = false; return; }
@@ -477,7 +470,7 @@
     if (!current) return;
     const bubble = document.querySelector('.bubble');
     const chrome = bubble.offsetHeight - log.offsetHeight; // everything but the log
-    const pad = 16; // the log's own padding
+    const pad = 14; // the log's own padding
     // A card's questions or plan may be scrolled: ask for their full height.
     let card = 0;
     for (const el of [$('askQuestions'), $('askPlan'), $('askDetail')]) if (el.offsetParent) card += el.scrollHeight - el.clientHeight;
@@ -561,6 +554,7 @@
   function close() {
     if (closing) return;
     closing = true;
+    if (api.closing) api.closing();
     const w = $('wrap');
     w.classList.remove('pop', 'boing');
     w.classList.add('shut');

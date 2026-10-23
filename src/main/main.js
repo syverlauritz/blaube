@@ -2,7 +2,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, shell, clipboard, globalShortcut, systemPreferences } = require('electron');
 const { SessionTracker } = require('./sessions');
-const { Inbox } = require('./inbox');
+const { Inbox, STYLE } = require('./inbox');
 const { placeTalk } = require('./talkPlace');
 const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
@@ -148,6 +148,7 @@ function refreshDock() {
 }
 
 function moveToDisplay(id) {
+  hideTalk();
   prefs.displayId = id;
   savePrefs();
   fitWindow();
@@ -210,13 +211,62 @@ const TALK_W = 384, TALK_MIN_H = 190, TALK_MAX_H = 580;
 const talkH = () => talkHeights.get(talkId) || 280;
 
 // Puts the box where it belongs for its slime and its current height.
-function placeTalkWin() {
+// The box doesn't hang off its slime rigidly: it drifts after it on a slow,
+// soft spring (easy to read while the slime hops about), and the slime's
+// layer draws the tail from the bubble to its head, so they stay joined.
+let talkGoal = null, talkAt = null, talkVel = { x: 0, y: 0 }, talkGlide = null;
+function placeTalkWin(jump = false) {
   if (!talkWin || !talkSpot) return;
   const place = placeTalk(talkSpot, screen.getDisplayNearestPoint(talkSpot).workArea, TALK_W, talkH(), talkTail && talkTail.side);
   const moved = !talkTail || place.tail.side !== talkTail.side || Math.abs(place.tail.at - talkTail.at) > 0.5;
+  // Switching sides isn't a drift: it goes straight there.
+  if (talkTail && place.tail.side !== talkTail.side) jump = true;
+  // Growing or shrinking keeps the edge its tail leaves from where it is
+  // (a taller box grows up, away from the slime, never down over it).
+  if (!jump && talkAt && talkGoal && place.h !== talkGoal.h) {
+    if (place.tail.side === 'bottom') talkAt.y -= place.h - talkGoal.h;
+    else talkAt.y -= (place.h - talkGoal.h) / 2;
+  }
   talkTail = place.tail;
-  talkWin.setBounds({ x: place.x, y: place.y, width: TALK_W, height: place.h });
+  talkGoal = place;
+  if (jump || !talkAt || !talkWin.isVisible()) { talkAt = { x: place.x, y: place.y }; talkVel = { x: 0, y: 0 }; }
+  applyTalkBounds();
   if (moved && talkId) talkWin.webContents.send('talk-tail', talkTail);
+  if (!talkGlide) talkGlide = setInterval(glideTalk, 16);
+}
+
+function applyTalkBounds() {
+  talkWin.setBounds({ x: Math.round(talkAt.x), y: Math.round(talkAt.y), width: TALK_W, height: talkGoal.h });
+  sendTalkRect();
+}
+
+// Where the bubble is, for the slime's layer to draw the tail to.
+function sendTalkRect() {
+  if (!win || !talkAt || !talkGoal) return;
+  const wb = win.getBounds();
+  const visible = talkWin && talkWin.isVisible();
+  win.webContents.send('talk-rect', visible ? { id: talkId, x: talkAt.x - wb.x, y: talkAt.y - wb.y, w: TALK_W, h: talkGoal.h, side: talkTail.side, vx: talkVel.x } : null);
+}
+
+// A soft spring (like the balloons' settle in face.js, softer): it follows
+// with a little overshoot and rests within about a second. On a leash: it
+// never trails more than 120 px behind.
+function glideTalk() {
+  if (!talkWin || !talkWin.isVisible() || !talkGoal) { clearInterval(talkGlide); talkGlide = null; return; }
+  const dt = 0.016;
+  let dx = talkGoal.x - talkAt.x, dy = talkGoal.y - talkAt.y;
+  if (Math.hypot(dx, dy) < 0.75 && Math.hypot(talkVel.x, talkVel.y) < 5) {
+    if (dx || dy) { talkAt = { x: talkGoal.x, y: talkGoal.y }; talkVel = { x: 0, y: 0 }; applyTalkBounds(); }
+    clearInterval(talkGlide); talkGlide = null; // at rest: no timer ticking
+    return;
+  }
+  talkVel.x += (40 * dx - 11 * talkVel.x) * dt;
+  talkVel.y += (40 * dy - 11 * talkVel.y) * dt;
+  talkAt = { x: talkAt.x + talkVel.x * dt, y: talkAt.y + talkVel.y * dt };
+  dx = talkGoal.x - talkAt.x; dy = talkGoal.y - talkAt.y;
+  const far = Math.hypot(dx, dy);
+  if (far > 120) talkAt = { x: talkGoal.x - dx * 120 / far, y: talkGoal.y - dy * 120 / far };
+  applyTalkBounds();
 }
 
 // Opens the talk box for a session, next to its slime (`at`: the top of the
@@ -272,9 +322,10 @@ function openTalkFor(id, at) {
   // itself, so it never flashes the last slime's conversation or jumps.
   const show = () => {
     if (talkId !== id) return;
-    placeTalkWin();
+    placeTalkWin(true);
     if (TEST) talkWin.showInactive(); // never takes your focus
     else { talkWin.show(); talkWin.focus(); } // already filled in while hidden
+    sendTalkRect();
     pushTalk(id, true);
     if (win) win.webContents.send('talking', id);
   };
@@ -312,6 +363,7 @@ function hideTalk(switching = false) {
   if (!talkWin || !talkWin.isVisible()) return;
   const onPurpose = talkWin.isFocused();
   talkWin.hide();
+  if (win) win.webContents.send('talk-rect', null);
   if (win && !switching) win.webContents.send('talking', null);
   if (onPurpose && !switching && process.platform === 'darwin' && !TEST) activateApp(talkBefore);
 }
@@ -363,7 +415,7 @@ function startSession(cwd, extra = []) {
     settings = claudeHooks.withBlaube({}, PORT);
     settings.hooks.Stop = settings.hooks.Stop.filter((g) => !g.hooks.some((h) => h.asyncRewake));
   }
-  const id = owned.start(cwd, extra, settings);
+  const id = owned.start(cwd, ['--append-system-prompt', STYLE, ...extra], settings);
   prefs.recentFolders = [cwd, ...(prefs.recentFolders || []).filter((f) => f !== cwd)].slice(0, 5);
   savePrefs();
   log(`started a session in ${cwd}: ${id}`);
@@ -505,7 +557,7 @@ function createWindow() {
   if (TEST) win.setOpacity(0);
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'), TEST ? { query: { debug: '1' } } : undefined);
 
-  const refit = () => { fitWindow(); refreshDock(); };
+  const refit = () => { hideTalk(); fitWindow(); refreshDock(); }; // the box would be in the wrong place
   screen.on('display-metrics-changed', refit);
   screen.on('display-added', refit);
   screen.on('display-removed', refit);
@@ -1134,6 +1186,8 @@ app.whenReady().then(async () => {
   });
   ipcMain.on('talk-unsend', (_e, id, n) => { if (id && id === talkId) inbox.unsend(id, n); });
   ipcMain.on('talk-close', () => hideTalk());
+  // It's shrinking shut: the tail goes first.
+  ipcMain.on('talk-closing', () => { if (win) win.webContents.send('talk-rect', null); });
   // The slime moved: the box follows it.
   ipcMain.on('talk-at', (_e, id, at) => {
     if (id !== talkId || !talkWin || !talkWin.isVisible() || !at) return;

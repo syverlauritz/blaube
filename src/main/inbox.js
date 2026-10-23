@@ -17,8 +17,12 @@ const { EventEmitter } = require('node:events');
 const MAX_LOG = 60;
 
 // How a message from the slime reaches Claude: as a system reminder, so it
-// says plainly that it's the user talking.
-const frame = (text) => `The user sent you this message from Blaube, their desktop buddy for Claude Code. Treat it as their next prompt and reply as usual:\n\n${text}`;
+// says plainly that it's the user talking, and that the answer will be read
+// in a small bubble (so: short and plain).
+const frame = (text) => `The user sent you this message from Blaube, their desktop buddy for Claude Code. Treat it as their next prompt. They'll read your reply in a small chat bubble, so keep the reply itself short and plain (a few sentences, no headings or tables, little or no code) unless they ask for detail; do the work as usual:\n\n${text}`;
+
+// The same, for sessions Blaube starts itself (they live in the bubble).
+const STYLE = 'You are talking with the user through Blaube, a small chat bubble above a desktop buddy, not a terminal. This only shapes how you write your replies: do the work, checks and tool use exactly as thoroughly as you normally would. Keep replies short, plain and direct: a few sentences, no headings or tables, lists only when they help. Say what you did or found first; give more detail only when asked. If a short snippet is the answer, show it; don\'t create files just to hold example code.';
 
 class Inbox extends EventEmitter {
   constructor(now = () => Date.now()) {
@@ -326,4 +330,4 @@ function alwaysLabel(updates, max = 70) {
   return text.length > max ? text.slice(0, max - 2) + '…' : text;
 }
 
-module.exports = { Inbox, frame, describe, toolName, alwaysLabel };
+module.exports = { Inbox, frame, describe, toolName, alwaysLabel, STYLE };

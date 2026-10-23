@@ -509,6 +509,9 @@ async function addTalk(win, scene, name) {
 	ipcMain.removeListener('talk-height', onHeight);
 	const fg = (await tw.webContents.capturePage()).toDataURL();
 	tw.destroy();
+	// The slime's layer draws the tail from under the bubble to its head.
+	win.webContents.send('fire', 'talk-rect', { id: t.key, x: place.x, y: place.y, w: 384, h: place.h, side: place.tail.side });
+	await sleep(120);
 	// The renderer's CSP blocks data: images, so compose in a blank window.
 	const bg = (await win.webContents.capturePage()).toDataURL();
 	const cw = new BrowserWindow({ width: w, height: h, show: false });

@@ -1208,6 +1208,7 @@
     ctx.clearRect(0, 0, W, H);
     const list = drawOrder();
     if (CFG.shadow) for (const b of list) D.drawShadow(ctx, b.body, floorAt(b.body.centroid().x, b.body.bbox().maxY));
+    drawTalkTail();
 
     // Goo bridge while a slime is splitting off.
     for (const b of list) {
@@ -1337,20 +1338,68 @@
     }
   }
 
+  // The talk box's tail: from under its bubble (which drifts after the slime
+  // in its own window) to the slime's head, redrawn every frame, so the two
+  // stay joined however the slime hops. Flat white, the bubbles' tail
+  // shape, just longer; a slight curve so it reads as soft.
+  // Its tip goes to the body (under whatever the slime wears, which is
+  // drawn over it), it grows out when the box opens, and like the balloons'
+  // tails (face.js) it bends away from how the bubble is moving.
+  let talkRect = null, talkTailAt = 0;
+  if (api.onTalkRect) api.onTalkRect((r) => {
+    if (r && (!talkRect || talkRect.id !== r.id)) talkTailAt = time;
+    talkRect = r;
+  });
+  function drawTalkTail() {
+    const b = talkRect && buddies.get(talkRect.id);
+    if (!b || talkRect.id !== talkingTo) return;
+    const c = b.body.centroid(), r = b.body.o.radius, PAD = 12;
+    const bx = talkRect.x + PAD, by = talkRect.y + PAD, bw = talkRect.w - PAD * 2, bh = talkRect.h - PAD * 2;
+    let base, tip, across; // where it leaves the bubble, where it ends, and which way its base runs
+    if (talkRect.side === 'bottom') {
+      base = { x: Math.max(bx + 30, Math.min(bx + bw - 30, c.x)), y: by + bh - 18 }; // well inside: no gap while it moves
+      tip = { x: c.x, y: b.body.bbox().minY + 6 }; // just inside the top of the body
+      across = { x: 1, y: 0 };
+    } else {
+      const left = talkRect.side === 'left';
+      base = { x: left ? bx + 18 : bx + bw - 18, y: Math.max(by + 30, Math.min(by + bh - 30, c.y - r * 0.4)) };
+      tip = { x: c.x + (left ? r * 0.7 : -r * 0.7), y: c.y - r * 0.4 };
+      across = { x: 0, y: 1 };
+    }
+    // Grows out from the bubble when it opens (with the bubble's own pop).
+    const grow = Math.min(1, (time - talkTailAt) / 0.26), ease = 1 - Math.pow(1 - grow, 3) * (1 - 1.6 * grow);
+    tip = { x: base.x + (tip.x - base.x) * ease, y: base.y + (tip.y - base.y) * ease };
+    // The balloons' tail: a 9 px half base, slightly lopsided sides, bent
+    // against the bubble's movement.
+    const bend = Math.max(-18, Math.min(18, -(talkRect.vx || 0) * 0.05));
+    const mx = (base.x + tip.x) / 2 + bend * across.x, my = (base.y + tip.y) / 2 + bend * across.y;
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(base.x - across.x * 9, base.y - across.y * 9);
+    ctx.quadraticCurveTo(mx - across.x * 3, my - across.y * 3, tip.x, tip.y);
+    ctx.quadraticCurveTo(mx + across.x * 4, my + across.y * 4, base.x + across.x * 9, base.y + across.y * 9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
   // While its talk box is open, tells the app where the slime's head is, so
   // the box (and its tail) stays with it when it's nudged or carried.
+  // Only moves that matter count (not breathing, squishes or an ear's sway):
+  // the box drifts after real moves; the tail takes up the rest.
   let talkSent = null;
   function followTalk() {
     const b = talkingTo && buddies.get(talkingTo);
     if (!b || !api.talkAt) { talkSent = null; return; }
     const at = headTop(b);
-    if (talkSent && Math.abs(at.x - talkSent.x) < 1.5 && Math.abs(at.y - talkSent.y) < 1.5) return;
+    if (talkSent && Math.hypot(at.x - talkSent.x, at.y - talkSent.y) < 12) return;
     talkSent = at;
     api.talkAt(talkingTo, at);
   }
 
-  // The top of a slime (its accessory included) and its size: where a talk
-  // box's tail points.
+  // Where a talk box goes for a slime: over its middle, clear of its head
+  // and what it wears (at rest: the body's resting size, not every squish).
   function headTop(b) {
     const c = b.body.centroid(), r = b.body.o.radius;
     return { x: c.x, y: Math.min(b.body.lookTop ?? Infinity, c.y - r), r };
