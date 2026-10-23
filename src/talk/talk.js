@@ -283,6 +283,7 @@
           if (askKey !== ask.key) return;
           for (const b of card.querySelectorAll('button')) b.disabled = false;
           updateSend(ask);
+          if (ask.kind === 'plan') planButtons();
           focusCard();
         }, 450);
       } else { updateSend(ask); focusCard(); }
@@ -585,7 +586,8 @@
   document.addEventListener('keydown', (e) => {
     if (!askKey || !current.ask || current.ask.kind !== 'question' || current.ask.questions.length !== 1) return;
     if (e.metaKey || e.ctrlKey || e.altKey || text.value) return;
-    if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+    // Typing in a field ("15 minutes") is typing, not picking option 1.
+    if (document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
     const b = document.querySelector(`#askQuestions .opt[data-n="${e.key}"]`);
     if (b && !b.disabled) { e.preventDefault(); b.click(); }
   });

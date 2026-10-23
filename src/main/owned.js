@@ -3,7 +3,7 @@
 // it from its slime, and what you type goes straight in, even while it's
 // working (it reads it next). It's a real Claude Code session with its own
 // id, so it can be picked up later with `claude --resume <id>`.
-const { spawn, execFileSync } = require('node:child_process');
+const { spawn, spawnSync, execFile } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -11,15 +11,26 @@ const path = require('node:path');
 const { EventEmitter } = require('node:events');
 
 // Where claude is when the usual places don't have it (installed with nvm,
-// bun, a custom npm prefix): ask a login shell, as a terminal would. Once.
-let shellClaude;
-function claudeFromShell() {
-  if (shellClaude !== undefined || process.platform === 'win32') return shellClaude || '';
-  try {
-    const shell = process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash');
-    shellClaude = String(execFileSync(shell, ['-ilc', 'command -v claude'], { timeout: 5000, encoding: 'utf8' })).trim().split('\n').pop() || '';
-  } catch { shellClaude = ''; }
-  return shellClaude;
+// bun, a custom npm prefix): ask a login shell, as a terminal would. Asked
+// once, in the background, when Blaube starts; only a real file counts (an
+// alias named claude isn't a program).
+let shellClaude = '';
+function findInShell() {
+  if (process.platform === 'win32') return;
+  const shell = process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash');
+  const ask = /zsh$/.test(shell) ? 'whence -p claude' : 'type -P claude';
+  execFile(shell, ['-ilc', ask], { timeout: 8000, encoding: 'utf8' }, (err, out) => {
+    const found = String(out || '').trim().split('\n').pop();
+    try { if (path.isAbsolute(found) && fs.statSync(found).isFile()) shellClaude = found; } catch { /* not there */ }
+  });
+}
+
+// Stops a process and everything it started (on Windows, claude.cmd runs
+// claude under cmd.exe: stopping cmd.exe alone would leave claude going).
+function stop(proc) {
+  if (!proc || !proc.pid) return;
+  if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true });
+  else proc.kill();
 }
 
 // Windows: run a .cmd through cmd.exe ourselves, every part quoted (Node's
@@ -31,6 +42,7 @@ class Owned extends EventEmitter {
   constructor(findClaude) {
     super();
     this.findClaude = findClaude;
+    if (!findClaude()) findInShell();
     this.sessions = new Map(); // id -> { proc, cwd, startedAt, err, buf }
   }
 
@@ -42,7 +54,7 @@ class Owned extends EventEmitter {
   // mangle them). Returns its id.
   start(cwd, extra = [], settings = null) {
     const id = crypto.randomUUID();
-    const bin = this.findClaude() || claudeFromShell() || 'claude';
+    const bin = this.findClaude() || shellClaude || 'claude';
     const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--session-id', id, ...extra];
     let settingsFile = '';
     if (settings) {
@@ -74,17 +86,18 @@ class Owned extends EventEmitter {
     proc.stderr.setEncoding('utf8');
     proc.stderr.on('data', (d) => { s.err = (s.err + d).slice(-2000); });
     // However it ends (it quits, is stopped, or never starts: a missing
-    // program gives 'error' and 'close' but no 'exit'), it ends once.
+    // program gives 'error' and 'close' but no 'exit'), it ends once, after
+    // everything it printed has been read.
     let over = false;
     const ended = (code, signal) => {
       if (over) return;
       over = true;
+      if (s.buf.trim()) { try { this.read(id, JSON.parse(s.buf)); } catch { /* half a line */ } }
       this.sessions.delete(id);
       if (settingsFile) fs.rm(settingsFile, { force: true }, () => {});
       this.emit('exit', id, code == null && !signal ? 1 : code, s.err.trim(), signal || null);
     };
     proc.on('error', (e) => { s.err = (s.err + e.message).slice(-2000); if (!proc.pid) ended(1, null); });
-    proc.on('exit', ended);
     proc.on('close', ended);
     proc.stdin.on('error', () => { /* it went away; 'exit' says so */ });
     this.emit('start', id, cwd);
@@ -116,14 +129,14 @@ class Owned extends EventEmitter {
     const s = this.sessions.get(id);
     if (!s) return;
     s.proc.stdin.end();
-    setTimeout(() => { if (this.sessions.get(id) === s) s.proc.kill(); }, 5000);
+    setTimeout(() => { if (this.sessions.get(id) === s) stop(s.proc); }, 5000);
   }
 
   endAll() { for (const id of this.list()) this.end(id); }
 
   // Blaube is quitting: stop them now (their conversations are saved).
   killAll() {
-    for (const s of this.sessions.values()) { try { s.proc.stdin.end(); s.proc.kill(); } catch { /* gone */ } }
+    for (const s of this.sessions.values()) { try { s.proc.stdin.end(); stop(s.proc); } catch { /* gone */ } }
   }
 }
 

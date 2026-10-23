@@ -193,6 +193,10 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	const quiz3 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
 	check(await until(async () => !(await box(`document.getElementById('ask').hidden`))), 'another question shows');
 	await sleep(600);
+	// Typing a number into the field is typing, not picking an option.
+	await box(`(() => { const t = document.getElementById('text'); const keep = t.value; t.value = ''; t.focus(); document.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true })); t.value = keep; })()`);
+	await sleep(400);
+	check(!(await box(`document.getElementById('ask').hidden`)), 'a digit typed in the field doesn’t answer');
 	await box(`document.getElementById('form').requestSubmit()`);
 	await sleep(300);
 	check(!(await box(`document.getElementById('ask').hidden`)), 'a draft from before it came isn’t taken as the answer');
