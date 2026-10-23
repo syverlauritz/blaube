@@ -216,6 +216,44 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	check(bk && bk.behavior === 'deny' && /Web Audio/.test(bk.message), 'Enter sends the plan back with what to change');
 	for (const e of inbox.queue.get(ID) || []) inbox.unsend(ID, e.n); // tidy up the queued draft
 
+	// Looking at another slime and coming back keeps your picks and keeps a
+	// draft from before the card from becoming its answer.
+	const ID2 = ID + '-b';
+	await hook({ session_id: ID2, hook_event_name: 'SessionStart', cwd: '/tmp/website' });
+	await until(async () => !!(await page(`__blaube.buddies.get(${JSON.stringify(ID2)})`)), 6000);
+	await box(`(() => { const t = document.getElementById('text'); t.value = 'a draft from before'; t.dispatchEvent(new Event('input')); })()`);
+	const quiz4 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions: multi } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	await until(async () => (await box(`document.querySelectorAll('#askQuestions .q').length`)) === 2);
+	await sleep(500);
+	await box(`document.querySelectorAll('#askQuestions .opt')[1].click()`);
+	await page(`window.blaube.talk(${JSON.stringify(ID2)}, { x: 300, y: 600, r: 60 })`);
+	check(await until(() => talkId() === ID2), 'switching to another slime');
+	await page(`window.blaube.talk(${JSON.stringify(ID)}, { x: 300, y: 600, r: 60 })`);
+	check(await until(() => talkId() === ID), 'and back');
+	await sleep(400);
+	check(await box(`document.querySelectorAll('#askQuestions .opt')[1].classList.contains('on')`), 'your pick is still there');
+	check(await box(`document.getElementById('text').value === 'a draft from before'`), 'and so is your draft');
+	await box(`document.querySelectorAll('#askQuestions .opt')[2].click()`);
+	await box(`document.getElementById('allow').click()`);
+	const kept = await Promise.race([quiz4.done, sleep(3000).then(() => null)]);
+	let kd = null;
+	try { kd = JSON.parse(kept.out).hookSpecificOutput.decision.updatedInput.answers; } catch { /* checked below */ }
+	check(kd && kd['Which ones?'] === 'Car tax' && kd['Ship today?'] === 'Yes', `answered with the picks from before the switch (${JSON.stringify(kd)})`);
+
+	// A plan that comes over a draft: the draft isn't taken as what to change.
+	const planning3 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'ExitPlanMode', tool_input: { plan: '1. Add sounds' } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	check(await until(async () => !(await box(`document.getElementById('askPlan').hidden`))), 'a plan comes while the draft is there');
+	await sleep(600);
+	check(await box(`document.getElementById('deny').textContent`) === 'Keep planning', 'the button doesn’t claim the draft');
+	await box(`document.getElementById('deny').click()`);
+	const plain = await Promise.race([planning3.done, sleep(3000).then(() => null)]);
+	let pl = null;
+	try { pl = JSON.parse(plain.out).hookSpecificOutput.decision; } catch { /* checked below */ }
+	check(pl && pl.behavior === 'deny' && !/draft from before/.test(pl.message), 'Keep planning goes without it');
+	check(await box(`document.getElementById('text').value === 'a draft from before'`), 'and the draft stays yours');
+	await box(`(() => { const t = document.getElementById('text'); t.value = ''; t.dispatchEvent(new Event('input')); })()`);
+	await hook({ session_id: ID2, hook_event_name: 'SessionEnd' });
+
 	// A long reply folds; Show more opens it.
 	await hook({ hook_event_name: 'Stop', last_assistant_message: Array.from({ length: 30 }, (_, i) => `Line ${i + 1} of a long answer.`).join('\n') });
 	check(await until(() => box(`!!document.querySelector('.msg.folded')`)), 'a long reply folds');

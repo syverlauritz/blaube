@@ -29,6 +29,9 @@ class Inbox extends EventEmitter {
     this.logs = new Map(); // session id -> [{ who: 'you' | 'claude', text, via, at, status }]
     this.reachable = new Set(); // sessions whose inbox hook has asked at least once
     this.asks = new Map(); // session id -> [{ key, tool, detail, always, reply }]
+    // Sessions Blaube started itself (owned.js): what you say goes straight
+    // into them, and their replies come from their own output.
+    this.owned = new Set();
     this.nextKey = 1;
   }
 
@@ -151,11 +154,26 @@ class Inbox extends EventEmitter {
     return true;
   }
 
+  // Something you said to a session Blaube started (it went straight in).
+  say(id, text) {
+    text = String(text || '').trim();
+    if (text) this.add(id, { who: 'you', text, via: 'blaube', status: 'sent' });
+  }
+
+  // A reply from a session Blaube started (from its own output).
+  replied(id, text) {
+    if (!String(text || '').trim()) return;
+    const entry = this.add(id, { who: 'claude', text: String(text) });
+    this.emit('reply', id, entry);
+  }
+
   // Hook events, for the log and to know when a turn starts or a session ends.
   observe(payload) {
     const id = String(payload.session_id || '');
     if (!id || payload.agent_id) return;
     const event = payload.hook_event_name;
+    // A session Blaube started tells its own story (say/replied).
+    if (this.owned.has(id) && (event === 'UserPromptSubmit' || event === 'Stop')) return;
     if (event === 'UserPromptSubmit') {
       // You typed in the terminal: a turn starts, so stop the old hook
       // waiting (its message would land mid-turn); the next Stop asks again.
@@ -212,7 +230,8 @@ class Inbox extends EventEmitter {
       // 'ready': it's waiting, a message goes straight in; 'busy': its hook
       // has asked before, so a message arrives when the turn ends; 'unknown':
       // never heard from its inbox hook (started before it was installed).
-      inbox: this.waiters.has(id) ? 'ready' : this.reachable.has(id) ? 'busy' : 'unknown',
+      inbox: this.owned.has(id) || this.waiters.has(id) ? 'ready' : this.reachable.has(id) ? 'busy' : 'unknown',
+      owned: this.owned.has(id),
       queued: (this.queue.get(id) || []).length,
       ask: (() => {
         const a = (this.asks.get(id) || [])[0];

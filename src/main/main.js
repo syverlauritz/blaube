@@ -7,7 +7,8 @@ const { placeTalk } = require('./talkPlace');
 const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
 const { openResumeTerminal, resumeCommand, focusSessionApp } = require('./terminal');
-const { startAgentsPoller, listAgents } = require('./agents');
+const { startAgentsPoller, listAgents, findClaude } = require('./agents');
+const { Owned } = require('./owned');
 const { startFocusWatcher, transcriptPath } = require('./focus');
 const usage = require('./usage');
 const { runningTasks } = require('./tasks');
@@ -41,6 +42,7 @@ let world = { obstacles: [] };
 let dockWindows = [];
 const tracker = new SessionTracker();
 const inbox = new Inbox();
+const owned = new Owned(findClaude);
 let focus = { front: () => [] };
 
 // Sessions whose window you're looking at count as seen, so their slimes
@@ -224,37 +226,46 @@ function openTalk(id, at) {
   if (!tracker.sessions.get(id)) return;
   // Clicking its slime took focus and hid it: that click meant "close".
   if (talkHiddenId === id && Date.now() - talkHiddenAt < 350) { if (!TEST) activateApp(talkBefore); return; }
-  if (!talkWin) {
-    talkWin = new BrowserWindow({
-      width: TALK_W,
-      height: 300,
-      backgroundThrottling: false,
-      show: false,
-      frame: false,
-      transparent: true,
-      resizable: false,
-      minimizable: false,
-      maximizable: false,
-      fullscreenable: false,
-      skipTaskbar: true,
-      alwaysOnTop: true,
-      hasShadow: false,
-      webPreferences: { preload: path.join(__dirname, 'talkPreload.js'), contextIsolation: true, sandbox: true },
-    });
-    talkWin.loadFile(path.join(__dirname, '..', 'talk', 'talk.html'));
-    if (TEST) talkWin.setOpacity(0);
-    talkWin.on('blur', () => {
-      if (!talkWin || !talkWin.isVisible() || talkWin.webContents.isDevToolsFocused()) return;
-      hideTalk();
-      talkHiddenAt = Date.now(); // a click on its slime right now means "close"
-      talkHiddenId = talkId;
-    });
-    talkWin.on('closed', () => { talkWin = null; talkId = null; });
-  }
+  makeTalkWin();
   if (talkWin.isVisible() && talkId === id) { hideTalk(); return; }
-  if (talkWin.isVisible()) hideTalk(true);
+  if (talkWin.isVisible()) hideTalk(true); // another slime's: it switches over
   talkId = id;
   talkTail = null;
+  openTalkFor(id, at);
+}
+
+// The talk box's window: made once, ahead of time (so the first click
+// opens it as quickly as the rest), and kept.
+function makeTalkWin() {
+  if (talkWin) return;
+  talkWin = new BrowserWindow({
+    width: TALK_W,
+    height: 300,
+    backgroundThrottling: false,
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    hasShadow: false,
+    webPreferences: { preload: path.join(__dirname, 'talkPreload.js'), contextIsolation: true, sandbox: true },
+  });
+  talkWin.loadFile(path.join(__dirname, '..', 'talk', 'talk.html'));
+  if (TEST) talkWin.setOpacity(0);
+  talkWin.on('blur', () => {
+    if (!talkWin || !talkWin.isVisible() || talkWin.webContents.isDevToolsFocused()) return;
+    hideTalk();
+    talkHiddenAt = Date.now(); // a click on its slime right now means "close"
+    talkHiddenId = talkId;
+  });
+  talkWin.on('closed', () => { talkWin = null; talkId = null; });
+}
+
+function openTalkFor(id, at) {
   const wb = win.getBounds();
   talkSpot = { x: wb.x + at.x, y: wb.y + at.y, r: at.r };
   // Fill it in while it's still hidden, and show it once it has measured
@@ -332,9 +343,65 @@ function pushTalk(id, focusField = false) {
     demo: id.startsWith('demo-'),
     // Connected if the settings say so, or if this session's hooks already
     // reached us (it was started with them, whatever the file says now).
-    connected: hooksOk || inbox.reachable.has(id) || inbox.asks.has(id),
+    connected: hooksOk || inbox.reachable.has(id) || inbox.asks.has(id) || inbox.owned.has(id),
     focus: focusField,
   }, inbox.view(id)));
+}
+
+// --- Sessions Blaube starts itself (owned.js) ----------------------------------
+
+// Starts Claude Code in `cwd`, with no terminal: its slime pops out with
+// its talk box open, ready for your first message.
+function startSession(cwd, extra = []) {
+  if (!cwd) return null;
+  const args = [...extra];
+  // Not connected yet: give this session Blaube's hooks itself, so its
+  // slime still knows what it's doing and can still ask you things.
+  if (!claudeHooks.isInstalled(undefined, PORT)) {
+    const s = claudeHooks.withBlaube({}, PORT);
+    s.hooks.Stop = s.hooks.Stop.filter((g) => !g.hooks.some((h) => h.asyncRewake));
+    args.push('--settings', JSON.stringify(s));
+  }
+  const id = owned.start(cwd, args);
+  prefs.recentFolders = [cwd, ...(prefs.recentFolders || []).filter((f) => f !== cwd)].slice(0, 5);
+  savePrefs();
+  log(`started a session in ${cwd}: ${id}`);
+  // Open its talk box once its slime is out.
+  let tries = 0;
+  const open = setInterval(() => {
+    if (++tries > 40 || !owned.has(id)) return clearInterval(open);
+    if (!isReady(tracker.sessions.get(id) || {})) return;
+    clearInterval(open);
+    setTimeout(() => { if (win) win.webContents.send('open-talk', id); }, 900); // after it lands
+  }, 150);
+  return id;
+}
+
+async function newSession() {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: 'New session',
+    message: 'Pick the folder Claude should work in',
+    buttonLabel: 'Start here',
+    properties: ['openDirectory', 'createDirectory'],
+    defaultPath: (prefs.recentFolders || [])[0],
+  });
+  if (!canceled && filePaths[0]) startSession(filePaths[0]);
+}
+
+function newSessionMenu() {
+  const recent = (prefs.recentFolders || []).filter((f) => { try { return fs.statSync(f).isDirectory(); } catch { return false; } });
+  return [
+    { label: 'New session…', click: newSession },
+    ...(recent.length ? [{ label: 'New session in', submenu: recent.map((f) => ({ label: path.basename(f), sublabel: f, click: () => startSession(f) })) }] : []),
+  ];
+}
+
+// "Continue in terminal": lets Blaube's copy finish, then resumes it there.
+function continueInTerminal(s) {
+  if (!owned.has(s.id)) return openResumeTerminal(s);
+  const id = s.id, snapshot = Object.assign({}, s);
+  owned.once('exit', function done(gone) { if (gone !== id) return owned.once('exit', done); openResumeTerminal(snapshot); });
+  owned.end(id);
 }
 
 // A reply's first sentence or so, for the slime's speech bubble.
@@ -673,6 +740,7 @@ function appMenuTemplate() {
     { label: 'Colour', submenu: colorMenu(prefs.config.color, (hex) => setConfig(Object.assign({}, prefs.config, { color: hex }))) },
     { label: 'Live on display', submenu: displayMenu() },
     { label: 'Settings…', click: openSettings },
+    ...newSessionMenu(),
     { label: 'Come here', click: () => send('come-here') },
     { label: 'Everyone hop!', click: () => send('hop') },
     { label: 'Demo sessions', click: runDemo },
@@ -699,8 +767,14 @@ function sessionMenu(id) {
     { label: `${word}${s.message && s.state === 'waiting' ? ': ' + s.message : ''}`, enabled: false },
     ...(effort ? [{ label: effort, enabled: false }] : []),
     { type: 'separator' },
-    { label: 'Go to session', enabled: !isDemo, click: () => goToSession(s) },
-    { label: 'Resume in new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
+    ...(owned.has(id) ? [
+      { label: 'Talk', click: () => win && win.webContents.send('open-talk', id) },
+      { label: 'Continue in terminal', click: () => continueInTerminal(s) },
+      { label: 'End session', click: () => owned.end(id) },
+    ] : [
+      { label: 'Go to session', enabled: !isDemo, click: () => goToSession(s) },
+      { label: 'Resume in new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
+    ]),
     { label: 'Copy resume command', click: () => clipboard.writeText(`cd "${s.cwd}" && ${resumeCommand(s.id)}`) },
     { label: 'Open project folder', enabled: !!s.cwd, click: () => shell.openPath(s.cwd) },
     { type: 'separator' },
@@ -830,6 +904,7 @@ app.whenReady().then(async () => {
   }
 
   createWindow();
+  makeTalkWin();
   if (!app.isPackaged && !TEST) watchForChanges();
 
   if (!TEST) {
@@ -863,6 +938,28 @@ app.whenReady().then(async () => {
     if (win && !open && asked && asked.who === 'you' && asked.via === 'blaube') win.webContents.send('say', { id, text: snippet(text), seconds: 7 });
   });
   tracker.on('activity', statusBubble);
+
+  // Sessions Blaube started: their slime, their replies, their end.
+  owned.on('start', (id, cwd) => {
+    inbox.owned.add(id);
+    tracker.handle({ session_id: id, hook_event_name: 'SessionStart', cwd, _entry: 'blaube' }, 'blaube');
+  });
+  owned.on('result', (id, r) => {
+    if (r.error && !r.text) inbox.add(id, { who: 'note', text: `Something went wrong${r.subtype ? ` (${r.subtype})` : ''}.` });
+    else inbox.replied(id, r.text);
+    tracker.handle({ session_id: id, hook_event_name: 'Stop', last_assistant_message: r.text }, 'blaube');
+  });
+  owned.on('exit', (id, code, err) => {
+    const s = tracker.sessions.get(id);
+    log(`session ${id} ended (${code})${err ? ': ' + err.slice(0, 300) : ''}`);
+    // It stopped with an error before you could say anything: say why.
+    if (code && s && !TEST && inbox.log(id).length === 0) {
+      dialog.showMessageBox({ type: 'warning', message: 'Claude Code couldn’t start there.', detail: err || `It stopped right away (exit code ${code}).` });
+    }
+    tracker.handle({ session_id: id, hook_event_name: 'SessionEnd' }, 'blaube');
+    inbox.observe({ session_id: id, hook_event_name: 'SessionEnd' });
+    inbox.owned.delete(id);
+  });
   setInterval(() => { if (tracker.prune()) { pushState(); refreshTray(); } }, 30 * 1000);
   setInterval(refreshUsage, 3000);
   setInterval(() => {
@@ -985,7 +1082,17 @@ app.whenReady().then(async () => {
     goToSession(s);
   });
   ipcMain.on('talk', (_e, id, at) => openTalk(id, at || { x: 0, y: 0 }));
-  ipcMain.on('talk-send', (_e, id, text) => { if (id && id === talkId && tracker.sessions.has(id) && !id.startsWith('demo-')) inbox.send(id, text); });
+  ipcMain.on('talk-send', (_e, id, text) => {
+    if (!id || id !== talkId || !tracker.sessions.has(id) || id.startsWith('demo-')) return;
+    // A session Blaube started: straight in, and its turn starts.
+    if (owned.has(id)) {
+      if (!owned.send(id, text)) return;
+      inbox.say(id, text);
+      tracker.handle({ session_id: id, hook_event_name: 'UserPromptSubmit' }, 'blaube');
+      return;
+    }
+    inbox.send(id, text);
+  });
   ipcMain.on('talk-unsend', (_e, id, n) => { if (id && id === talkId) inbox.unsend(id, n); });
   ipcMain.on('talk-close', () => hideTalk());
   // The slime moved: the box follows it.
@@ -1028,7 +1135,7 @@ app.whenReady().then(async () => {
   if (process.env.BLAUBE_DEMO) runDemo();
   if (TEST) {
     const run = require(path.resolve(TEST));
-    Promise.resolve(run({ app, win, tracker, inbox, PORT, talk: () => talkWin, talkId: () => talkId, log }))
+    Promise.resolve(run({ app, win, tracker, inbox, owned, startSession, PORT, talk: () => talkWin, talkId: () => talkId, log }))
       .then((code) => app.exit(code || 0), (e) => { console.error(e); app.exit(1); });
   }
 });
@@ -1039,15 +1146,19 @@ app.on('window-all-closed', () => app.quit());
 let quitAnyway = false;
 app.on('before-quit', (e) => {
   const waiting = [...inbox.queue.values()].reduce((n, q) => n + q.length, 0);
-  if (TEST || quitAnyway || !waiting) return;
+  const mine = owned.list().length;
+  if (TEST || quitAnyway || (!waiting && !mine)) return;
   e.preventDefault();
+  const lines = [];
+  if (mine) lines.push(mine === 1 ? 'A session you started in Blaube will stop. You can pick it up later with “Continue in terminal” next time, or claude --resume.' : `${mine} sessions you started in Blaube will stop. You can pick them up later with claude --resume.`);
+  if (waiting) lines.push(waiting === 1 ? 'A message hasn’t gone in yet and won’t be sent.' : `${waiting} messages haven’t gone in yet and won’t be sent.`);
   dialog.showMessageBox({
     type: 'question',
     buttons: ['Quit anyway', 'Cancel'],
     defaultId: 1,
     cancelId: 1,
-    message: waiting === 1 ? 'A message hasn’t gone in yet.' : `${waiting} messages haven’t gone in yet.`,
-    detail: 'They’re waiting for their sessions to finish a turn. If Blaube quits now, they won’t be sent.',
+    message: 'Quit Blaube?',
+    detail: lines.join('\n\n'),
   }).then(({ response }) => { if (response === 0) { quitAnyway = true; app.quit(); } });
 });
-app.on('will-quit', () => { globalShortcut.unregisterAll(); if (focus.stop) focus.stop(); });
+app.on('will-quit', () => { globalShortcut.unregisterAll(); if (focus.stop) focus.stop(); owned.endAll(); });

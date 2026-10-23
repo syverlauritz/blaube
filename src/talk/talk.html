@@ -114,8 +114,9 @@
   .opt.picked { animation: squish .3s cubic-bezier(.3, 1.6, .5, 1); }
   .opt:focus-visible { outline: 2px solid var(--color); outline-offset: 1px; }
   #askQuestions::-webkit-scrollbar { width: 0; } /* the fade says there's more */
-  .otherchip { margin-top: 6px; border: 0; background: none; padding: 4px 2px; font: 600 14px var(--ui); color: var(--dim); cursor: pointer; text-decoration: underline; text-decoration-color: rgba(91, 98, 112, .35); text-underline-offset: 3px; }
-  .otherchip:hover { color: var(--ink); }
+  .otherchip { margin-top: 6px; border: 0; background: rgba(255, 255, 255, .38); padding: 7px 14px; border-radius: 999px; font: 600 14px var(--ui); color: var(--dim); cursor: pointer; }
+  .otherchip:hover { color: var(--ink); background: rgba(255, 255, 255, .7); }
+  body.carding .ask { margin-bottom: 14px; }
   .otherchip[hidden], .other[hidden] { display: none; }
   /* Several questions: the card is the whole conversation for now. */
   body.carding form { display: none; }

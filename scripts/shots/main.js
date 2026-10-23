@@ -396,6 +396,14 @@ const SCENES = {
 			{ who: 'you', text: 'plan how to add sounds', via: 'blaube', status: 'sent' },
 		], ask: { key: 1, kind: 'plan', tool: 'ExitPlanMode', detail: '', always: 'Go ahead, and auto-accept edits', plan: '## Add sounds\n1. Add a `sounds/` folder with squish, boing and chime (short, soft).\n2. Play squish on landing, boing on a throw, chime when a session is done.\n3. A **Sounds** switch in Settings, off by default.\n4. Keep it quiet: never more than one sound at a time.' } },
 	},
+	// A session you just started from Blaube: its box opens by itself.
+	talkNew: {
+		sessions: [session('tn', 'kalkis', 'idle', { color: '#5B8DEF', look: 'antenna' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1000, 700],
+		talk: { key: 'tn', inbox: 'ready', owned: true, log: [] },
+	},
 	talkBusy: {
 		sessions: [session('tb', 'kalkis', 'working', { color: '#5FB57A', look: 'sprout' })],
 		wait: 3500,

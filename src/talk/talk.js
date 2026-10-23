@@ -59,6 +59,7 @@
   function hint(s) {
     if (s.demo) return 'Demo slimes can’t talk back. Try a real session!';
     if (s.ended) return s.log.some((m) => m.status === 'unsent') ? `${s.project} has ended, so what you sent last didn’t go in.` : `${s.project} has ended.`;
+    if (s.owned) return '';
     if (s.ask) return '';
     if (!s.connected) return 'Update the Claude Code connection in Blaube’s menu, then restart this session to talk to it.';
     // Queued, nobody waiting, and the turn is over (interrupted, say): it
@@ -164,13 +165,13 @@
       root.setProperty('--nameWeight', s.font === 'System' || s.font === 'DynaPuff' ? '700' : '400');
     }
     if (s.tail) placeTail(s.tail);
-    $('terminal').style.display = s.demo || s.ended ? 'none' : '';
+    $('terminal').style.display = s.demo || s.ended || s.owned ? 'none' : '';
     renderAsk(s.ask, s.asks);
     $('hint').textContent = hint(s);
     text.disabled = !!s.demo || !s.connected || !!s.ended;
     text.placeholder = s.ask && s.ask.kind === 'question' ? (s.ask.questions.length === 1 ? 'Or type your answer…' : 'Say something for later…')
       : s.ask && s.ask.kind === 'plan' ? 'What should change?'
-      : s.state === 'working' || s.state === 'waiting' ? 'Say something for later…' : 'Say something…';
+      : !s.owned && (s.state === 'working' || s.state === 'waiting') ? 'Say something for later…' : 'Say something…';
     send.disabled = text.disabled || !text.value.trim();
     // The slime's dots while it works on something you said: after the
     // last thing it got (anything still queued comes after them).
@@ -204,7 +205,7 @@
         if (!s.log.length && !s.ask) {
           const e = document.createElement('div');
           e.className = 'empty';
-          e.textContent = `Say hi to ${s.project}! It hears you even when you’re not at its terminal.`;
+          e.textContent = s.owned ? `What should we do in ${s.project}?` : `Say hi to ${s.project}! It hears you even when you’re not at its terminal.`;
           inner.append(e);
         }
       } else if (from === 0) inner.textContent = '';
@@ -243,7 +244,8 @@
     const bubble = document.querySelector('.bubble');
     let used = 0;
     for (const el of bubble.children) if (el !== log && el.offsetParent) used += el.offsetHeight + parseFloat(getComputedStyle(el).marginTop) + parseFloat(getComputedStyle(el).marginBottom);
-    log.classList.toggle('squeezed', !inner.children.length || bubble.clientHeight - used < 32);
+    const last = inner.lastElementChild;
+    log.classList.toggle('squeezed', !inner.children.length || bubble.clientHeight - used < Math.max(56, last ? last.offsetHeight + 16 : 0));
   }
   new ResizeObserver(squeeze).observe(document.querySelector('.bubble'));
 
@@ -252,6 +254,10 @@
   let picks = {};
   let innerH = 0; // how tall the log's content was, last time it showed
   const answered = new Set(); // cards you've answered (a late update mustn't bring one back)
+  // Per card, kept while you look at another slime and come back: your
+  // picks, and what was in the field when it first came (a draft from
+  // before it isn't an answer to it).
+  const cards = new Map(); // key -> { picks, draft, at }
   let cardDraft = '', cardAt = 0;
 
   function renderAsk(ask, count) {
@@ -260,28 +266,44 @@
     card.hidden = !ask;
     if (!ask) { askKey = 0; document.body.classList.remove('carding'); return; }
     if (ask.key !== askKey) {
-      // A new question: make it look new, and don't let a double-click
-      // that answered the last one answer this one too.
       askKey = ask.key;
-      picks = {};
-      card.classList.remove('new'); void card.offsetWidth; card.classList.add('new');
+      const seenBefore = cards.has(ask.key);
+      if (!seenBefore) cards.set(ask.key, { picks: {}, draft: text.value, at: Date.now() });
+      const c = cards.get(ask.key);
+      picks = c.picks;
+      cardDraft = c.draft;
+      cardAt = c.at;
       buildAsk(ask);
-      for (const b of card.querySelectorAll('button')) b.disabled = true;
-      setTimeout(() => {
-        if (askKey !== ask.key) return;
-        for (const b of card.querySelectorAll('button')) b.disabled = false;
-        updateSend(ask);
-      }, 450);
-      // What was in the field when it came, so a draft you were writing
-      // doesn't turn into an answer.
-      cardDraft = text.value;
-      cardAt = Date.now();
+      if (!seenBefore) {
+        // A new question: make it look new, and don't let a double-click
+        // that answered the last one answer this one too.
+        card.classList.remove('new'); void card.offsetWidth; card.classList.add('new');
+        for (const b of card.querySelectorAll('button')) b.disabled = true;
+        setTimeout(() => {
+          if (askKey !== ask.key) return;
+          for (const b of card.querySelectorAll('button')) b.disabled = false;
+          updateSend(ask);
+          focusCard();
+        }, 450);
+      } else { updateSend(ask); focusCard(); }
     }
+    if (ask.kind === 'plan') $('deny').textContent = typedForCard() ? 'Send changes' : 'Keep planning';
     $('askMore').textContent = count > 1 ? `+${count - 1} more after this` : '';
     $('always').textContent = ask.always || '';
     $('always').title = ask.alwaysFull || '';
     $('always').hidden = !ask.always || ask.kind === 'question';
     requestAnimationFrame(fadeCard);
+  }
+
+  // What's in the field counts for the card only if you typed it after the
+  // card came (not a draft from before).
+  const typedForCard = () => { const v = text.value.trim(); return !!v && v !== cardDraft.trim() && Date.now() - cardAt > 450; };
+
+  // On a card with several questions the field is away: start at the options.
+  function focusCard() {
+    if (!document.body.classList.contains('carding') || !document.hasFocus()) return;
+    const first = document.querySelector('#askQuestions .opt');
+    if (first && !document.activeElement.closest('#askQuestions')) first.focus();
   }
 
   // A card that scrolls fades at the bottom, so it's clear there's more.
@@ -319,13 +341,13 @@
     // One question you answer with a single pick: a tap sends it.
     $('askRow').hidden = oneTap;
     ask.questions.forEach((q, qi) => {
-      const pick = picks[q.question] = { labels: new Set(), other: '' };
+      const pick = picks[q.question] || (picks[q.question] = { labels: new Set(), other: '' });
       const box = document.createElement('div');
       box.className = 'q';
       const line = document.createElement('div');
       line.className = 'text';
       line.append(q.question);
-      const aside = [ask.questions.length > 1 ? q.header : '', q.multiSelect ? 'pick any' : ''].filter(Boolean).join(' · ');
+      const aside = q.multiSelect ? 'pick any' : '';
       if (aside) { const a = document.createElement('span'); a.textContent = ' ' + aside; line.append(a); }
       const opts = document.createElement('div');
       // Short options with nothing to explain are round chips; others rows.
@@ -356,6 +378,7 @@
           updateSend(ask);
         };
         b.dataset.n = String(oi + 1);
+        if (pick.labels.has(o.label)) b.classList.add('on');
         opts.append(b);
       });
       // Or say it your own way.
@@ -383,7 +406,9 @@
         const chip = document.createElement('button');
         chip.className = 'otherchip';
         chip.textContent = 'Something else…';
-        other.hidden = true;
+        other.value = pick.other;
+        other.hidden = !pick.other;
+        chip.hidden = !!pick.other;
         chip.onclick = () => { chip.hidden = true; other.hidden = false; other.focus(); };
         box.append(chip, other);
       }
@@ -428,6 +453,7 @@
   function finish(choice, extra) {
     if (!askKey) return;
     answered.add(askKey);
+    cards.delete(askKey);
     api.decide(current.id, askKey, choice, extra);
     $('ask').hidden = true;
     askKey = 0;
@@ -445,9 +471,10 @@
     // A card's questions or plan may be scrolled: ask for their full height.
     let card = 0;
     for (const el of [$('askQuestions'), $('askPlan'), $('askDetail')]) if (el.offsetParent) card += el.scrollHeight - el.clientHeight;
-    // A hidden (squeezed) log still wants its height back.
+    // A hidden (squeezed) log still wants its height back; an empty one doesn't.
     if (inner.offsetHeight) innerH = inner.offsetHeight;
-    api.setHeight(current.id, Math.ceil(chrome + card + innerH + pad + 24 + 1)); // 24: room round the bubble
+    const logH = inner.children.length ? innerH + pad : 0;
+    api.setHeight(current.id, Math.ceil(chrome + card + logH + 24 + 1)); // 24: room round the bubble
   }
 
   // When the log gets shorter (a permission card, a taller field), keep the
@@ -469,9 +496,9 @@
   api.onState((s) => {
     const first = !current || current.id !== s.id;
     if (first && current) drafts.set(current.id, text.value);
-    if (first) seen = s.log.length;
+    if (first) { seen = s.log.length; text.value = drafts.get(s.id) || ''; } // before the card reads it
     render(s);
-    if (first) { text.value = drafts.get(s.id) || ''; fit(); send.disabled = s.demo || !text.value.trim(); }
+    if (first) { fit(); send.disabled = text.disabled || !text.value.trim(); }
     if (s.focus) {
       const w = $('wrap');
       w.classList.remove('pop'); void w.offsetWidth; w.classList.add('pop');
@@ -489,7 +516,7 @@
   });
   if (api.onTail) api.onTail((t) => { placeTail(t); fitWindow(); });
   text.addEventListener('input', () => {
-    if (askKey && current.ask && current.ask.kind === 'plan') $('deny').textContent = text.value.trim() ? 'Send changes' : 'Keep planning';
+    if (askKey && current.ask && current.ask.kind === 'plan') $('deny').textContent = typedForCard() ? 'Send changes' : 'Keep planning';
     fit(); send.disabled = !current || current.demo || !text.value.trim(); requestAnimationFrame(fitWindow); });
   text.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('form').requestSubmit(); }
@@ -500,7 +527,7 @@
     if (!v || !current || current.demo) return;
     // A card is up and you typed this after it came: it's for the card.
     const ask = askKey && current.ask;
-    const forCard = ask && v !== cardDraft.trim() && Date.now() - cardAt > 450;
+    const forCard = ask && typedForCard();
     if (forCard && ask.kind === 'plan') {
       text.value = ''; fit(); drafts.delete(current.id);
       return finish('deny', { message: v }); // what to change
@@ -536,13 +563,14 @@
     if (!askKey) return;
     const ask = current.ask;
     if (ask && ask.kind === 'question') return answer(ask);
-    // Keep planning takes what you typed below as what to change.
-    if (ask && ask.kind === 'plan' && choice === 'deny' && text.value.trim()) {
-      const msg = text.value.trim();
-      text.value = ''; fit(); drafts.delete(current.id);
-      return finish('deny', { message: msg });
-    }
+    // On a plan, what you typed after it came is your note: with Keep
+    // planning it's what to change; with Go ahead it follows the go-ahead.
+    const note = ask && ask.kind === 'plan' && typedForCard() ? text.value.trim() : '';
+    if (note) { text.value = ''; fit(); drafts.delete(current.id); }
+    if (note && choice === 'deny') return finish('deny', { message: note });
+    const id = current.id;
     finish(choice);
+    if (note) api.send(id, note);
   };
   // Number keys pick an option on a one-question card (like the terminal).
   document.addEventListener('keydown', (e) => {

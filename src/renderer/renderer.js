@@ -1547,6 +1547,12 @@
     if (m.count > 1) b.say([{ text: 'oops' }], 1.8);
   });
   if (api.onTalking) api.onTalking((id) => { talkingTo = id; });
+  // The app wants a slime's talk box open (a session you just started).
+  if (api.onOpenTalk) api.onOpenTalk((id) => {
+    let tries = 0;
+    const go = () => { const b = buddies.get(id); if (b && api.talk) api.talk(id, headTop(b)); else if (++tries < 30) setTimeout(go, 100); };
+    go();
+  });
   if (api.onSay) api.onSay((m) => {
     const b = buddies.get(m.id);
     if (!b) return;

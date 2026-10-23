@@ -68,4 +68,4 @@ function listAgents(cb) {
   run((err, stdout) => cb(err ? null : parse(String(stdout))));
 }
 
-module.exports = { startAgentsPoller, listAgents, parse };
+module.exports = { startAgentsPoller, listAgents, parse, findClaude };

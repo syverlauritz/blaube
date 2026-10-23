@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('blaube', {
   onCommand: (cb) => ipcRenderer.on('command', (_e, c) => cb(c)),
   onSay: (cb) => ipcRenderer.on('say', (_e, m) => cb(m)),
   onReact: (cb) => ipcRenderer.on('react', (_e, m) => cb(m)),
+  onOpenTalk: (cb) => ipcRenderer.on('open-talk', (_e, id) => cb(id)),
   onTalking: (cb) => ipcRenderer.on('talking', (_e, id) => cb(id)),
   onNod: (cb) => ipcRenderer.on('nod', (_e, id) => cb(id)),
 });
