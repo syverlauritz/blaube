@@ -500,13 +500,17 @@
         ctx.arc(q.x, q.y, ideal[i].r, 0, Math.PI * 2);
       });
     } else {
+      // A round-tipped tail, the same family as the talk box's.
       const midX = (mx + tip.x) / 2 + bend, midY = (by + tip.y) / 2;
-      ctx.moveTo(mx - 9, by);
-      ctx.quadraticCurveTo(midX - 3, midY, tip.x, tip.y);
-      ctx.quadraticCurveTo(midX + 4, midY, mx + 9, by);
+      ctx.moveTo(mx - 10, by);
+      ctx.quadraticCurveTo(midX - 4, midY, tip.x - 3, tip.y);
+      ctx.lineTo(tip.x + 3, tip.y);
+      ctx.quadraticCurveTo(midX + 5, midY, mx + 10, by);
       ctx.closePath();
     }
     ctx.fill();
+    if (!thought) { ctx.beginPath(); ctx.arc(tip.x, tip.y, 3.5, 0, Math.PI * 2); ctx.fill(); }
+    ctx.beginPath();
     roundRect(ctx, x, y, w, h, rad);
     ctx.fill();
   }

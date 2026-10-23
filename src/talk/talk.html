@@ -43,8 +43,9 @@
   /* The slime's face says how it is: no state words up here. */
   .state { display: none; }
   .spacer { flex: 1; min-width: 12px; }
-  .round { border: 0; background: none; color: var(--faint); width: 28px; height: 28px; border-radius: 50%; padding: 0; cursor: pointer; flex: none; display: grid; place-items: center; }
-  .round svg { width: 15px; height: 15px; }
+  /* Close (and terminal): soft little pebbles, like the send button. */
+  .round { border: 0; background: var(--soft); color: var(--dim); width: 30px; height: 30px; border-radius: 50%; padding: 0; cursor: pointer; flex: none; display: grid; place-items: center; }
+  .round svg { width: 13px; height: 13px; }
   .round:hover { background: var(--soft); color: var(--ink); }
   /* Going to the terminal is there when you want it, not in the way. */
   #terminal { opacity: 0; transition: opacity .2s; position: absolute; right: 44px; top: 13px; }
@@ -67,8 +68,8 @@
   .msg.new { animation: squish .3s cubic-bezier(.3, 1.6, .5, 1); }
   .msg.claude.new { transform-origin: 0 100%; }
   .msg.you.new { transform-origin: 100% 100%; }
-  .msg code { font: 14px ui-monospace, Menlo, Consolas, monospace; background: var(--soft); border-radius: 5px; padding: 1px 4px; }
-  .msg pre { margin: 4px 0; padding: 9px 12px; background: var(--soft); border-radius: 16px; font: 14px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: pre; overflow-x: auto; }
+  .msg code { font: 500 14px ui-monospace, Menlo, Consolas, monospace; background: var(--soft); border-radius: 5px; padding: 1px 4px; }
+  .msg pre { margin: 4px 0; padding: 9px 12px; background: var(--soft); border-radius: 16px; font: 500 14px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: pre; overflow-x: auto; }
   .msg .head { font-weight: 700; }
   .msg.folded { max-height: 15.5em; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); }
   .more { align-self: flex-start; border: 0; background: none; padding: 0; margin-top: -4px; font: 600 14px var(--ui); color: var(--dim); cursor: pointer; }
@@ -96,7 +97,7 @@
   .ask .what b { font-weight: 700; }
   .ask .what span { font: 600 14px var(--ui); color: var(--dim); }
   .ask[data-kind="question"] .what b { font: 600 14px var(--ui); color: var(--dim); }
-  #askDetail { display: block; font: 14px/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--soft); border-radius: 16px; padding: 9px 13px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 78px; overflow-y: auto; user-select: text; }
+  #askDetail { display: block; font: 500 14px/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--soft); border-radius: 16px; padding: 9px 13px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 78px; overflow-y: auto; user-select: text; }
   #askDetail[hidden] { display: none; }
   #askQuestions, .ask .plan { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
   #askQuestions::-webkit-scrollbar { width: 0; } /* the fade says there's more */
@@ -161,7 +162,7 @@
       <span class="state"><i id="dot"></i><span id="state"></span></span>
       <span class="spacer"></span>
       <button class="round" id="terminal" title="Go to its terminal (or Alt-click the slime)" aria-label="Go to its terminal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7l5 5-5 5M12 17h7"/></svg></button>
-      <button class="round" id="close" title="Close (Esc)" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
+      <button class="round" id="close" title="Close (Esc)" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
     </header>
     <div id="log"><div id="inner"></div></div>
     <div class="ask" id="ask" hidden>

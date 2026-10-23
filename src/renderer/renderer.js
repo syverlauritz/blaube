@@ -1378,14 +1378,14 @@
     ctx.save();
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.moveTo(base.x - across.x * 15, base.y - across.y * 15);
-    ctx.quadraticCurveTo(mx - across.x * 6, my - across.y * 6, tip.x - across.x * 3, tip.y - across.y * 3);
-    ctx.lineTo(tip.x + across.x * 3, tip.y + across.y * 3);
-    ctx.quadraticCurveTo(mx + across.x * 7, my + across.y * 7, base.x + across.x * 15, base.y + across.y * 15);
+    ctx.moveTo(base.x - across.x * 22, base.y - across.y * 22);
+    ctx.quadraticCurveTo(mx - across.x * 12, my - across.y * 12, tip.x - across.x * 7, tip.y - across.y * 7);
+    ctx.lineTo(tip.x + across.x * 7, tip.y + across.y * 7);
+    ctx.quadraticCurveTo(mx + across.x * 13, my + across.y * 13, base.x + across.x * 22, base.y + across.y * 22);
     ctx.closePath();
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(tip.x, tip.y, 3.5, 0, Math.PI * 2);
+    ctx.arc(tip.x, tip.y, 7.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
