@@ -28,6 +28,19 @@ const SCENES = {
 	idle: { sessions: [session('a', 'blaube', 'idle')] },
 	thinking: { sessions: [session('a', 'blaube', 'working')] },
 	tool: { sessions: [session('a', 'blaube', 'working', { activity: 'tool' })] },
+	// What each kind of tool call looks like (shared/actions.js), seven at a time.
+	actions: {
+		sessions: ['read', 'edit', 'test', 'commit', 'push', 'pull', 'install'].map((action, i) => session('ac' + i, action, 'working', { activity: 'tool', action, look: 'none' })),
+		config: { size: 0.7 },
+		wait: 3500,
+		size: [1400, 460],
+	},
+	actions2: {
+		sessions: ['delete', 'folder', 'web', 'todo', 'helper', 'app', 'run'].map((action, i) => session('ad' + i, action, 'working', { activity: 'tool', action, look: 'none' })),
+		config: { size: 0.7 },
+		wait: 3500,
+		size: [1400, 460],
+	},
 	done: { sessions: [session('a', 'blaube', 'done')] },
 	waiting: { sessions: [session('a', 'blaube', 'waiting', { message: 'Claude needs your permission to use Bash' })] },
 	sweat: { sessions: [session('a', 'blaube', 'working', { tokens: full(0.75) })], wait: 4000 },

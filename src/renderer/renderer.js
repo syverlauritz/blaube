@@ -1086,6 +1086,7 @@
     else if (time < (b.annoyedUntil || 0) && b.annoyedAt && !b.annoyedAt.dying && !body.grab) { expression = 'annoyed'; mouth = 'flat'; }
     else if (time < (b.yawnUntil || 0)) { expression = 'sleepy'; mouth = 'yawn'; }
     else if (time < (b.winceUntil || 0)) { expression = 'pained'; mouth = 'wobble'; }
+    else if (time < (b.cheerUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
     else if (body.grab || time < (b.surpriseUntil || 0)) { mouth = 'o'; }
     else if (b.merging && b.kind === 'child') { expression = 'happy'; mouth = 'smile'; }
     else if (nodding(b)) { expression = 'happy'; mouth = 'smile'; }
@@ -1162,14 +1163,18 @@
     };
   }
 
-  // 'thinking' or 'tool' (running one), for a working slime. Most tools
-  // take a split second, so the icon only switches once the new activity
-  // has lasted a moment; otherwise it would flicker between the two.
+  // 'thinking', or what the tool it's running is about ('read', 'edit',
+  // 'test', 'push'... see shared/actions.js), for a working slime. Most
+  // tools take a split second, so the icon only switches once the new
+  // activity has lasted a moment; otherwise it would flicker.
   function activityOf(b) {
     const src = b.kind === 'child' ? b.agent : b.session;
-    const now = (src && src.activity) || 'thinking';
+    const now = src && src.activity === 'tool' ? src.action || 'run' : 'thinking';
     if (now !== b.actNext) { b.actNext = now; b.actSince = time; }
-    if (!b.actShown || (now !== b.actShown && time - b.actSince > 0.7)) b.actShown = now;
+    // A change shows once it has lasted a moment (the gear only after 2 s of
+    // real thinking), and a sign stays up at least 1.5 s.
+    const settle = now === 'thinking' ? 2 : 0.7;
+    if (!b.actShown || (now !== b.actShown && time - b.actSince > settle && time - (b.actShownAt || 0) > 1.5)) { b.actShown = now; b.actShownAt = time; }
     return b.actShown;
   }
 
@@ -1252,7 +1257,8 @@
       if (b.kind === 'home' || b.dying) continue;
       if (b === hovered || b.bubble) continue; // the bubble sits where these go
       if (b === buddies.get(talkingTo)) continue; // its talk box is there instead
-      if (b.state === 'working' && !nodding(b) && !b.merging) D.drawThinking(ctx, b.body, time, activityOf(b) === 'tool', W);
+      if (b.state === 'working' && !nodding(b) && !b.merging) D.drawThinking(ctx, b.body, time, activityOf(b), W);
+      if (b.state === 'working' && nodding(b) && b.nodQuiet && !b.merging) D.drawThinking(ctx, b.body, time, activityOf(b), W); // a commit's nod keeps its sign
       if (b.state === 'waiting') D.drawExclaim(ctx, b.body, time, W, '?');
       else if (b.state === 'done' && unseen(b)) D.drawExclaim(ctx, b.body, time, W);
     }
@@ -1608,12 +1614,42 @@
     const b = buddies.get(id);
     if (!b) return;
     b.nodAt = time;
+    b.nodQuiet = false; // the 👍 nod has its own bubble
     if (b.body.onFloor()) b.body.impulse(0, 260, DT);
     b.say([{ text: '👍', size: 30 }], 1.6);
   });
   if (api.onReact) api.onReact((m) => {
     const b = buddies.get(m.id);
-    if (!b || m.kind !== 'oops' || time < (b.nextWince || 0)) return;
+    if (!b) return;
+    // A few moments get a little reaction, at most one of a kind every few
+    // seconds (a busy session shouldn't fidget).
+    const once = (kind, gap) => { b.reacted = b.reacted || {}; if (time < (b.reacted[kind] || 0)) return false; b.reacted[kind] = time + gap; return true; };
+    const grounded = b.body.onFloor() && !b.body.grab;
+    if (m.kind === 'push' && once('push', 30)) {
+      // Sent off: a little hop and a word.
+      if (grounded) b.hop(0, -380);
+      b.say([{ text: 'Pushed!' }], 2);
+      return;
+    }
+    // Tests only get a reaction when the result changes (fixed, or broken),
+    // not on every run of a red-green loop.
+    if (m.kind === 'cheer' || m.kind === 'testfail') {
+      const was = b.lastTests;
+      b.lastTests = m.kind;
+      if (was === m.kind || !once('tests', 45)) return;
+      if (m.kind === 'cheer') {
+        if (!was) return; // the first green run isn't news
+        b.cheerUntil = time + 1.2;
+        if (grounded) b.hop(0, -320);
+        b.say([{ text: 'Tests pass!' }], 2);
+      } else {
+        b.winceUntil = time + 0.8;
+        if (grounded) b.body.impulse((Math.random() - 0.5) * 120, 120, DT);
+      }
+      return;
+    }
+    if (m.kind === 'commit' && once('commit', 20)) { b.nodAt = time; b.nodQuiet = true; return; }
+    if (m.kind !== 'oops' || time < (b.nextWince || 0)) return;
     b.nextWince = time + 20;
     b.winceUntil = time + 0.7;
     if (b.body.onFloor() && !b.body.grab) b.body.impulse((Math.random() - 0.5) * 120, 120, DT);

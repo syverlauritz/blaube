@@ -539,24 +539,125 @@
     ctx.restore();
   }
 
-  // While Claude works: a thought balloon with a spinning gear while it
-  // thinks, a blinking >_ while it runs a tool.
-  function drawThinking(ctx, b, t, running, W) {
-    drawIconBalloon(ctx, b, t, W, true, (x, y, s) => {
-      if (running) {
-        // A prompt: a chunky > and a cursor bar that fades in and out.
-        ctx.lineWidth = s * 0.3;
-        ctx.lineCap = ctx.lineJoin = 'round';
-        ctx.beginPath();
-        ctx.moveTo(x - s * 0.62, y - s * 0.42);
-        ctx.lineTo(x - s * 0.18, y);
-        ctx.lineTo(x - s * 0.62, y + s * 0.42);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(x + s * 0.1, y + s * 0.42);
-        ctx.lineTo(x + s * 0.62, y + s * 0.42);
-        ctx.stroke();
-        return;
+  // While Claude works: a thought balloon with what it's doing in it. A
+  // spinning gear while it thinks; while a tool runs, a sign for what the
+  // tool is about (shared/actions.js): a magnifier that scans, a pencil
+  // that scribbles, a test tube that bubbles, a tick, arrows for a push or
+  // a pull, a box, a bin, a folder, a globe, a checklist, two little
+  // slimes for a helper, a plug for a connected app, and the prompt >_ for
+  // any other command. All flat ink, chunky and round.
+  function drawThinking(ctx, b, t, act, W) {
+    drawIconBalloon(ctx, b, t, W, true, (x, y, s0) => {
+      const s = act === 'thinking' || !act ? s0 : s0 * 1.18; // the signs a touch bigger than the gear
+      ctx.lineWidth = s * 0.2;
+      ctx.lineCap = ctx.lineJoin = 'round';
+      const line = (pts) => { ctx.beginPath(); pts.forEach(([px, py], i) => (i ? ctx.lineTo(x + px * s, y + py * s) : ctx.moveTo(x + px * s, y + py * s))); ctx.stroke(); };
+      const ring = (cx, cy, r) => { ctx.beginPath(); ctx.arc(x + cx * s, y + cy * s, r * s, 0, Math.PI * 2); ctx.stroke(); };
+      const dot = (cx, cy, r) => { ctx.beginPath(); ctx.arc(x + cx * s, y + cy * s, r * s, 0, Math.PI * 2); ctx.fill(); };
+      const box = (x0, y0, w, h, rr) => { ctx.beginPath(); roundRect(ctx, x + x0 * s, y + y0 * s, w * s, h * s, rr * s); ctx.stroke(); };
+      switch (act) {
+        case 'read': { // a magnifier, scanning side to side
+          const dx = Math.sin(t * 3) * 0.12;
+          ctx.lineWidth = s * 0.26;
+          ring(-0.12 + dx, -0.1, 0.34);
+          ctx.lineWidth = s * 0.28;
+          line([[0.16 + dx, 0.18], [0.5 + dx, 0.52]]);
+          return;
+        }
+        case 'edit': { // a pencil, scribbling: body, a sharpened tip, an eraser
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(2.36 + Math.sin(t * 9) * 0.1); // tip down to the left
+          const w = 0.23 * s;
+          ctx.beginPath(); roundRect(ctx, -0.72 * s, -w, 1.0 * s, w * 2, 0.07 * s); ctx.fill(); // body
+          ctx.beginPath(); ctx.moveTo(0.28 * s, -w); ctx.lineTo(0.66 * s, 0); ctx.lineTo(0.28 * s, w); ctx.closePath(); ctx.fill(); // tip
+          ctx.fillStyle = '#fff'; // a gap before the eraser (the bubble's white)
+          ctx.fillRect(-0.5 * s, -w * 1.2, 0.1 * s, w * 2.4);
+          ctx.restore();
+          return;
+        }
+        case 'test': { // a round flask, half full, bubbles rising out of it
+          ctx.beginPath();
+          ctx.moveTo(x - 0.13 * s, y - 0.56 * s); ctx.lineTo(x - 0.13 * s, y - 0.2 * s);
+          ctx.arc(x, y + 0.18 * s, 0.4 * s, -Math.PI / 2 - 0.33, -Math.PI / 2 + 0.33 + Math.PI * 2 - 0.0001, true);
+          ctx.lineTo(x + 0.13 * s, y - 0.56 * s);
+          ctx.stroke();
+          ctx.beginPath(); ctx.arc(x, y + 0.18 * s, 0.4 * s, 0.05, Math.PI - 0.05); ctx.closePath(); ctx.fill(); // what's in it
+          for (let i = 0; i < 2; i++) { const k = (t * 0.8 + i * 0.5) % 1; ctx.globalAlpha = 1 - k; dot(i ? 0.08 : -0.06, 0.05 - k * 0.7, 0.07); ctx.globalAlpha = 1; }
+          return;
+        }
+        case 'commit': // a commit: a dot on its line
+          ctx.lineWidth = s * 0.2;
+          line([[-0.6, 0], [0.6, 0]]);
+          dot(0, 0, 0.27);
+          return;
+        case 'push': case 'pull': { // an arrow going up (sent off) or down (fetched)
+          const up = act === 'push', bob = Math.sin(t * 4) * 0.08 * (up ? -1 : 1);
+          ctx.lineWidth = s * 0.28;
+          line([[0, (up ? 0.55 : -0.55) + bob], [0, (up ? -0.45 : 0.45) + bob]]);
+          line([[-0.36, (up ? -0.1 : 0.1) + bob], [0, (up ? -0.48 : 0.48) + bob], [0.36, (up ? -0.1 : 0.1) + bob]]);
+          return;
+        }
+        case 'install': // a parcel: a box with a band of tape
+          ctx.beginPath(); roundRect(ctx, x - 0.52 * s, y - 0.42 * s, 1.04 * s, 0.86 * s, 0.12 * s); ctx.fill();
+          ctx.save(); ctx.fillStyle = '#fff'; // cut in the bubble's white
+          ctx.fillRect(x - 0.52 * s, y - 0.14 * s, 1.04 * s, 0.08 * s); // the lid's edge
+          ctx.fillRect(x - 0.06 * s, y - 0.42 * s, 0.12 * s, 0.3 * s); // the tape
+          ctx.restore();
+          return;
+        case 'delete': { // a bin: lid, handle, body with two slits
+          line([[-0.55, -0.42], [0.55, -0.42]]);
+          line([[-0.16, -0.56], [0.16, -0.56]]);
+          ctx.beginPath(); ctx.moveTo(x - 0.42 * s, y - 0.26 * s); ctx.lineTo(x + 0.42 * s, y - 0.26 * s); ctx.lineTo(x + 0.32 * s, y + 0.56 * s); ctx.lineTo(x - 0.32 * s, y + 0.56 * s); ctx.closePath(); ctx.fill();
+          ctx.save(); ctx.fillStyle = '#fff';
+          for (const sx of [-0.13, 0.13]) ctx.fillRect(x + (sx - 0.045) * s, y - 0.1 * s, 0.09 * s, 0.5 * s);
+          ctx.restore();
+          return;
+        }
+        case 'folder':
+          ctx.beginPath();
+          ctx.moveTo(x - 0.56 * s, y + 0.44 * s); ctx.lineTo(x - 0.56 * s, y - 0.42 * s); ctx.lineTo(x - 0.16 * s, y - 0.42 * s); ctx.lineTo(x - 0.02 * s, y - 0.26 * s); ctx.lineTo(x + 0.56 * s, y - 0.26 * s); ctx.lineTo(x + 0.56 * s, y + 0.44 * s); ctx.closePath();
+          ctx.stroke();
+          ctx.fill();
+          return;
+        case 'web': { // a globe, turning
+          ctx.lineWidth = s * 0.17;
+          ring(0, 0, 0.52);
+          line([[-0.54, 0], [0.54, 0]]);
+          const k = 0.2 + Math.abs(Math.sin(t * 1.5)) * 0.1;
+          ctx.beginPath(); ctx.ellipse(x, y, k * s, 0.52 * s, 0, 0, Math.PI * 2); ctx.stroke();
+          return;
+        }
+        case 'todo': // a checklist
+          for (let i = 0; i < 3; i++) {
+            const yy = -0.4 + i * 0.4;
+            dot(-0.45, yy, 0.09);
+            line([[-0.2, yy], [0.52, yy]]);
+          }
+          return;
+        case 'helper': // two little slimes, with eyes
+          for (const [cx, r] of [[-0.24, 0.42], [0.38, 0.3]]) {
+            ctx.beginPath(); ctx.arc(x + cx * s, y + 0.3 * s - r * 0.3 * s, r * s, Math.PI, 0); ctx.lineTo(x + (cx + r) * s, y + 0.32 * s); ctx.lineTo(x + (cx - r) * s, y + 0.32 * s); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#fff';
+            for (const e of [-0.38, 0.38]) { ctx.beginPath(); ctx.arc(x + (cx + e * r) * s, y + (0.3 - r * 0.55) * s, r * 0.22 * s, 0, Math.PI * 2); ctx.fill(); }
+            ctx.fillStyle = INK;
+          }
+          return;
+        case 'app': // a plug
+          line([[-0.16, -0.55], [-0.16, -0.25]]);
+          line([[0.16, -0.55], [0.16, -0.25]]);
+          ctx.beginPath(); roundRect(ctx, x - 0.36 * s, y - 0.25 * s, 0.72 * s, 0.5 * s, 0.14 * s); ctx.fill();
+          line([[0, 0.25], [0, 0.55]]);
+          return;
+        case 'thinking': case undefined: case '': break;
+        default: { // any other command: a prompt, its cursor blinking
+          ctx.lineWidth = s * 0.3;
+          line([[-0.62, -0.42], [-0.18, 0], [-0.62, 0.42]]);
+          ctx.globalAlpha = 0.55 + 0.45 * Math.round((Math.sin(t * 5) + 1) / 2);
+          line([[0.1, 0.42], [0.62, 0.42]]);
+          ctx.globalAlpha = 1;
+          return;
+        }
       }
       // A gear: teeth around a ring, turning.
       const g = s * 0.72, teeth = 8;

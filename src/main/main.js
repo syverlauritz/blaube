@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, shell, clipboard, globalShortcut, systemPreferences } = require('electron');
 const { SessionTracker } = require('./sessions');
 const { Inbox, STYLE } = require('./inbox');
+const { classify } = require('../shared/actions');
 const { placeTalk } = require('./talkPlace');
 const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
@@ -1057,6 +1058,13 @@ app.whenReady().then(async () => {
     if (win && !open && asked && asked.who === 'you' && asked.via === 'blaube') win.webContents.send('say', { id, text: snippet(text), seconds: 7 });
   });
   tracker.on('activity', statusBubble);
+  // A few moments worth a reaction (most tools get just their icon): a push
+  // sent off, tests that pass or fail, a commit, something deleted.
+  tracker.on('tooldone', ({ session: s, agentId, payload: p, failed }) => {
+    const kind = classify(p.tool_name, p.tool_input);
+    const react = failed ? (kind === 'test' ? 'testfail' : '') : { push: 'push', test: 'cheer', commit: 'commit' }[kind];
+    if (win && react) win.webContents.send('react', { id: agentId ? `${s.id}/${agentId}` : s.id, kind: react });
+  });
 
   // Sessions Blaube started: their slime, their replies, their end.
   owned.on('start', (id, cwd) => {

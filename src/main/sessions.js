@@ -6,6 +6,7 @@
 // A session also keeps a list of the subagents it is running right now, and
 // of the background tasks (servers and such) Claude started for it.
 const path = require('node:path');
+const { classify } = require('../shared/actions');
 const { EventEmitter } = require('node:events');
 
 const STALE_WORKING_MS = 15 * 60 * 1000; // no hooks for this long means it probably died
@@ -74,6 +75,8 @@ class SessionTracker extends EventEmitter {
       state: next.state,
       // While working: 'thinking' (the model) or 'tool' (running a tool).
       activity: activityAfter(event, prev && prev.activity),
+      // What its current tool call is about (read, edit, test, push...).
+      action: event === 'PreToolUse' ? classify(payload.tool_name, payload.tool_input) : (prev && prev.action) || '',
       // When the current turn started (the prompt you sent).
       turnStart: event === 'UserPromptSubmit' ? this.now() : (prev && prev.turnStart) || 0,
       message: next.message || '',
@@ -89,6 +92,7 @@ class SessionTracker extends EventEmitter {
     this.sessions.set(id, session);
     if (event === 'UserPromptSubmit') this.emit('prompt', session);
     if (source === 'hook' && (event === 'PreToolUse' || event === 'Stop' || event === 'Notification')) this.emit('activity', { session, agentId: '', payload });
+    if (source === 'hook' && (event === 'PostToolUse' || event === 'PostToolUseFailure')) this.emit('tooldone', { session, agentId: '', payload, failed: event === 'PostToolUseFailure' });
     if (!prev || prev.state !== session.state) {
       this.emit('change', { session, from: prev ? prev.state : null, to: session.state });
     }
@@ -114,7 +118,7 @@ class SessionTracker extends EventEmitter {
       return true;
     }
     if (!agentId) return false;
-    const agentState = event === 'Notification' ? 'waiting' : event === 'PreToolUse' || event === 'PostToolUse' ? 'working' : null;
+    const agentState = event === 'Notification' ? 'waiting' : event === 'PreToolUse' || event === 'PostToolUse' || event === 'PostToolUseFailure' ? 'working' : null;
     if (!agentState) return false;
     let agent = session.agents.find((a) => a.id === agentId);
     const changed = !agent || agent.state !== agentState;
@@ -124,8 +128,10 @@ class SessionTracker extends EventEmitter {
     }
     agent.state = agentState;
     agent.activity = activityAfter(event, agent.activity);
+    if (event === 'PreToolUse') agent.action = classify(p.tool_name, p.tool_input);
     agent.updatedAt = this.now();
     if (event === 'PreToolUse') this.emit('activity', { session, agentId, payload: p });
+    if (event === 'PostToolUse' || event === 'PostToolUseFailure') this.emit('tooldone', { session, agentId, payload: p, failed: event === 'PostToolUseFailure' });
     session.updatedAt = this.now();
     if (changed) this.emit('change', { session, from: session.state, to: session.state });
     // A subagent asking for permission means the session needs you too.
@@ -234,7 +240,7 @@ class SessionTracker extends EventEmitter {
 // is the model thinking.
 function activityAfter(event, prev) {
   if (event === 'PreToolUse') return 'tool';
-  if (event === 'PostToolUse' || event === 'UserPromptSubmit') return 'thinking';
+  if (event === 'PostToolUse' || event === 'PostToolUseFailure' || event === 'UserPromptSubmit') return 'thinking';
   return prev || 'thinking';
 }
 
@@ -245,6 +251,7 @@ function nextState(current, p) {
     case 'UserPromptSubmit':
     case 'PreToolUse':
     case 'PostToolUse':
+    case 'PostToolUseFailure':
       return { state: 'working' };
     case 'Notification': {
       // "idle_prompt" fires a while after Claude finished and is still

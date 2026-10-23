@@ -8,8 +8,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { DEFAULT_PORT, HOOK_PATH, INBOX_PATH, PERMISSION_PATH } = require('./hookServer');
 
-const EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Notification', 'Stop', 'SubagentStart', 'SubagentStop', 'SessionEnd'];
-const TOOL_EVENTS = new Set(['PreToolUse', 'PostToolUse']);
+const EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'Stop', 'SubagentStart', 'SubagentStop', 'SessionEnd'];
+const TOOL_EVENTS = new Set(['PreToolUse', 'PostToolUse', 'PostToolUseFailure']);
 const MARKER = HOOK_PATH;
 
 function settingsPath(home = os.homedir()) {

@@ -237,3 +237,19 @@ test('a session merged back in by hand stays merged until it ends', () => {
   t.handle(ev('SessionStart'));
   assert.equal(t.list().length, 1);
 });
+
+test('a tool call says what it is about, and finishing one is reported (failures too)', () => {
+  const t = new SessionTracker();
+  const done = [];
+  t.on('tooldone', (d) => done.push([d.payload.tool_name, d.failed]));
+  t.handle(ev('SessionStart'));
+  t.handle(ev('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'git push origin main' } }));
+  assert.equal(t.list()[0].action, 'push');
+  assert.equal(t.list()[0].activity, 'tool');
+  t.handle(ev('PostToolUse', { tool_name: 'Bash', tool_input: { command: 'git push origin main' } }));
+  t.handle(ev('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'npm test' } }));
+  assert.equal(t.list()[0].action, 'test');
+  t.handle(ev('PostToolUseFailure', { tool_name: 'Bash', tool_input: { command: 'npm test' } }));
+  assert.equal(t.list()[0].state, 'working');
+  assert.deepEqual(done, [['Bash', false], ['Bash', true]]);
+});
