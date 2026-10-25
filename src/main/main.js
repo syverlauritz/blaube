@@ -1,12 +1,14 @@
 const path = require('node:path');
 const fs = require('node:fs');
-const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, shell, clipboard, globalShortcut, systemPreferences } = require('electron');
+const { app, BrowserWindow, Tray, Menu, Notification, nativeImage, screen, ipcMain, dialog, shell, clipboard, globalShortcut, systemPreferences } = require('electron');
 const { SessionTracker } = require('./sessions');
 const { Inbox, STYLE } = require('./inbox');
 const { classify } = require('../shared/actions');
 const { placeTalk } = require('./talkPlace');
 const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
+const history = require('./history');
+const attention = require('./attention');
 const { openResumeTerminal, resumeCommand, focusSessionApp, typeIntoSession } = require('./terminal');
 const { startAgentsPoller, listAgents, findClaude } = require('./agents');
 const { Owned } = require('./owned');
@@ -35,6 +37,7 @@ for (const k of Object.keys(process.env)) {
 const ASSETS = path.join(__dirname, '..', '..', 'build');
 
 const TUNING_SHORTCUT = 'CommandOrControl+Alt+Shift+B';
+const TALK_SHORTCUT = 'CommandOrControl+Alt+B';
 
 let win = null;
 let tray = null;
@@ -423,7 +426,7 @@ function pushTalk(id, focusField = false) {
 
 // Starts Claude Code in `cwd`, with no terminal: its slime pops out with
 // its talk box open, ready for your first message.
-function startSession(cwd, extra = []) {
+function startSession(cwd, extra = [], resume = '') {
   if (!cwd) return null;
   // Not connected yet: give this session Blaube's hooks itself, so its
   // slime still knows what it's doing and can still ask you things.
@@ -432,7 +435,7 @@ function startSession(cwd, extra = []) {
     settings = claudeHooks.withBlaube({}, PORT);
     settings.hooks.Stop = settings.hooks.Stop.filter((g) => !g.hooks.some((h) => h.asyncRewake));
   }
-  const id = owned.start(cwd, ['--append-system-prompt', STYLE, ...extra], settings);
+  const id = owned.start(cwd, ['--append-system-prompt', STYLE, ...extra], settings, resume);
   prefs.recentFolders = [cwd, ...(prefs.recentFolders || []).filter((f) => f !== cwd)].slice(0, 5);
   savePrefs();
   log(`started a session in ${cwd}: ${id}`);
@@ -445,6 +448,28 @@ function startSession(cwd, extra = []) {
     setTimeout(() => { if (win) win.webContents.send('open-talk', id); }, 900); // after it lands
   }, 150);
   return id;
+}
+
+// Picks up a past session in Blaube, no terminal: its slime pops out with
+// how the conversation ended, ready for what's next.
+function pickUp(p) {
+  if (tracker.sessions.has(p.id)) { if (win) win.webContents.send('open-talk', p.id); return; }
+  try { if (!fs.statSync(p.cwd).isDirectory()) throw new Error(); } catch {
+    dialog.showMessageBox({ type: 'warning', message: `Can’t find its folder any more.`, detail: p.cwd });
+    return;
+  }
+  const id = startSession(p.cwd, [], p.id);
+  if (!id) return;
+  for (const m of history.recentMessages(p.file, 4)) inbox.add(id, m);
+  inbox.add(id, { who: 'note', text: `Picked up from ${history.ago(p.at)}` });
+}
+
+// Past sessions you could pick up (not the ones running now).
+function pastSessionsMenu() {
+  let past = [];
+  try { past = history.pastSessions(new Set(tracker.sessions.keys()), 8); } catch { /* none */ }
+  if (!past.length) return [];
+  return [{ label: 'Pick up a past session', submenu: past.map((p) => ({ label: p.title, sublabel: `${path.basename(p.cwd)} · ${history.ago(p.at)}`, click: () => pickUp(p) })) }];
 }
 
 async function newSession() {
@@ -463,6 +488,7 @@ function newSessionMenu() {
   return [
     { label: 'New session…', click: newSession },
     ...(recent.length ? [{ label: 'New session in', submenu: recent.map((f) => ({ label: path.basename(f), sublabel: f, click: () => startSession(f) })) }] : []),
+    ...pastSessionsMenu(),
   ];
 }
 
@@ -733,9 +759,35 @@ function statusBubble({ session: s, agentId, payload: p }) {
     const secs = s.turnStart ? (Date.now() - s.turnStart) / 1000 : 0;
     const took = secs < 20 ? '' : secs < 60 ? ` in ${Math.round(secs)}s` : secs < 3600 ? ` in ${Math.round(secs / 60)}m` : ` in ${Math.floor(secs / 3600)}h ${Math.round((secs % 3600) / 60)}m`;
     say(said ? `Done${took}: ` + shorten(said, 80) : `Done${took}!`, 6);
+    if (!agentId) notify(s, 'done', said, secs);
   } else if (event === 'Notification' && s.state === 'waiting') {
     say(shorten(p.message || 'I need you', 80), 6);
+    if (!agentId) notify(s, 'waiting', p.message);
   }
+}
+
+// A system notification when the slimes can't tell you themselves (they're
+// behind your windows); clicking it opens that slime's talk box.
+const notified = new Map(); // session id -> when it last notified
+function notify(s, event, text, secs = 0) {
+  if (TEST || !Notification.isSupported() || s.id.startsWith('demo-')) return;
+  const seen = (prefs.config.onTop !== 'Off' && win && win.isVisible()) || (talkWin && talkWin.isVisible() && talkId === s.id);
+  const n = attention.notification({ event, project: s.project, title: usage.sessionInfo(transcriptPath(s)).title, text, secs, seen, enabled: prefs.notify !== false });
+  if (!n || Date.now() - (notified.get(s.id) || 0) < 15000) return;
+  notified.set(s.id, Date.now());
+  const note = new Notification({ title: n.title, body: n.body });
+  note.on('click', () => { if (win && tracker.sessions.has(s.id)) win.webContents.send('open-talk', s.id); });
+  note.show();
+}
+
+// The talk shortcut: opens the talk box of the slime that needs you most
+// (or closes the open one).
+function talkShortcut() {
+  if (talkWin && talkWin.isVisible()) { hideTalk(); return; }
+  const s = attention.mostWanted(tracker.list().filter(isReady));
+  if (!s || !win) return;
+  if (process.platform === 'darwin') app.focus({ steal: true }); // a shortcut from another app: the box takes the keyboard
+  win.webContents.send('open-talk', s.id);
 }
 
 // A helper's own description ("Ring Globe: Manta logo mode") instead of its
@@ -858,6 +910,7 @@ function appMenuTemplate() {
     { type: 'separator' },
     { label: 'Colour', submenu: colorMenu(prefs.config.color, (hex) => setConfig(Object.assign({}, prefs.config, { color: hex }))) },
     { label: 'Live on display', submenu: displayMenu() },
+    { label: 'Notify me when they’re behind windows', type: 'checkbox', checked: prefs.notify !== false, click: (i) => { prefs.notify = i.checked; savePrefs(); } },
     { label: 'Stay in front of other windows', type: 'checkbox', checked: prefs.config.onTop !== 'Off', click: (i) => setConfig(Object.assign({}, prefs.config, { onTop: i.checked ? 'On' : 'Off' })) },
     { label: 'Settings…', click: openSettings },
     // Without Accessibility the Dock is a solid strip; with it, its icon row
@@ -1143,6 +1196,7 @@ app.whenReady().then(async () => {
     clipboard.writeText(JSON.stringify({ blaube: prefs.config, changed }, null, 2));
   });
   globalShortcut.register(TUNING_SHORTCUT, openTuning);
+  try { globalShortcut.register(TALK_SHORTCUT, talkShortcut); } catch { /* taken by another app */ }
 
   refreshDock();
   setInterval(refreshDock, 4 * 1000); // the Dock grows and shrinks as apps open and quit

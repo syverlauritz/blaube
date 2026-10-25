@@ -53,10 +53,12 @@ class Owned extends EventEmitter {
   // Starts a session in `cwd`. `extra`: more arguments (a model);
   // `settings`: extra settings for it (written to a file, so no shell can
   // mangle them). Returns its id.
-  start(cwd, extra = [], settings = null) {
-    const id = crypto.randomUUID();
+  // `resume`: a past session's id, to pick it up where it left off (it
+  // keeps its id).
+  start(cwd, extra = [], settings = null, resume = '') {
+    const id = resume || crypto.randomUUID();
     const bin = this.findClaude() || shellClaude || 'claude';
-    const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--session-id', id, ...extra];
+    const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', ...(resume ? ['--resume', id] : ['--session-id', id]), ...extra];
     let settingsFile = '';
     if (settings) {
       settingsFile = path.join(os.tmpdir(), `blaube-session-${id}.json`);
