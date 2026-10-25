@@ -744,6 +744,7 @@
       if (body.lastImpact > CFG.dizzySpeed) b.dizzyUntil = time + 0.9;
       // A good thump makes it blink (a hard one makes it dizzy, above).
       else if (body.lastImpact > 650 && CFG.eyeLife > 0 && time > (b.thumpBlinkAt || 0)) { b.nextBlink = time; b.thumpBlinkAt = time + 0.3; }
+      if (body.lastImpact > 650 && CFG.contactJiggle > 0) passJiggle(b, body.lastImpact);
       if (b.effort === 'high' && !b.glasses && !b.splitting && !b.merging && !b.dying && body.lastImpact > CFG.glassesSpeed) knockGlasses(b);
       if (b.glasses) stepGlasses(b);
       if (meditating(b)) levitate(b);
@@ -894,6 +895,7 @@
       body.squashTop(CFG.flinch * r * 2.2, DT);
     }
     if (nuzzle(b, r, c)) return;
+    strain(b, r);
     const calm = (b.state === 'idle' || b.state === 'done') && !meditating(b) && !b.stackedBy && time > (b.pounceUntil || 0);
     if (!calm) return;
     // A cursor close by: it leans over toward it, curious. Not when you're
@@ -910,6 +912,37 @@
       return;
     }
     fidget(b, r);
+  }
+
+  // A thump travels: a slime landing hard sets any slime it's touching
+  // jiggling too (from the top, as if the ground shook under it).
+  function passJiggle(b, impact) {
+    if (time < (b.jiggledAt || 0)) return;
+    b.jiggledAt = time + 0.25;
+    const bb = b.body.bbox();
+    for (const o of buddies.values()) {
+      if (o === b || o.dying || o.body.grab) continue;
+      const ob = o.body.bbox();
+      if (ob.maxX < bb.minX - 4 || ob.minX > bb.maxX + 4 || ob.maxY < bb.minY - 4 || ob.minY > bb.maxY + 4) continue;
+      o.body.squashTop(CFG.contactJiggle * Math.min(1, impact / 2500) * o.body.o.radius * 4, DT);
+      o.jiggledAt = time + 0.25; // and it doesn't echo straight back
+    }
+  }
+
+  // Working hard: while a tool runs, now and then it tenses up and shivers
+  // for a moment, a quick side-to-side tremble through its body.
+  function strain(b, r) {
+    if (CFG.strain <= 0 || b.state !== 'working' || meditating(b)) return;
+    const src = b.kind === 'child' ? b.agent : b.session;
+    if (!src || src.activity !== 'tool') { b.strainUntil = 0; return; }
+    if (time > (b.nextStrain || 0)) {
+      if (b.nextStrain) b.strainUntil = time + 0.3 + Math.random() * 0.25;
+      b.nextStrain = time + 2.5 + Math.random() * 4;
+    }
+    if (time < (b.strainUntil || 0) && Math.round(time / DT) % 4 === 0) {
+      b.strainDir = -(b.strainDir || 1);
+      b.body.lean(b.strainDir * CFG.strain * r * 1.2, DT);
+    }
   }
 
   // Thrown hard into a wall (or the ceiling): it splats and sticks there a
@@ -1413,7 +1446,7 @@
     }
     // Startled (poked, flinching): eyes go wide for a moment.
     const wide = CFG.eyeLife * Math.max(0, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
-    return { expression, mouth, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: b.pain || 0, nod: nodOf(b), scale: CFG.faceScale, style: CFG, bodyColor: b.color,
+    return { expression, mouth, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.6 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal',
     };
   }

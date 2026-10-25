@@ -17,7 +17,15 @@
     const root = document.getElementById('groups');
     for (const [title, params] of GROUPS) {
       const sec = document.createElement('section');
-      sec.innerHTML = `<h2>${title}</h2>`;
+      sec.innerHTML = `<h2>${title}<button class="mini">Reset</button></h2>`;
+      // Puts just this section back to its defaults.
+      sec.querySelector('.mini').addEventListener('click', () => {
+        const back = {};
+        for (const [key] of params) { back[key] = DEFAULTS[key]; cfg[key] = DEFAULTS[key]; }
+        api.set(back);
+        render();
+        status(`${title} back to defaults.`);
+      });
       for (const [key, def, min, max, step, label] of params) {
         if (typeof def === 'boolean') {
           const row = document.createElement('label');

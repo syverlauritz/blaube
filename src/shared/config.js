@@ -101,6 +101,8 @@
       ['splatHold', 0.7, 0, 2, 0.05, 'Stays stuck to the wall for (s)'],
       ['nuzzle', 1, 0, 3, 0.05, 'Helpers nuzzle their mother'],
       ['droop', 0.2, 0, 0.5, 0.01, 'Deflates on a failed tool or test'],
+      ['contactJiggle', 1, 0, 3, 0.05, 'A hard landing jiggles slimes it touches'],
+      ['strain', 1, 0, 3, 0.05, 'Strained shiver while a tool runs'],
     ]],
     ['World', [
       ['dockCollision', true, 0, 0, 0, 'Collide with the Dock / taskbar'],
