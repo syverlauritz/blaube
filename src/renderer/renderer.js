@@ -1231,6 +1231,9 @@
     const lines = [{ text: info.title || label(b) }, { text, color: D.STATE_COLORS[b.state] }];
     const extra = [info.branch, modelName(info.model)].filter(Boolean).join(' · ');
     if (extra) lines.push({ text: extra, dim: true });
+    // How far down its to-do list it is.
+    const todo = b.kind === 'mother' && b.session && b.session.todo;
+    if (todo) lines.push({ text: `${todo.done} of ${todo.of} on its list done`, dim: true });
     // How full its context window is.
     const tk = b.kind === 'mother' && b.session && b.session.tokens;
     if (tk && tk.limit && tk.context) lines.push({ text: `${Math.min(100, Math.round((tk.context / tk.limit) * 100))}% of context used`, dim: true });

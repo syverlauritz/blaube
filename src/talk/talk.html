@@ -59,6 +59,24 @@
   .stop:hover { color: var(--ink); }
   .stop:disabled { cursor: default; color: var(--faint); }
 
+  /* Its to-do list: one line (how far, what now), the whole list a tap away. */
+  .todo { margin: 0 16px 4px; flex: none; }
+  .todo[hidden] { display: none; }
+  #todoHead { width: 100%; display: flex; align-items: center; gap: 10px; border: 0; background: var(--soft); border-radius: 999px; padding: 7px 14px; font: 600 14px var(--ui); color: var(--dim); cursor: pointer; text-align: left; }
+  #todoHead:hover { color: var(--ink); }
+  .todo .bar { flex: none; width: 34px; height: 8px; border-radius: 4px; background: #e2e4eb; overflow: hidden; }
+  .todo .bar i { display: block; height: 100%; border-radius: 4px; background: var(--color); transition: width .4s cubic-bezier(.3, 1.4, .5, 1); }
+  #todoNow { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+  #todoCount { flex: none; }
+  #todoList { list-style: none; margin: 6px 0 2px; padding: 0 6px; max-height: 180px; overflow-y: auto; font: 600 14px/1.5 var(--ui); color: var(--dim); }
+  #todoList[hidden] { display: none; }
+  #todoList li { padding-left: 22px; position: relative; overflow-wrap: anywhere; }
+  #todoList li::before { content: ""; position: absolute; left: 4px; top: .45em; width: 9px; height: 9px; border-radius: 50%; background: #dfe2ea; }
+  #todoList li.in_progress { color: var(--ink); }
+  #todoList li.in_progress::before { background: var(--color); }
+  #todoList li.completed { color: var(--faint); text-decoration: line-through; }
+  #todoList li.completed::before { background: var(--color); opacity: .4; }
+
   /* The log takes what's left; a tall card scrolls instead of pushing the field out. */
   #log { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 4px 22px 10px; }
   #log.scrolled { -webkit-mask-image: linear-gradient(to bottom, transparent 0, transparent 4px, #000 18px); }
@@ -191,6 +209,10 @@
       <button class="round" id="terminal" title="Go to its terminal (or Alt-click the slime)" aria-label="Go to its terminal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7l5 5-5 5M12 17h7"/></svg></button>
       <button class="round" id="close" title="Close (Esc)" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
     </header>
+    <div class="todo" id="todo" hidden>
+      <button id="todoHead"><span class="bar"><i id="todoFill"></i></span><span id="todoNow"></span><span id="todoCount"></span></button>
+      <ul id="todoList" hidden></ul>
+    </div>
     <div id="log"><div id="inner"></div></div>
     <div class="ask" id="ask" hidden>
       <div class="what"><b id="askWhat"></b><span id="askMore"></span></div>

@@ -377,3 +377,28 @@ test('a step keeps what you would have seen in the terminal', () => {
   inbox.observe({ session_id: 's1', hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'ls' }, tool_response: { stdout: 'a.js' } });
   assert.equal(inbox.log('s1')[0].detail, '$ ls\na.js');
 });
+
+test('its to-do list follows TodoWrite and the task tools', () => {
+  const inbox = new Inbox();
+  const post = (tool_name, tool_input, tool_response) => inbox.observe({ session_id: 's1', hook_event_name: 'PostToolUse', tool_name, tool_input, tool_response });
+  post('TodoWrite', { todos: [
+    { content: 'Read the code', activeForm: 'Reading the code', status: 'completed' },
+    { content: 'Fix the bug', activeForm: 'Fixing the bug', status: 'in_progress' },
+    { content: 'Run the tests', activeForm: 'Running the tests', status: 'pending' },
+  ] });
+  assert.deepEqual(inbox.view('s1').todos.map((t) => [t.text, t.status]), [['Read the code', 'completed'], ['Fix the bug', 'in_progress'], ['Run the tests', 'pending']]);
+  assert.equal(inbox.view('s1').todos[1].doing, 'Fixing the bug');
+  // Task tools: one at a time, by id.
+  const inbox2 = new Inbox();
+  const post2 = (tool_name, tool_input, tool_response) => inbox2.observe({ session_id: 's2', hook_event_name: 'PostToolUse', tool_name, tool_input, tool_response });
+  post2('TaskCreate', { subject: 'Write docs', activeForm: 'Writing docs' }, { task: { id: '1' } });
+  post2('TaskCreate', { subject: 'Ship it' }, { task: { id: '2' } });
+  post2('TaskUpdate', { taskId: '1', status: 'in_progress' });
+  assert.deepEqual(inbox2.view('s2').todos.map((t) => t.status), ['in_progress', 'pending']);
+  post2('TaskUpdate', { taskId: '1', status: 'completed' });
+  post2('TaskUpdate', { taskId: '2', status: 'completed' });
+  post2('TaskCreate', { subject: 'Next thing' }, { task: { id: '3' } });
+  assert.deepEqual(inbox2.view('s2').todos.map((t) => t.text), ['Next thing'], 'a new list once the old one is done');
+  inbox2.observe({ session_id: 's2', hook_event_name: 'SessionEnd' });
+  assert.deepEqual(inbox2.view('s2').todos, []);
+});

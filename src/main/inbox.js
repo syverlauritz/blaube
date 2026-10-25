@@ -44,6 +44,7 @@ class Inbox extends EventEmitter {
     // and Stop works.
     this.steerable = new Set();
     this.stops = new Set(); // sessions you asked to stop (until the turn ends)
+    this.todos = new Map(); // session id -> [{ id, text, doing, status }]
     this.nextKey = 1;
   }
 
@@ -244,6 +245,9 @@ class Inbox extends EventEmitter {
     if (!id || payload.agent_id) return;
     const event = payload.hook_event_name;
     if (this.stops.has(id) && (event === 'Stop' || event === 'UserPromptSubmit' || event === 'SessionEnd')) { this.stops.delete(id); this.emit('change', id); }
+    // Its to-do list, as the terminal shows it.
+    if (event === 'PostToolUse' && todo(this.todos, id, payload)) this.emit('change', id);
+    if (event === 'SessionEnd') this.todos.delete(id);
     // What it did, a line per step, between what was said.
     if (event === 'PostToolUse' || event === 'PostToolUseFailure') {
       const text = stepText(payload.tool_name, payload.tool_input);
@@ -320,6 +324,7 @@ class Inbox extends EventEmitter {
       // never heard from its inbox hook (started before it was installed).
       inbox: this.owned.has(id) || this.waiters.has(id) ? 'ready' : this.reachable.has(id) ? 'busy' : 'unknown',
       owned: this.owned.has(id),
+      todos: this.todos.get(id) || [],
       stoppable: this.steerable.has(id),
       stopping: this.stops.has(id),
       queued: (this.queue.get(id) || []).length,
@@ -359,6 +364,36 @@ function describe(tool, input) {
   const v = input.command || input.file_path || input.notebook_path || input.url || input.pattern || input.path || input.query || input.description;
   const text = v ? String(v) : JSON.stringify(input);
   return clip(text);
+}
+
+// Keeps a session's to-do list up to date from TodoWrite (the whole list
+// each time) or the task tools (one item at a time). True if it changed.
+function todo(all, id, p) {
+  const i = p.tool_input && typeof p.tool_input === 'object' ? p.tool_input : {};
+  const r = p.tool_response && typeof p.tool_response === 'object' ? p.tool_response : {};
+  const status = (v) => (v === 'completed' || v === 'in_progress' || v === 'pending' ? v : null);
+  if (p.tool_name === 'TodoWrite' && Array.isArray(i.todos)) {
+    all.set(id, i.todos.filter((t) => t && t.content).slice(0, 30).map((t, n) => ({ id: String(t.id || n), text: String(t.content), doing: String(t.activeForm || t.content), status: status(t.status) || 'pending' })));
+    return true;
+  }
+  const list = all.get(id) || [];
+  if (p.tool_name === 'TaskCreate' && i.subject) {
+    const tid = String((r.task && r.task.id) || r.id || r.taskId || list.length + 1);
+    // A fresh list once the last one is all done.
+    const keep = list.length && list.every((t) => t.status === 'completed') ? [] : list;
+    all.set(id, [...keep, { id: tid, text: String(i.subject), doing: String(i.activeForm || i.subject), status: 'pending' }].slice(-30));
+    return true;
+  }
+  if (p.tool_name === 'TaskUpdate' && i.taskId != null) {
+    const t = list.find((x) => x.id === String(i.taskId));
+    if (!t) return false;
+    if (i.status === 'deleted') { all.set(id, list.filter((x) => x !== t)); return true; }
+    if (status(i.status)) t.status = i.status;
+    if (i.subject) t.text = String(i.subject);
+    if (i.activeForm) t.doing = String(i.activeForm);
+    return true;
+  }
+  return false;
 }
 
 // One step it took, said after the fact: "Edited face.js", "Ran npm test".

@@ -613,6 +613,7 @@ function pushState() {
       color: colorOf(s),
       tokens: tokens.get(s.id) || null,
       info: usage.sessionInfo(transcriptPath(s)),
+      todo: (() => { const t = inbox.todos.get(s.id) || []; const done = t.filter((x) => x.status === 'completed').length; return t.length && done < t.length ? { done, of: t.length } : null; })(),
       effort: efforts.get(s.id) || defaultEffort(),
       agents: s.agents.map((a) => Object.assign({}, a, {
         description: agentDescription(s, a),

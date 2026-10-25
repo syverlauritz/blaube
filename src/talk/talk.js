@@ -214,6 +214,7 @@
     stop.hidden = !(s.stoppable && s.state === 'working' && !s.ended);
     stop.disabled = !!s.stopping;
     stop.lastChild.textContent = s.stopping ? 'Stopping…' : 'Stop';
+    renderTodo(s);
     renderAsk(s.ask, s.asks);
     $('hint').textContent = hint(s);
     text.disabled = !!s.demo || (!s.connected && !s.typeable) || !!s.ended;
@@ -291,6 +292,32 @@
     fitWindow(); // reading sizes lays it out, even while hidden
     squeeze();
   }
+
+  // Its to-do list: how far it is and what it's on; the list on a tap.
+  // Gone once it's all done and the slime has stopped working.
+  let todoOpen = false;
+  function renderTodo(s) {
+    const list = s.todos || [];
+    const done = list.filter((t) => t.status === 'completed').length;
+    $('todo').hidden = !list.length || s.ended || (done === list.length && s.state !== 'working');
+    if ($('todo').hidden) return;
+    const now = list.find((t) => t.status === 'in_progress');
+    $('todoFill').style.width = Math.round(100 * done / list.length) + '%';
+    $('todoNow').textContent = now ? now.doing : done === list.length ? 'All done' : 'Next: ' + (list.find((t) => t.status !== 'completed') || list[0]).text;
+    $('todoCount').textContent = `${done} of ${list.length}`;
+    $('todoHead').title = todoOpen ? 'Hide the list' : 'Show the whole list';
+    const ul = $('todoList');
+    ul.hidden = !todoOpen;
+    ul.textContent = '';
+    for (const t of list) {
+      const li = document.createElement('li');
+      li.className = t.status;
+      li.textContent = t.status === 'in_progress' ? t.doing : t.text;
+      ul.append(li);
+    }
+  }
+  $('todoHead').addEventListener('click', () => { todoOpen = !todoOpen; if (current) renderTodo(current); requestAnimationFrame(fitWindow); });
+  new ResizeObserver(() => requestAnimationFrame(fitWindow)).observe($('todo'));
 
   // Whatever changes size inside (a plan laid out, a font arriving), the
   // window fits it again.

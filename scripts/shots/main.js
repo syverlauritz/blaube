@@ -364,12 +364,17 @@ const SCENES = {
 	// What it did between replies, Stop while it works, and a message that
 	// goes in at its next step.
 	talkSteps: {
-		talkJs: `setTimeout(() => document.querySelectorAll('button.step')[1].click(), 500)`,
+		talkJs: `setTimeout(() => { document.querySelectorAll('button.step')[1].click(); document.getElementById('todoHead').click(); }, 500)`,
 		sessions: [session('ts', 'blaube', 'working', { look: 'sprout' })],
 		bg: '#f2f0ec',
 		wait: 3500,
 		size: [1000, 640],
-		talk: { key: 'ts', inbox: 'busy', stoppable: true, log: [
+		talk: { key: 'ts', inbox: 'busy', stoppable: true, todos: [
+			{ id: '1', text: 'Log each step', doing: 'Logging each step', status: 'completed' },
+			{ id: '2', text: 'Add a Stop button', doing: 'Adding a Stop button', status: 'completed' },
+			{ id: '3', text: 'Show the steps in the talk box', doing: 'Showing the steps in the talk box', status: 'in_progress' },
+			{ id: '4', text: 'Run the tests', doing: 'Running the tests', status: 'pending' },
+		], log: [
 			{ who: 'you', text: 'make the talk box show what you did', via: 'blaube', status: 'sent', n: 1 },
 			{ who: 'step', text: 'Read inbox.js', ok: true, n: 2 },
 			{ who: 'step', text: 'Read talk.js', ok: true, n: 3 },
