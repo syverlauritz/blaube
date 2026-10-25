@@ -247,7 +247,7 @@ class Inbox extends EventEmitter {
     // What it did, a line per step, between what was said.
     if (event === 'PostToolUse' || event === 'PostToolUseFailure') {
       const text = stepText(payload.tool_name, payload.tool_input);
-      if (text) this.add(id, { who: 'step', text, ok: event === 'PostToolUse', kind: classify(payload.tool_name, payload.tool_input) });
+      if (text) this.add(id, { who: 'step', text, ok: event === 'PostToolUse', kind: classify(payload.tool_name, payload.tool_input), detail: stepDetail(payload) });
     }
     // A session Blaube started tells its own story (say/replied).
     if (this.owned.has(id) && (event === 'UserPromptSubmit' || event === 'Stop')) return;
@@ -384,6 +384,32 @@ function stepText(tool, input) {
   }
 }
 
+// What you'd have seen in the terminal for a step, for when you open it:
+// the change an edit made, the command and the end of what it printed, or
+// what went wrong. Kept short; the log holds a lot of these.
+const DETAIL = 1500;
+function stepDetail(payload) {
+  const i = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
+  const r = payload.tool_response;
+  const tail = (t) => { t = String(t || '').replace(/\s+$/, ''); return t.length > DETAIL ? '…' + t.slice(-DETAIL) : t; };
+  const head = (t) => { t = String(t || ''); return t.length > DETAIL ? t.slice(0, DETAIL) + '…' : t; };
+  const printed = () => {
+    if (typeof r === 'string') return r;
+    if (!r || typeof r !== 'object') return '';
+    return [r.stdout, r.stderr].filter((x) => typeof x === 'string' && x.trim()).join('\n') || (typeof r.output === 'string' ? r.output : '');
+  };
+  const failed = payload.hook_event_name === 'PostToolUseFailure' ? String(payload.error || printed() || '') : '';
+  const tool = payload.tool_name;
+  if (tool === 'Edit' && typeof i.new_string === 'string') {
+    const lines = (t, mark) => String(t || '').trim().split('\n').map((l) => mark + ' ' + l).join('\n');
+    return head([lines(i.old_string, '−'), lines(i.new_string, '+')].filter((x) => x.length > 2).join('\n') + (failed ? '\n\n' + failed : ''));
+  }
+  if (tool === 'MultiEdit' && Array.isArray(i.edits)) return head(i.edits.map((e) => `− ${String(e.old_string || '').trim()}\n+ ${String(e.new_string || '').trim()}`).join('\n\n'));
+  if (tool === 'Write' && typeof i.content === 'string') return head(i.content);
+  if (tool === 'Bash' || tool === 'PowerShell') return tail(`$ ${i.command || ''}\n${failed || printed()}`);
+  return failed ? tail(failed) : '';
+}
+
 const clip = (text) => (text.length > 4000 ? text.slice(0, 4000) + '…' : text);
 
 // A tool's name as a person would say it: "Bash", "Gmail: send message".
@@ -413,4 +439,4 @@ function alwaysLabel(updates, max = 70) {
   return text.length > max ? text.slice(0, max - 2) + '…' : text;
 }
 
-module.exports = { Inbox, frame, describe, toolName, alwaysLabel, stepText, STYLE };
+module.exports = { Inbox, frame, describe, toolName, alwaysLabel, stepText, stepDetail, STYLE };

@@ -361,3 +361,19 @@ test('end to end: the tool hook hands Blaube\'s answer back to Claude', async ()
     server.close();
   }
 });
+
+test('a step keeps what you would have seen in the terminal', () => {
+  const { stepDetail } = require('../src/main/inbox.js');
+  assert.equal(stepDetail({ hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: 'a.js', old_string: 'let a = 1;', new_string: 'const a = 1;\nconst b = 2;' } }),
+    '− let a = 1;\n+ const a = 1;\n+ const b = 2;');
+  assert.equal(stepDetail({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_response: { stdout: '# pass 90\n', stderr: '' } }), '$ npm test\n# pass 90');
+  assert.equal(stepDetail({ hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', tool_input: { command: 'false' }, error: 'Exit code 1' }), '$ false\nExit code 1');
+  assert.equal(stepDetail({ hook_event_name: 'PostToolUseFailure', tool_name: 'Read', tool_input: { file_path: 'x' }, error: 'File does not exist.' }), 'File does not exist.');
+  assert.equal(stepDetail({ hook_event_name: 'PostToolUse', tool_name: 'Read', tool_input: { file_path: 'x' }, tool_response: { file: {} } }), '', 'reading: nothing to show');
+  // Long output: its end, which is where the answer is.
+  const long = stepDetail({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'build' }, tool_response: { stdout: 'x'.repeat(5000) + 'DONE' } });
+  assert.ok(long.length <= 1501 && long.endsWith('DONE') && long.startsWith('…'));
+  const inbox = new Inbox();
+  inbox.observe({ session_id: 's1', hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'ls' }, tool_response: { stdout: 'a.js' } });
+  assert.equal(inbox.log('s1')[0].detail, '$ ls\na.js');
+});

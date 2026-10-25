@@ -95,6 +95,7 @@
   // shows its last SHOWN; the earlier ones fold behind "N more".
   const SHOWN = 3;
   const openRuns = new Set(); // runs you unfolded (by their first step's n)
+  const openSteps = new Set(); // steps you opened (by n)
   function addStep(m, fresh) {
     let run = inner.lastElementChild;
     if (!run || !run.classList.contains('steps')) {
@@ -119,11 +120,28 @@
       run.append(more);
       inner.append(run);
     }
-    const e = document.createElement('div');
-    e.className = 'step' + (m.ok === false ? ' failed' : '') + (fresh ? ' new' : '');
+    // A step with more to it opens on a tap: the change, the output.
+    const e = document.createElement(m.detail ? 'button' : 'div');
+    e.className = 'step' + (m.ok === false ? ' failed' : '') + (fresh ? ' new' : '') + (m.detail ? ' opens' : '');
     e.textContent = m.text + (m.ok === false ? ' (failed)' : '');
     e.title = m.text;
     run.append(e);
+    if (m.detail) {
+      const pre = document.createElement('pre');
+      pre.className = 'stepout';
+      pre.textContent = m.detail;
+      const shown = () => openSteps.has(m.n);
+      pre.hidden = !shown();
+      e.classList.toggle('open', shown());
+      e.onclick = () => {
+        if (shown()) openSteps.delete(m.n); else openSteps.add(m.n);
+        pre.hidden = !shown();
+        e.classList.toggle('open', shown());
+        // Opening one shows it, even from the folded part of a run.
+        if (shown() && e.classList.contains('early')) { run.classList.add('open'); openRuns.add(Number(run.dataset.first)); run.relabel(); }
+      };
+      e.after(pre);
+    }
     const rows = run.querySelectorAll('.step');
     if (rows.length > SHOWN) rows[rows.length - SHOWN - 1].classList.add('early');
     run.relabel();

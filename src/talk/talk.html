@@ -94,7 +94,14 @@
   .step.failed { color: #c0392b; }
   .step.failed::before { background: #e05a4f; opacity: 1; }
   .step.new { animation: squish .3s cubic-bezier(.3, 1.6, .5, 1); transform-origin: 0 50%; }
-  .steps:not(.open) .step.early { display: none; }
+  button.step { border: 0; background: none; margin: 0; padding: 0 0 0 20px; text-align: left; cursor: pointer; }
+  button.step:hover { color: var(--ink); }
+  button.step::after { content: "›"; display: inline-block; margin-left: 6px; color: var(--faint); transition: transform .15s; }
+  button.step.open::after { transform: rotate(90deg); }
+  button.step.failed:hover { color: #a93226; }
+  .stepout { margin: 3px 0 6px 20px; padding: 8px 12px; background: var(--soft); border-radius: 14px; font: 500 14px/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow-y: auto; user-select: text; animation: squish .25s cubic-bezier(.3, 1.6, .5, 1); transform-origin: 0 0; }
+  .stepout[hidden] { display: none; }
+  .steps:not(.open) .step.early, .steps:not(.open) .step.early + .stepout { display: none; }
   .steps .earlier { align-self: flex-start; border: 0; background: none; padding: 0 0 1px 20px; font: 600 14px var(--ui); color: var(--faint); cursor: pointer; }
   .steps .earlier:hover { color: var(--ink); }
   .dots { align-self: flex-start; display: flex; gap: 5px; padding: 6px 0; }

@@ -364,6 +364,7 @@ const SCENES = {
 	// What it did between replies, Stop while it works, and a message that
 	// goes in at its next step.
 	talkSteps: {
+		talkJs: `setTimeout(() => document.querySelectorAll('button.step')[1].click(), 500)`,
 		sessions: [session('ts', 'blaube', 'working', { look: 'sprout' })],
 		bg: '#f2f0ec',
 		wait: 3500,
@@ -373,8 +374,8 @@ const SCENES = {
 			{ who: 'step', text: 'Read inbox.js', ok: true, n: 2 },
 			{ who: 'step', text: 'Read talk.js', ok: true, n: 3 },
 			{ who: 'step', text: 'Searched for “who === ”', ok: true, n: 4 },
-			{ who: 'step', text: 'Edited inbox.js', ok: true, n: 5 },
-			{ who: 'step', text: 'Run the tests', ok: false, n: 6 },
+			{ who: 'step', text: 'Edited inbox.js', ok: true, n: 5, detail: '− const MAX_LOG = 60;\n+ const MAX_LOG = 60;\n+ const MAX_STEPS = 40;' },
+			{ who: 'step', text: 'Run the tests', ok: false, n: 6, detail: '$ npm test\nnot ok 91 - steps never push what was said out of the log\n  AssertionError: 41 !== 40' },
 			{ who: 'step', text: 'Edited talk.js', ok: true, n: 7 },
 			{ who: 'you', text: 'and keep it quiet, small text', via: 'blaube', status: 'queued', n: 8 },
 		] },
