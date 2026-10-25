@@ -832,7 +832,7 @@
       if (!asleep && b.sleep > 0.5 && !b.woke && body.onFloor()) { b.woke = true; body.squashTop(-CFG.sleepSlump * body.o.radius * 90, DT); b.nextBlink = time; }
       if (asleep) b.woke = false;
       body.areaScale *= 1 - CFG.sleepSlump * b.sleep;
-      body.o.pressure = Math.min(0.85, CFG.pressure * (1 + CFG.contextTighten * b.fill)) * (1 - 0.5 * b.droop) * (1 - 2 * CFG.sleepSlump * b.sleep);
+      body.o.pressure = Math.min(0.85, CFG.pressure * trait(b, 'firm') * (1 + CFG.contextTighten * b.fill)) * (1 - 0.5 * b.droop) * (1 - 2 * CFG.sleepSlump * b.sleep);
       // Pressure alone tops out early, so a full one also holds its round
       // shape harder and its skin goes taut: it barely squashes or sags.
       const firm = b.fill * b.fill * CFG.contextFirm;
@@ -989,6 +989,9 @@
       if (sp > 300) body.stretchToward(v.x / sp, v.y / sp, 1 + CFG.flightStretch * Math.min(1, (sp - 300) / 2200), 400, DT);
     }
     if (!grounded || b.merging || b.splitting || b.pendingHop || drag) return;
+    // Talking or singing: the body bobs with its voice, rising a little on
+    // each open syllable and settling between them.
+    if (b.talkOpen && CFG.voiceBob > 0) body.squashTop(-(b.talkOpen - 0.25) * CFG.voiceBob * r * 30 * DT, DT);
     const dx = mouse.x - c.x, dy = mouse.y - c.y, d = Math.hypot(dx, dy);
     // A cursor whizzing past makes it flinch: it ducks and leans away.
     const ms = Math.hypot(mouse.vx, mouse.vy);
@@ -1009,7 +1012,7 @@
     const fresh = performance.now() / 1000 - mouse.lastMove < 4;
     if (CFG.leanToCursor > 0 && near > 0 && fresh && !body.contains(mouse.x, mouse.y)) {
       const side = Math.max(-1, Math.min(1, dx / r));
-      body.lean(side * near * CFG.leanToCursor * r * 25 * DT, DT);
+      body.lean(side * near * CFG.leanToCursor * trait(b, 'curious') * r * 25 * DT, DT);
       // Its bottom grips the floor, so leaning doesn't scoot it along.
       body.impulse(-body.velocity(DT).x * 0.15, 0, DT);
       // Above it: it reaches up a little, too.
@@ -1117,6 +1120,21 @@
     return true;
   }
 
+  // Each slime is its own character: from its key it gets a little more or
+  // less of some traits (bouncy, curious, fidgety, blinky, firm), so two
+  // slimes never quite move alike. 'personality' sets how different.
+  const TRAITS = ['bouncy', 'curious', 'fidgety', 'blinky', 'firm'];
+  function trait(b, name) {
+    if (!b.traits || b.traitsFor !== b.key) {
+      let h = 2166136261;
+      for (let i = 0; i < b.key.length; i++) h = Math.imul(h ^ b.key.charCodeAt(i), 16777619) >>> 0;
+      b.traits = {};
+      for (const t of TRAITS) { h = Math.imul(h ^ (h >>> 13), 0x5bd1e995) >>> 0; b.traits[t] = (h % 2001) / 1000 - 1; }
+      b.traitsFor = b.key;
+    }
+    return 1 + b.traits[name] * CFG.personality * (name === 'firm' ? 0.25 : 0.5);
+  }
+
   // The crouch before a hop: the top is pushed down, harder for a bigger
   // jump. When it's time the hop goes off, and the top, which was on its
   // way down, kicks up instead, so it takes off stretched.
@@ -1169,7 +1187,7 @@
     }
     if (time < (b.nextIdleFidget || 0)) return;
     const first = !b.nextIdleFidget;
-    b.nextIdleFidget = time + (3 + Math.random() * 6) / Math.max(0.3, CFG.idleFidget);
+    b.nextIdleFidget = time + (3 + Math.random() * 6) / Math.max(0.3, CFG.idleFidget * trait(b, 'fidgety'));
     if (first) return;
     const roll = Math.random();
     if (roll < 0.45) b.shift = { dir: Math.random() < 0.5 ? -1 : 1, from: time, until: time + 1.2 + Math.random() * 0.8 };
@@ -1329,7 +1347,7 @@
         // Now and then a quick second blink right after.
         const again = !b.doubled && Math.random() < 0.18 * CFG.eyeLife;
         b.doubled = again;
-        b.nextBlink = time + (again ? 0.16 : 2 + Math.random() * 4);
+        b.nextBlink = time + (again ? 0.16 : (2 + Math.random() * 4) / trait(b, 'blinky'));
       }
     } else b.blink = Math.max(0, b.blink - 0.2);
 
@@ -1365,8 +1383,8 @@
     }
     // A working slime rocks a little now and then while it thinks.
     if (b.kind !== 'home' && b.state === 'working' && !b.merging && !b.body.grab && b.body.onFloor() && time > (b.nextFidget || 0)) {
-      if (b.nextFidget) b.hop((Math.random() < 0.5 ? -1 : 1) * (60 + Math.random() * 60), -140 - Math.random() * 90);
-      b.nextFidget = time + 1.8 + Math.random() * 3;
+      if (b.nextFidget) b.hop((Math.random() < 0.5 ? -1 : 1) * (60 + Math.random() * 60), (-140 - Math.random() * 90) * trait(b, 'bouncy'));
+      b.nextFidget = time + (1.8 + Math.random() * 3) / trait(b, 'fidgety');
     }
     if (b.body.grab || !b.body.onFloor() || b.merging || time < b.nextHop) return;
     if (b.kind === 'child' && b.mother && !b.mother.dying) {
@@ -1552,6 +1570,7 @@
     // Talking: the mouth follows its babble (not mid-yawn or seeing stars).
     // Shut between syllables, it's its own mouth (a smile, mostly).
     const talk = talkMouth(b);
+    b.talkOpen = talk ? talk.open : 0; // the body bobs along (see liven)
     if (b.singing && expression !== 'dizzy') expression = 'happy'; // eyes shut, singing its heart out
     if (talk && mouth !== 'yawn' && expression !== 'dizzy') {
       if (talk.open >= 0.06) mouth = 'talk';

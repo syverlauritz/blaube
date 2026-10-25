@@ -105,6 +105,8 @@
       ['contactJiggle', 1, 0, 3, 0.05, 'A hard landing jiggles slimes it touches'],
       ['strain', 1, 0, 3, 0.05, 'Strained shiver while a tool runs'],
       ['sleepSlump', 0.1, 0, 0.3, 0.01, 'Slumps while dozing (and stretches on waking)'],
+      ['voiceBob', 1, 0, 3, 0.05, 'Body bobs along while it talks or sings'],
+      ['personality', 0.6, 0, 1, 0.05, 'How different each slime\'s character is'],
     ]],
     ['World', [
       ['dockCollision', true, 0, 0, 0, 'Collide with the Dock / taskbar'],
