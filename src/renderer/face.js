@@ -337,6 +337,32 @@
         ctx.ellipse(0, my + r * 0.05, r * 0.09, r * 0.15, 0, 0, Math.PI * 2);
         ctx.fill();
         break;
+      case 'talk': {
+        // Babbling: the jaw drops with each syllable (the top lip stays),
+        // a little wider for "ee", rounder for "oo", never bigger than a
+        // yawn. Shut, the slime's own mouth is drawn instead.
+        const m = face.talk || {}, open = m.open || 0, wide = m.wide ?? 0.6, round = m.round ?? 0.3;
+        const h = r * (0.045 + 0.075 * open);
+        let w = r * (0.075 + 0.03 * (wide - 0.6) * open);
+        w += (h * 0.85 - w) * round * open * 0.6;
+        w = Math.max(w, h / 1.5);
+        const cy = my - ctx.lineWidth / 2 + h;
+        ctx.fillStyle = ink;
+        ctx.ellipse(0, cy, w, h, 0, 0, Math.PI * 2);
+        ctx.fill();
+        if (open > 0.6) {
+          // The tongue rises from the bottom lip as it opens.
+          const k = Math.min(1, (open - 0.6) * 4);
+          ctx.save();
+          ctx.clip();
+          ctx.fillStyle = '#e86a82';
+          ctx.beginPath();
+          ctx.ellipse(0, cy + h * (1.05 - 0.5 * k), w * 0.75 * k, h * 0.5 * k, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+        break;
+      }
       case 'slack':
         // Hanging open, a little lopsided.
         ctx.fillStyle = ink;
@@ -735,6 +761,30 @@
   }
 
   // A small heart that pops up, floats a little and fades.
+  // A quaver (eighth note) about s px tall, its head at (0, 0): drawn
+  // twice, a white edge under the colour.
+  function drawNote(ctx, s, color) {
+    const shape = () => {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, s * 0.3, s * 0.22, -0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(s * 0.24, -s * 0.08);
+      ctx.lineTo(s * 0.24, -s);
+      ctx.quadraticCurveTo(s * 0.32, -s * 0.62, s * 0.66, -s * 0.5);
+      ctx.stroke();
+    };
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.fillStyle = ctx.strokeStyle = '#fff';
+    ctx.lineWidth = s * 0.14 + 4;
+    shape();
+    ctx.save(); ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(0, 0, s * 0.3, s * 0.22, -0.4, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+    ctx.fillStyle = ctx.strokeStyle = color;
+    ctx.lineWidth = s * 0.14;
+    shape();
+  }
+
   function drawHeart(ctx, x, y, s, t) {
     // Pops in with a little overshoot.
     const k = Math.min(1, t / 0.25) - 1;
@@ -937,5 +987,5 @@
     ctx.closePath();
   }
 
-  root.BlaubeDraw = { setFont, setCrowd, drawHeart, drawShadow, drawBody, vary, drawFace, drawGlasses, drawDots, drawThinking, drawZzz, drawFlush, drawSweat, drawPet, drawExclaim, drawLabel, drawBubble, STATE_COLORS };
+  root.BlaubeDraw = { setFont, setCrowd, drawHeart, drawNote, drawShadow, drawBody, vary, drawFace, drawGlasses, drawDots, drawThinking, drawZzz, drawFlush, drawSweat, drawPet, drawExclaim, drawLabel, drawBubble, STATE_COLORS };
 })(globalThis);

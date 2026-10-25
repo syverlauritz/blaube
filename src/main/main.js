@@ -4,6 +4,7 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, sh
 const { SessionTracker } = require('./sessions');
 const { Inbox, STYLE } = require('./inbox');
 const { classify } = require('../shared/actions');
+const { SONGS } = require('../shared/songs');
 const { placeTalk } = require('./talkPlace');
 const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
@@ -415,6 +416,7 @@ function pushTalk(id, focusField = false) {
     // Connected if the settings say so, or if this session's hooks already
     // reached us (it was started with them, whatever the file says now).
     connected: hooksOk || inbox.reachable.has(id) || inbox.asks.has(id) || inbox.owned.has(id),
+    doing: s.state === 'working' ? doing.get(id) || '' : '',
     focus: focusField,
   }, inbox.view(id)));
 }
@@ -571,7 +573,7 @@ function createWindow() {
   applyOnTop();
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.setIgnoreMouseEvents(true, { forward: true });
-  if (TEST) win.setOpacity(0);
+  if (TEST) { win.setOpacity(0); win.webContents.setAudioMuted(true); } // tests are neither seen nor heard
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'), TEST ? { query: { debug: '1' } } : undefined);
 
   // The screen changed shape (the Dock, a resolution): the box stays where it
@@ -715,25 +717,33 @@ function describeTool(name, input = {}) {
 }
 
 const lastBubble = new Map(); // slime key -> time of its last tool bubble
+const doing = new Map(); // session id -> what its last tool was ("Editing face.js"), for its talk box
 function statusBubble({ session: s, agentId, payload: p }) {
+  if (!agentId) {
+    if (p.hook_event_name === 'PreToolUse') doing.set(s.id, describeTool(p.tool_name, p.tool_input || {}));
+    else if (p.hook_event_name === 'Stop') doing.delete(s.id);
+    if (talkId === s.id) pushTalk(s.id);
+  }
   if (!win) return;
   const key = agentId ? `${s.id}/${agentId}` : s.id;
-  const say = (text, seconds) => { if (text) win.webContents.send('say', { id: key, text, seconds, status: true }); };
+  const say = (text, seconds, aloud = false) => { if (text) win.webContents.send('say', { id: key, text, seconds, status: true, aloud }); };
   const event = p.hook_event_name;
   if (event === 'PreToolUse') {
     // Not every tool: a busy session would never stop talking.
     const now = Date.now();
     if (now - (lastBubble.get(key) || 0) < 4000) return;
     lastBubble.set(key, now);
-    say(describeTool(p.tool_name, p.tool_input || {}), 2.5);
+    // A helper murmurs it out loud too (softly); a session's own stay quiet.
+    if (agentId) win.webContents.send('say', { id: key, text: describeTool(p.tool_name, p.tool_input || {}), seconds: 2.5, status: true, aloud: true, soft: true });
+    else say(describeTool(p.tool_name, p.tool_input || {}), 2.5);
   } else if (event === 'Stop') {
     const said = p.last_assistant_message || usage.lastText(transcriptPath(s));
     // How long the turn took, when it was worth waiting for.
     const secs = s.turnStart ? (Date.now() - s.turnStart) / 1000 : 0;
     const took = secs < 20 ? '' : secs < 60 ? ` in ${Math.round(secs)}s` : secs < 3600 ? ` in ${Math.round(secs / 60)}m` : ` in ${Math.floor(secs / 3600)}h ${Math.round((secs % 3600) / 60)}m`;
-    say(said ? `Done${took}: ` + shorten(said, 80) : `Done${took}!`, 6);
+    say(said ? `Done${took}: ` + shorten(said, 80) : `Done${took}!`, 6, true);
   } else if (event === 'Notification' && s.state === 'waiting') {
-    say(shorten(p.message || 'I need you', 80), 6);
+    say(shorten(p.message || 'I need you', 80), 6, true);
   }
 }
 
@@ -852,11 +862,18 @@ function appMenuTemplate() {
     { label: 'Play', submenu: [
       { label: 'Come here', click: () => send('come-here') },
       { label: 'Everyone hop!', click: () => send('hop') },
+      // Everyone sings, in parts: the more slimes, the fuller.
+      { label: 'Choir', submenu: [
+        ...SONGS.map((s) => ({ label: s.title, click: () => send('choir:' + s.id) })),
+        { type: 'separator' },
+        { label: 'Stop singing', click: () => send('choir-stop') },
+      ] },
       { label: 'Demo sessions', click: runDemo },
     ] },
     { type: 'separator' },
     { label: 'Colour', submenu: colorMenu(prefs.config.color, (hex) => setConfig(Object.assign({}, prefs.config, { color: hex }))) },
     { label: 'Live on display', submenu: displayMenu() },
+    { label: 'Sounds', type: 'checkbox', checked: prefs.config.voice !== 'Off', click: (i) => setConfig(Object.assign({}, prefs.config, { voice: i.checked ? 'On' : 'Off' })) },
     { label: 'Stay in front of other windows', type: 'checkbox', checked: prefs.config.onTop !== 'Off', click: (i) => setConfig(Object.assign({}, prefs.config, { onTop: i.checked ? 'On' : 'Off' })) },
     { label: 'Settings…', click: openSettings },
     // Without Accessibility the Dock is a solid strip; with it, its icon row
@@ -1050,7 +1067,7 @@ app.whenReady().then(async () => {
     pushState();
     refreshTray();
   });
-  tracker.on('prompt', (s) => { if (win) win.webContents.send('nod', s.id); });
+  tracker.on('prompt', (s) => { doing.delete(s.id); if (win) win.webContents.send('nod', s.id); });
   tracker.on('change', () => pushTalk(talkId));
   // A turn ended: anything waiting for a session without an inbox hook can be typed now.
   const typeSoon = new Map();
@@ -1075,6 +1092,8 @@ app.whenReady().then(async () => {
     for (let i = log.indexOf(entry) - 1; i >= 0 && !asked; i--) if (log[i].who !== 'note') asked = log[i];
     const open = talkWin && talkId === id && talkWin.isVisible();
     if (win && !open && asked && asked.who === 'you' && asked.via === 'blaube') win.webContents.send('say', { id, text: snippet(text), seconds: 7 });
+    // Open, the box shows it; the slime still says it out loud.
+    else if (win && open) win.webContents.send('say', { id, text: snippet(text), voiceOnly: true });
   });
   tracker.on('activity', statusBubble);
   // A few moments worth a reaction (most tools get just their icon): a push

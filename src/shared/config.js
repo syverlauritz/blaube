@@ -71,6 +71,7 @@
       ['levitateHeight', 70, 0, 300, 1, 'Extra high effort float height (px)'],
       ['contextInflate', 0.56, 0, 1, 0.01, 'Puff up as context fills'],
       ['contextTighten', 2.5, 0, 6, 0.1, 'Get firmer as context fills (× pressure)'],
+      ['contextFirm', 1, 0, 2, 0.05, 'Hold round and taut as context fills'],
       ['redAt', 0.3, 0, 1, 0.01, 'Red tint from this much context'],
       ['flushColor', '#ff1e32', 0, 0, 0, 'Red tint colour'],
       ['flushRadius', 0.2, 0.05, 1.5, 0.01, 'Red tint size, when it starts (× radius)'],
@@ -122,6 +123,9 @@
     ['looks', 'On', ['On', 'Off'], 0, 0, 'Fun looks (bows, ears, antennas...)'],
     ['windowLedges', 'On', ['On', 'Off'], 0, 0, 'Land on top of other windows'],
     ['onTop', 'On', ['On', 'Off'], 0, 0, 'Stay in front of other windows'],
+    ['voice', 'On', ['On', 'Off'], 0, 0, 'Babble out loud when they talk'],
+    ['voiceVolume', 0.5, 0, 1, 0.05, 'Babble volume'],
+    ['voiceWah', 0.8, 0, 1, 0.05, 'Wah at the start of each note'],
   ];
 
   // Colours you can pick for a Blaube from its right-click menu.

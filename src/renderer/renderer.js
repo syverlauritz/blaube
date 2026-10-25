@@ -63,8 +63,9 @@
       return this.parent && time - this.born < SPLIT_TIME;
     }
 
-    say(lines, seconds, sticky = false) {
+    say(lines, seconds, sticky = false, aloud = true) {
       this.bubble = { lines: typeof lines === 'string' ? [{ text: lines }] : lines, until: time + seconds, sticky };
+      if (aloud) speak(this, this.bubble.lines.map((l) => l.text).join(' '));
     }
 
     hop(vx, vy) {
@@ -95,6 +96,97 @@
   }
 
   const buddies = new Map();
+
+  // Talking out loud: a babble in its own voice (voice.js), lower the
+  // bigger it is, with the mouth moving along. One line at a time each; a
+  // new one cuts the last short.
+  let audio = null;
+  function ensureAudio() {
+    if (!audio) {
+      const ctx = new AudioContext();
+      const out = ctx.createDynamicsCompressor(); // several at once stay soft
+      out.connect(ctx.destination);
+      audio = { ctx, out };
+    }
+    if (audio.ctx.state === 'suspended') audio.ctx.resume();
+    return audio;
+  }
+  function speak(b, text, how = {}) {
+    if (CFG.voice === 'Off' || !text || b.dying || b.singing) return;
+    try {
+      ensureAudio();
+      if (b.speech) b.speech.line.stop();
+      const at = audio.ctx.currentTime + 0.03;
+      const line = BlaubeVoice.speak(audio.ctx, text, {
+        at, out: audio.out, pitch: BlaubeVoice.pitchFor(b.body.o.radius, !b.big) * (how.higher || 1), seed: BlaubeVoice.hash(b.key), volume: CFG.voiceVolume * (how.softer || 1), wah: CFG.voiceWah, pace: how.pace,
+      });
+      b.speech = { line, at };
+    } catch (e) { b.speech = null; }
+  }
+  // The choir (Play > Choir): everyone sings a song together, each its own
+  // part (shared/choir.js): the biggest take the bass, the smallest the
+  // top. One slime sings the tune; every one more adds a harmony. They sway
+  // to the beat, eyes shut, little notes floating up.
+  let choir = null;
+  function startChoir(id) {
+    const song = BlaubeSongs.SONGS.find((s) => s.id === id);
+    stopChoir();
+    const singers = [...buddies.values()].filter((b) => !b.dying && !b.removed).sort((a, b) => b.body.o.radius - a.body.o.radius);
+    if (!song || !singers.length || CFG.voice === 'Off') return;
+    try {
+      ensureAudio();
+      const parts = BlaubeChoir.arrange(song, singers.length);
+      const at = audio.ctx.currentTime + 0.8; // a breath in first
+      const volume = CFG.voiceVolume * 1.4 / Math.sqrt(singers.length);
+      singers.forEach((b, i) => {
+        if (b.speech) b.speech.line.stop();
+        const line = BlaubeVoice.sing(audio.ctx, parts[i].notes, { at, out: audio.out, seed: BlaubeVoice.hash(b.key), volume, wah: CFG.voiceWah, vibrato: 28 });
+        b.speech = { line, at };
+        b.singing = parts[i].role;
+      });
+      const length = BlaubeChoir.length(song);
+      choir = { singers, start: time + 0.8, until: time + 0.8 + length + 0.3, beat: 60 / song.bpm, lastBeat: -1 };
+    } catch (e) { stopChoir(); }
+  }
+  function stopChoir() {
+    if (!choir) return;
+    for (const b of choir.singers) {
+      if (b.singing && b.speech) b.speech.line.stop();
+      b.singing = null;
+    }
+    choir = null;
+  }
+  // Each frame: sway on the beat, notes float up, and the end.
+  function stepChoir() {
+    if (!choir) return;
+    if (time > choir.until) { for (const b of choir.singers) b.singing = null; choir = null; return; }
+    const beat = Math.floor((time - choir.start) / choir.beat);
+    if (beat < 0 || beat === choir.lastBeat) return;
+    choir.lastBeat = beat;
+    for (const b of choir.singers) {
+      if (!b.singing || b.dying || b.body.grab) continue;
+      if (b.body.onFloor()) b.body.impulse((beat % 2 ? 1 : -1) * 55, -25, DT);
+      if (Math.random() < 0.35) {
+        const c = b.body.centroid();
+        hearts.push({ note: true, x: c.x + (Math.random() - 0.5) * b.body.o.radius, y: b.body.bbox().minY - 8, vx: (Math.random() - 0.5) * 30, born: time, size: 24 + Math.random() * 8, color: b.color });
+      }
+    }
+  }
+
+  // How its mouth is shaped right now, while it talks (null when quiet).
+  function talkMouth(b) {
+    if (!b.speech || !audio) return null;
+    let m = BlaubeVoice.mouthAt(b.speech.line, audio.ctx.currentTime - b.speech.at);
+    // Done: it eases shut before it lets go.
+    if (!m) {
+      if (!b.mouth || b.mouth.open < 0.05) { b.speech = null; b.mouth = null; return null; }
+      m = { open: 0, wide: b.mouth.wide, round: b.mouth.round };
+    }
+    // Eased, so the jaw moves instead of popping open and shut.
+    const was = b.mouth || { open: 0, wide: m.wide, round: m.round };
+    b.mouth = { open: was.open + (m.open - was.open) * 0.4, wide: was.wide + (m.wide - was.wide) * 0.3, round: was.round + (m.round - was.round) * 0.3 };
+    return b.mouth;
+  }
 
   function bodyOpts(big) {
     return Object.assign({}, CFG, { points: big ? CFG.mainPoints : CFG.childPoints });
@@ -715,6 +807,7 @@
   function step() {
     glideLedges();
     stepPets();
+    stepChoir();
     for (const b of [...buddies.values()]) {
       if (b.removed) continue;
       const body = b.body;
@@ -740,6 +833,11 @@
       if (asleep) b.woke = false;
       body.areaScale *= 1 - CFG.sleepSlump * b.sleep;
       body.o.pressure = Math.min(0.85, CFG.pressure * (1 + CFG.contextTighten * b.fill)) * (1 - 0.5 * b.droop) * (1 - 2 * CFG.sleepSlump * b.sleep);
+      // Pressure alone tops out early, so a full one also holds its round
+      // shape harder and its skin goes taut: it barely squashes or sags.
+      const firm = b.fill * b.fill * CFG.contextFirm;
+      body.o.shapeStiffness = CFG.shapeStiffness + 0.08 * firm;
+      body.o.edgeStiffness = CFG.edgeStiffness + 0.4 * firm;
       liven(b);
       const pre = body.velocity(DT);
       body.step(DT);
@@ -1451,9 +1549,17 @@
       const to = b.gazeTarget || mouse;
       b.gaze.x = to.x; b.gaze.y = to.y; b.gaze.vx = 0; b.gaze.vy = 0;
     }
+    // Talking: the mouth follows its babble (not mid-yawn or seeing stars).
+    // Shut between syllables, it's its own mouth (a smile, mostly).
+    const talk = talkMouth(b);
+    if (b.singing && expression !== 'dizzy') expression = 'happy'; // eyes shut, singing its heart out
+    if (talk && mouth !== 'yawn' && expression !== 'dizzy') {
+      if (talk.open >= 0.06) mouth = 'talk';
+      if (expression === 'concentrate' || expression === 'sleepy' || expression === 'peek') expression = 'normal';
+    }
     // Startled (poked, flinching): eyes go wide for a moment.
     const wide = CFG.eyeLife * Math.max(0, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
-    return { expression, mouth, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.6 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: CFG, bodyColor: b.color,
+    return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.6 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal',
     };
   }
@@ -1555,7 +1661,7 @@
       if (b.kind === 'home' || b.dying) continue;
       if (b === hovered || b.bubble) continue; // the bubble sits where these go
       if (b === buddies.get(talkingTo)) continue; // its talk box is there instead
-      if (b.state === 'working' && !nodding(b) && !b.merging) D.drawThinking(ctx, b.body, time, activityOf(b), W);
+      if (b.state === 'working' && !nodding(b) && !b.merging && !b.singing) D.drawThinking(ctx, b.body, time, activityOf(b), W);
       if (b.state === 'working' && nodding(b) && b.nodQuiet && !b.merging) D.drawThinking(ctx, b.body, time, activityOf(b), W); // a commit's nod keeps its sign
       if (b.state === 'waiting') D.drawExclaim(ctx, b.body, time, W, '?');
       else if (b.state === 'done' && unseen(b)) D.drawExclaim(ctx, b.body, time, W);
@@ -1611,6 +1717,7 @@
   // Petting: rubbing the cursor back and forth over a slime (or a pet),
   // without clicking, makes it happy: it wiggles and hearts float up.
   const pet = { target: null, dir: 0, flips: [], lastX: 0 };
+  const GIGGLES = ['hihihi!', 'hehehe!', 'hihi hee!', 'ahaha!', 'tee hee hee!', 'kiki!'];
   function checkPetting() {
     const target = drag ? null : petAt(mouse.x, mouse.y) || buddyAt(mouse.x, mouse.y);
     const dx = mouse.x - pet.lastX;
@@ -1622,6 +1729,12 @@
     pet.flips = pet.flips.filter((t) => time - t < 1.2);
     if (pet.flips.length < 3) return;
     target.pettedUntil = time + 1.2;
+    // Tickled: it giggles (a slime, not a pet), now and then.
+    if (target.body && !target.speech && time > (target.nextGiggle || 0)) {
+      target.nextGiggle = time + 1.4 + Math.random();
+      target.giggles = (target.giggles || 0) + 1;
+      speak(target, GIGGLES[Math.floor(Math.random() * GIGGLES.length)], { higher: 1.25, pace: 0.55 });
+    }
     if (time > (target.nextHeart || 0)) {
       target.nextHeart = time + 0.28;
       const isPet = target.task !== undefined;
@@ -1645,7 +1758,17 @@
         h.y = h.from.body.bbox().minY - h.dy;
         h.from = null;
       }
-      D.drawHeart(ctx, h.x + h.vx * age + Math.sin(age * 5 + h.born) * 4, h.y - age * (h.rise || 45), h.size, age);
+      const hx = h.x + h.vx * age + Math.sin(age * 5 + h.born) * 4, hy = h.y - age * (h.rise || 45);
+      if (h.note) {
+        // A sung note: a little ♪ in the singer's colour, white edged,
+        // rocking as it rises.
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, age * 6, (1.6 - age) * 2));
+        ctx.translate(hx, hy);
+        ctx.rotate(Math.sin(age * 4 + h.born) * 0.25);
+        D.drawNote(ctx, h.size, h.color);
+        ctx.restore();
+      } else D.drawHeart(ctx, hx, hy, h.size, age);
     }
   }
 
@@ -1987,19 +2110,25 @@
   if (api.onSay) api.onSay((m) => {
     const b = buddies.get(m.id);
     if (!b) return;
+    // Out loud only (its talk box is showing the words).
+    if (m.voiceOnly) { speak(b, m.text); return; }
     // Status updates are kept for the hover bubble, and only pop up by
-    // themselves when the Status bubbles setting says Always.
+    // themselves when the Status bubbles setting says Always. Only the big
+    // moments (done, needs you) are said out loud, bubble or not.
     if (m.status) {
       b.status = { text: m.text, at: time, state: b.state };
+      if (m.aloud) speak(b, m.text, { softer: m.soft ? 0.55 : 1 });
       if (CFG.statusBubbles !== 'Always') return;
     }
-    b.say(m.text, m.seconds || 4);
+    b.say(m.text, m.seconds || 4, false, !m.status);
   });
   api.onWorld((w) => setObstacles(w.obstacles));
   if (api.onLedges) api.onLedges(setLedges);
 
   api.onCommand((cmd) => {
-    if (cmd === 'come-here') {
+    if (cmd.startsWith('choir:')) startChoir(cmd.slice(6));
+    else if (cmd === 'choir-stop') stopChoir();
+    else if (cmd === 'come-here') {
       for (const b of buddies.values()) b.body.teleport(W / 2 + (Math.random() - 0.5) * 200, H / 3);
     } else if (cmd === 'hop') {
       for (const b of buddies.values()) b.hop((Math.random() - 0.5) * 600, -900);
