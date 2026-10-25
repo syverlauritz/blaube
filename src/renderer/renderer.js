@@ -1482,6 +1482,7 @@
     else if (b.merging && b.kind === 'child') { expression = 'happy'; mouth = 'smile'; }
     else if (nodding(b)) { expression = 'happy'; mouth = 'smile'; }
     else if (time < (b.pettedUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
+    else if (time < (b.greetUntil || 0) && st !== 'working') { expression = 'happy'; mouth = 'smile'; }
     else if (speed > 900 && !body.onFloor()) { mouth = 'grin'; }
     else if (time < (b.pounceUntil || 0) || (b.teaseSince && time - b.teaseSince > 0.3)) { mouth = b.caught ? 'grin' : 'o'; }
     else if (time < b.happyUntil) { expression = 'happy'; mouth = 'grin'; }
@@ -1576,8 +1577,25 @@
       if (talk.open >= 0.06) mouth = 'talk';
       if (expression === 'concentrate' || expression === 'sleepy' || expression === 'peek') expression = 'normal';
     }
+    // A big toss: past the top it looks down at what's coming ("uh-oh"),
+    // and just before it lands it screws its eyes shut and braces.
+    let wideBy = 0;
+    if (CFG.eyeLife > 0 && !body.grab && !meditating(b) && expression !== 'dizzy') {
+      if (v.y < -900 && !body.onFloor()) b.tossUp = time;
+      if (b.tossUp && time - b.tossUp < 2 && !body.onFloor() && v.y > 0) {
+        const box = body.bbox(), below = floorAt(body.centroid().x, box.maxY) - box.maxY;
+        if (below < body.o.radius * 0.9 && v.y > 600) { expression = 'pained'; mouth = 'flat'; }
+        else { expression = 'normal'; mouth = 'o'; wideBy = 0.6; }
+      }
+      if (body.onFloor()) b.tossUp = 0;
+      // Needing you, with you right there: big pleading eyes, on you.
+      if (st === 'waiting' && !body.grab) {
+        const c = body.centroid();
+        if (Math.hypot(mouse.x - c.x, mouse.y - c.y) < body.o.radius * 3) { wideBy = 0.5; b.lookAmount += (1 - b.lookAmount) * 0.1; b.gazeTarget = null; }
+      }
+    }
     // Startled (poked, flinching): eyes go wide for a moment.
-    const wide = CFG.eyeLife * Math.max(0, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
+    const wide = CFG.eyeLife * Math.max(wideBy, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
     return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.6 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal',
     };
@@ -1638,7 +1656,15 @@
   function draw() {
     D.setCrowd(); // a fresh frame: no balloons placed yet
     const under = drag || petAt(mouse.x, mouse.y) || glassesAt(mouse.x, mouse.y) ? null : buddyAt(mouse.x, mouse.y);
-    if (under) { hovered = under; hoverSeen = time; }
+    if (under) {
+      // Coming back to a slime after a while: it perks up to say hi.
+      if (under !== hovered && time - (under.lastHover || -99) > 6 && CFG.eyeLife > 0) {
+        under.greetUntil = time + 0.8;
+        if (under.body.onFloor() && !under.body.grab && under.state !== 'working') under.body.squashTop(-under.body.o.radius * 3 * CFG.eyeLife, DT);
+      }
+      under.lastHover = time;
+      hovered = under; hoverSeen = time;
+    }
     else if (drag || time - hoverSeen > 0.35) hovered = null;
     ctx.clearRect(0, 0, W, H);
     const list = drawOrder();
