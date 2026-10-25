@@ -279,6 +279,7 @@
       m.vx = s.vx; m.vy = s.vy; m.t = t;
     }
     for (const id of seen.keys()) if (!done.has(id)) seen.delete(id);
+    noticeWindows(next, done);
     // Riders: keep them with where their window really is (only ever lifting
     // them: if it's lower, they're in the air above it).
     const match = (l) => l && next.filter((m) => m.id === l.id).sort((p, q) => Math.abs(p.y - l.y) - Math.abs(q.y - l.y))[0];
@@ -297,6 +298,49 @@
     }
     ledges = next;
   }
+  // Slimes are curious about windows: one that appears gets looked at (a
+  // curious slime perks up and may hop over to see), and one being dragged
+  // around gets watched.
+  let knownWindows = null;
+  function noticeWindows(list, ids) {
+    const fresh = knownWindows ? [...ids].filter((id) => !knownWindows.has(id)) : [];
+    knownWindows = new Set(ids);
+    if (CFG.windowCurious <= 0) return;
+    const spotOf = (l) => ({ x: (l.x0 + l.x1) / 2, y: l.y + 30 });
+    for (const id of fresh) {
+      const l = list.find((m) => m.id === id);
+      if (l) for (const b of curiousAbout(spotOf(l), 1100)) {
+        b.glanceAt = { spot: spotOf(l) };
+        b.glanceUntil = time + 1 + Math.random() * 0.8;
+        if (b.state === 'working') continue;
+        b.body.squashTop(-b.body.o.radius * 2.5, DT);
+        const dx = spotOf(l).x - b.body.centroid().x;
+        if (Math.random() < 0.3 * CFG.windowCurious * trait(b, 'curious') && Math.abs(dx) > b.body.o.radius * 2) {
+          b.nextHop = time + 1;
+          setTimeout(() => b.hop(Math.sign(dx) * Math.min(420, Math.abs(dx) * 1.2), -420), 350);
+        }
+      }
+    }
+    for (const l of list) {
+      if (Math.hypot(l.vx || 0, l.vy || 0) < 250) continue;
+      for (const b of curiousAbout(spotOf(l), 800)) {
+        if (time < (b.watchedAt || 0)) continue;
+        b.watchedAt = time + 0.5;
+        b.glanceAt = { spot: spotOf(l) };
+        b.glanceUntil = time + 0.6;
+      }
+    }
+  }
+  // Slimes near a spot that are free to look: awake, on the ground, not busy
+  // being held, merging or riding the very window.
+  function curiousAbout(spot, range) {
+    return [...buddies.values()].filter((b) => {
+      if (b.dying || b.merging || b.body.grab || !b.body.onFloor() || b.body.onLedge) return false;
+      const c = b.body.centroid();
+      return Math.hypot(spot.x - c.x, spot.y - c.y) < range;
+    });
+  }
+
   // Every physics step: moving window tops glide on, carrying their riders.
   function glideLedges() {
     const t = performance.now() / 1000;
@@ -2203,12 +2247,13 @@
 
   // Lets the renderer run in a plain browser for development and screenshots.
   function devShim() {
-    const listeners = { state: [], command: [], config: [], world: [] };
+    const listeners = { state: [], command: [], config: [], world: [], ledges: [] };
     window.__blaube = {
       setState: (s) => listeners.state.forEach((f) => f(s)),
       command: (c) => listeners.command.forEach((f) => f(c)),
       setConfig: (c) => listeners.config.forEach((f) => f(c)),
       setWorld: (w) => listeners.world.forEach((f) => f(w)),
+      setLedges: (l) => listeners.ledges.forEach((f) => f(l)),
       buddies: () => buddies,
     };
     return {
@@ -2221,6 +2266,7 @@
       ready() {},
       onConfig: (f) => listeners.config.push(f),
       onWorld: (f) => listeners.world.push(f),
+      onLedges: (f) => listeners.ledges.push(f),
       onState: (f) => listeners.state.push(f),
       onCommand: (f) => listeners.command.push(f),
     };
