@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   onTail: (cb) => ipcRenderer.on('talk-tail', (_e, t) => cb(t)),
   setHeight: (id, h) => ipcRenderer.send('talk-height', id, h),
   send: (id, text) => ipcRenderer.send('talk-send', id, text),
+  stop: (id) => ipcRenderer.send('talk-stop', id),
   unsend: (id, n) => ipcRenderer.send('talk-unsend', id, n),
   decide: (id, key, choice, answers) => ipcRenderer.send('talk-permission', id, key, choice, answers),
   close: () => ipcRenderer.send('talk-close'),

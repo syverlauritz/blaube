@@ -361,6 +361,24 @@ const SCENES = {
 			{ who: 'you', text: 'looks good, ship it', via: 'blaube', status: 'sent' },
 		] },
 	},
+	// What it did between replies, Stop while it works, and a message that
+	// goes in at its next step.
+	talkSteps: {
+		sessions: [session('ts', 'blaube', 'working', { look: 'sprout' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1000, 640],
+		talk: { key: 'ts', inbox: 'busy', stoppable: true, log: [
+			{ who: 'you', text: 'make the talk box show what you did', via: 'blaube', status: 'sent', n: 1 },
+			{ who: 'step', text: 'Read inbox.js', ok: true, n: 2 },
+			{ who: 'step', text: 'Read talk.js', ok: true, n: 3 },
+			{ who: 'step', text: 'Searched for “who === ”', ok: true, n: 4 },
+			{ who: 'step', text: 'Edited inbox.js', ok: true, n: 5 },
+			{ who: 'step', text: 'Run the tests', ok: false, n: 6 },
+			{ who: 'step', text: 'Edited talk.js', ok: true, n: 7 },
+			{ who: 'you', text: 'and keep it quiet, small text', via: 'blaube', status: 'queued', n: 8 },
+		] },
+	},
 	talkLong: {
 		sessions: [session('tl', 'blaube', 'done', { look: 'horns' })],
 		wait: 3500,

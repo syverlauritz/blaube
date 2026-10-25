@@ -13,8 +13,10 @@
 // started (prompts typed in the terminal, messages sent from the slime and
 // Claude's replies), for the talk box.
 const { EventEmitter } = require('node:events');
+const { classify } = require('../shared/actions');
 
 const MAX_LOG = 60;
+const MAX_STEPS = 40; // what it did (read, edited, ran) is dropped before what was said
 
 // How a message from the slime reaches Claude: as a system reminder, so it
 // says plainly that it's the user talking, and that the answer will be read
@@ -37,7 +39,47 @@ class Inbox extends EventEmitter {
     // into them, and their replies come from their own output.
     this.owned = new Set();
     this.typed = new Map(); // session id -> what was just typed into its terminal (its prompt echo isn't logged twice)
+    // Sessions whose tool hooks hand Blaube's answer back to Claude (they
+    // were connected by this Blaube): a message can go in at the next step,
+    // and Stop works.
+    this.steerable = new Set();
+    this.stops = new Set(); // sessions you asked to stop (until the turn ends)
     this.nextKey = 1;
+  }
+
+  // A tool hook from a session (PreToolUse, PostToolUse...). Returns what
+  // the hook hands back to Claude, or '' for nothing.
+  // - Stop: every tool is turned down until the turn ends, with a word that
+  //   you asked it to stop, so it wraps up and its Stop hook still runs
+  //   (and it can still hear you afterwards).
+  // - Messages from the slime go in at the next step, as Claude Code does
+  //   with what you type while it works, instead of after the turn.
+  step(payload, talksBack) {
+    const id = String(payload.session_id || '');
+    if (!id) return '';
+    if (talksBack && !this.steerable.has(id)) { this.steerable.add(id); this.emit('change', id); }
+    if (!talksBack) return '';
+    const event = payload.hook_event_name;
+    if (this.stops.has(id) && event === 'PreToolUse') {
+      return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'The user pressed Stop in Blaube, their desktop buddy. Stop now: don\'t use any more tools. In one short sentence, say where you got to.' } });
+    }
+    if (payload.agent_id || this.stops.has(id) || this.owned.has(id)) return '';
+    if (event !== 'PostToolUse') return '';
+    const q = this.queue.get(id);
+    if (!q || !q.length) return '';
+    this.queue.delete(id);
+    for (const e of q) e.status = 'sent';
+    this.emit('heard', id);
+    this.emit('change', id);
+    return JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: frame(q.map((e) => e.text).join('\n\n')) } });
+  }
+
+  // Stop button: it stops before its next step. False if it can't.
+  stop(id) {
+    if (!this.steerable.has(id) || this.stops.has(id)) return false;
+    this.stops.add(id);
+    this.add(id, { who: 'note', text: 'You asked it to stop' });
+    return true;
   }
 
   // A session wants permission for a tool; `reply(json)` answers its hook.
@@ -201,6 +243,12 @@ class Inbox extends EventEmitter {
     const id = String(payload.session_id || '');
     if (!id || payload.agent_id) return;
     const event = payload.hook_event_name;
+    if (this.stops.has(id) && (event === 'Stop' || event === 'UserPromptSubmit' || event === 'SessionEnd')) { this.stops.delete(id); this.emit('change', id); }
+    // What it did, a line per step, between what was said.
+    if (event === 'PostToolUse' || event === 'PostToolUseFailure') {
+      const text = stepText(payload.tool_name, payload.tool_input);
+      if (text) this.add(id, { who: 'step', text, ok: event === 'PostToolUse', kind: classify(payload.tool_name, payload.tool_input) });
+    }
     // A session Blaube started tells its own story (say/replied).
     if (this.owned.has(id) && (event === 'UserPromptSubmit' || event === 'Stop')) return;
     // The terminal answered a permission prompt (the tool ran, or the turn
@@ -255,7 +303,9 @@ class Inbox extends EventEmitter {
     const log = this.logs.get(id) || [];
     const e = Object.assign({ at: this.now(), n: this.nextKey++ }, entry);
     log.push(e);
-    if (log.length > MAX_LOG) log.splice(0, log.length - MAX_LOG);
+    const steps = log.filter((x) => x.who === 'step');
+    if (steps.length > MAX_STEPS) log.splice(log.indexOf(steps[0]), 1);
+    if (log.length > MAX_LOG + MAX_STEPS) log.splice(0, log.length - MAX_LOG - MAX_STEPS);
     this.logs.set(id, log);
     this.emit('change', id);
     return e;
@@ -270,6 +320,8 @@ class Inbox extends EventEmitter {
       // never heard from its inbox hook (started before it was installed).
       inbox: this.owned.has(id) || this.waiters.has(id) ? 'ready' : this.reachable.has(id) ? 'busy' : 'unknown',
       owned: this.owned.has(id),
+      stoppable: this.steerable.has(id),
+      stopping: this.stops.has(id),
       queued: (this.queue.get(id) || []).length,
       ask: (() => {
         const a = (this.asks.get(id) || [])[0];
@@ -309,6 +361,29 @@ function describe(tool, input) {
   return clip(text);
 }
 
+// One step it took, said after the fact: "Edited face.js", "Ran npm test".
+// Nothing for the ones that show up some other way (questions, plans,
+// helpers get their own slime) or say nothing (its own bookkeeping).
+const base = (p) => String(p || '').split(/[\\/]/).filter(Boolean).pop() || 'a file';
+const short = (t, n = 60) => { t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+function stepText(tool, input) {
+  const i = input && typeof input === 'object' ? input : {};
+  switch (tool) {
+    case 'Read': return 'Read ' + base(i.file_path);
+    case 'Edit': case 'MultiEdit': return 'Edited ' + base(i.file_path);
+    case 'Write': return 'Wrote ' + base(i.file_path);
+    case 'NotebookEdit': return 'Edited ' + base(i.notebook_path);
+    case 'Grep': return `Searched for “${short(i.pattern, 30)}”`;
+    case 'Glob': return 'Looked for ' + short(i.pattern, 40);
+    case 'WebSearch': return 'Searched the web: ' + short(i.query, 40);
+    case 'WebFetch': try { return 'Read ' + new URL(i.url).hostname; } catch { return 'Read a web page'; }
+    case 'Bash': case 'PowerShell': return i.description ? short(i.description) : 'Ran ' + short(i.command, 50);
+    case 'Agent': case 'Task': return i.description ? 'Helper finished: ' + short(i.description, 45) : 'A helper finished';
+    case 'AskUserQuestion': case 'ExitPlanMode': case 'TodoWrite': case 'TaskCreate': case 'TaskUpdate': case 'TaskList': case 'TaskGet': case 'ToolSearch': return '';
+    default: return String(tool || '').startsWith('mcp__') ? 'Used ' + toolName(tool) : tool ? 'Used ' + tool : '';
+  }
+}
+
 const clip = (text) => (text.length > 4000 ? text.slice(0, 4000) + '…' : text);
 
 // A tool's name as a person would say it: "Bash", "Gmail: send message".
@@ -338,4 +413,4 @@ function alwaysLabel(updates, max = 70) {
   return text.length > max ? text.slice(0, max - 2) + '…' : text;
 }
 
-module.exports = { Inbox, frame, describe, toolName, alwaysLabel, STYLE };
+module.exports = { Inbox, frame, describe, toolName, alwaysLabel, stepText, STYLE };

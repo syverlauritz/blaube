@@ -1064,6 +1064,8 @@ app.whenReady().then(async () => {
   });
   inbox.on('change', (id) => pushTalk(id));
   // A message from the slime went in: its turn starts, as if typed.
+  // One went in at its next step, mid-turn: it nods, as when you type.
+  inbox.on('heard', (id) => { if (win) win.webContents.send('nod', id); });
   inbox.on('delivered', (id) => {
     if (tracker.sessions.has(id)) tracker.handle({ session_id: id, hook_event_name: 'UserPromptSubmit' }, 'blaube');
   });
@@ -1072,7 +1074,7 @@ app.whenReady().then(async () => {
   inbox.on('reply', (id, entry) => {
     const log = inbox.log(id), text = entry.text;
     let asked = null;
-    for (let i = log.indexOf(entry) - 1; i >= 0 && !asked; i--) if (log[i].who !== 'note') asked = log[i];
+    for (let i = log.indexOf(entry) - 1; i >= 0 && !asked; i--) if (log[i].who !== 'note' && log[i].who !== 'step') asked = log[i];
     const open = talkWin && talkId === id && talkWin.isVisible();
     if (win && !open && asked && asked.who === 'you' && asked.via === 'blaube') win.webContents.send('say', { id, text: snippet(text), seconds: 7 });
   });
@@ -1246,6 +1248,10 @@ app.whenReady().then(async () => {
     const how = inbox.send(id, text);
     log(`message for ${tracker.sessions.get(id).project}: ${how} (inbox ${inbox.view(id).inbox})`);
     setTimeout(() => typeQueued(id), 1500); // a moment for its inbox hook to ask first
+  });
+  ipcMain.on('talk-stop', (_e, id) => {
+    if (!id || id !== talkId || !tracker.sessions.has(id)) return;
+    log(`stop ${tracker.sessions.get(id).project}: ${inbox.stop(id) ? 'at its next step' : 'can\'t'}`);
   });
   ipcMain.on('talk-unsend', (_e, id, n) => { if (id && id === talkId) inbox.unsend(id, n); });
   ipcMain.on('talk-close', () => hideTalk());

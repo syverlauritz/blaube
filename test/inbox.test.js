@@ -263,3 +263,101 @@ test('a permission answered in the terminal leaves the slime; failed typing re-q
   t.observe({ session_id: 's3', hook_event_name: 'UserPromptSubmit', prompt: typed });
   assert.equal(t.log('s3').length, 1, 'its echo isn’t logged twice');
 });
+
+test('what it did shows as steps between what was said; its own bookkeeping does not', () => {
+  const inbox = new Inbox();
+  inbox.observe({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: 'fix it' });
+  inbox.observe({ session_id: 's1', hook_event_name: 'PostToolUse', tool_name: 'Read', tool_input: { file_path: '/a/b/face.js' } });
+  inbox.observe({ session_id: 's1', hook_event_name: 'PostToolUse', tool_name: 'TodoWrite', tool_input: {} });
+  inbox.observe({ session_id: 's1', hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', tool_input: { command: 'npm test', description: 'Run the tests' } });
+  inbox.observe({ session_id: 's1', agent_id: 'h1', hook_event_name: 'PostToolUse', tool_name: 'Read', tool_input: { file_path: 'x.js' } });
+  inbox.observe({ session_id: 's1', hook_event_name: 'Stop', last_assistant_message: 'Fixed.' });
+  assert.deepEqual(inbox.log('s1').map((e) => [e.who, e.text, e.ok]), [
+    ['you', 'fix it', undefined], ['step', 'Read face.js', true], ['step', 'Run the tests', false], ['claude', 'Fixed.', undefined],
+  ]);
+});
+
+test('steps never push what was said out of the log', () => {
+  const inbox = new Inbox();
+  inbox.observe({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: 'first' });
+  for (let i = 0; i < 200; i++) inbox.observe({ session_id: 's1', hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: `f${i}.js` } });
+  const log = inbox.log('s1');
+  assert.equal(log[0].text, 'first');
+  assert.equal(log.filter((e) => e.who === 'step').length, 40);
+  assert.equal(log[log.length - 1].text, 'Edited f199.js');
+});
+
+test('a message from the slime goes in at the next step, if the hooks can hand it over', () => {
+  const inbox = new Inbox();
+  const heard = [];
+  inbox.on('heard', (id) => heard.push(id));
+  const post = { session_id: 's1', hook_event_name: 'PostToolUse', tool_name: 'Read', tool_input: {} };
+  // Hooks from an older Blaube can't hand anything back: it waits for the turn.
+  assert.equal(inbox.send('s1', 'also the tests'), 'queued');
+  assert.equal(inbox.step(post, false), '');
+  assert.equal(inbox.view('s1').queued, 1);
+  assert.equal(inbox.view('s1').stoppable, false);
+  // Ones that can: it goes in with the next tool result, and nods.
+  assert.equal(inbox.step({ ...post, hook_event_name: 'PreToolUse' }, true), '');
+  const out = JSON.parse(inbox.step(post, true));
+  assert.equal(out.hookSpecificOutput.hookEventName, 'PostToolUse');
+  assert.match(out.hookSpecificOutput.additionalContext, /Blaube[\s\S]*also the tests$/);
+  assert.equal(inbox.view('s1').queued, 0);
+  assert.equal(inbox.log('s1')[0].status, 'sent');
+  assert.deepEqual(heard, ['s1']);
+  // Nothing waiting: nothing handed back. Helpers' steps never carry it.
+  assert.equal(inbox.step(post, true), '');
+  inbox.send('s1', 'more');
+  assert.equal(inbox.step({ ...post, agent_id: 'h1' }, true), '');
+  assert.equal(inbox.view('s1').queued, 1);
+});
+
+test('Stop turns down every tool until the turn ends, and only for hooks that can say so', () => {
+  const inbox = new Inbox();
+  const pre = { session_id: 's1', hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'ls' } };
+  assert.equal(inbox.stop('s1'), false, 'never heard from its tool hooks');
+  inbox.step(pre, true);
+  assert.equal(inbox.stop('s1'), true);
+  assert.equal(inbox.stop('s1'), false, 'once is enough');
+  assert.equal(inbox.view('s1').stopping, true);
+  for (const p of [pre, { ...pre, agent_id: 'h1' }, pre]) {
+    const out = JSON.parse(inbox.step(p, true));
+    assert.equal(out.hookSpecificOutput.permissionDecision, 'deny');
+    assert.match(out.hookSpecificOutput.permissionDecisionReason, /Stop/);
+  }
+  // While stopping, a message waits for the turn to end rather than going in.
+  inbox.send('s1', 'next');
+  assert.equal(inbox.step({ ...pre, hook_event_name: 'PostToolUse' }, true), '');
+  inbox.observe({ session_id: 's1', hook_event_name: 'Stop', last_assistant_message: 'Stopped after reading.' });
+  assert.equal(inbox.view('s1').stopping, false);
+  assert.equal(inbox.step(pre, true), '');
+  assert.ok(inbox.log('s1').some((e) => e.who === 'note' && /stop/.test(e.text)));
+});
+
+test('end to end: the tool hook hands Blaube\'s answer back to Claude', async () => {
+  const { toolHookCommand } = require('../src/main/claudeHooks.js');
+  const inbox = new Inbox();
+  const tracker = new SessionTracker();
+  const server = await startHookServer(tracker, 0, inbox);
+  const port = server.address().port;
+  const run = (payload) => new Promise((resolve) => {
+    const p = spawn('sh', ['-c', toolHookCommand(port)]);
+    let out = '';
+    p.stdout.on('data', (d) => { out += d; });
+    p.on('exit', (code) => resolve({ code, out }));
+    p.stdin.end(JSON.stringify(payload));
+  });
+  try {
+    const post = { session_id: 'e2e', hook_event_name: 'PostToolUse', tool_name: 'Read', tool_input: { file_path: 'a.js' }, cwd: '/tmp/e2e' };
+    assert.deepEqual(await run(post), { code: 0, out: '' });
+    inbox.send('e2e', 'say MANGO');
+    const r = await run(post);
+    assert.equal(r.code, 0);
+    assert.match(JSON.parse(r.out).hookSpecificOutput.additionalContext, /say MANGO/);
+    assert.ok(inbox.stop('e2e'));
+    const s = await run({ ...post, hook_event_name: 'PreToolUse' });
+    assert.equal(JSON.parse(s.out).hookSpecificOutput.permissionDecision, 'deny');
+  } finally {
+    server.close();
+  }
+});

@@ -90,6 +90,11 @@ function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
       if (body.length > 1e6) req.destroy();
     });
     req.on('end', () => {
+      // What goes back to Claude (tool hooks only; see inbox.step).
+      let answer = '';
+      const done = () => {
+        if (answer) { res.writeHead(200, { 'content-type': 'application/json' }); res.end(answer); } else { res.writeHead(204); res.end(); }
+      };
       try {
         const payload = JSON.parse(body);
         for (const k of Object.keys(payload)) if (k.startsWith('_')) delete payload[k]; // ours to set, never the sender's
@@ -99,6 +104,7 @@ function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
         if (entry) payload._entry = String(entry).slice(0, 64);
         tracker.handle(payload);
         if (inbox) inbox.observe(payload);
+        if (inbox && /^(PreToolUse|PostToolUse|PostToolUseFailure)$/.test(String(payload.hook_event_name))) answer = inbox.step(payload, req.headers['x-blaube-out'] === '1');
         // The first time we hear from a session, find its claude.exe while
         // the hook's shell is still alive, so a click can focus its window.
         const s = tracker.sessions.get(String(payload.session_id));
@@ -108,13 +114,11 @@ function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
           return findClaudeAncestor(String(hookPid), (pid) => {
             s.findingPid = false;
             if (pid) s.pid = pid;
-            res.writeHead(204);
-            res.end();
+            done();
           });
         }
       } catch { /* ignore junk */ }
-      res.writeHead(204);
-      res.end();
+      done();
     });
   });
   return new Promise((resolve, reject) => {

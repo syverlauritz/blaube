@@ -91,6 +91,45 @@
     });
   }
 
+  // A step goes into the run of steps it follows (or starts one). A run
+  // shows its last SHOWN; the earlier ones fold behind "N more".
+  const SHOWN = 3;
+  const openRuns = new Set(); // runs you unfolded (by their first step's n)
+  function addStep(m, fresh) {
+    let run = inner.lastElementChild;
+    if (!run || !run.classList.contains('steps')) {
+      run = document.createElement('div');
+      run.className = 'steps';
+      run.dataset.first = m.n;
+      if (openRuns.has(m.n)) run.classList.add('open');
+      const more = document.createElement('button');
+      more.className = 'earlier';
+      more.hidden = true;
+      more.onclick = () => {
+        const open = run.classList.toggle('open');
+        if (open) openRuns.add(Number(run.dataset.first)); else openRuns.delete(Number(run.dataset.first));
+        label();
+      };
+      const label = () => {
+        const early = run.querySelectorAll('.step.early').length;
+        more.hidden = !early;
+        more.textContent = run.classList.contains('open') ? 'fewer steps' : `${early} more step${early === 1 ? '' : 's'}`;
+      };
+      run.relabel = label;
+      run.append(more);
+      inner.append(run);
+    }
+    const e = document.createElement('div');
+    e.className = 'step' + (m.ok === false ? ' failed' : '') + (fresh ? ' new' : '');
+    e.textContent = m.text + (m.ok === false ? ' (failed)' : '');
+    e.title = m.text;
+    run.append(e);
+    const rows = run.querySelectorAll('.step');
+    if (rows.length > SHOWN) rows[rows.length - SHOWN - 1].classList.add('early');
+    run.relabel();
+    return run;
+  }
+
   function message(m, fresh) {
     if (m.who === 'note') {
       const e = document.createElement('div');
@@ -120,7 +159,8 @@
     if (m.status === 'queued') {
       const t = document.createElement('div');
       t.className = 'meta';
-      t.textContent = current.inbox === 'unknown' ? (current.typeable ? 'goes in when it’s free · ' : `waiting for ${current.project} to pick this up · `) : 'after its turn · ';
+      t.textContent = current.inbox === 'unknown' ? (current.typeable ? 'goes in when it’s free · ' : `waiting for ${current.project} to pick this up · `)
+        : current.stoppable && current.state === 'working' && !current.stopping ? 'at its next step · ' : 'after its turn · ';
       const undo = document.createElement('button');
       undo.className = 'unsend';
       undo.textContent = 'unsend';
@@ -152,11 +192,16 @@
     }
     if (s.tail) placeTail(s.tail);
     $('terminal').style.display = s.demo || s.ended || s.owned ? 'none' : '';
+    const stop = $('stop');
+    stop.hidden = !(s.stoppable && s.state === 'working' && !s.ended);
+    stop.disabled = !!s.stopping;
+    stop.lastChild.textContent = s.stopping ? 'Stopping…' : 'Stop';
     renderAsk(s.ask, s.asks);
     $('hint').textContent = hint(s);
     text.disabled = !!s.demo || (!s.connected && !s.typeable) || !!s.ended;
     text.placeholder = s.ask && s.ask.kind === 'question' ? (s.ask.questions.length === 1 ? 'Or type your answer…' : 'Say something for later…')
       : s.ask && s.ask.kind === 'plan' ? 'What should change?'
+      : !s.owned && s.state === 'working' && s.stoppable && !s.stopping ? 'Add something…'
       : !s.owned && (s.state === 'working' || s.state === 'waiting') ? 'Say something for later…' : 'Say something…';
     send.disabled = text.disabled || !text.value.trim();
     // The slime's dots while it works on something you said: after the
@@ -196,11 +241,15 @@
         }
       } else if (from === 0) inner.textContent = '';
       for (let i = from; i < s.log.length; i++) {
+        if (s.log[i].who === 'step') { ends[i] = addStep(s.log[i], !switched && i >= seen); continue; }
         const nodes = message(s.log[i], !switched && i >= seen);
         inner.append(...nodes);
         ends[i] = nodes[nodes.length - 1];
       }
-      if (thinking >= 0 && ends[thinking]) ends[thinking].after(dots);
+      // (After the steps it has taken since, too.)
+      let after = thinking;
+      for (let i = thinking + 1; thinking >= 0 && i < s.log.length; i++) if (s.log[i].status !== 'queued') after = i;
+      if (after >= 0 && ends[after]) ends[after].after(dots);
       if (!switched && s.log.slice(seen).some((m) => m.who === 'claude')) {
         const w = $('wrap');
         w.classList.remove('boing'); void w.offsetWidth; w.classList.add('boing');
@@ -563,6 +612,7 @@
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.isComposing) close(); });
   $('close').addEventListener('click', close);
   $('terminal').addEventListener('click', () => api.terminal());
+  $('stop').addEventListener('click', () => { if (current && api.stop) { $('stop').disabled = true; api.stop(current.id); } });
   const decide = (choice) => () => {
     if (!askKey) return;
     const ask = current.ask;
