@@ -18,7 +18,7 @@
   let obstacles = []; // Dock/taskbar rectangles in window coordinates
 
   let W = 0, H = 0;
-  let mouse = { x: -1e4, y: -1e4, lastMove: performance.now() / 1000 };
+  let mouse = { x: -1e4, y: -1e4, lastMove: performance.now() / 1000, vx: 0, vy: 0, px: -1e4, py: -1e4 };
   let drag = null; // { buddy, pet or glasses, x0, y0, t0, moved }
   let settings = { hooksInstalled: true };
   let time = 0;
@@ -80,6 +80,15 @@
           const room = Math.max(0, Math.min(c.x - l.x0, l.x1 - c.x) - r * 0.6);
           vx = Math.sign((l.x0 + l.x1) / 2 - c.x) * Math.min(Math.abs(vx), room / (-2 * vy / CFG.gravity) + 20);
         }
+      }
+      // From the ground, a jump starts with a crouch: the top is pushed
+      // down for a moment, and the hop goes off when it springs back (see
+      // crouch). A hop asked for mid-crouch just changes where it goes.
+      if (this.pendingHop) { this.pendingHop.vx = vx; this.pendingHop.vy = vy; return; }
+      const len = CFG.hopCrouch * Math.max(0.5, Math.min(1.3, -vy / 600));
+      if (vy < -150 && len > 0.01 && this.body.onFloor()) {
+        this.pendingHop = { vx, vy, at: time + len, power: Math.min(1.3, -vy / 600), v: 0 };
+        return;
       }
       this.body.impulse(vx, vy, DT);
     }
@@ -722,12 +731,15 @@
       // (Capped: past about 0.85 the pressure solve overshoots and the skin
       // jitters, worst while it's held.)
       body.o.pressure = Math.min(0.85, CFG.pressure * (1 + CFG.contextTighten * b.fill));
+      liven(b);
       body.step(DT);
       updateGaze(b);
       b.look = lookOf(b);
       if (b.look !== 'none') Looks.stepLook(b, DT);
       if (b.splitting) pullStrand(b);
       if (body.lastImpact > CFG.dizzySpeed) b.dizzyUntil = time + 0.9;
+      // A good thump makes it blink (a hard one makes it dizzy, above).
+      else if (body.lastImpact > 650 && CFG.eyeLife > 0 && time > (b.thumpBlinkAt || 0)) { b.nextBlink = time; b.thumpBlinkAt = time + 0.3; }
       if (b.effort === 'high' && !b.glasses && !b.splitting && !b.merging && !b.dying && body.lastImpact > CFG.glassesSpeed) knockGlasses(b);
       if (b.glasses) stepGlasses(b);
       if (meditating(b)) levitate(b);
@@ -843,6 +855,124 @@
     const target = floorAt(c.x) - r - CFG.levitateHeight + Math.sin(time * 1.6 + b.born * 3) * 8;
     const ay = -CFG.gravity + (target - c.y) * 16 - v.y * 4.5;
     body.impulse(-v.x * 2.5 * DT, ay * DT, DT);
+  }
+
+  // --- Life -----------------------------------------------------------------
+  // Small forces every step that make a slime seem to have a mind and
+  // muscles of its own: it crouches before it jumps, stretches out in
+  // flight, leans toward a cursor that comes close, flinches from one that
+  // whizzes past, shifts its weight when it's bored, and wriggles when it's
+  // held up too long. All of it goes in as forces; the body does the rest.
+
+  function liven(b) {
+    const body = b.body;
+    if (b.dying || b.removed) return;
+    if (b.pendingHop) crouch(b);
+    if (body.grab) { held(b); return; }
+    b.stillFor = 0;
+    b.wriggling = false;
+    const r = body.o.radius, c = body.centroid();
+    const grounded = body.onFloor();
+    // Flying: stretched out along the way it's going, more the faster.
+    if (!grounded && CFG.flightStretch > 0 && !meditating(b)) {
+      const v = body.velocity(DT), sp = Math.hypot(v.x, v.y);
+      if (sp > 300) body.stretchToward(v.x / sp, v.y / sp, 1 + CFG.flightStretch * Math.min(1, (sp - 300) / 2200), 400, DT);
+    }
+    if (!grounded || b.merging || b.splitting || b.pendingHop || drag) return;
+    const dx = mouse.x - c.x, dy = mouse.y - c.y, d = Math.hypot(dx, dy);
+    // A cursor whizzing past makes it flinch: it ducks and leans away.
+    const ms = Math.hypot(mouse.vx, mouse.vy);
+    if (CFG.flinch > 0 && ms > CFG.flinchSpeed && d < r * 1.8 && !body.contains(mouse.x, mouse.y) && time > (b.flinchAt || 0)) {
+      b.flinchAt = time + 1.2;
+      b.startleUntil = time + 0.45;
+      b.surpriseUntil = time + 0.45;
+      body.lean(-(Math.sign(dx) || 1) * CFG.flinch * r * 3.2, DT);
+      body.squashTop(CFG.flinch * r * 2.2, DT);
+    }
+    const calm = (b.state === 'idle' || b.state === 'done') && !meditating(b) && !b.stackedBy && time > (b.pounceUntil || 0);
+    if (!calm) return;
+    // A cursor close by: it leans over toward it, curious. Not when you're
+    // on it (that's petting), and not if it's been sitting still a while.
+    const near = 1 - ramp(d, r * 1.4, r * 4.5);
+    const fresh = performance.now() / 1000 - mouse.lastMove < 4;
+    if (CFG.leanToCursor > 0 && near > 0 && fresh && !body.contains(mouse.x, mouse.y)) {
+      const side = Math.max(-1, Math.min(1, dx / r));
+      body.lean(side * near * CFG.leanToCursor * r * 25 * DT, DT);
+      // Its bottom grips the floor, so leaning doesn't scoot it along.
+      body.impulse(-body.velocity(DT).x * 0.15, 0, DT);
+      // Above it: it reaches up a little, too.
+      if (dy < -r) body.squashTop(-near * CFG.leanToCursor * r * 14 * DT, DT);
+      return;
+    }
+    fidget(b, r);
+  }
+
+  // The crouch before a hop: the top is pushed down, harder for a bigger
+  // jump. When it's time the hop goes off, and the top, which was on its
+  // way down, kicks up instead, so it takes off stretched.
+  function crouch(b) {
+    const h = b.pendingHop, body = b.body;
+    if (body.grab) { b.pendingHop = null; return; }
+    if (time >= h.at) {
+      b.pendingHop = null;
+      body.squashTop(-h.v * 0.85, DT); // about what the crouch took, so hops go as high as asked
+      body.lean(h.vx * 0.15, DT); // the top leads the way it's going
+      body.impulse(h.vx, h.vy, DT);
+      return;
+    }
+    const dv = CFG.crouchDepth * 80 * body.o.radius * h.power * DT;
+    h.v += dv;
+    body.squashTop(dv, DT);
+  }
+
+  // Held up: shake it and it gets dizzy; hold it still and, after a
+  // moment, it wriggles to be let down.
+  function held(b) {
+    const g = b.body.grab, r = b.body.o.radius;
+    const flips = b.shakes || (b.shakes = []);
+    for (const [axis, v] of [['x', g.vx], ['y', g.vy]]) {
+      if (Math.abs(v) < 600) continue;
+      const dir = Math.sign(v), key = 'shake' + axis;
+      if (b[key] && b[key] !== dir) flips.push(time);
+      b[key] = dir;
+    }
+    while (flips.length && time - flips[0] > 1.5) flips.shift();
+    if (CFG.shakeDizzy > 0 && flips.length >= CFG.shakeDizzy) { b.dizzyUntil = time + 1.8; flips.length = 0; }
+    b.stillFor = Math.hypot(g.vx, g.vy) < 90 ? (b.stillFor || 0) + DT : 0;
+    b.wriggling = CFG.wriggle > 0 && b.stillFor > CFG.wriggleAfter && time > b.dizzyUntil && (b.stillFor - CFG.wriggleAfter) % 2.6 < 1.3;
+    if (b.wriggling && time > (b.nextKick || 0)) {
+      // Kicks: held by its top, a lean swings its bottom from side to side.
+      b.kickDir = -(b.kickDir || 1);
+      b.body.lean(b.kickDir * CFG.wriggle * r * 3.5, DT);
+      b.nextKick = time + 0.17 + Math.random() * 0.08;
+    }
+  }
+
+  // Left to itself, a calm slime shifts its weight from side to side,
+  // settles with a little plop, stretches up, or looks around.
+  function fidget(b, r) {
+    if (CFG.idleFidget <= 0) return;
+    const f = b.shift;
+    if (f && time < f.until) {
+      const p = (time - f.from) / (f.until - f.from);
+      b.body.lean(f.dir * Math.sin(p * Math.PI * 2) * CFG.idleFidget * r * 14 * DT, DT);
+    }
+    if (time < (b.nextIdleFidget || 0)) return;
+    const first = !b.nextIdleFidget;
+    b.nextIdleFidget = time + (3 + Math.random() * 6) / Math.max(0.3, CFG.idleFidget);
+    if (first) return;
+    const roll = Math.random();
+    if (roll < 0.45) b.shift = { dir: Math.random() < 0.5 ? -1 : 1, from: time, until: time + 1.2 + Math.random() * 0.8 };
+    else if (roll < 0.65) b.body.squashTop(CFG.idleFidget * r * 3, DT);
+    else if (roll < 0.8) b.body.squashTop(-CFG.idleFidget * r * 3.5, DT);
+    else {
+      // A look around: at another slime, or at nothing in particular.
+      const others = [...buddies.values()].filter((o) => o !== b && !o.dying);
+      const c = b.body.centroid();
+      b.glanceAt = others.length && Math.random() < 0.6 ? others[Math.floor(Math.random() * others.length)]
+        : { spot: { x: c.x + (Math.random() < 0.5 ? -1 : 1) * r * (1.5 + Math.random() * 3), y: c.y - r * Math.random() * 2.5 } };
+      b.glanceUntil = time + 0.6 + Math.random() * 1.2;
+    }
   }
 
   // Two slimes hit each other: if they met fast enough, the one that got
@@ -985,7 +1115,12 @@
     // Blinking.
     if (time > b.nextBlink) {
       b.blink = Math.min(1, b.blink + 0.25);
-      if (b.blink >= 1) b.nextBlink = time + 2 + Math.random() * 4;
+      if (b.blink >= 1) {
+        // Now and then a quick second blink right after.
+        const again = !b.doubled && Math.random() < 0.18 * CFG.eyeLife;
+        b.doubled = again;
+        b.nextBlink = time + (again ? 0.16 : 2 + Math.random() * 4);
+      }
     } else b.blink = Math.max(0, b.blink - 0.2);
 
     if (b.bubble && time > b.bubble.until) b.bubble = null;
@@ -1113,6 +1248,7 @@
     else if (time < (b.yawnUntil || 0)) { expression = 'sleepy'; mouth = 'yawn'; }
     else if (time < (b.winceUntil || 0)) { expression = 'pained'; mouth = 'wobble'; }
     else if (time < (b.cheerUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
+    else if (body.grab && b.wriggling) { expression = 'worried'; mouth = 'wobble'; }
     else if (body.grab || time < (b.surpriseUntil || 0)) { mouth = 'o'; }
     else if (b.merging && b.kind === 'child') { expression = 'happy'; mouth = 'smile'; }
     else if (nodding(b)) { expression = 'happy'; mouth = 'smile'; }
@@ -1186,7 +1322,13 @@
     }
     const glaring = expression === 'annoyed';
     b.gazeTarget = glaring ? b.annoyedAt.body.centroid() : !checkIn || b.glanceAt === 'you' ? null : b.glanceAt.spot || b.glanceAt.body.centroid();
-    const wantLook = checkIn || glaring || peeking ? 1 : (st === 'idle' || st === 'done') && expression === 'normal' && effort !== 'low' && !body.grab && !b.bubble ? 1 : 0;
+    let wantLook = checkIn || glaring || peeking ? 1 : (st === 'idle' || st === 'done') && expression === 'normal' && effort !== 'low' && !body.grab && !b.bubble ? 1 : 0;
+    // Flying: it looks where it's going.
+    if (CFG.eyeLife > 0 && !body.grab && !body.onFloor() && speed > 700 && !meditating(b) && !glaring) {
+      const c = body.centroid();
+      b.gazeTarget = { x: c.x + v.x * 0.3, y: c.y + v.y * 0.3 };
+      wantLook = Math.max(wantLook, CFG.eyeLife);
+    }
     b.lookAmount = (b.lookAmount ?? wantLook) + (wantLook - (b.lookAmount ?? wantLook)) * 0.08;
     // While the face isn't turning (working, not looking at anything), its
     // gaze waits right on what it would look at, so a glance turns straight
@@ -1196,7 +1338,9 @@
       const to = b.gazeTarget || mouse;
       b.gaze.x = to.x; b.gaze.y = to.y; b.gaze.vx = 0; b.gaze.vy = 0;
     }
-    return { expression, mouth, blink: b.blink, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: b.pain || 0, nod: nodOf(b), scale: CFG.faceScale, style: CFG, bodyColor: b.color,
+    // Startled (poked, flinching): eyes go wide for a moment.
+    const wide = CFG.eyeLife * Math.max(0, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
+    return { expression, mouth, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: b.pain || 0, nod: nodOf(b), scale: CFG.faceScale, style: CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal',
     };
   }
@@ -1474,8 +1618,15 @@
 
   function frame() {
     const now = performance.now() / 1000;
+    const fdt = Math.max(0.004, now - last);
     acc += Math.min(0.05, now - last);
     last = now;
+    // How fast the cursor is going (a jump onto the screen doesn't count).
+    const mdx = mouse.x - mouse.px, mdy = mouse.y - mouse.py;
+    const jump = Math.abs(mdx) > 1500 || Math.abs(mdy) > 1500;
+    mouse.vx += ((jump ? 0 : mdx / fdt) - mouse.vx) * 0.5;
+    mouse.vy += ((jump ? 0 : mdy / fdt) - mouse.vy) * 0.5;
+    mouse.px = mouse.x; mouse.py = mouse.y;
     while (acc >= DT) {
       step();
       time += DT;
@@ -1561,6 +1712,13 @@
     if (!b) return;
     drag = { buddy: b, x0: e.clientX, y0: e.clientY, t0: time, moved: false };
     b.body.startGrab(e.clientX, e.clientY);
+    // Pressed: the skin under the cursor gives in, and it springs back.
+    if (CFG.pokeDent > 0) {
+      const c = b.body.centroid(), r = b.body.o.radius;
+      const dx = c.x - e.clientX, dy = c.y - e.clientY, d = Math.hypot(dx, dy) || 1;
+      b.body.pushAt(e.clientX, e.clientY, (dx / d) * CFG.pokeDent * r * 12, (dy / d) * CFG.pokeDent * r * 12, r * 0.5, DT);
+    }
+    b.startleUntil = time + 0.3;
     if (b.merging) b.merging.since = time; // being held resets the trip home
   }
 

@@ -136,6 +136,61 @@
       }
     }
 
+    // Adds a velocity (px/s) to the skin around (x, y), fading out over
+    // 'spread' px: a poke, a dent, a nudge in one place.
+    pushAt(x, y, vx, vy, spread, dt) {
+      const s2 = spread * spread;
+      for (let i = 0; i < this.n; i++) {
+        const ex = this.px[i] - x, ey = this.py[i] - y;
+        const w = Math.exp(-(ex * ex + ey * ey) / s2);
+        this.ox[i] -= vx * w * dt;
+        this.oy[i] -= vy * w * dt;
+      }
+    }
+
+    // Leans the body over: the top goes one way and the bottom the other,
+    // while the side it leans toward lifts and the far side dips. That's a
+    // pure shear, with no spin in it, so it leans (or kicks, held by its
+    // top) instead of rolling away, and the body as a whole stays put.
+    lean(vx, dt) {
+      const c = this.centroid(), r = this.o.radius;
+      for (let i = 0; i < this.n; i++) {
+        this.ox[i] -= vx * ((c.y - this.py[i]) / r) * dt;
+        this.oy[i] += vx * ((this.px[i] - c.x) / r) * dt;
+      }
+    }
+
+    // Pushes the upper half of the body down (vy > 0) or up (vy < 0), more
+    // the higher the point: a crouch, or a stretch up onto tiptoes.
+    squashTop(vy, dt) {
+      const c = this.centroid(), r = this.o.radius;
+      for (let i = 0; i < this.n; i++) {
+        const h = (c.y - this.py[i]) / r;
+        if (h > 0) this.oy[i] -= vy * h * dt;
+      }
+    }
+
+    // Pulls the body toward a shape 'ratio' times longer along (ux, uy)
+    // than across it: a spring on its proportions, so it stretches out in
+    // flight and the skin and pressure do the rest. Adds no net speed.
+    stretchToward(ux, uy, ratio, k, dt) {
+      const c = this.centroid();
+      let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+      for (let i = 0; i < this.n; i++) {
+        const dx = this.px[i] - c.x, dy = this.py[i] - c.y;
+        const a = dx * ux + dy * uy, b = dy * ux - dx * uy;
+        if (a < a0) a0 = a; if (a > a1) a1 = a;
+        if (b < b0) b0 = b; if (b > b1) b1 = b;
+      }
+      const err = Math.max(-0.5, Math.min(0.5, ratio - (a1 - a0) / Math.max(1, b1 - b0)));
+      for (let i = 0; i < this.n; i++) {
+        const dx = this.px[i] - c.x, dy = this.py[i] - c.y;
+        const a = (dx * ux + dy * uy) * err * k, b = (dy * ux - dx * uy) * -err * k * 0.5;
+        this.ox[i] -= (a * ux - b * uy) * dt * dt;
+        this.oy[i] -= (a * uy + b * ux) * dt * dt;
+      }
+    }
+
     // Grows or shrinks the rest shape. Pressure and shape matching then
     // inflate or deflate the body toward the new size over a few frames.
     setRadius(r) {

@@ -108,6 +108,7 @@
 
     const s = Object.assign({}, FACE_DEFAULTS, face.style);
     const eh = r * 0.22 * s.eyeSize, ew = eh * s.eyeRoundness;
+    const eh0 = eh, ew0 = ew;
     const effort = face.effort || 'medium';
     // Low effort: eyes set a bit too far apart.
     const ex = r * 0.33 * s.eyeSpacing * (effort === 'low' ? 1.45 : 1), ey = -r * (0.1 + s.eyeHeight);
@@ -199,6 +200,8 @@
           break;
         default: {
           const open = Math.max(0.08, 1 - face.blink) * (face.squint ? 0.3 : 1);
+          const wk = 1 + 0.35 * (face.wide || 0); // wide eyes when startled
+          const ew = ew0 * wk, eh = eh0 * wk;
           if (effort === 'low') {
             // Vacant little beads.
             ctx.fillStyle = ink;

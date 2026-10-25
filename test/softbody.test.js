@@ -128,3 +128,69 @@ test('a small blob spawned inside a big one gets out', () => {
   const c = small.centroid();
   assert.ok(!big.contains(c.x, c.y), 'small centre is outside the big one');
 });
+
+// The "life" forces: each must shape the body without pushing it anywhere.
+const TUNED = { radius: 78, points: 29, edgeStiffness: 0.03, bending: 0.07, pressure: 0.4, fullness: 0.7, shapeStiffness: 0.002, upright: 0.01, bounce: 0.92, friction: 0.14, gravity: 1950, damping: 0.994, iterations: 5 };
+const settled = () => {
+  const b = new SoftBody(400, 500, TUNED);
+  b.setBounds(0, 0, 800, 600);
+  run(b, 3);
+  return b;
+};
+const topX = (b) => { let i = 0; for (let k = 1; k < b.n; k++) if (b.py[k] < b.py[i]) i = k; return b.px[i] - b.centroid().x; };
+
+test('lean, squashTop and stretchToward add no net speed', () => {
+  const b = new SoftBody(400, 300);
+  for (const f of [() => b.lean(500, DT), () => b.stretchToward(0.6, -0.8, 1.4, 400, DT)]) {
+    const v0 = b.velocity(DT);
+    f();
+    const v = b.velocity(DT);
+    assert.ok(Math.abs(v.x - v0.x) < 1e-6 && Math.abs(v.y - v0.y) < 1e-6);
+  }
+});
+
+test('leaning tips the top over without rolling the slime away', () => {
+  const b = settled();
+  const x0 = b.centroid().x;
+  let lean = 0, n = 0;
+  for (let t = 0; t < 2; t += DT) {
+    b.lean(78 * 25 * DT, DT);
+    b.impulse(-b.velocity(DT).x * 0.15, 0, DT);
+    b.step(DT);
+    if (t > 1) { lean += topX(b); n++; }
+  }
+  assert.ok(lean / n > 8, `top should lean right, got ${lean / n}`);
+  assert.ok(Math.abs(b.centroid().x - x0) < 15, 'stays about where it was');
+  assert.ok(Math.abs(b.angle) < 0.4, `shouldn't roll, angle ${b.angle}`);
+});
+
+test('a crouch squashes it, and it springs back', () => {
+  const b = settled();
+  const rest = b.stretch().y;
+  let low = rest;
+  for (let t = 0; t < 0.1; t += DT) { b.squashTop(80 * 78 * DT, DT); b.step(DT); low = Math.min(low, b.stretch().y); }
+  assert.ok(low < rest - 0.04, `expected a crouch, ${low} vs ${rest}`);
+  run(b, 2);
+  assert.ok(Math.abs(b.stretch().y - rest) < 0.05);
+});
+
+test('stretches out along the way it flies', () => {
+  const b = new SoftBody(400, 300, Object.assign({}, TUNED, { gravity: 0 }));
+  b.setBounds(0, 0, 1e5, 1e5);
+  b.impulse(1500, 0, DT);
+  const s0 = b.stretch();
+  for (let t = 0; t < 0.3; t += DT) { b.stretchToward(1, 0, 1.3, 400, DT); b.step(DT); }
+  const s = b.stretch();
+  assert.ok(s.x / s.y > s0.x / s0.y + 0.15, `aspect ${s.x / s.y}`);
+});
+
+test('a poke dents the skin where it lands', () => {
+  const b = settled();
+  let j = 0;
+  for (let i = 1; i < b.n; i++) if (b.px[i] > b.px[j]) j = i;
+  const x0 = b.px[j] - b.centroid().x;
+  b.pushAt(b.px[j], b.py[j], -78 * 12, 0, 39, DT);
+  let least = x0;
+  for (let t = 0; t < 0.5; t += DT) { b.step(DT); least = Math.min(least, b.px[j] - b.centroid().x); }
+  assert.ok(x0 - least > 8, `dent ${x0 - least}`);
+});
