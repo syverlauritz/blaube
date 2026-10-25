@@ -726,13 +726,17 @@
       b.fill = (b.fill || 0) + (contextFill(b) - (b.fill || 0)) * 0.01;
       b.pain = ramp(b.fill, CFG.painAt, 1);
       b.breathPhase += DT * b.breathRate * 1.5 * b.pain;
-      body.areaScale = (1 + CFG.contextInflate * b.fill * b.fill) * (1 + CFG.breathe * Math.sin(time * b.breathRate + b.breathPhase));
+      // A setback (a failed tool or test) lets some air out for a moment.
+      b.droop = (b.droop || 0) + ((time < (b.droopUntil || 0) ? 1 : 0) - (b.droop || 0)) * (time < (b.droopUntil || 0) ? 0.02 : 0.006);
+      body.areaScale = (1 + CFG.contextInflate * b.fill * b.fill) * (1 + CFG.breathe * Math.sin(time * b.breathRate + b.breathPhase)) * (1 - CFG.droop * b.droop);
       // ...and firmer: more pressure inside, so a full one barely sags.
       // (Capped: past about 0.85 the pressure solve overshoots and the skin
       // jitters, worst while it's held.)
-      body.o.pressure = Math.min(0.85, CFG.pressure * (1 + CFG.contextTighten * b.fill));
+      body.o.pressure = Math.min(0.85, CFG.pressure * (1 + CFG.contextTighten * b.fill)) * (1 - 0.5 * b.droop);
       liven(b);
+      const pre = body.velocity(DT);
       body.step(DT);
+      splat(b, pre);
       updateGaze(b);
       b.look = lookOf(b);
       if (b.look !== 'none') Looks.stepLook(b, DT);
@@ -889,6 +893,7 @@
       body.lean(-(Math.sign(dx) || 1) * CFG.flinch * r * 3.2, DT);
       body.squashTop(CFG.flinch * r * 2.2, DT);
     }
+    if (nuzzle(b, r, c)) return;
     const calm = (b.state === 'idle' || b.state === 'done') && !meditating(b) && !b.stackedBy && time > (b.pounceUntil || 0);
     if (!calm) return;
     // A cursor close by: it leans over toward it, curious. Not when you're
@@ -905,6 +910,73 @@
       return;
     }
     fidget(b, r);
+  }
+
+  // Thrown hard into a wall (or the ceiling): it splats and sticks there a
+  // moment, the skin touching the wall glued in place while the rest sags
+  // under its own weight, then it peels off and drops.
+  function splat(b, v) {
+    const body = b.body, bd = body.bounds, o = b.splat;
+    if (o) {
+      if (body.grab || time > o.until) {
+        b.splat = null;
+        if (!body.grab) body.impulse(-o.nx * 140, o.ny ? 60 : -60, DT); // peels off
+        b.dizzyUntil = Math.max(b.dizzyUntil, time + 0.5);
+        return;
+      }
+      for (let i = 0; i < body.n; i++) {
+        const on = o.nx ? Math.abs(body.px[i] - o.wall) < 3 : Math.abs(body.py[i] - o.wall) < 3;
+        if (!on) continue;
+        // Glued: no speed off the wall, and it only creeps along it.
+        if (o.nx) { body.ox[i] = body.px[i]; body.oy[i] = body.py[i] - (body.py[i] - body.oy[i]) * 0.15; }
+        else { body.oy[i] = body.py[i]; body.ox[i] = body.px[i] - (body.px[i] - body.ox[i]) * 0.15; }
+      }
+      // A little suction holds it on.
+      body.impulse(o.nx * 400 * DT, o.ny * 400 * DT, DT);
+      return;
+    }
+    if (body.grab || b.dying || CFG.splatHold <= 0) return;
+    const c = body.contact;
+    let hit = null;
+    if (c.left && body.bbox().minX <= bd.left + 1 && -v.x > CFG.splatSpeed) hit = { nx: -1, ny: 0, wall: bd.left };
+    else if (c.right && body.bbox().maxX >= bd.right - 1 && v.x > CFG.splatSpeed) hit = { nx: 1, ny: 0, wall: bd.right };
+    else if (c.top && body.bbox().minY <= bd.top + 1 && -v.y > CFG.splatSpeed) hit = { nx: 0, ny: -1, wall: bd.top };
+    if (!hit) return;
+    hit.until = time + CFG.splatHold * (0.8 + Math.random() * 0.4);
+    b.splat = hit;
+    b.pendingHop = null;
+  }
+
+  // A helper resting against its mother (both on the ground) now and then
+  // nuzzles her: it leans into her and rubs back and forth, she leans
+  // back, and they both end up happy.
+  function nuzzle(b, r, c) {
+    if (CFG.nuzzle <= 0) return false;
+    const n = b.nuzzling;
+    if (n) {
+      if (time > n.until || n.mum.dying || n.mum.body.grab) {
+        b.nuzzling = null;
+        b.happyUntil = n.mum.happyUntil = time + 1.5;
+        hearts.push({ x: (c.x + n.mum.body.centroid().x) / 2, y: Math.min(b.body.bbox().minY, n.mum.body.bbox().minY) - 8, vx: 0, born: time, size: 12 });
+        return false;
+      }
+      const mc = n.mum.body.centroid(), side = Math.sign(mc.x - c.x) || 1;
+      const p = (time - n.from) / (n.until - n.from);
+      const rub = 0.6 + 0.4 * Math.sin(p * Math.PI * 6);
+      b.body.lean(side * rub * CFG.nuzzle * r * 30 * DT, DT);
+      b.body.impulse(side * 60 * DT * CFG.nuzzle, 0, DT); // pressed up against her
+      n.mum.body.lean(-side * rub * CFG.nuzzle * n.mum.body.o.radius * 12 * DT, DT);
+      return true;
+    }
+    if (b.kind !== 'child' || !b.mother || b.mother.dying || b.merging || time < (b.nextNuzzle || 0)) return false;
+    const m = b.mother, mc = m.body.centroid();
+    const touching = Math.hypot(mc.x - c.x, mc.y - c.y) < (m.body.o.radius + r) * 1.15;
+    if (!touching || !m.body.onFloor() || m.body.grab) { b.nextNuzzle = time + 1; return false; }
+    b.nextNuzzle = time + (8 + Math.random() * 14) / CFG.nuzzle;
+    if (Math.random() < 0.5) return false;
+    b.nuzzling = { mum: m, from: time, until: time + 1.4 + Math.random() * 0.6 };
+    b.happyUntil = time + 2;
+    return true;
   }
 
   // The crouch before a hop: the top is pushed down, harder for a bigger
@@ -1244,6 +1316,7 @@
     const speed = Math.hypot(v.x, v.y);
     let expression = 'normal', mouth = 'smile';
     if (time < b.dizzyUntil) { expression = 'dizzy'; mouth = 'flat'; }
+    else if (b.splat) { expression = 'dizzy'; mouth = 'wobble'; }
     else if (time < (b.annoyedUntil || 0) && b.annoyedAt && !b.annoyedAt.dying && !body.grab) { expression = 'annoyed'; mouth = 'flat'; }
     else if (time < (b.yawnUntil || 0)) { expression = 'sleepy'; mouth = 'yawn'; }
     else if (time < (b.winceUntil || 0)) { expression = 'pained'; mouth = 'wobble'; }
@@ -1851,6 +1924,7 @@
         b.say([{ text: 'Tests pass!' }], 2);
       } else {
         b.winceUntil = time + 0.8;
+        b.droopUntil = time + 2.5;
         if (grounded) b.body.impulse((Math.random() - 0.5) * 120, 120, DT);
       }
       return;
@@ -1859,6 +1933,7 @@
     if (m.kind !== 'oops' || time < (b.nextWince || 0)) return;
     b.nextWince = time + 20;
     b.winceUntil = time + 0.7;
+    b.droopUntil = time + 1.8;
     if (b.body.onFloor() && !b.body.grab) b.body.impulse((Math.random() - 0.5) * 120, 120, DT);
     if (m.count > 1) b.say([{ text: 'oops' }], 1.8);
   });

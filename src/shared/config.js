@@ -97,6 +97,10 @@
       ['shakeDizzy', 5, 0, 12, 1, 'Shakes that make it dizzy (0 = never)'],
       ['idleFidget', 1, 0, 3, 0.05, 'Idle fidgets (weight shifts, settling)'],
       ['eyeLife', 1, 0, 1, 0.05, 'Eye life (blinks on landing, wide eyes, looks where it flies)'],
+      ['splatSpeed', 1900, 600, 8000, 50, 'Sticks to a wall it hits faster than (px/s)'],
+      ['splatHold', 0.7, 0, 2, 0.05, 'Stays stuck to the wall for (s)'],
+      ['nuzzle', 1, 0, 3, 0.05, 'Helpers nuzzle their mother'],
+      ['droop', 0.2, 0, 0.5, 0.01, 'Deflates on a failed tool or test'],
     ]],
     ['World', [
       ['dockCollision', true, 0, 0, 0, 'Collide with the Dock / taskbar'],
