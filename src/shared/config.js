@@ -103,6 +103,7 @@
       ['droop', 0.2, 0, 0.5, 0.01, 'Deflates on a failed tool or test'],
       ['contactJiggle', 1, 0, 3, 0.05, 'A hard landing jiggles slimes it touches'],
       ['strain', 1, 0, 3, 0.05, 'Strained shiver while a tool runs'],
+      ['sleepSlump', 0.1, 0, 0.3, 0.01, 'Slumps while dozing (and stretches on waking)'],
     ]],
     ['World', [
       ['dockCollision', true, 0, 0, 0, 'Collide with the Dock / taskbar'],

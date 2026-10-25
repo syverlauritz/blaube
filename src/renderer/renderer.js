@@ -732,7 +732,14 @@
       // ...and firmer: more pressure inside, so a full one barely sags.
       // (Capped: past about 0.85 the pressure solve overshoots and the skin
       // jitters, worst while it's held.)
-      body.o.pressure = Math.min(0.85, CFG.pressure * (1 + CFG.contextTighten * b.fill)) * (1 - 0.5 * b.droop);
+      // Dozing (idle, nobody around for two minutes): it slumps, softer and
+      // flatter. When you come back it wakes with a big stretch up.
+      const asleep = b.state === 'idle' && performance.now() / 1000 - mouse.lastMove > 120 && !body.grab;
+      b.sleep = (b.sleep || 0) + ((asleep ? 1 : 0) - (b.sleep || 0)) * (asleep ? 0.002 : 0.05);
+      if (!asleep && b.sleep > 0.5 && !b.woke && body.onFloor()) { b.woke = true; body.squashTop(-CFG.sleepSlump * body.o.radius * 90, DT); b.nextBlink = time; }
+      if (asleep) b.woke = false;
+      body.areaScale *= 1 - CFG.sleepSlump * b.sleep;
+      body.o.pressure = Math.min(0.85, CFG.pressure * (1 + CFG.contextTighten * b.fill)) * (1 - 0.5 * b.droop) * (1 - 2 * CFG.sleepSlump * b.sleep);
       liven(b);
       const pre = body.velocity(DT);
       body.step(DT);
@@ -1366,7 +1373,7 @@
     else if (b.pain > 0.05) { expression = 'pained'; mouth = 'wobble'; }
     else if (st === 'done' && unseen(b)) { expression = 'happy'; mouth = 'grin'; }
     else if (st === 'working') { expression = 'concentrate'; mouth = 'flat'; }
-    else if (st === 'idle' && time - mouse.lastMove > 120) { expression = 'sleepy'; mouth = 'flat'; }
+    else if (st === 'idle' && performance.now() / 1000 - mouse.lastMove > 120) { expression = 'sleepy'; mouth = 'flat'; }
     // Saying something by itself (a status bubble): eyes open to tell you.
     // Just hovering doesn't wake it from its work.
     if (b.bubble && (expression === 'concentrate' || expression === 'sleepy')) { expression = 'normal'; mouth = 'smile'; }
