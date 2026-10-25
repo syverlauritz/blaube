@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   send: (id, text) => ipcRenderer.send('talk-send', id, text),
   paste: (id, bytes, type) => ipcRenderer.invoke('talk-paste', id, bytes, type),
   pathOf: (file) => { try { return webUtils.getPathForFile(file); } catch { return ''; } },
+  switchTo: (id) => ipcRenderer.send('talk-switch', id),
   stop: (id) => ipcRenderer.send('talk-stop', id),
   unsend: (id, n) => ipcRenderer.send('talk-unsend', id, n),
   decide: (id, key, choice, answers) => ipcRenderer.send('talk-permission', id, key, choice, answers),

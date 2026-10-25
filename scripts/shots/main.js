@@ -335,7 +335,8 @@ const SCENES = {
 		bg: '#f2f0ec',
 		wait: 3500,
 		size: [1000, 640],
-		talk: { key: 'tc', inbox: 'ready', log: [
+		talk: { key: 'tc', inbox: 'ready', git: 'feature/login · 3 changed', quick: [{ label: 'Commit', prompt: 'Commit' }, { label: 'Open a PR', prompt: 'PR' }, { label: 'Run tests', prompt: 'Tests' }],
+			others: [{ id: 'tc', project: 'vergence', color: '#D97757', state: 'done' }, { id: 'tc2', project: 'kalkis', color: '#5B8DEF', state: 'waiting' }, { id: 'tc3', project: 'web', color: '#E07BA8', state: 'working' }], log: [
 			{ who: 'you', text: 'run the tests and tell me if anything fails', via: 'terminal' },
 			{ who: 'claude', text: 'All 66 tests pass. I also fixed a flaky timeout in the e2e test: it was waiting on the wrong event.' },
 			{ who: 'you', text: 'nice. can you commit that?', via: 'blaube', status: 'sent' },

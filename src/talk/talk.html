@@ -59,6 +59,24 @@
   .stop:hover { color: var(--ink); }
   .stop:disabled { cursor: default; color: var(--faint); }
 
+  /* Every slime as a dot in its colour, to hop between them; the one you're
+     talking to is bigger, and one that needs you has a red pip. */
+  .others { display: flex; align-items: center; gap: 5px; flex: none; margin-right: 4px; }
+  .others button { position: relative; width: 12px; height: 12px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; background: var(--c); transition: transform .15s cubic-bezier(.3, 1.6, .5, 1); }
+  .others button:hover { transform: scale(1.25); }
+  .others button.here { width: 16px; height: 16px; cursor: default; }
+  .others button.wants::after { content: ""; position: absolute; right: -3px; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: #ff4d6d; }
+  .others button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  /* Its git status, quietly, under its name. */
+  .git { margin: -4px 22px 6px; font: 600 14px var(--ui); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .git[hidden] { display: none; }
+  /* What you might ask for next, one tap each. */
+  .quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 8px; }
+  .quick[hidden] { display: none; }
+  .quick button { border: 0; border-radius: 999px; padding: 6px 13px; background: var(--soft); color: var(--ink); font: 700 14px var(--ui); cursor: pointer; animation: squish .3s cubic-bezier(.3, 1.6, .5, 1); }
+  .quick button:hover { background: #e8eaf0; }
+  .quick button:active { transform: scale(.95); }
+
   /* Its to-do list: one line (how far, what now), the whole list a tap away. */
   .todo { margin: 0 16px 4px; flex: none; }
   .todo[hidden] { display: none; }
@@ -213,9 +231,11 @@
       <span class="state"><i id="dot"></i><span id="state"></span></span>
       <button class="stop" id="stop" hidden title="It stops before its next step"><i></i><span>Stop</span></button>
       <span class="spacer"></span>
+      <span class="others" id="others"></span>
       <button class="round" id="terminal" title="Go to its terminal (or Alt-click the slime)" aria-label="Go to its terminal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7l5 5-5 5M12 17h7"/></svg></button>
       <button class="round" id="close" title="Close (Esc)" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
     </header>
+    <div class="git" id="git" hidden></div>
     <div class="todo" id="todo" hidden>
       <button id="todoHead"><span class="bar"><i id="todoFill"></i></span><span id="todoNow"></span><span id="todoCount"></span></button>
       <ul id="todoList" hidden></ul>
@@ -234,6 +254,7 @@
       <button class="always" id="always" title="Allow this, and don’t ask again"></button>
     </div>
     <div class="hint" id="hint"></div>
+    <div class="quick" id="quick" hidden></div>
     <div class="files" id="files" hidden></div>
     <form id="form">
       <textarea id="text" rows="1" placeholder="Say something…"></textarea>

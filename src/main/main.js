@@ -9,6 +9,7 @@ const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
 const history = require('./history');
 const attention = require('./attention');
+const git = require('./git');
 const { openResumeTerminal, resumeCommand, focusSessionApp, typeIntoSession } = require('./terminal');
 const { startAgentsPoller, listAgents, findClaude } = require('./agents');
 const { Owned } = require('./owned');
@@ -419,8 +420,21 @@ function pushTalk(id, focusField = false) {
     // reached us (it was started with them, whatever the file says now).
     connected: hooksOk || inbox.reachable.has(id) || inbox.asks.has(id) || inbox.owned.has(id),
     focus: focusField,
+    // Its git status and what you might ask for next (see git.js).
+    git: gitStates.has(id) ? git.summary(gitStates.get(id)) : '',
+    quick: id.startsWith('demo-') ? [] : git.quickActions(gitStates.get(id) || null, s.state),
+    // Every slime, to switch between them from the box.
+    others: tracker.list().filter(isReady).map((o) => ({ id: o.id, project: o.project, color: colorOf(o) || prefs.config.color || '#D97757', state: o.state })),
   }, inbox.view(id)));
+  if (s.cwd && !id.startsWith('demo-')) {
+    git.status(s.cwd, (st) => {
+      const before = JSON.stringify(gitStates.get(id) || null);
+      gitStates.set(id, st);
+      if (JSON.stringify(st) !== before) pushTalk(id);
+    });
+  }
 }
+const gitStates = new Map(); // session id -> its last git status (or null: not a repository)
 
 // --- Sessions Blaube starts itself (owned.js) ----------------------------------
 
@@ -1353,6 +1367,8 @@ app.whenReady().then(async () => {
       return file;
     } catch { return ''; }
   });
+  // Another slime picked in the box (its dot, or a shortcut).
+  ipcMain.on('talk-switch', (_e, id) => { if (id && id !== talkId && tracker.sessions.has(id) && win) win.webContents.send('open-talk', id); });
   ipcMain.on('talk-unsend', (_e, id, n) => { if (id && id === talkId) inbox.unsend(id, n); });
   ipcMain.on('talk-close', () => hideTalk());
   // It's shrinking shut: the tail goes first.

@@ -215,6 +215,10 @@
     stop.disabled = !!s.stopping;
     stop.lastChild.textContent = s.stopping ? 'Stopping…' : 'Stop';
     renderTodo(s);
+    renderOthers(s);
+    $('git').textContent = s.git || '';
+    $('git').hidden = !s.git || !!s.ended;
+    renderQuick(s);
     renderAsk(s.ask, s.asks);
     $('hint').textContent = hint(s);
     text.disabled = !!s.demo || (!s.connected && !s.typeable) || !!s.ended;
@@ -291,6 +295,59 @@
     }
     fitWindow(); // reading sizes lays it out, even while hidden
     squeeze();
+  }
+
+  // A dot per slime; a tap (or ⌘[ ⌘], ⌘1–9) hops to its talk box.
+  function renderOthers(s) {
+    const box = $('others');
+    const list = s.others || [];
+    const key = JSON.stringify([s.id, list]);
+    if (box.dataset.key === key) return;
+    box.dataset.key = key;
+    box.textContent = '';
+    if (list.length < 2) return;
+    list.slice(0, 9).forEach((o, i) => {
+      const b = document.createElement('button');
+      b.style.setProperty('--c', o.color);
+      b.className = (o.id === s.id ? 'here' : '') + (o.state === 'waiting' ? ' wants' : '');
+      const how = navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl+';
+      b.title = `${o.project}${o.state === 'waiting' ? ' (needs you)' : ''} · ${how}${i + 1}`;
+      b.setAttribute('aria-label', b.title);
+      if (o.id !== s.id) b.onclick = () => api.switchTo && api.switchTo(o.id);
+      box.append(b);
+    });
+  }
+  document.addEventListener('keydown', (e) => {
+    if (!current || !(e.metaKey || e.ctrlKey) || e.altKey || !api.switchTo) return;
+    const list = (current.others || []).slice(0, 9);
+    if (list.length < 2) return;
+    const at = list.findIndex((o) => o.id === current.id);
+    let to = null;
+    if (/^[1-9]$/.test(e.key)) to = list[Number(e.key) - 1];
+    else if (e.key === '[' || e.key === ']') to = list[(at + (e.key === ']' ? 1 : list.length - 1)) % list.length];
+    if (!to) return;
+    e.preventDefault();
+    if (to.id !== current.id) api.switchTo(to.id);
+  });
+
+  // One tap for what you'd likely ask next (commit, tests, a PR...). Not
+  // while a card is up, it's busy, or before anything has been said.
+  function renderQuick(s) {
+    const box = $('quick');
+    const list = s.ask || s.ended || s.demo || !s.log.length || (!s.connected && !s.typeable && !s.owned) ? [] : (s.quick || []);
+    const key = JSON.stringify(list.map((q) => q.label));
+    box.hidden = !list.length;
+    if (box.dataset.key === key) return;
+    box.dataset.key = key;
+    box.textContent = '';
+    for (const q of list) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = q.label;
+      b.title = q.prompt;
+      b.onclick = () => { if (!current) return; api.send(current.id, q.prompt); box.hidden = true; };
+      box.append(b);
+    }
   }
 
   // Its to-do list: how far it is and what it's on; the list on a tap.
