@@ -1315,6 +1315,23 @@ app.whenReady().then(async () => {
       tracker.handle({ session_id: id, hook_event_name: 'UserPromptSubmit' }, 'blaube');
       return;
     }
+    // A slash command (/compact, /model...) is for Claude Code, not Claude:
+    // typed into its terminal when it's free, if Blaube can; never sent as
+    // a message.
+    if (/^\/[a-z][\w:-]*(\s|$)/i.test(String(text).trim())) {
+      const s = tracker.sessions.get(id);
+      const cmd = String(text).trim();
+      const typeable = process.platform === 'darwin' && !!s.pid && (s.term === 'Apple_Terminal' || s.term === 'iTerm.app');
+      if (!typeable) { inbox.add(id, { who: 'note', text: `Blaube can’t run ${cmd.split(/\s/)[0]} in this session. Use its terminal.` }); return; }
+      if (s.state === 'working' || s.state === 'waiting') { inbox.add(id, { who: 'note', text: `${cmd.split(/\s/)[0]} has to wait until it’s free. Send it again then.` }); return; }
+      inbox.add(id, { who: 'you', text: cmd, via: 'blaube', status: 'sent' });
+      typeIntoSession(s, cmd, (ok, why) => {
+        log(`typed ${cmd.split(/\s/)[0]} into ${s.project}'s terminal: ${ok ? 'ok' : 'no (' + why + ')'}`);
+        if (!ok) inbox.add(id, { who: 'note', text: `Couldn’t type ${cmd.split(/\s/)[0]} into its terminal.` });
+        else inbox.typed.set(id, { text: cmd, entries: [] }); // its echo isn't logged twice
+      });
+      return;
+    }
     const how = inbox.send(id, text);
     log(`message for ${tracker.sessions.get(id).project}: ${how} (inbox ${inbox.view(id).inbox})`);
     setTimeout(() => typeQueued(id), 1500); // a moment for its inbox hook to ask first
