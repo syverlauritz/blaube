@@ -786,7 +786,7 @@
   function setState(b, state) {
     const prev = b.state;
     b.state = state;
-    if (prev !== state) react(b, prev);
+    if (prev !== state) { b.stateSince = time; react(b, prev); }
   }
 
   function react(b, prev) {
@@ -1470,7 +1470,11 @@
     }
     if (!wantsAttention(b)) return;
     if (b.state === 'waiting') {
-      b.hop(0, -CFG.waitingHopStrength);
+      // Waiting a while and you haven't come: it comes to you, hopping
+      // over toward your cursor (and stops once it's close).
+      const c = b.body.centroid(), dx = mouse.x - c.x, r = b.body.o.radius;
+      const seek = CFG.seekYou > 0 && b.kind === 'mother' && time - (b.stateSince || 0) > CFG.seekAfter && mouse.x >= 0 && mouse.x <= W && Math.abs(dx) > r * 2.5;
+      b.hop(seek ? Math.sign(dx) * Math.min(520, Math.abs(dx) * 1.4 + 80) * CFG.seekYou : 0, -CFG.waitingHopStrength * (seek ? 0.75 : 1));
       b.nextHop = time + 2.2;
     } else {
       // Finished: bounce up and down until you look at it.

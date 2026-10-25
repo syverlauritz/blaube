@@ -108,6 +108,8 @@
       ['voiceBob', 1, 0, 3, 0.05, 'Body bobs along while it talks or sings'],
       ['personality', 0.6, 0, 1, 0.05, 'How different each slime\'s character is'],
       ['windowCurious', 1, 0, 3, 0.05, 'Curious about new windows and ones you drag'],
+      ['seekYou', 1, 0, 2, 0.05, 'Needing you a while, it hops over to your cursor'],
+      ['seekAfter', 20, 3, 120, 1, 'Starts coming to you after waiting (s)'],
     ]],
     ['World', [
       ['dockCollision', true, 0, 0, 0, 'Collide with the Dock / taskbar'],
