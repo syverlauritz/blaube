@@ -216,6 +216,7 @@
     stop.lastChild.textContent = s.stopping ? 'Stopping…' : 'Stop';
     renderTodo(s);
     renderOthers(s);
+    if (document.body.classList.contains('overview')) { if ((s.others || []).length > 1) drawOverview(s); else showOverview(false); }
     $('git').textContent = s.git || '';
     $('git').hidden = !s.git || !!s.ended;
     renderQuick(s);
@@ -293,6 +294,7 @@
       drawn = { entries, thinking, open: openKey };
       if (atBottom || switched) log.scrollTop = log.scrollHeight;
     }
+    if (!$('findBar').hidden && $('find').value.trim()) find($('find').value);
     fitWindow(); // reading sizes lays it out, even while hidden
     squeeze();
   }
@@ -306,6 +308,12 @@
     box.dataset.key = key;
     box.textContent = '';
     if (list.length < 2) return;
+    const all = document.createElement('button');
+    all.className = 'all';
+    all.title = `Every session at a glance (${navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl+'}0)`;
+    all.setAttribute('aria-label', all.title);
+    all.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 7h12M6 12h12M6 17h12"/></svg>';
+    all.onclick = () => showOverview(!document.body.classList.contains('overview'));
     list.slice(0, 9).forEach((o, i) => {
       const b = document.createElement('button');
       b.style.setProperty('--c', o.color);
@@ -316,13 +324,83 @@
       if (o.id !== s.id) b.onclick = () => api.switchTo && api.switchTo(o.id);
       box.append(b);
     });
+    box.append(all);
   }
+
+  // Every session at a glance: what it's up to, and the small print. A tap
+  // goes to its box. (Redrawn with every update while it's open.)
+  function showOverview(on) {
+    document.body.classList.toggle('overview', on && current && (current.others || []).length > 1);
+    if (on) drawOverview(current);
+    requestAnimationFrame(fitWindow);
+  }
+  function drawOverview(s) {
+    const box = $('overview');
+    box.textContent = '';
+    for (const o of s.others || []) {
+      const row = document.createElement('button');
+      row.className = 'row' + (o.id === s.id ? ' here' : '') + (o.state === 'waiting' ? ' wants' : '');
+      row.style.setProperty('--c', o.color);
+      const name = document.createElement('b');
+      name.textContent = o.project;
+      const status = document.createElement('span');
+      status.className = 'status';
+      status.textContent = o.status || '';
+      row.append(name, status);
+      if (o.meta) { const m = document.createElement('small'); m.textContent = o.meta; row.append(m); }
+      row.onclick = () => { showOverview(false); if (o.id !== s.id && api.switchTo) api.switchTo(o.id); };
+      box.append(row);
+    }
+    requestAnimationFrame(fitWindow);
+  }
+
+  // ⌘F: find in the conversation. Only what matches stays (messages,
+  // notes, steps, and what a step printed); Esc or an empty field ends it.
+  function find(q) {
+    q = String(q || '').trim().toLowerCase();
+    document.body.classList.toggle('searching', !!q);
+    let hits = 0;
+    for (const el of inner.children) {
+      if (el === dots) continue;
+      if (el.classList.contains('steps')) {
+        let any = false;
+        for (const st of el.querySelectorAll('.step')) {
+          const out = st.nextElementSibling && st.nextElementSibling.classList.contains('stepout') ? st.nextElementSibling : null;
+          const m = !q || (st.textContent + ' ' + (out ? out.textContent : '')).toLowerCase().includes(q);
+          st.classList.toggle('miss', !m);
+          if (out) out.classList.toggle('miss', !m);
+          if (m && q) { any = true; hits++; }
+        }
+        el.classList.toggle('miss', !!q && !any);
+        continue;
+      }
+      const m = !q || el.textContent.toLowerCase().includes(q);
+      el.classList.toggle('miss', !m);
+      if (m && q && (el.classList.contains('msg') || el.classList.contains('note'))) hits++;
+    }
+    $('findCount').textContent = q ? (hits ? `${hits} found` : 'nothing found') : '';
+    requestAnimationFrame(fitWindow);
+  }
+  $('find').addEventListener('input', () => find($('find').value));
+  $('find').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.stopPropagation(); $('find').value = ''; find(''); $('findBar').hidden = true; text.focus(); }
+  });
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'f' && current && !document.body.classList.contains('overview')) {
+      e.preventDefault();
+      $('findBar').hidden = false;
+      $('find').focus();
+      $('find').select();
+      requestAnimationFrame(fitWindow);
+    }
+  });
   document.addEventListener('keydown', (e) => {
     if (!current || !(e.metaKey || e.ctrlKey) || e.altKey || !api.switchTo) return;
     const list = (current.others || []).slice(0, 9);
     if (list.length < 2) return;
     const at = list.findIndex((o) => o.id === current.id);
     let to = null;
+    if (e.key === '0') { e.preventDefault(); return showOverview(!document.body.classList.contains('overview')); }
     if (/^[1-9]$/.test(e.key)) to = list[Number(e.key) - 1];
     else if (e.key === '[' || e.key === ']') to = list[(at + (e.key === ']' ? 1 : list.length - 1)) % list.length];
     if (!to) return;
@@ -620,6 +698,12 @@
   function fitWindow() {
     if (!current) return;
     const bubble = document.querySelector('.bubble');
+    // The overview: as tall as its rows.
+    if (document.body.classList.contains('overview')) {
+      const ov = $('overview');
+      api.setHeight(current.id, Math.ceil(bubble.offsetHeight - ov.offsetHeight + ov.scrollHeight + 24 + 1));
+      return;
+    }
     const chrome = bubble.offsetHeight - log.offsetHeight; // everything but the log
     const pad = 14; // the log's own padding
     // A card's questions or plan may be scrolled: ask for their full height.
@@ -650,6 +734,7 @@
   api.onState((s) => {
     const first = !current || current.id !== s.id;
     if (first && current) drafts.set(current.id, text.value);
+    if (first) { document.body.classList.remove('overview'); $('find').value = ''; $('findBar').hidden = true; document.body.classList.remove('searching'); }
     if (first) { seen = s.log.length; text.value = drafts.get(s.id) || ''; if (files.length) { files = []; drawFiles(); } } // before the card reads it
     render(s);
     if (first) { fit(); send.disabled = text.disabled || (!text.value.trim() && !files.length); }
@@ -761,7 +846,11 @@
     w.classList.add('shut');
     setTimeout(() => { api.close(); w.classList.remove('shut'); closing = false; }, 170);
   }
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.isComposing) close(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.isComposing) return;
+    if (document.body.classList.contains('overview')) return showOverview(false); // back to the chat first
+    close();
+  });
   $('close').addEventListener('click', close);
   $('terminal').addEventListener('click', () => api.terminal());
   $('stop').addEventListener('click', () => { if (current && api.stop) { $('stop').disabled = true; api.stop(current.id); } });

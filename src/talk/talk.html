@@ -67,6 +67,31 @@
   .others button.here { width: 16px; height: 16px; cursor: default; }
   .others button.wants::after { content: ""; position: absolute; right: -3px; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: #ff4d6d; }
   .others button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .others button.all { width: 22px; height: 22px; background: var(--soft); color: var(--dim); display: grid; place-items: center; margin-left: 3px; }
+  .others button.all svg { width: 12px; height: 12px; }
+  .others button.all:hover { color: var(--ink); transform: none; }
+  body.overview .others button.all { background: var(--color); color: var(--on); }
+  /* The overview: every session, a row each, in place of the chat. */
+  .glance { display: none; flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 2px 14px 16px; flex-direction: column; gap: 4px; }
+  body.overview .glance { display: flex; }
+  body.overview #log, body.overview .todo, body.overview .git, body.overview .quick, body.overview .files, body.overview form, body.overview .ask, body.overview .hint, body.overview #stop { display: none; }
+  .glance .row { position: relative; display: flex; flex-direction: column; text-align: left; border: 0; background: none; border-radius: 20px; padding: 8px 12px 8px 32px; cursor: pointer; color: var(--ink); font: 600 14px/1.35 var(--ui); }
+  .glance .row:hover, .glance .row.here { background: var(--soft); }
+  .glance .row::before { content: ""; position: absolute; left: 12px; top: 13px; width: 12px; height: 12px; border-radius: 50%; background: var(--c); }
+  .glance .row.wants::after { content: ""; position: absolute; left: 21px; top: 9px; width: 7px; height: 7px; border-radius: 50%; background: #ff4d6d; }
+  .glance .row b { font: 800 16px var(--ui); }
+  .glance .row .status { color: var(--ink); overflow-wrap: anywhere; }
+  .glance .row.wants .status { color: #c0392b; }
+  .glance .row small { font: 600 14px var(--ui); color: var(--dim); }
+  /* Find (⌘F): a field over the log; what doesn't match steps aside. */
+  .findbar { display: flex; align-items: center; gap: 8px; margin: 0 16px 6px; }
+  .findbar[hidden] { display: none; }
+  .findbar input { flex: 1; min-width: 0; border: 0; border-radius: 999px; padding: 7px 14px; background: var(--soft); font: 600 14px var(--ui); color: var(--ink); outline: none; user-select: text; }
+  .findbar input::placeholder { color: var(--faint); }
+  #findCount { flex: none; font: 600 14px var(--ui); color: var(--dim); }
+  body.searching #inner .miss, body.searching #inner .meta, body.searching #inner .more, body.searching .steps .earlier { display: none !important; }
+  body.searching .steps .step.early { display: block; }
+  body.searching .stepout:not(.miss) { display: block; animation: none; }
   /* Its git status, quietly, under its name. */
   .git { margin: -4px 22px 6px; font: 600 14px var(--ui); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .git[hidden] { display: none; }
@@ -236,11 +261,13 @@
       <button class="round" id="close" title="Close (Esc)" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
     </header>
     <div class="git" id="git" hidden></div>
+    <div class="findbar" id="findBar" hidden><input id="find" type="search" placeholder="Find in this conversation…" aria-label="Find in this conversation"><span id="findCount"></span></div>
     <div class="todo" id="todo" hidden>
       <button id="todoHead"><span class="bar"><i id="todoFill"></i></span><span id="todoNow"></span><span id="todoCount"></span></button>
       <ul id="todoList" hidden></ul>
     </div>
     <div id="log"><div id="inner"></div></div>
+    <div class="glance" id="overview"></div>
     <div class="ask" id="ask" hidden>
       <div class="what"><b id="askWhat"></b><span id="askMore"></span></div>
       <code id="askDetail"></code>

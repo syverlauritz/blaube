@@ -23,4 +23,17 @@ function notification({ event, project, title, text, secs = 0, seen = false, ena
   return null;
 }
 
-module.exports = { mostWanted, notification };
+// One session at a glance, for the overview: what it's up to (in words)
+// and the small print (to-do progress, context, git).
+function glance({ state, doing = '', message = '', lastReply = '', todo = null, context = 0, git = '', turnStart = 0, now = Date.now() }) {
+  const clip = (t, n = 80) => { t = String(t || '').replace(/[`*_#>]+/g, '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+  const mins = turnStart ? Math.floor((now - turnStart) / 60000) : 0;
+  const status = state === 'waiting' ? `Needs you${message ? ': ' + clip(message, 70) : ''}`
+    : state === 'working' ? `${doing ? clip(doing, 60) : 'Working'}${mins >= 1 ? ` · ${mins}m` : ''}`
+    : state === 'done' ? `Done${lastReply ? ': ' + clip(lastReply, 70) : ''}`
+    : lastReply ? clip(lastReply, 80) : 'Idle';
+  const meta = [todo && todo.of ? `${todo.done} of ${todo.of} on its list` : '', context >= 50 ? `${context}% context` : '', git].filter(Boolean).join(' · ');
+  return { status, meta };
+}
+
+module.exports = { mostWanted, notification, glance };

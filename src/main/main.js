@@ -424,7 +424,7 @@ function pushTalk(id, focusField = false) {
     git: gitStates.has(id) ? git.summary(gitStates.get(id)) : '',
     quick: id.startsWith('demo-') ? [] : git.quickActions(gitStates.get(id) || null, s.state),
     // Every slime, to switch between them from the box.
-    others: tracker.list().filter(isReady).map((o) => ({ id: o.id, project: o.project, color: colorOf(o) || prefs.config.color || '#D97757', state: o.state })),
+    others: tracker.list().filter(isReady).map((o) => Object.assign({ id: o.id, project: o.project, color: colorOf(o) || prefs.config.color || '#D97757', state: o.state }, glanceAt(o))),
   }, inbox.view(id)));
   if (s.cwd && !id.startsWith('demo-')) {
     git.status(s.cwd, (st) => {
@@ -435,6 +435,23 @@ function pushTalk(id, focusField = false) {
   }
 }
 const gitStates = new Map(); // session id -> its last git status (or null: not a repository)
+
+// A session at a glance, for the overview in the talk box.
+const lastDoing = new Map(); // session id -> what its latest tool call is about
+function glanceAt(o) {
+  const tk = tokens.get(o.id);
+  const todo = inbox.todos.get(o.id) || [];
+  const last = [...inbox.log(o.id)].reverse().find((e) => e.who === 'claude');
+  if (o.cwd && !o.id.startsWith('demo-') && o.id !== talkId) git.status(o.cwd, (st) => { const was = JSON.stringify(gitStates.get(o.id) || null); gitStates.set(o.id, st); if (JSON.stringify(st) !== was) pushTalk(talkId); });
+  return attention.glance({
+    state: o.state, doing: lastDoing.get(o.id) || '', message: o.message,
+    lastReply: last ? last.text : (o.id.startsWith('demo-') ? '' : usage.lastText(transcriptPath(o))),
+    todo: todo.length ? { done: todo.filter((t) => t.status === 'completed').length, of: todo.length } : null,
+    context: tk && tk.limit && tk.context ? Math.min(100, Math.round((tk.context / tk.limit) * 100)) : 0,
+    git: gitStates.has(o.id) ? git.summary(gitStates.get(o.id)) : '',
+    turnStart: o.turnStart,
+  });
+}
 
 // --- Sessions Blaube starts itself (owned.js) ----------------------------------
 
@@ -1161,6 +1178,7 @@ app.whenReady().then(async () => {
     if (win && !open && asked && asked.who === 'you' && asked.via === 'blaube') win.webContents.send('say', { id, text: snippet(text), seconds: 7 });
   });
   tracker.on('activity', statusBubble);
+  tracker.on('activity', ({ session: s, agentId, payload: p }) => { if (!agentId && p.hook_event_name === 'PreToolUse') lastDoing.set(s.id, describeTool(p.tool_name, p.tool_input || {})); });
   // A few moments worth a reaction (most tools get just their icon): a push
   // sent off, tests that pass or fail, a commit, something deleted.
   tracker.on('tooldone', ({ session: s, agentId, payload: p, failed }) => {

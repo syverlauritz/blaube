@@ -336,7 +336,9 @@ const SCENES = {
 		wait: 3500,
 		size: [1000, 640],
 		talk: { key: 'tc', inbox: 'ready', git: 'feature/login · 3 changed', quick: [{ label: 'Commit', prompt: 'Commit' }, { label: 'Open a PR', prompt: 'PR' }, { label: 'Run tests', prompt: 'Tests' }],
-			others: [{ id: 'tc', project: 'vergence', color: '#D97757', state: 'done' }, { id: 'tc2', project: 'kalkis', color: '#5B8DEF', state: 'waiting' }, { id: 'tc3', project: 'web', color: '#E07BA8', state: 'working' }], log: [
+			others: [{ id: 'tc', project: 'vergence', color: '#D97757', state: 'done', status: 'Done: Committed as f3a91c2 “Fix flaky e2e timeout”.', meta: 'feature/login · 3 changed' },
+				{ id: 'tc2', project: 'kalkis', color: '#5B8DEF', state: 'waiting', status: 'Needs you: Claude needs your permission to use Bash', meta: '62% context · main' },
+				{ id: 'tc3', project: 'web', color: '#E07BA8', state: 'working', status: 'Editing Hero.tsx · 4m', meta: '2 of 5 on its list · main · 7 changed' }], log: [
 			{ who: 'you', text: 'run the tests and tell me if anything fails', via: 'terminal' },
 			{ who: 'claude', text: 'All 66 tests pass. I also fixed a flaky timeout in the e2e test: it was waiting on the wrong event.' },
 			{ who: 'you', text: 'nice. can you commit that?', via: 'blaube', status: 'sent' },
@@ -473,6 +475,10 @@ const SCENES = {
 		wait: 4000,
 	},
 };
+// The overview: the talk box with every session at a glance.
+// Find (⌘F) in a conversation with steps.
+SCENES.talkFind = Object.assign({}, SCENES.talkSteps, { talkJs: `setTimeout(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', metaKey: true })); const f = document.getElementById('find'); f.value = 'test'; f.dispatchEvent(new Event('input')); }, 400)` });
+SCENES.talkOverview = Object.assign({}, SCENES.talkChat, { talkJs: `setTimeout(() => document.querySelector('.others .all').click(), 400)` });
 
 async function shoot(win, name, scene) {
 	const fire = (event, value) => win.webContents.send('fire', event, value);
@@ -545,6 +551,7 @@ async function addTalk(win, scene, name) {
 	ipcMain.on('talk-height', onHeight);
 	ipcMain.removeHandler('talk-paste');
 	ipcMain.handle('talk-paste', () => '/tmp/blaube-pastes/pasted-1.png'); // (nothing is saved for a picture)
+	tw.webContents.on('console-message', (e) => { if (e.level === 'error') console.log('talk error:', e.message); });
 	await tw.loadFile(path.join(ROOT, 'src', 'talk', 'talk.html'));
 	tw.webContents.send('talk-state', Object.assign({ id: sess.id, project: sess.project, state: sess.state, color: sess.color || '#D97757', font: 'Coiny', connected: true, queued: 0, ask: null, asks: 0, tail: place.tail }, t));
 	await sleep(500);
