@@ -222,7 +222,7 @@
       : s.ask && s.ask.kind === 'plan' ? 'What should change?'
       : !s.owned && s.state === 'working' && s.stoppable && !s.stopping ? 'Add something…'
       : !s.owned && (s.state === 'working' || s.state === 'waiting') ? 'Say something for later…' : 'Say something…';
-    send.disabled = text.disabled || !text.value.trim();
+    send.disabled = text.disabled || (!text.value.trim() && !files.length);
     // The slime's dots while it works on something you said: after the
     // last thing it got (anything still queued comes after them).
     let thinking = -1;
@@ -593,9 +593,9 @@
   api.onState((s) => {
     const first = !current || current.id !== s.id;
     if (first && current) drafts.set(current.id, text.value);
-    if (first) { seen = s.log.length; text.value = drafts.get(s.id) || ''; } // before the card reads it
+    if (first) { seen = s.log.length; text.value = drafts.get(s.id) || ''; if (files.length) { files = []; drawFiles(); } } // before the card reads it
     render(s);
-    if (first) { fit(); send.disabled = text.disabled || !text.value.trim(); }
+    if (first) { fit(); send.disabled = text.disabled || (!text.value.trim() && !files.length); }
     if (s.focus) {
       const w = $('wrap');
       w.classList.remove('pop'); void w.offsetWidth; w.classList.add('pop');
@@ -614,17 +614,21 @@
   if (api.onTail) api.onTail((t) => { placeTail(t); fitWindow(); });
   text.addEventListener('input', () => {
     if (askKey && current.ask && current.ask.kind === 'plan') planButtons();
-    fit(); send.disabled = !current || current.demo || !text.value.trim(); requestAnimationFrame(fitWindow); });
+    fit(); send.disabled = !current || current.demo || (!text.value.trim() && !files.length); requestAnimationFrame(fitWindow); });
   text.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('form').requestSubmit(); }
   });
   $('form').addEventListener('submit', (e) => {
     e.preventDefault();
-    const v = text.value.trim();
-    if (!v || !current || current.demo) return;
+    const typed = text.value.trim();
+    if ((!typed && !files.length) || !current || current.demo) return;
+    // Pasted or dropped files go along as paths Claude can open.
+    const v = files.length ? `${typed}${typed ? '\n\n' : ''}${files.length === 1 ? 'Attached file' : 'Attached files'} (open with your Read tool): ${files.map((f) => f.path).join(', ')}` : typed;
+    const forFiles = files.length;
+    files = []; drawFiles();
     // A card is up and you typed this after it came: it's for the card.
     const ask = askKey && current.ask;
-    const forCard = ask && typedForCard();
+    const forCard = ask && !forFiles && typedForCard();
     if (forCard && ask.kind === 'plan') {
       text.value = ''; fit(); drafts.delete(current.id);
       return finish('deny', { message: v }); // what to change
@@ -643,6 +647,52 @@
     pinned = true;
     log.scrollTop = log.scrollHeight;
   });
+  // Images pasted into the field, and files dropped on the box: chips
+  // above the field, sent with the message as paths Claude can open.
+  let files = [];
+  function drawFiles() {
+    const box = $('files');
+    box.textContent = '';
+    box.hidden = !files.length;
+    files.forEach((f, i) => {
+      const chip = document.createElement('span');
+      chip.className = 'file';
+      chip.textContent = f.name;
+      chip.title = f.path;
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.textContent = '×';
+      x.setAttribute('aria-label', 'Remove ' + f.name);
+      x.onclick = () => { files.splice(i, 1); drawFiles(); };
+      chip.append(x);
+      box.append(chip);
+    });
+    if (current) send.disabled = text.disabled || (!text.value.trim() && !files.length);
+    requestAnimationFrame(fitWindow);
+  }
+  const addFile = (path, name) => { if (path && !files.some((f) => f.path === path)) { files.push({ path, name: name || path.split(/[\\/]/).pop() }); drawFiles(); } };
+  text.addEventListener('paste', async (e) => {
+    if (!current || text.disabled || !api.paste) return;
+    const items = [...(e.clipboardData ? e.clipboardData.items : [])].filter((it) => it.kind === 'file' && /^image\//.test(it.type));
+    if (!items.length) return;
+    e.preventDefault();
+    for (const it of items) {
+      const f = it.getAsFile();
+      if (!f) continue;
+      const saved = await api.paste(current.id, new Uint8Array(await f.arrayBuffer()), f.type);
+      if (saved) addFile(saved, `Image ${files.filter((x) => /^Image /.test(x.name)).length + 1}`);
+    }
+  });
+  document.addEventListener('dragover', (e) => { if (current && !text.disabled) { e.preventDefault(); document.body.classList.add('dropping'); } });
+  document.addEventListener('dragleave', (e) => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    document.body.classList.remove('dropping');
+    if (!current || text.disabled || !api.pathOf) return;
+    for (const f of e.dataTransfer.files) addFile(api.pathOf(f), f.name);
+    text.focus();
+  });
+
   // Closing shrinks it back into its tail, then hides it.
   let closing = false;
   function close() {

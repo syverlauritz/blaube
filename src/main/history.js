@@ -94,7 +94,8 @@ function pastSessions(live = new Set(), n = 8, home = os.homedir()) {
   }
   found.sort((a, b) => b.at - a.at);
   const out = [];
-  for (const s of found) {
+  // (Only so many are opened to look inside: a menu has to be quick.)
+  for (const s of found.slice(0, n * 4)) {
     if (out.length >= n) break;
     const info = describe(s.file);
     // (Nothing said in it yet: nothing to pick up.)

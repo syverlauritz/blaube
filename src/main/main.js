@@ -452,8 +452,18 @@ function startSession(cwd, extra = [], resume = '') {
 
 // Picks up a past session in Blaube, no terminal: its slime pops out with
 // how the conversation ended, ready for what's next.
-function pickUp(p) {
+async function pickUp(p) {
   if (tracker.sessions.has(p.id)) { if (win) win.webContents.send('open-talk', p.id); return; }
+  // Written to a moment ago: it may still be open in a terminal Blaube
+  // can't see, and two copies of one session would trip over each other.
+  if (Date.now() - p.at < 2 * 60 * 1000) {
+    const { response } = await dialog.showMessageBox({
+      type: 'question', buttons: ['Pick it up', 'Cancel'], defaultId: 1, cancelId: 1,
+      message: `“${p.title}” was busy ${history.ago(p.at)}.`,
+      detail: 'If it’s still open in a terminal, close it there first.',
+    });
+    if (response !== 0) return;
+  }
   try { if (!fs.statSync(p.cwd).isDirectory()) throw new Error(); } catch {
     dialog.showMessageBox({ type: 'warning', message: `Can’t find its folder any more.`, detail: p.cwd });
     return;
@@ -769,6 +779,7 @@ function statusBubble({ session: s, agentId, payload: p }) {
 // A system notification when the slimes can't tell you themselves (they're
 // behind your windows); clicking it opens that slime's talk box.
 const notified = new Map(); // session id -> when it last notified
+const shown = new Set(); // notifications still on screen
 function notify(s, event, text, secs = 0) {
   if (TEST || !Notification.isSupported() || s.id.startsWith('demo-')) return;
   const seen = (prefs.config.onTop !== 'Off' && win && win.isVisible()) || (talkWin && talkWin.isVisible() && talkId === s.id);
@@ -776,7 +787,10 @@ function notify(s, event, text, secs = 0) {
   if (!n || Date.now() - (notified.get(s.id) || 0) < 15000) return;
   notified.set(s.id, Date.now());
   const note = new Notification({ title: n.title, body: n.body });
-  note.on('click', () => { if (win && tracker.sessions.has(s.id)) win.webContents.send('open-talk', s.id); });
+  // (Held on to until it's gone, or a click may never arrive.)
+  shown.add(note);
+  note.on('click', () => { shown.delete(note); if (win && tracker.sessions.has(s.id)) win.webContents.send('open-talk', s.id); });
+  note.on('close', () => shown.delete(note));
   note.show();
 }
 
@@ -1146,6 +1160,7 @@ app.whenReady().then(async () => {
     inbox.owned.add(id);
     tracker.handle({ session_id: id, hook_event_name: 'SessionStart', cwd, _entry: 'blaube' }, 'blaube');
   });
+  owned.on('renamed', (id, to) => log(`session ${id} is running as ${to}: its hooks won't match its slime`));
   owned.on('result', (id, r) => {
     if (r.error && !r.text) inbox.add(id, { who: 'note', text: `Something went wrong${r.subtype ? ` (${r.subtype})` : ''}.` });
     else inbox.replied(id, r.text);
@@ -1307,6 +1322,19 @@ app.whenReady().then(async () => {
   ipcMain.on('talk-stop', (_e, id) => {
     if (!id || id !== talkId || !tracker.sessions.has(id)) return;
     log(`stop ${tracker.sessions.get(id).project}: ${inbox.stop(id) ? 'at its next step' : 'can\'t'}`);
+    pushTalk(id); // (refused: the button comes back)
+  });
+  // An image pasted into the talk box: saved where Claude can open it.
+  ipcMain.handle('talk-paste', (_e, id, bytes, type) => {
+    const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }[type];
+    if (!id || id !== talkId || !ext || !(bytes instanceof Uint8Array) || bytes.length > 20e6) return '';
+    try {
+      const dir = path.join(app.getPath('temp'), 'blaube-pastes');
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, `pasted-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.${ext}`);
+      fs.writeFileSync(file, bytes);
+      return file;
+    } catch { return ''; }
   });
   ipcMain.on('talk-unsend', (_e, id, n) => { if (id && id === talkId) inbox.unsend(id, n); });
   ipcMain.on('talk-close', () => hideTalk());

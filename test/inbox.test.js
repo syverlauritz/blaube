@@ -402,3 +402,48 @@ test('its to-do list follows TodoWrite and the task tools', () => {
   inbox2.observe({ session_id: 's2', hook_event_name: 'SessionEnd' });
   assert.deepEqual(inbox2.view('s2').todos, []);
 });
+
+test('Stop also answers a waiting permission prompt with no, and a session that ends forgets it all', () => {
+  const inbox = new Inbox();
+  const got = [];
+  inbox.step({ session_id: 's1', hook_event_name: 'PreToolUse' }, true);
+  inbox.ask('s1', { tool_name: 'Bash', tool_input: { command: 'rm -rf build' } }, (t) => { got.push(t); return true; });
+  assert.ok(inbox.stop('s1'));
+  assert.equal(JSON.parse(got[0]).hookSpecificOutput.decision.behavior, 'deny');
+  assert.equal(inbox.view('s1').ask, null);
+  inbox.observe({ session_id: 's1', hook_event_name: 'SessionEnd' });
+  assert.equal(inbox.view('s1').stoppable, false);
+  assert.equal(inbox.view('s1').stopping, false);
+});
+
+test('several sessions at once keep their own messages, steps and stops', () => {
+  const inbox = new Inbox();
+  const post = (id) => ({ session_id: id, hook_event_name: 'PostToolUse', tool_name: 'Read', tool_input: { file_path: id + '.js' } });
+  inbox.step(post('a'), true); inbox.step(post('b'), true);
+  inbox.send('a', 'for a');
+  inbox.stop('b');
+  assert.equal(inbox.step(post('b'), true), '', 'b is stopping: its message would wait anyway, and a\'s is not b\'s');
+  assert.match(JSON.parse(inbox.step(post('a'), true)).hookSpecificOutput.additionalContext, /for a$/);
+  assert.equal(JSON.parse(inbox.step({ ...post('b'), hook_event_name: 'PreToolUse' }, true)).hookSpecificOutput.permissionDecision, 'deny');
+  assert.equal(inbox.step({ ...post('a'), hook_event_name: 'PreToolUse' }, true), '');
+});
+
+test('a tool with a huge output still reaches Blaube, and its step stays small', async () => {
+  const inbox = new Inbox();
+  const server = await startHookServer(new SessionTracker(), 0, inbox);
+  const port = server.address().port;
+  try {
+    const body = JSON.stringify({ session_id: 'big', hook_event_name: 'PostToolUse', cwd: '/tmp/big', tool_name: 'Bash', tool_input: { command: 'cat log' }, tool_response: { stdout: 'x'.repeat(3e6) + 'END' } });
+    const http = require('node:http');
+    await new Promise((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port, path: '/blaube/hook', method: 'POST', headers: { 'content-type': 'application/json', 'x-blaube-out': '1' } }, (res) => { res.resume(); res.on('end', resolve); });
+      req.on('error', reject);
+      req.end(body);
+    });
+    const step = inbox.log('big')[0];
+    assert.equal(step.who, 'step');
+    assert.ok(step.detail.length < 1600 && step.detail.endsWith('END'));
+  } finally {
+    server.close();
+  }
+});

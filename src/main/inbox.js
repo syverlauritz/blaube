@@ -79,6 +79,11 @@ class Inbox extends EventEmitter {
   stop(id) {
     if (!this.steerable.has(id) || this.stops.has(id)) return false;
     this.stops.add(id);
+    // Whatever it's asking you is answered no, so it isn't left waiting.
+    for (const a of [...(this.asks.get(id) || [])]) {
+      a.reply(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: 'The user pressed Stop in Blaube, their desktop buddy. Stop now and say where you got to.' } } }));
+      this.unasked(id, a.reply);
+    }
     this.add(id, { who: 'note', text: 'You asked it to stop' });
     return true;
   }
@@ -295,6 +300,7 @@ class Inbox extends EventEmitter {
       this.waiters.delete(id);
       this.queue.delete(id);
       this.reachable.delete(id);
+      this.steerable.delete(id);
       for (const a of this.asks.get(id) || []) a.reply(null);
       this.asks.delete(id);
       this.emit('change', id);

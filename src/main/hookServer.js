@@ -85,9 +85,10 @@ function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
     }
     let body = '';
     req.setEncoding('utf8');
+    // (A tool's whole output comes along: a big file read, a long log.)
     req.on('data', (c) => {
       body += c;
-      if (body.length > 1e6) req.destroy();
+      if (body.length > 32e6) req.destroy();
     });
     req.on('end', () => {
       // What goes back to Claude (tool hooks only; see inbox.step).
@@ -109,7 +110,9 @@ function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
         // the hook's shell is still alive, so a click can focus its window.
         const s = tracker.sessions.get(String(payload.session_id));
         const hookPid = req.headers['x-blaube-pid'];
-        if (s && !s.pid && !s.findingPid && hookPid) {
+        // (Not when there's an answer for Claude: it must get there before
+        // the hook gives up, and the next event can look for the pid.)
+        if (s && !s.pid && !s.findingPid && hookPid && !answer) {
           s.findingPid = true;
           return findClaudeAncestor(String(hookPid), (pid) => {
             s.findingPid = false;

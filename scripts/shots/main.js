@@ -364,7 +364,7 @@ const SCENES = {
 	// What it did between replies, Stop while it works, and a message that
 	// goes in at its next step.
 	talkSteps: {
-		talkJs: `setTimeout(() => { document.querySelectorAll('button.step')[1].click(); document.getElementById('todoHead').click(); }, 500)`,
+		talkJs: `setTimeout(() => { document.querySelectorAll('button.step')[1].click(); document.getElementById('todoHead').click(); const dt = new DataTransfer(); dt.items.add(new File([new Uint8Array([137,80,78,71])], 'screenshot.png', { type: 'image/png' })); document.getElementById('text').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); }, 500)`,
 		sessions: [session('ts', 'blaube', 'working', { look: 'sprout' })],
 		bg: '#f2f0ec',
 		wait: 3500,
@@ -542,6 +542,8 @@ async function addTalk(win, scene, name) {
 	let wantH = 400;
 	const onHeight = (e, _id, v) => { if (e.sender === tw.webContents) wantH = v; };
 	ipcMain.on('talk-height', onHeight);
+	ipcMain.removeHandler('talk-paste');
+	ipcMain.handle('talk-paste', () => '/tmp/blaube-pastes/pasted-1.png'); // (nothing is saved for a picture)
 	await tw.loadFile(path.join(ROOT, 'src', 'talk', 'talk.html'));
 	tw.webContents.send('talk-state', Object.assign({ id: sess.id, project: sess.project, state: sess.state, color: sess.color || '#D97757', font: 'Coiny', connected: true, queued: 0, ask: null, asks: 0, tail: place.tail }, t));
 	await sleep(500);

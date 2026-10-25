@@ -109,6 +109,9 @@ class Owned extends EventEmitter {
 
   // One line of its output: a finished turn is what Blaube needs.
   read(id, m) {
+    // A picked-up session should carry on under its own id; if Claude Code
+    // gave it a new one, its hooks won't match its slime: say so.
+    if (m.type === 'system' && m.subtype === 'init' && m.session_id && m.session_id !== id) this.emit('renamed', id, m.session_id);
     if (m.type === 'result') {
       this.emit('result', id, { text: typeof m.result === 'string' ? m.result : '', error: !!m.is_error, subtype: m.subtype || '' });
     }
