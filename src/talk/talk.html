@@ -74,12 +74,12 @@
   /* The overview: every session, a row each, in place of the chat. */
   .glance { display: none; flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 2px 14px 16px; flex-direction: column; gap: 4px; }
   body.overview .glance { display: flex; }
-  body.overview #log, body.overview .todo, body.overview .git, body.overview .quick, body.overview .files, body.overview form, body.overview .ask, body.overview .hint, body.overview #stop { display: none; }
+  body.overview #log, body.overview .todo, body.overview .git, body.overview .gitfiles, body.overview .bg, body.overview .quick, body.overview .files, body.overview form, body.overview .ask, body.overview .hint, body.overview #stop { display: none; }
   .glance .row { position: relative; display: flex; flex-direction: column; text-align: left; border: 0; background: none; border-radius: 20px; padding: 8px 12px 8px 32px; cursor: pointer; color: var(--ink); font: 600 14px/1.35 var(--ui); }
   .glance .row:hover, .glance .row.here { background: var(--soft); }
   .glance .row::before { content: ""; position: absolute; left: 12px; top: 13px; width: 12px; height: 12px; border-radius: 50%; background: var(--c); }
   .glance .row.wants::after { content: ""; position: absolute; left: 21px; top: 9px; width: 7px; height: 7px; border-radius: 50%; background: #ff4d6d; }
-  .glance .row b { font: 800 16px var(--ui); }
+  .glance .row b { font: 800 16px var(--ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .glance .row .status { color: var(--ink); overflow-wrap: anywhere; }
   .glance .row.wants .status { color: #c0392b; }
   .glance .row small { font: 600 14px var(--ui); color: var(--dim); }
@@ -114,6 +114,7 @@
   button.git.opens:hover { color: var(--ink); }
   .gitfiles { margin: -2px 22px 8px; padding: 0; list-style: none; max-height: 160px; overflow-y: auto; }
   .gitfiles[hidden] { display: none; }
+  .glance .row b .title { font-style: normal; font-weight: 500; color: var(--dim); margin-left: 6px; }
   .gitfiles button { display: flex; gap: 8px; width: 100%; border: 0; background: none; padding: 1px 0; font: 500 13px var(--ui); color: var(--dim); text-align: left; cursor: pointer; }
   .gitfiles button:hover { color: var(--ink); }
   .gitfiles button span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

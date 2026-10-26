@@ -150,6 +150,13 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await sleep(200);
 	check(talk().webContents.getURL().endsWith('talk.html'), 'tapping one doesn’t take the box away');
 
+	// ↑ in the empty field brings back what you said, ↓ goes forward again.
+	await box(`(() => { const t = document.getElementById('text'); t.value = ''; t.dispatchEvent(new Event('input')); t.focus(); })()`);
+	const arrow = (k) => box(`document.getElementById('text').dispatchEvent(new KeyboardEvent('keydown', { key: '${k}', bubbles: true, cancelable: true }))`).then(() => box(`document.getElementById('text').value`));
+	check(await arrow('ArrowUp') === 'open a PR', '↑ brings back your last message');
+	check(await arrow('ArrowUp') === 'also do 2028 while you’re at it', 'and the one before');
+	check(await arrow('ArrowDown') === 'open a PR' && await arrow('ArrowDown') === '', '↓ goes forward, back to an empty field');
+
 	// Take the conversation with you: ⌘S saves it as Markdown, ⇧⌘C copies
 	// it, and files and replies drag out into other apps.
 	await key('s', mod);

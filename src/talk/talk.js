@@ -437,7 +437,7 @@
       b.style.setProperty('--c', o.color);
       b.className = (o.id === s.id ? 'here' : '') + (o.state === 'waiting' ? ' wants' : '');
       const how = navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl+';
-      b.title = `${o.project}${o.state === 'waiting' ? ' (needs you)' : ''} · ${how}${i + 1}`;
+      b.title = `${o.project}${o.title ? `: ${o.title}` : ''}${o.state === 'waiting' ? ' (needs you)' : ''} · ${how}${i + 1}`;
       b.setAttribute('aria-label', b.title);
       if (o.id !== s.id) b.onclick = () => api.switchTo && api.switchTo(o.id);
       box.append(b);
@@ -503,6 +503,7 @@
       row.style.setProperty('--c', o.color);
       const name = document.createElement('b');
       name.textContent = o.project;
+      if (o.title) { const t = document.createElement('i'); t.className = 'title'; t.textContent = o.title; name.append(t); }
       const status = document.createElement('span');
       status.className = 'status';
       status.textContent = o.status || '';
@@ -1006,7 +1007,24 @@
   text.addEventListener('input', () => {
     if (askKey && current.ask && current.ask.kind === 'plan') planButtons();
     fit(); send.disabled = !current || current.demo || (!text.value.trim() && !files.length); requestAnimationFrame(fitWindow); });
+  // ↑ in an empty field brings back what you said before (↓ goes forward
+  // again), as in the terminal.
+  let recall = -1;
+  text.addEventListener('input', () => { recall = -1; });
   text.addEventListener('keydown', (e) => {
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && current && $('ask').hidden
+      && (recall >= 0 ? text.selectionStart === text.value.length : !text.value)) {
+      const said = current.log.filter((m) => m.who === 'you' && m.text).map((m) => m.text).reverse();
+      const next = recall + (e.key === 'ArrowUp' ? 1 : -1);
+      if (next < -1 || next >= said.length || (next === -1 && recall === -1)) return;
+      e.preventDefault();
+      recall = next;
+      text.value = next === -1 ? '' : said[next];
+      text.dispatchEvent(new Event('input'));
+      recall = next; // (the input above reset it)
+      text.setSelectionRange(text.value.length, text.value.length);
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       if ((e.metaKey || e.ctrlKey) && !text.value.trim()) return; // ⌘↩ on an empty field is for the card
       e.preventDefault(); $('form').requestSubmit();

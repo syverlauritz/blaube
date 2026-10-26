@@ -461,7 +461,8 @@ const glances = new Map(); // session id -> { at, state, g } (worked out at most
 function glanceAt(o) {
   const hit = glances.get(o.id);
   if (hit && hit.state === o.state && Date.now() - hit.at < 1000) return hit.g;
-  const g = glanceNow(o);
+  // (With its title, "Add the 2027 brackets", to tell two in one project apart.)
+  const g = Object.assign(glanceNow(o), { title: o.id.startsWith('demo-') ? '' : usage.sessionInfo(transcriptPath(o)).title });
   glances.set(o.id, { at: Date.now(), state: o.state, g });
   return g;
 }
