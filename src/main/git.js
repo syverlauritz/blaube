@@ -39,7 +39,8 @@ const MAIN = /^(main|master|trunk|develop)$/;
 // What you might want next, as { label, prompt }: only while it isn't busy.
 // `more`: { stopped: you stopped its last turn, failedTests: the test
 // command that failed in it, context: how full its context is (%),
-// apiError: its last turn ended on an API error; gitFailed: 'push' or
+// apiError: its last turn ended on an API error; pr: its branch's pull
+// request (pr.js); gitFailed: 'push' or
 // 'pull' when that's what git last failed at here; carryAt: { at, label, set }
 // when that was a usage limit that lifts then (set: it'll carry on by itself) }.
 function quickActions(st, state, more = {}) {
@@ -66,7 +67,10 @@ function quickActions(st, state, more = {}) {
   // (`more.gitFailed`), the next tap asks Claude to sort it out instead.
   const direct = (run) => (more.gitFailed === run ? {} : { run });
   if (st && !n && (st.ahead || unpushed)) out.push(Object.assign({ label: 'Push', prompt: unpushed ? 'Push this branch and set its upstream.' : 'Push this branch.' }, direct('push')));
-  if (st && st.branch && !MAIN.test(st.branch)) out.push({ label: 'Open a PR', prompt: 'Open a pull request for this branch (commit and push first if needed) and give me the link.' });
+  // (Its pull request, if it has one (see pr.js): failing checks first.)
+  const pr = more.pr && more.pr.state === 'OPEN' ? more.pr : null;
+  if (pr && pr.checks.fail) out.unshift({ label: 'Fix the checks', prompt: `The checks on pull request #${pr.number} are failing. Find out why (\`gh pr checks ${pr.number}\` and the failing run's log), fix it, push, and tell me what was wrong.` });
+  if (st && st.branch && !MAIN.test(st.branch) && !pr) out.push({ label: 'Open a PR', prompt: 'Open a pull request for this branch (commit and push first if needed) and give me the link.' });
   if (!more.failedTests) out.push({ label: 'Run tests', prompt: 'Run the tests and tell me what fails, if anything.' });
   if (st && st.behind) out.push(Object.assign({ label: 'Pull', prompt: 'Pull the latest changes into this branch and tell me if anything conflicts.' }, n ? {} : direct('pull')));
   // Nearly out of room: tidy up before it has to (first, so it's seen).

@@ -1182,7 +1182,7 @@
     const box = $('branches');
     const busy = s.state === 'working' || s.state === 'waiting';
     const dirty = list.some((f) => f.how !== 'new');
-    const key = [s.id, gitOpen, s.git, busy, dirty].join('|');
+    const key = [s.id, gitOpen, s.git, busy, dirty, s.pr ? s.pr.url : ''].join('|');
     box.hidden = !gitOpen;
     if (!gitOpen) { box.dataset.key = ''; return; }
     if (box.dataset.key === key) return;
@@ -1201,6 +1201,16 @@
     api.branches(s.id).then((names) => {
       if (box.dataset.key !== key) return;
       box.textContent = '';
+      // Its pull request, a tap from your browser.
+      if (s.pr) {
+        const p = document.createElement('button');
+        p.type = 'button';
+        p.className = 'prlink';
+        p.textContent = `PR #${s.pr.number}${s.pr.title ? ' · ' + s.pr.title : ''} ↗`;
+        p.title = `Open it on GitHub\n${s.pr.url}`;
+        p.onclick = () => api.openLink(s.pr.url);
+        box.append(p);
+      }
       const label = document.createElement('span');
       label.className = 'branchon';
       label.textContent = 'Branches';

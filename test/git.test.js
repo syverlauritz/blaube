@@ -190,3 +190,14 @@ test('commits are read from a real repository, and shown by hash only', async ()
     assert.deepEqual(await new Promise((r) => commits(path.join(dir, 'nope'), r)), []);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('with a pull request: no Open a PR, and failing checks come first', () => {
+  const { parse } = require('../src/main/pr');
+  const st = parseStatus('# branch.head feature/x\n# branch.upstream origin/feature/x\n# branch.ab +0 -0\n');
+  const pr = (o) => parse(JSON.stringify(Object.assign({ number: 7, url: 'https://github.com/o/r/pull/7', state: 'OPEN', statusCheckRollup: [] }, o)));
+  assert.deepEqual(quickActions(st, 'done', { pr: pr({}) }).map((a) => a.label), ['Run tests']);
+  const failing = quickActions(st, 'done', { pr: pr({ statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'FAILURE' }] }) });
+  assert.equal(failing[0].label, 'Fix the checks');
+  assert.match(failing[0].prompt, /pull request #7 are failing.*gh pr checks 7/);
+  assert.deepEqual(quickActions(st, 'done', { pr: pr({ state: 'MERGED' }) }).map((a) => a.label), ['Open a PR', 'Run tests'], 'merged: a new one can be opened');
+});

@@ -433,6 +433,22 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && /^git couldn’t push/.test(e.text) && !e.ok), 15000), 'when git can’t push, the box says so');
 	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Push' && b.title === 'Push this branch.')`), 10000), 'and Push then asks Claude instead');
 	execFileSync('git', ['remote', 'set-url', 'origin', bare], { cwd: repo });
+	// Its pull request, from gh (a stand-in here): how it stands, and its slime says when checks finish.
+	const prFile = path.join(repo + '-pr.json'), fakeGh = repo + '-gh.sh';
+	const prSays = (rollup) => fs.writeFileSync(prFile, JSON.stringify({ number: 5, url: 'https://github.com/o/r/pull/5', state: 'OPEN', isDraft: false, title: 'Tax rounding', reviewDecision: '', statusCheckRollup: rollup }));
+	prSays([{ __typename: 'CheckRun', status: 'IN_PROGRESS', conclusion: '' }]);
+	fs.writeFileSync(fakeGh, `#!/bin/sh\n[ "$1 $2" = "pr view" ] && [ "$GH_PROMPT_DISABLED" = 1 ] && cat '${prFile}'\n`, { mode: 0o755 });
+	global.__blaubeGh = fakeGh;
+	check(await until(() => box(`/^feature.tax · .*PR #5 · checks running$/.test(document.getElementById('git').textContent) && /PR #5 · Tax rounding/.test((document.querySelector('#branches .prlink') || {}).textContent || '')`), 10000), 'its pull request shows on the git line, a tap from GitHub');
+	check(await until(() => box(`![...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Open a PR')`)), 'and Open a PR isn’t offered again');
+	prSays([{ __typename: 'CheckRun', status: 'COMPLETED', conclusion: 'FAILURE' }]);
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'note' && e.text === 'PR #5: 1 check failed') && box(`/PR #5 · 1 check failing$/.test(document.getElementById('git').textContent)`), 10000), 'when its checks finish, it says so');
+	check(await until(() => box(`(() => { const b = document.querySelector('#quick button'); return !!b && b.textContent === 'Fix the checks' && /gh pr checks 5/.test(b.title); })()`)), 'with Fix the checks first among its quick actions');
+	await sleep(500);
+	await shot('pr');
+	fs.rmSync(prFile);
+	check(await until(() => box(`!/PR/.test(document.getElementById('git').textContent)`), 10000), 'and once gh knows of no pull request, the git line says none');
+	global.__blaubeGh = '';
 	// Files named in a reply open right in the box; a long reply's rest is a tap away.
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'what did you change?' });
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'Stop', last_assistant_message: 'I changed `src/tax.js:1` and [the notes](notes.md#L1), not `nope.js` or `console.log`.\n\n' + 'All of it. '.repeat(500) + 'THE END' });

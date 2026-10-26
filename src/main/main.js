@@ -28,6 +28,7 @@ const renamer = require('./rename');
 const branch = require('./branch');
 const ccDefaults = require('./ccDefaults');
 const cloner = require('./clone');
+const pulls = require('./pr');
 const installer = require('./installer');
 const away = require('./away');
 const taskOutput = require('./taskOutput');
@@ -477,8 +478,9 @@ function pushTalk(id, focusField = false) {
     helpers: s.state === 'working' || s.state === 'waiting' ? (s.agents || []).slice(0, 5).map((a) => ({ name: helperName(s, a), doing: helperDoing.get(`${id}/${a.id}`) || '', waiting: a.state === 'waiting' })) : [],
     focus: focusField,
     // Its git status and what you might ask for next (see git.js).
-    git: gitStates.has(id) ? git.summary(gitStates.get(id)) : '',
+    git: gitLine(id),
     gitFiles: gitFiles(id),
+    pr: prStates.get(id) ? { number: prStates.get(id).number, url: prStates.get(id).url, title: prStates.get(id).title } : null,
     earlier: !id.startsWith('demo-') && !!transcriptPath(s) && fs.existsSync(transcriptPath(s)), // (its transcript has what came before)
     lookedAt: looked.get(id) || 0, // (when its box was last closed: what's new since shows)
     quick: id.startsWith('demo-') ? [] : git.quickActions(gitStates.get(id) || null, s.state, {
@@ -487,6 +489,7 @@ function pushTalk(id, focusField = false) {
       carryAt: carryFor(id),
       failedTests: failedTests(inbox.log(id)),
       gitFailed: gitFailed(inbox.log(id)),
+      pr: prStates.get(id) || null,
       context: contextOf(id),
     }),
     // Every slime, to switch between them from the box.
@@ -519,6 +522,9 @@ function carryFor(id, now = Date.now()) {
 let talkPicking = false; // (a file dialog from the box is open: it stays)
 let hubPast = [], hubFolders = [], hubCache = null; // what the overview last offered
 const gitStates = new Map(); // session id -> its last git status (or null: not a repository)
+const prStates = new Map(); // session id -> its branch's pull request, as gh last said (or null)
+// Its git line: the branch and what's changed, and how its pull request stands.
+const gitLine = (id) => [gitStates.has(id) ? git.summary(gitStates.get(id)) : '', pulls.words(prStates.get(id))].filter(Boolean).join(' · ');
 
 // A session at a glance, for the overview in the talk box.
 const looked = new Map(); // session id -> when you last had its talk box open
@@ -541,7 +547,7 @@ function glanceNow(o) {
     lastReply: last ? last.text : (o.id.startsWith('demo-') ? '' : usage.lastText(transcriptPath(o))),
     todo: todo.length ? { done: todo.filter((t) => t.status === 'completed').length, of: todo.length } : null,
     context: tk && tk.limit && tk.context ? Math.min(100, Math.round((tk.context / tk.limit) * 100)) : 0,
-    git: gitStates.has(o.id) ? git.summary(gitStates.get(o.id)) : '',
+    git: gitLine(o.id),
     turnStart: o.turnStart,
     waitingSince: o.state === 'waiting' ? o.updatedAt : 0,
     // Replies since its talk box was last open (never opened: since Blaube started).
@@ -615,7 +621,7 @@ function sweepSoon() { if (!sweepTimer) sweepTimer = setTimeout(() => { sweepTim
 function sweep() {
   const live = (id) => tracker.sessions.has(id) || owned.has(id) || (id === talkId && !!talkWin && !talkWin.isDestroyed() && talkWin.isVisible());
   for (const id of [...inbox.logs.keys(), ...inbox.todos.keys(), ...inbox.steerable, ...inbox.typed.keys()]) if (!live(id)) inbox.forget(id);
-  const maps = { gitStates, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan, carryLater, mcpStates, rewound, foreground };
+  const maps = { gitStates, prStates, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan, carryLater, mcpStates, rewound, foreground };
   for (const id of [...muted]) if (!live(id)) muted.delete(id);
   for (const m of Object.values(maps)) for (const id of [...m.keys()]) if (!live(id)) m.delete(id);
   for (const [k, at] of [...lastBubble]) if (Date.now() - at > 60e3) lastBubble.delete(k);
@@ -1770,6 +1776,30 @@ app.whenReady().then(async () => {
   setInterval(() => checkAway(), 30e3).unref();
   // (The box's "4m" and "waiting 5m" keep up even when nothing else happens.)
   setInterval(() => { if (talkWin && talkWin.isVisible() && talkId && tracker.list().some((o) => o.state === 'waiting' || o.state === 'working')) pushTalk(talkId); }, 30e3).unref();
+  // Each session's pull request (its branch's, from gh): how it stands on
+  // its git line, and its slime says when its checks finish, or it's
+  // approved or merged. gh is asked at most once a minute per branch.
+  const ghBin = TEST ? '' : pulls.findGh();
+  setInterval(() => {
+    const bin = TEST ? global.__blaubeGh : ghBin; // (tests: a stand-in, never the real gh)
+    if (!bin) return;
+    for (const o of tracker.list()) {
+      const st = gitStates.get(o.id);
+      if (o.id.startsWith('demo-') || !o.cwd || !st || !st.branch) continue;
+      pulls.look(o.cwd, st.branch, (now) => {
+        const was = prStates.get(o.id);
+        if (JSON.stringify(was || null) === JSON.stringify(now || null)) return;
+        prStates.set(o.id, now);
+        const said = pulls.news(was, now);
+        if (said) {
+          inbox.add(o.id, { who: 'note', text: said });
+          if (win) win.webContents.send('say', { id: o.id, text: said, seconds: 6, status: true, aloud: true });
+        }
+        if (o.id === talkId) pushTalk(o.id);
+        pushState();
+      }, { bin, fresh: TEST ? 500 : 60e3 });
+    }
+  }, TEST ? 1000 : 20e3).unref();
   // Its git line keeps up while the box is open (a commit made elsewhere,
   // a push): git status every few seconds, the box only told of a change.
   setInterval(() => {
@@ -2571,6 +2601,7 @@ app.whenReady().then(async () => {
     const as = run === 'push' ? `Pushed ${st.branch || 'it'}` : `Pulled into ${st.branch || 'it'}`;
     const entry = runForSession(id, cmd, as, (code) => {
       if (code === 0 && win) win.webContents.send('nod', id);
+      if (code === 0 && run === 'push') pulls.forget(s.cwd, st.branch); // (its checks start again)
       if (code !== 0) entry.text = run === 'push' ? 'git couldn’t push (tap for why); Push again asks Claude to' : 'git couldn’t pull without a merge (tap for why); Pull again asks Claude to';
       git.forget(s.cwd);
       git.status(s.cwd, (now) => { gitStates.set(id, now); pushTalk(id); });
