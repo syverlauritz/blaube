@@ -175,6 +175,7 @@
       ['measure', 1, 0, 2, 0.05, 'Two bored slimes now and then stand back to back and stretch up to see who\'s taller'],
       ['tug', 1, 0, 2, 0.05, 'Two bored slimes now and then play tug of war on a strand of goo until it snaps'],
       ['skipRope', 1, 0, 2, 0.05, 'With three bored slimes about, two now and then swing a rope of goo and the third skips over it'],
+      ['hideSeek', 1, 0, 2, 0.05, 'Now and then bored slimes play hide and seek: one counts, the others crouch in the corners'],
       ['parade', 1, 0, 2, 0.05, 'Now and then, with a few calm slimes about, one leads a parade and the others hop along behind'],
       ['copycat', 0.6, 0, 1, 0.05, 'Chance a calm slime nearby copies another\'s trick, hop for hop'],
       ['farewell', 1, 0, 2, 0.05, 'When a session ends, the others watch its slime go, a little deflated, and the nearest says bye'],
