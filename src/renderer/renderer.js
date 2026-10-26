@@ -1651,7 +1651,7 @@
         if (t > 0.5) {
           b.body.squashTop(-r * 5 * Math.min(1.5, CFG.keepy), DT);
           p.ride = null; p.rideOn = b; p.rideAt = time;
-          p.vy = -(560 + Math.random() * 140); p.vx = (b.body.centroid().x - p.x) * 2 + (Math.random() - 0.5) * 40 + (Math.random() < 0.12 ? (Math.random() < 0.5 ? -1 : 1) * (200 + Math.random() * 100) : 0); // (now and then one goes wild) p.va = (Math.random() - 0.5) * 8;
+          p.vy = -(560 + Math.random() * 140); p.vx = (b.body.centroid().x - p.x) * 2 + (Math.random() - 0.5) * 40 + (Math.random() < 0.12 ? (Math.random() < 0.5 ? -1 : 1) * (200 + Math.random() * 100) : 0); p.va = (Math.random() - 0.5) * 8; // (now and then one goes wild)
           p.nextHop = time + 1.5;
           k.n++; k.caughtAt = 0; k.crouched = false;
         }
