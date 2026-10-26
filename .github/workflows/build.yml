@@ -114,6 +114,11 @@ jobs:
       - name: Replace the latest pre-release
         run: |
           gh release delete latest -R "$GITHUB_REPOSITORY" --cleanup-tag -y || true
+          # A run that failed halfway can leave the tag behind (and a draft
+          # release with it), and then creating the release again fails with
+          # "tag_name already exists". Runs go one at a time, so clear both.
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/latest" || true
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft) | .id' | xargs -r -I{} gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/{}" || true
           gh release create latest out/* -R "$GITHUB_REPOSITORY" --prerelease --target "$SHA" \
             --title "Latest build (${SHA::7})" \
             --notes "Built automatically from ${SHA}. macOS: Blaube-mac-arm64.dmg (Apple Silicon) or Blaube-mac-x64.dmg (Intel). Windows: Blaube-Setup-windows-x64.exe or -arm64.exe."
