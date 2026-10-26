@@ -115,4 +115,14 @@ function leftUncommitted({ state, git, idleFor = 0 }, after = 20 * 60e3) {
   return { text: `${n} file${n === 1 ? '' : 's'} changed, not committed yet`, key: [git.branch, n, ...(git.files || []).map((f) => f.path)].join('|') };
 }
 
-module.exports = { mostWanted, notification, glance, today, search, leftUncommitted };
+// Still waiting on you a while later (10 minutes, then 30): its slime
+// reminds you, once at each. `told`: how many reminders it's had for this
+// wait. { text, told } or null.
+const REMIND = [10 * 60e3, 30 * 60e3];
+function stillWaiting({ state, since, now = Date.now(), told = 0, what = '' }) {
+  if (state !== 'waiting' || !since || told >= REMIND.length || now - since < REMIND[told]) return null;
+  const m = Math.floor((now - since) / 60e3);
+  return { text: `Still waiting for you (${m}m)${what ? `: ${what}` : ''}`, told: told + 1 };
+}
+
+module.exports = { mostWanted, notification, glance, today, search, leftUncommitted, stillWaiting };

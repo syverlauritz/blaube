@@ -538,6 +538,7 @@ let talkPicking = false; // (a file dialog from the box is open: it stays)
 let hubPast = [], hubFolders = [], hubCache = null; // what the overview last offered
 const gitStates = new Map(); // session id -> its last git status (or null: not a repository)
 const installingPackages = new Set(); // sessions whose packages are being installed from the box
+const reminded = new Map(); // session id -> { since, told }: reminders it's had while waiting on you
 const nudged = new Map(); // session id -> the uncommitted changes its slime last mentioned
 const discarded = new Map(); // session id -> { root, rel }: the file whose changes you last discarded in its box
 const prStates = new Map(); // session id -> its branch's pull request, as gh last said (or null)
@@ -661,7 +662,7 @@ function sweepSoon() { if (!sweepTimer) sweepTimer = setTimeout(() => { sweepTim
 function sweep() {
   const live = (id) => tracker.sessions.has(id) || owned.has(id) || (id === talkId && !!talkWin && !talkWin.isDestroyed() && talkWin.isVisible());
   for (const id of [...inbox.logs.keys(), ...inbox.todos.keys(), ...inbox.steerable, ...inbox.typed.keys()]) if (!live(id)) inbox.forget(id);
-  const maps = { gitStates, prStates, discarded, nudged, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan, carryLater, mcpStates, rewound, foreground };
+  const maps = { gitStates, prStates, discarded, nudged, reminded, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan, carryLater, mcpStates, rewound, foreground };
   for (const id of [...muted]) if (!live(id)) muted.delete(id);
   for (const sid of runs.sessions()) if (!live(sid)) runs.stopAll(sid); // (its dev server goes with it)
   for (const m of Object.values(maps)) for (const id of [...m.keys()]) if (!live(id)) m.delete(id);
@@ -1675,6 +1676,14 @@ app.whenReady().then(async () => {
     if (c && c.to === 'gone' && c.session && inbox.logs.has(c.session.id) && !owned.has(c.session.id)) inbox.observe({ session_id: c.session.id, hook_event_name: 'SessionEnd' });
   });
   inbox.on('change', (id) => pushTalk(id));
+  // (A test run's result changed: its slime's hover says so.)
+  const testsSaid = new Map();
+  inbox.on('change', (id) => {
+    const w = testsWords(id);
+    if (w === (testsSaid.get(id) || '')) return;
+    if (w) testsSaid.set(id, w); else testsSaid.delete(id);
+    pushState();
+  });
   // Another session asking (or no longer asking): the overview answers it.
   const askCounts = new Map();
   inbox.on('change', (id) => {
@@ -1857,6 +1866,16 @@ app.whenReady().then(async () => {
     // says where it stands, and its PR is looked up.)
     for (const o of tracker.list()) {
       if (o.id.startsWith('demo-') || !o.cwd) continue;
+      // (Still waiting on you, 10 and 30 minutes on: its slime reminds you.)
+      const r = reminded.get(o.id);
+      const told = r && r.since === o.updatedAt ? r.told : 0;
+      const ask = (inbox.asks.get(o.id) || [])[0];
+      const still = attention.stillWaiting({ state: o.state, since: o.updatedAt, now: Date.now() + (TEST ? global.__blaubeWaitAhead || 0 : 0), told, what: ask && ask.kind === 'tool' ? `${ask.tool || 'a tool'}${ask.detail ? ` ${String(ask.detail).slice(0, 40)}` : ''}?` : '' });
+      if (still && win && !(talkWin && talkWin.isVisible() && talkId === o.id)) {
+        reminded.set(o.id, { since: o.updatedAt, told: still.told });
+        win.webContents.send('say', { id: o.id, text: still.text, seconds: 6, status: true });
+        if (TEST) global.__blaubeReminded = { id: o.id, text: still.text };
+      }
       git.status(o.cwd, (st) => {
         if (!st) return;
         const line = gitLine(o.id);

@@ -648,6 +648,13 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	global.__blaubeAway = '';
 	global.__blaubeCheckAway(5);
 	check(!global.__blaubeAway, 'once');
+	// Still waiting on you ten minutes on: its slime reminds you, once.
+	global.__blaubeWaitAhead = 11 * 60e3;
+	check(await until(() => (global.__blaubeReminded || {}).id === ID2 && /^Still waiting for you \(1\dm\)/.test(global.__blaubeReminded.text), 10000), `one still waiting on you gets a reminder from its slime (${(global.__blaubeReminded || {}).text})`);
+	global.__blaubeReminded = null;
+	await sleep(2500);
+	check(!global.__blaubeReminded, 'once, until the next reminder is due');
+	global.__blaubeWaitAhead = 0;
 	// Finished a while ago, its changes not committed: its slime says so, once.
 	await page(`window.blaube.talk(${JSON.stringify(ID2)}, { x: 300, y: 600, r: 60 })`);
 	await until(() => talkId() === ID2);

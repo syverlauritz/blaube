@@ -126,3 +126,14 @@ test('changes left uncommitted a while after it finished are mentioned, once per
   assert.equal(leftUncommitted({ state: 'idle', git: { branch: 'main', changed: 0, untracked: 0, files: [] }, idleFor: 60 * 60e3 }), null);
   assert.equal(leftUncommitted({ state: 'idle', git: { branch: 'x', changed: 1, untracked: 0, files: [{ path: 'a' }] }, idleFor: 60e3 }, 0).text, '1 file changed, not committed yet');
 });
+
+test('still waiting on you: reminded at 10 minutes, then 30, no more', () => {
+  const { stillWaiting } = require('../src/main/attention');
+  const since = 1e6;
+  assert.equal(stillWaiting({ state: 'waiting', since, now: since + 5 * 60e3 }), null);
+  assert.deepEqual(stillWaiting({ state: 'waiting', since, now: since + 11 * 60e3, what: 'Bash npm test?' }), { text: 'Still waiting for you (11m): Bash npm test?', told: 1 });
+  assert.equal(stillWaiting({ state: 'waiting', since, now: since + 20 * 60e3, told: 1 }), null);
+  assert.deepEqual(stillWaiting({ state: 'waiting', since, now: since + 31 * 60e3, told: 1 }), { text: 'Still waiting for you (31m)', told: 2 });
+  assert.equal(stillWaiting({ state: 'waiting', since, now: since + 90 * 60e3, told: 2 }), null);
+  assert.equal(stillWaiting({ state: 'done', since, now: since + 90 * 60e3 }), null);
+});
