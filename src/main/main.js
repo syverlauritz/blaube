@@ -13,6 +13,7 @@ const attention = require('./attention');
 const markdown = require('./markdown');
 const git = require('./git');
 const projectFiles = require('./files');
+const shellRun = require('./shellRun');
 const { failedTests, stoppedLast } = require('./inbox');
 const { Notification } = require('electron');
 const { slashCommand, commandNames, expand: expandCommand, control: controlFor } = require('./commands');
@@ -512,6 +513,8 @@ function modelName(id) {
 }
 // A model you just switched a session to (until its transcript says so).
 const pickedModel = new Map();
+// What you ran with ! in a session's box, not yet sent along: id -> [{ cmd, code, out }].
+const shellRan = new Map();
 
 // A file a session's reply names (relative to its folder, or to the top of
 // its repository), as a full path: only a file inside one of those, else ''.
@@ -546,7 +549,7 @@ function sweepSoon() { if (!sweepTimer) sweepTimer = setTimeout(() => { sweepTim
 function sweep() {
   const live = (id) => tracker.sessions.has(id) || owned.has(id) || (id === talkId && !!talkWin && !talkWin.isDestroyed() && talkWin.isVisible());
   for (const id of [...inbox.logs.keys(), ...inbox.todos.keys(), ...inbox.steerable, ...inbox.typed.keys()]) if (!live(id)) inbox.forget(id);
-  const maps = { gitStates, looked, glances, talkHeights, notified, doing, errorCounts, pickedModel };
+  const maps = { gitStates, looked, glances, talkHeights, notified, doing, errorCounts, pickedModel, shellRan };
   for (const id of [...muted]) if (!live(id)) muted.delete(id);
   for (const m of Object.values(maps)) for (const id of [...m.keys()]) if (!live(id)) m.delete(id);
   for (const [k, at] of [...lastBubble]) if (Date.now() - at > 60e3) lastBubble.delete(k);
@@ -1593,6 +1596,14 @@ app.whenReady().then(async () => {
   // What you say to a session (from its box, or a notification's reply).
   function sendMessage(id, text) {
     if (!prefs.talked) { prefs.talked = true; savePrefs(); pushState(); } // no more "click to talk" hints
+    // "!git log": run right here, in its folder, as the terminal's bash
+    // mode does; what it printed goes along with your next message.
+    if (/^!\S/.test(String(text).trim())) return runForSession(id, String(text).trim().slice(1).trim());
+    const ran = shellRan.get(id);
+    if (ran && ran.length) {
+      shellRan.delete(id);
+      text = ran.map((r) => `(I ran \`${r.cmd}\` myself${r.code === 0 ? '' : r.code == null ? ' (stopped: it took too long)' : ` (exit code ${r.code})`}. It printed:\n\`\`\`\n${r.out.slice(-3000) || '(nothing)'}\n\`\`\`)`).join('\n\n') + '\n\n' + text;
+    }
     // One of your own commands (/deploy staging) is only a prompt: it goes
     // as a message, so it needs no terminal.
     const prompt = expandCommand(text, (tracker.sessions.get(id) || {}).cwd);
@@ -1640,6 +1651,22 @@ app.whenReady().then(async () => {
     const how = inbox.send(id, text);
     log(`message for ${tracker.sessions.get(id).project}: ${how} (inbox ${inbox.view(id).inbox})`);
     setTimeout(() => typeQueued(id), 1500); // a moment for its inbox hook to ask first
+  }
+  // (What you ran with ! in a session's box, for its next message.)
+  function runForSession(id, cmd) {
+    const s = tracker.sessions.get(id);
+    if (!s || !s.cwd || !cmd) return;
+    const entry = inbox.add(id, { who: 'step', text: `You ran ${cmd.length > 60 ? cmd.slice(0, 59) + '…' : cmd}`, ok: true, kind: classify('Bash', { command: cmd }), detail: `$ ${cmd}\n…`, cmd: cmd.slice(0, 200), running: true });
+    shellRun.run(cmd, s.cwd, (code, out) => {
+      const shown = out.replace(/\s+$/, '');
+      entry.ok = code === 0;
+      entry.running = false;
+      entry.detail = `$ ${cmd}\n${shown.length > 4000 ? '…' + shown.slice(-4000) : shown}${code == null ? '\n(stopped: it took over two minutes)' : ''}`;
+      const list = shellRan.get(id) || [];
+      list.push({ cmd, code, out: shown });
+      shellRan.set(id, list.slice(-3));
+      inbox.emit('change', id);
+    });
   }
   replyTo = sendMessage;
   ipcMain.on('talk-stop', (_e, id) => {

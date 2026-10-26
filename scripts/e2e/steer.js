@@ -280,6 +280,12 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	check(await box(`(() => { const b = [...document.querySelectorAll('#inner .more')].pop(); return !!b && b.textContent === 'Show more' && !/THE END/.test(document.getElementById('inner').textContent); })()`), 'a long reply is folded, with the rest right here');
 	await box(`[...document.querySelectorAll('#inner .more')].pop().click()`);
 	check(await until(() => box(`/THE END/.test(document.getElementById('inner').textContent)`)), 'a tap shows the rest, no terminal needed');
+	// "!ls" runs right here, as the terminal's bash mode does, and goes along with the next message.
+	await type('!ls src');
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'You ran ls src' && e.ok && !e.running && /tax\.js/.test(e.detail))), '!ls runs in its folder and shows what it printed');
+	check(await until(() => box(`[...document.querySelectorAll('#inner .step')].some((e) => /You ran ls src/.test(e.textContent))`)), 'as a step in the box');
+	await type('what is in there?');
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'you' && /^\(I ran `ls src` myself\. It printed:\n```\ntax\.js\n```\)\n\nwhat is in there\?$/.test(e.text))), 'and what it printed goes along with the next message');
 	// "@" suggests its files, "/" its commands; your own command goes as a message.
 	const typeIn = (v) => box(`(() => { const t = document.getElementById('text'); t.focus(); t.value = ${JSON.stringify(v)}; t.setSelectionRange(t.value.length, t.value.length); t.dispatchEvent(new Event('input')); })()`);
 	await typeIn('look at @tax');
