@@ -75,7 +75,7 @@ class Owned extends EventEmitter {
     const proc = viaCmd
       ? spawn('cmd.exe', ['/d', '/s', '/c', `"${[quote(bin), ...args.map(quote)].join(' ')}"`], Object.assign(opts, { windowsVerbatimArguments: true }))
       : spawn(bin, args, opts);
-    const s = { id, proc, cwd, startedAt: Date.now(), err: '', buf: '', pending: new Map(), interrupted: false }; // (s.id can change: see read)
+    const s = { id, proc, cwd, extra, settings, startedAt: Date.now(), err: '', buf: '', pending: new Map(), interrupted: false }; // (s.id can change: see read)
     this.sessions.set(id, s);
     proc.stdout.setEncoding('utf8');
     proc.stdout.on('data', (chunk) => {
@@ -99,8 +99,9 @@ class Owned extends EventEmitter {
       if (over) return;
       over = true;
       if (s.buf.trim()) { try { this.read(s.id, JSON.parse(s.buf)); } catch { /* half a line */ } }
-      this.sessions.delete(s.id);
+      if (this.sessions.get(s.id) === s) this.sessions.delete(s.id);
       if (settingsFile) fs.rm(settingsFile, { force: true }, () => {});
+      if (s.replaced) return; // (/clear: it carries on as a new one)
       this.emit('exit', s.id, code == null && !signal ? 1 : code, s.err.trim(), signal || null);
     };
     proc.on('error', (e) => { s.err = (s.err + e.message).slice(-2000); if (!proc.pid) ended(1, null); });
@@ -169,6 +170,24 @@ class Owned extends EventEmitter {
     if (request.subtype === 'interrupt') s.interrupted = true;
     s.proc.stdin.write(JSON.stringify({ type: 'control_request', request_id: rid, request }) + '\n');
     return true;
+  }
+
+  // /clear: a fresh conversation in the same folder, as a new session that
+  // takes this one's place ('renamed' to its id); this one ends quietly (its
+  // conversation is saved, to pick up later). Returns the new id.
+  // `cwd`: where it's working now (its own worktree, say: then it starts
+  // there rather than making another).
+  clear(id, cwd = '') {
+    const s = this.sessions.get(id);
+    if (!s) return null;
+    const here = cwd && cwd !== s.cwd;
+    s.replaced = true;
+    this.sessions.delete(id);
+    try { s.proc.stdin.end(); } catch { /* gone */ }
+    setTimeout(() => stop(s.proc), 5000);
+    const to = this.start(here ? cwd : s.cwd, here ? s.extra.filter((a) => a !== '--worktree') : s.extra, s.settings);
+    this.emit('renamed', id, to);
+    return to;
   }
 
   // Lets it finish and stop (it ends when its input does); stops it for

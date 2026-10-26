@@ -1979,6 +1979,21 @@ app.whenReady().then(async () => {
     if (prompt) { inbox.add(id, { who: 'note', text: `${String(text).trim().split(/\s/)[0]}: sent what it says` }); text = prompt; }
     // A session Blaube started: straight in, and its turn starts.
     if (owned.has(id)) {
+      // "/clear": a fresh conversation, as in the terminal: a new session in
+      // the same place takes over its slime (the old one can be picked up).
+      if (/^\/clear\s*$/i.test(String(text).trim())) {
+        const to = owned.clear(id, sess && sess.cwd);
+        const now = to && tracker.sessions.get(to);
+        if (!now) return;
+        Object.assign(now, { transcript: '', tasks: [], agents: [] });
+        inbox.logs.set(to, []);
+        inbox.todos.delete(to);
+        for (const m of [mcpStates, foreground, pickedModel, shellRan, rewound]) m.delete(to);
+        inbox.add(to, { who: 'note', text: 'Cleared: a fresh conversation. The last one is under Pick up where you left off.' });
+        hubCache = null;
+        pushState();
+        return;
+      }
       // (/model, /plan, /context and /effort are for Claude Code: it's asked directly.)
       const c = controlFor(text);
       if (c && c.help) { inbox.add(id, { who: 'note', text: c.help }); return; }

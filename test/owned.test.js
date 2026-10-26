@@ -83,3 +83,36 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
   assert.equal(seen.find((m) => m.type === 'echo').got.uuid, 'u-1');
   owned.end(id);
 });
+
+test('/clear: a fresh session takes its place, and the old one ends quietly', async (t) => {
+  if (process.platform === 'win32') return t.skip('a script as the binary');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-owned-'));
+  const tree = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-tree-'));
+  const bin = path.join(dir, 'claude');
+  fs.writeFileSync(bin, `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({ type: 'args', args: process.argv.slice(2), cwd: process.cwd() }) + '\\n');
+process.stdin.on('end', () => process.exit(0)); process.stdin.resume();
+`, { mode: 0o755 });
+  const owned = new Owned(() => bin);
+  const seen = [], events = [];
+  const orig = owned.read.bind(owned);
+  owned.read = (id, m) => { seen.push(Object.assign({ id }, m)); return orig(id, m); };
+  owned.on('renamed', (a, b) => events.push(['renamed', a, b]));
+  owned.on('exit', (a) => events.push(['exit', a]));
+  const id = owned.start(dir, ['--worktree', '--model', 'opus'], { a: 1 });
+  const until = async (fn) => { for (let i = 0; i < 100 && !fn(); i++) await new Promise((r) => setTimeout(r, 20)); return fn(); };
+  assert.ok(await until(() => seen.some((m) => m.type === 'args')));
+  const to = owned.clear(id, tree);
+  assert.ok(to && to !== id);
+  assert.deepEqual(events[0], ['renamed', id, to]);
+  assert.ok(owned.has(to) && !owned.has(id));
+  assert.ok(await until(() => seen.some((m) => m.type === 'args' && m.id === to)));
+  const args = seen.find((m) => m.type === 'args' && m.id === to);
+  assert.equal(fs.realpathSync(args.cwd), fs.realpathSync(tree), 'starts where it was working (its worktree)');
+  assert.ok(!args.args.includes('--worktree') && args.args.includes('opus') && args.args.includes('--settings'));
+  assert.equal(args.args[args.args.indexOf('--session-id') + 1], to);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.ok(!events.some((e) => e[0] === 'exit'), 'the old one ends without saying so');
+  assert.equal(owned.clear('nope'), null);
+  owned.end(to);
+});

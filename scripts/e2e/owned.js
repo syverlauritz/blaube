@@ -254,6 +254,20 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(async () => /claude-opus here\./.test(await said())), 'and it answers right here');
 	owned.end(BID);
 
+	// /clear: a fresh conversation, a new session in its slime's place.
+	const CID = startSession(dir);
+	check(await until(() => talkId() === CID, 8000), 'another session starts');
+	await type('hello');
+	await until(() => inbox.log(CID).some((e) => e.who === 'claude'));
+	await type('/clear');
+	check(await until(() => talkId() && talkId() !== CID && owned.has(talkId()) && !owned.has(CID)), '/clear starts a fresh session that takes its place, in the same box');
+	const NID = talkId();
+	check(inbox.log(NID).length === 1 && /^Cleared: a fresh conversation/.test(inbox.log(NID)[0].text) && !tracker.sessions.has(CID) && tracker.sessions.has(NID), 'the box starts afresh, with one slime still');
+	check(await until(() => fs.readdirSync(dir).filter((f) => f.startsWith('args-')).some((f) => { const a = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); return a[a.indexOf('--session-id') + 1] === NID; })), 'started as a new session of Claude Code');
+	await type('and now?');
+	check(await until(async () => /claude-opus here\./.test(await said())), 'and it answers there');
+	owned.end(NID);
+
 	console.log(failed ? `\n${failed} failed` : '\nall passed');
 	return failed ? 1 : 0;
 };
