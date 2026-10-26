@@ -365,6 +365,11 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	fs.writeFileSync(path.join(repo, '.claude', 'skills', 'release', 'SKILL.md'), '---\nname: release\ndescription: Tags and ships a release\n---\n');
 	await type('/skills');
 	check(await until(() => inbox.log(ID3).some((e) => /^Skills it can use: release \(Tags and ships a release\)/.test(e.text || ''))), '/skills lists the skills it can use');
+	await box(`(() => { const t = document.getElementById('text'); t.focus(); t.value = '/rel'; t.setSelectionRange(4, 4); t.dispatchEvent(new Event('input')); })()`);
+	check(await until(() => box(`(() => { const s = document.getElementById('suggest'); return !s.hidden && /release\s*Tags and ships a release/.test(s.textContent); })()`)), 'a skill shows in / suggestions, with what it’s for');
+	await box(`(() => { const t = document.getElementById('text'); t.value = ''; t.dispatchEvent(new Event('input')); })()`);
+	await type('/release v2');
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'you' && e.text === 'Use your release skill for this: v2')), 'and /release v2 asks it for that skill in words, in a terminal’s session');
 	await type('/vim');
 	check(await until(() => inbox.log(ID3).some((e) => e.text === '/vim is for Claude Code’s terminal screen; the box doesn’t need it.')), 'a terminal-screen-only command says so');
 	await type('/plugin');

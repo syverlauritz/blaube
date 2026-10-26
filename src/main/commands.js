@@ -42,8 +42,6 @@ function slashCommand(text, cwd = '', home = os.homedir()) {
   return yours(cwd, home).has(name) ? '/' + name : '';
 }
 
-// Every command you could type, for "/" in the talk box: [{ name, mine,
-// about }] (yours first), the ones starting with `q`.
 // Your skills (yours, and the project's): [{ name, about, where }], from
 // each skills/<name>/SKILL.md's description.
 function skills(cwd = '', home = os.homedir()) {
@@ -93,13 +91,28 @@ const ABOUT = {
   usage: 'How much of your limits you’ve used',
 };
 
+// Every command you could type, for "/" in the talk box: [{ name, mine,
+// about }] (yours first), the ones starting with `q`.
 function commandNames(q = '', cwd = '', home = os.homedir()) {
   q = String(q || '').toLowerCase();
   const mine = yours(cwd, home);
   const about = (f) => { try { const m = /^---\r?\n[\s\S]*?^description:\s*(.+)$/m.exec(fs.readFileSync(f, 'utf8').slice(0, 2000)); return m ? m[1].trim().replace(/^["']|["']$/g, '') : ''; } catch { return ''; } };
   const out = [...mine.keys()].sort().filter((n) => !BUILT_IN.has(n) && n.toLowerCase().startsWith(q)).slice(0, 50).map((name) => ({ name, mine: true, about: about(mine.get(name)) }));
+  for (const k of skills(cwd, home)) if (!BUILT_IN.has(k.name) && !mine.has(k.name) && k.name.toLowerCase().startsWith(q)) out.push({ name: k.name, mine: true, skill: true, about: k.about || 'A skill' });
   for (const name of [...BUILT_IN].sort()) out.push(Object.assign({ name, mine: false }, ABOUT[name] ? { about: ABOUT[name] } : {}));
   return out.filter((c) => c.name.toLowerCase().startsWith(q));
+}
+
+// "/release v2" for one of your skills, in a session in a terminal (where
+// only Claude Code's own prompt can start one by name): the same ask, in
+// words. '' when it isn't a skill.
+function skillPrompt(text, cwd = '', home = os.homedir()) {
+  const m = /^\/([a-z][\w-]*)(?:\s+([\s\S]*))?$/i.exec(String(text || '').trim());
+  if (!m || BUILT_IN.has(m[1].toLowerCase()) || yours(cwd, home).has(m[1].toLowerCase())) return '';
+  const k = skills(cwd, home).find((x) => x.name.toLowerCase() === m[1].toLowerCase());
+  if (!k) return '';
+  const rest = (m[2] || '').trim();
+  return `Use your ${k.name} skill${rest ? ` for this: ${rest}` : '.'}`;
 }
 
 // One of your own commands is only a prompt: what it says, with what you
@@ -155,4 +168,4 @@ function contextNote(r) {
   return { text: `Context: ${pct}% full (${kTokens(used)} of ${kTokens(r.maxTokens)})`, context: { max: r.maxTokens, parts: parts.map((p) => Object.assign(p, { label: `${p.name} ${kTokens(p.tokens)}` })) } };
 }
 
-module.exports = { skills, slashCommand, commandNames, expand, control, contextNote, EFFORTS };
+module.exports = { skills, skillPrompt, slashCommand, commandNames, expand, control, contextNote, EFFORTS };

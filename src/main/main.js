@@ -17,7 +17,7 @@ const projectFiles = require('./files');
 const shellRun = require('./shellRun');
 const { failedTests, stoppedLast, erredLast } = require('./inbox');
 const { Notification } = require('electron');
-const { skills: skillList, slashCommand, commandNames, expand: expandCommand, control: controlFor, contextNote, EFFORTS } = require('./commands');
+const { skills: skillList, skillPrompt, slashCommand, commandNames, expand: expandCommand, control: controlFor, contextNote, EFFORTS } = require('./commands');
 const limits = require('./limits');
 const usageProbe = require('./usageProbe');
 const auth = require('./auth');
@@ -2103,6 +2103,13 @@ app.whenReady().then(async () => {
     // as a message, so it needs no terminal.
     const prompt = expandCommand(text, (tracker.sessions.get(id) || {}).cwd);
     if (prompt) { inbox.add(id, { who: 'note', text: `${String(text).trim().split(/\s/)[0]}: sent what it says` }); text = prompt; }
+    // One of your skills by name (/release v2): Claude Code starts it itself
+    // in a session Blaube started; a terminal's hears the same ask in words.
+    if (!owned.has(id)) {
+      const st = gitStates.get(id);
+      const ask = sess && skillPrompt(text, (st && st.root) || sess.cwd);
+      if (ask) { inbox.add(id, { who: 'note', text: `${String(text).trim().split(/\s/)[0]}: asked for that skill` }); text = ask; }
+    }
     // A session Blaube started: straight in, and its turn starts.
     if (owned.has(id)) {
       // "/clear": a fresh conversation, as in the terminal: a new session in

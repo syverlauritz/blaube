@@ -98,3 +98,16 @@ test('lists your skills and the project’s, with what each is for', () => {
   assert.deepEqual(skills(proj, home), [{ name: 'deploy', about: 'Ships the site', where: 'this project' }, { name: 'notes', about: '', where: 'yours' }]);
   assert.deepEqual(skills('', path.join(home, 'none')), []);
 });
+
+test('a skill by name: in / suggestions, and asked for in words where only the terminal could start it', () => {
+  const { skillPrompt, commandNames } = require('../src/main/commands.js');
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-home-')), proj = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-proj-'));
+  fs.mkdirSync(path.join(proj, '.claude', 'skills', 'release'), { recursive: true });
+  fs.writeFileSync(path.join(proj, '.claude', 'skills', 'release', 'SKILL.md'), '---\ndescription: Tags and ships\n---\n');
+  assert.deepEqual(commandNames('rel', proj, home).filter((c) => c.skill), [{ name: 'release', mine: true, skill: true, about: 'Tags and ships' }]);
+  assert.equal(skillPrompt('/release v2.1', proj, home), 'Use your release skill for this: v2.1');
+  assert.equal(skillPrompt('/release', proj, home), 'Use your release skill.');
+  assert.equal(skillPrompt('/compact', proj, home), '');
+  assert.equal(skillPrompt('/nope', proj, home), '');
+});
