@@ -463,6 +463,16 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await type('/ship web');
 	check(await until(() => inbox.log(ID3).some((e) => e.who === 'you' && e.text === 'Ship web now, carefully.')), 'your own command goes as the message it stands for, no terminal needed');
 	await type('');
+	// Back after a while away: what happened meanwhile, said once.
+	global.__blaubeCheckAway(700);
+	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'and the docs?' });
+	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'Stop', last_assistant_message: 'Docs updated.' });
+	await sleep(300);
+	global.__blaubeCheckAway(5);
+	check(/Tax rewrite.* finished · .*\d+ repl/.test(global.__blaubeAway || ''), `back from being away, it says what happened meanwhile (${global.__blaubeAway})`);
+	global.__blaubeAway = '';
+	global.__blaubeCheckAway(5);
+	check(!global.__blaubeAway, 'once');
 	await hook({ session_id: ID3, hook_event_name: 'SessionEnd' });
 	await page(`window.blaube.talk(${JSON.stringify(ID)}, { x: 300, y: 600, r: 60 })`);
 	await until(() => talkId() === ID);

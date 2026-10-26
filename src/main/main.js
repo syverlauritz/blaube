@@ -23,6 +23,7 @@ const usageProbe = require('./usageProbe');
 const auth = require('./auth');
 const renamer = require('./rename');
 const installer = require('./installer');
+const away = require('./away');
 const taskOutput = require('./taskOutput');
 const permRules = require('./permRules');
 const taskKill = require('./taskKill');
@@ -1671,6 +1672,25 @@ app.whenReady().then(async () => {
       checkAuth(true);
     }, (url) => say(`If your browser didn’t open, the page is ${url}`));
   };
+  // Back after ten minutes or more away from the computer: what happened
+  // in the meantime, once (a notification; a click opens whoever wants you).
+  let awaySince = 0;
+  const checkAway = (idle = require('electron').powerMonitor.getSystemIdleTime()) => {
+    if (idle >= 600) { if (!awaySince) awaySince = Date.now() - idle * 1000; return; }
+    if (!awaySince || idle > 30) return;
+    const since = awaySince;
+    awaySince = 0;
+    const text = away.recap(tracker.list().filter(isReady).map((o) => ({ id: o.id, project: o.project, title: o.id.startsWith('demo-') ? '' : usage.sessionInfo(transcriptPath(o)).title, state: o.state })), inbox.logs, since);
+    if (!text) return;
+    log(`while you were away: ${text}`);
+    if (TEST) { global.__blaubeAway = text; return; }
+    if (!Notification.isSupported() || (prefs.config.notify || 'Behind windows') === 'Off') return;
+    const n = new Notification({ title: 'While you were away', body: text });
+    n.on('click', () => { if (!(talkWin && talkWin.isVisible())) talkShortcut(); });
+    n.show();
+  };
+  setInterval(() => checkAway(), 30e3).unref();
+  if (TEST) global.__blaubeCheckAway = checkAway;
   setTimeout(probeUsage, 20e3).unref();
   setInterval(probeUsage, 15 * 60e3).unref();
   // Its MCP servers, as /mcp shows them: one that couldn't connect shows
