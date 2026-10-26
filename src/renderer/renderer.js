@@ -2750,7 +2750,7 @@
   // its last one falls a little short, and the first one says "copycat!".
   function trick(b) {
     if (CFG.tricks <= 0 || b.kind === 'child') return;
-    const ok = b.state === 'idle' && !b.body.grab && !b.merging && !b.prank && !b.tag && !b.snow && (b.sleep || 0) < 0.1 && idleFor() < 30 && b !== buddies.get(talkingTo);
+    const ok = b.state === 'idle' && !b.body.grab && !b.merging && !b.prank && !b.tag && !b.snow && !b.parade && (b.sleep || 0) < 0.1 && idleFor() < 30 && b !== buddies.get(talkingTo);
     const c = b.copy;
     if (c) {
       if (!ok || c.lead.dying || time - c.start > 12) { b.copy = null; return; }
@@ -2801,7 +2801,7 @@
   // rounds, then they're done.
   function tag(b) {
     if (CFG.play <= 0 || b.kind === 'child') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.snow && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.snow && !o.parade && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.tag;
     if (g) {
       if (g.p !== b) return; // (one of the pair runs the game)
@@ -2849,13 +2849,81 @@
     o.glanceAt = b; o.glanceUntil = time + 1;
     quip(b, Math.random() < 0.5 ? 'tag?' : 'catch!', 1);
   }
+  // Now and then, with a few calm slimes about, one leads a parade: it hops
+  // off along the floor ("follow me!") and the others fall in behind it,
+  // hopping in step, single file, turning back at the edge of the screen.
+  function parade(b) {
+    if (CFG.parade <= 0 || b.kind !== 'mother') return;
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.copy && !o.five && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const g = b.parade;
+    if (g) {
+      if (g.line[0] !== b) return; // (the one in front runs it)
+      if (g.line.some((o) => !free(o)) || drag || time - g.start > 40) { endParade(g); return; }
+      for (const o of g.line) { o.nextHop = time + 1; o.happyUntil = time + 0.3; }
+      if (time < g.next || !b.body.onFloor() || b.pendingHop) return;
+      if (g.n >= g.hops) { endParade(g); return; }
+      const r = b.body.o.radius, c = b.body.centroid();
+      // At the edge of the screen they turn round: the back of the line leads.
+      if ((g.dir > 0 && c.x > W - r * 3) || (g.dir < 0 && c.x < r * 3)) {
+        g.dir = -g.dir;
+        g.line.reverse();
+        for (const o of g.line) o.parade = g;
+        g.next = time + 0.3;
+        return;
+      }
+      g.n++;
+      g.next = time + 0.8 / Math.min(1.5, CFG.parade);
+      const k = Math.min(1.4, CFG.parade);
+      b.hop(g.dir * 230 * k, -330);
+      // Each one hops a beat after the one in front, aiming to land a step
+      // behind it.
+      g.line.slice(1).forEach((o, i) => setTimeout(() => {
+        if (o.parade !== g || !free(o)) return;
+        const ahead = g.line[g.line.indexOf(o) - 1];
+        if (!ahead) return;
+        const gapTo = ahead.body.centroid().x + g.dir * 230 * k * 0.6 - g.dir * (ahead.body.o.radius + o.body.o.radius) * 1.15;
+        o.hop(Math.max(-460, Math.min(460, (gapTo - o.body.centroid().x) * 1.5)), -330);
+        o.glanceAt = ahead; o.glanceUntil = time + 0.8;
+      }, 220 * (i + 1)));
+      return;
+    }
+    if (!free(b) || !b.body.onFloor() || idleFor() > 60 || time < (b.nextParade ?? (b.nextParade = time + (300 + Math.random() * 600) / CFG.parade))) return;
+    b.nextParade = time + (600 + Math.random() * 900) / CFG.parade;
+    const c = b.body.centroid();
+    const others = [...buddies.values()].filter((o) => o !== b && o.kind === 'mother' && !o.parade && free(o) && o.body.onFloor()).sort((x, y) => Math.abs(x.body.centroid().x - c.x) - Math.abs(y.body.centroid().x - c.x)).slice(0, 5);
+    if (others.length < 2) return;
+    // Off toward the side with the most clear floor (it needs a little to
+    // get going), the nearest ones first behind it.
+    const box = b.body.bbox(), r = b.body.o.radius;
+    let left = box.minX, right = W - box.maxX;
+    for (const o of buddies.values()) {
+      if (o === b || o.dying) continue;
+      const ob = o.body.bbox();
+      if (ob.minX >= box.maxX) right = Math.min(right, ob.minX - box.maxX);
+      else if (ob.maxX <= box.minX) left = Math.min(left, box.minX - ob.maxX);
+      else left = right = 0;
+    }
+    if (Math.max(left, right) < r * 2) return;
+    const dir = right >= left ? 1 : -1;
+    const line = [b, ...others];
+    const p = { line, dir, start: time, next: time + 1, n: 0, hops: 7 + Math.floor(Math.random() * 5) };
+    for (const o of line) { o.parade = p; o.happyUntil = time + 1; }
+    quip(b, 'follow me!', 1.4);
+  }
+  function endParade(g) {
+    for (const o of g.line) {
+      o.parade = null;
+      if (!o.dying && !o.body.grab) o.happyUntil = time + 1.5;
+    }
+  }
+
   // In snowy weather two bored slimes now and then have a snowball fight:
   // each crouches, scoops, and lobs one at the other in turn. A hit splats
   // white and knocks the skin in where it lands ("hey!").
   const snowballs = [];
   function snowFight(b) {
     if (CFG.snowballs <= 0 || CFG.seasons <= 0 || b.kind === 'child') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.parade && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.snow;
     if (g) {
       if (g.p !== b) return; // (one of the pair runs the fight)
@@ -3386,6 +3454,7 @@
     trick(b);
     tag(b);
     snowFight(b);
+    parade(b);
     blow(b);
     welcome(b);
     nibble(b);
