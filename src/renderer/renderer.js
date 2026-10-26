@@ -948,18 +948,19 @@
   // Two sessions that finish close together jump up and bump in the air
   // between them: "high five!".
   function highFive(a, o, tries = 0) {
-    const ok = (x) => !x.dying && !x.body.grab && !x.merging && x.state === 'done' && x.body.onFloor() && !x.pendingHop && x !== buddies.get(talkingTo);
-    if (!ok(a) || !ok(o) || a.five || o.five) return;
+    const ok = (x) => !x.dying && !x.body.grab && !x.merging && x.state === 'done' && x !== buddies.get(talkingTo);
+    if (!ok(a) || !ok(o) || a.five || o.five || tries > 12) return;
+    const settled = (x) => x.body.onFloor() && !x.pendingHop;
+    if (!settled(a) || !settled(o)) { setTimeout(() => highFive(a, o, tries + 1), 300); return; } // (wait for both to land)
+    a.nextHop = o.nextHop = time + 2;
     const ca = a.body.centroid(), co = o.body.centroid(), ra = a.body.o.radius, ro = o.body.o.radius;
     const dx = co.x - ca.x, gap = Math.abs(dx) - (ra + ro) * 0.85;
     if (gap < 0 || gap > (ra + ro) * 8 || Math.abs(co.y - ca.y) > Math.max(ra, ro)) return;
     if (gap > (ra + ro) * 1.2) {
       // Too far apart: they hop over to each other first.
-      if (tries > 3) return;
       const step = Math.min(gap / 2 - (ra + ro) * 0.3, (ra + ro) * 1.5);
       a.hop(Math.sign(dx) * step * 1.6, -330);
       o.hop(-Math.sign(dx) * step * 1.6, -330);
-      a.nextHop = o.nextHop = time + 2;
       setTimeout(() => highFive(a, o, tries + 1), 1100);
       return;
     }
