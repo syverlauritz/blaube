@@ -673,6 +673,9 @@
     root.setProperty('--on', contrast(color, '#ffffff') >= 4.5 ? '#fff' : '#1b2440');
     if (s.tail) placeTail(s.tail);
     kept = !!s.pinned;
+    document.body.classList.toggle('dark', !!s.dark);
+    $('theme').setAttribute('aria-pressed', String(!!s.dark));
+    $('theme').title = s.dark ? 'Light mode' : 'Dark mode';
     $('pin').classList.toggle('on', kept);
     $('pin').setAttribute('aria-pressed', String(kept));
     $('pin').title = kept ? 'Pinned: it stays open. Click to let it close when you click away' : 'Keep it open (pin it), and move it by its top';
@@ -2420,6 +2423,8 @@
   // The pin: pinned, it stays open (clicking away, Esc and other slimes'
   // boxes leave it be), and several can be open at once.
   $('pin').addEventListener('click', () => { if (api.pin) api.pin(!kept); });
+  // Dark mode, for every box (the app keeps it).
+  $('theme').addEventListener('click', () => { if (api.dark) api.dark(!document.body.classList.contains('dark')); });
   // Dragging its header moves it, anywhere (not from its buttons, fields,
   // tabs or name).
   document.querySelector('header').addEventListener('pointerdown', (e) => {

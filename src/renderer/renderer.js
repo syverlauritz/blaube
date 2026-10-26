@@ -5564,7 +5564,7 @@
   function drawTailFor(id, t) {
     t.now = null;
     const b = buddies.get(id), rect = t.rect;
-    if (!b || b.dying) return;
+    if (!b || b.dying || rect.dark) return; // (a dark box has no tail)
     const body = b.body, c = body.centroid(), PAD = 12, RADIUS = 30, GAP = 8, W = 20, INSET = 10;
     const box = { x: rect.x + PAD, y: rect.y + PAD, w: rect.w - PAD * 2, h: rect.h - PAD * 2 };
     const e = BlaubeTalkTail.edgeToward(box, c, RADIUS);

@@ -376,7 +376,7 @@ function sendTalkRect() {
   const recs = [...pinnedTalks.values()];
   if (talkWin && !talkWin.isDestroyed() && talkWin.isVisible() && talkBox) recs.push(transientTalk);
   win.webContents.send('talk-rect', recs.filter((r) => r.box && !r.closing && !r.win.isDestroyed() && r.win.isVisible())
-    .map((r) => ({ id: r.id, x: r.box.x - wb.x, y: r.box.y - wb.y, w: r.box.w, h: r.box.h, pinned: !!r.pinned })));
+    .map((r) => ({ id: r.id, x: r.box.x - wb.x, y: r.box.y - wb.y, w: r.box.w, h: r.box.h, pinned: !!r.pinned, dark: !!prefs.talkDark })));
 }
 
 // Pins the box (it becomes one of the boxes that stay) or unpins it (it
@@ -538,7 +538,7 @@ function pushTalk(id, focusField = false) {
   if (!s) {
     const talkLast = lastOf(id);
     if (!talkLast) { if (rec.pinned) closePinned(rec); else hideTalk(); return; }
-    talkWin.webContents.send('talk-state', Object.assign({}, talkLast, inbox.view(id), { ended: true, state: 'ended', ask: null, asks: 0, tail: talkTail, focus: false, pinned: rec.pinned }));
+    talkWin.webContents.send('talk-state', Object.assign({}, talkLast, inbox.view(id), { ended: true, state: 'ended', ask: null, asks: 0, tail: talkTail, focus: false, pinned: rec.pinned, dark: !!prefs.talkDark }));
     return;
   }
   talkLasts.set(id, {
@@ -554,6 +554,7 @@ function pushTalk(id, focusField = false) {
     font: prefs.config.font,
     tail: talkTail,
     pinned: rec.pinned,
+    dark: !!prefs.talkDark,
     asks: inbox.asks.has(id) ? inbox.asks.get(id).length : 0,
     // No inbox hook, but Blaube can type into its terminal for it.
     typeable: process.platform === 'darwin' && !!s.pid && (s.term === 'Apple_Terminal' || s.term === 'iTerm.app'),
@@ -3507,6 +3508,13 @@ app.whenReady().then(async () => {
   });
   // The pin in its header.
   ipcMain.on('talk-pin', (e, on) => pinTalk(talkFrom(e.sender), !!on));
+  // Dark mode (the moon in its header), for every box, kept.
+  ipcMain.on('talk-dark', (_e, on) => {
+    prefs.talkDark = !!on;
+    savePrefs();
+    pushTalks();
+    sendTalkRect(); // (dark boxes have no tail)
+  });
   // Where the tail leaves the box now (its slime moved): the box stays put,
   // but it shrinks shut into its tail, wherever that is.
   ipcMain.on('talk-at', (_e, id, at) => {

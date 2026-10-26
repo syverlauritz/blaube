@@ -82,6 +82,8 @@ ships that breaks a "must".
   once, one per session); dragging its header moves it, and it stays where
   you put it. The tail shows only while the box is near its blob (within
   two of the blob's radii, fading out by three).
+- The talk box has a dark mode (the moon in its header, kept for every
+  box): the same flat bubble in a deep slate with light ink, and no tail.
 - Blobs talk out loud in a made-up babble through a talkbox: a buzzy
   synth note shaped by a sweeping vowel filter, with a wah on the attack of
   each syllable only (it opens and stays open; no wah-wah on held notes).

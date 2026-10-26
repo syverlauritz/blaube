@@ -688,6 +688,11 @@ SCENES.talkPinnedTwo = {
 		also: [{ key: 'pb', stand: [900, 700], box: { x: 640, y: 150, w: 520, h: 400 }, inbox: 'ready', log: [{ who: 'claude', text: 'Deployed to production.' }] }] },
 };
 
+// Dark mode: a long chat, a permission card, a question, a plan, and a
+// busy session with its project panel open (no tails in dark mode).
+const darkOf = (name) => Object.assign({}, SCENES[name], { talk: Object.assign({}, SCENES[name].talk, { dark: true }) });
+for (const name of ['talkLong', 'talkAsk', 'talkQuestion', 'talkPlan', 'talkHarness', 'talkSteps', 'talkContext']) SCENES[name + 'Dark'] = darkOf(name);
+
 // The overview: the talk box with every session at a glance.
 // Find (⌘F) in a conversation with steps.
 SCENES.talkFind = Object.assign({}, SCENES.talkSteps, { talkJs: `setTimeout(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', metaKey: true })); const f = document.getElementById('find'); f.value = 'test'; f.dispatchEvent(new Event('input')); }, 400)` });
@@ -818,7 +823,7 @@ async function addTalk(win, scene, name) {
 		ow.destroy();
 	}
 	// The slime's layer draws each tail from under its bubble to its head.
-	win.webContents.send('fire', 'talk-rect', boxes.map(({ id, x, y, w: bw, h: bh }) => ({ id, x, y, w: bw, h: bh })));
+	win.webContents.send('fire', 'talk-rect', boxes.map(({ id, x, y, w: bw, h: bh }) => ({ id, x, y, w: bw, h: bh, dark: !!t.dark })));
 	await sleep(500); // (the tail grows out first)
 	if (t.hold) {
 		// Picks the slime up and carries it there (the page's own mouse handlers).

@@ -489,9 +489,20 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, pinned }) 
 	const pb = boxOf(PA).getBounds();
 	const near = await tailAt(PA, { x: pb.x - sw.x + pb.width / 2, y: pb.y - sw.y + pb.height + 130 });
 	check(near && near.shown === 1 && near.len > 10, `near its box, its tail shows (${JSON.stringify(near)})`);
-	const far = await tailAt(PA, { x: pb.x - sw.x + pb.width / 2, y: Math.min(sw.height - 100, pb.y - sw.y + pb.height + 520) });
+	// (Across the screen from it: well over three of its radii away.)
+	const far = await tailAt(PA, { x: pb.x - sw.x + pb.width / 2 < sw.width / 2 ? sw.width - 150 : 150, y: pb.y - sw.y + pb.height / 2 });
 	check(far && far.shown === 0, `far from it, no tail (${JSON.stringify(far)})`);
 	await shot('pinned');
+	// Dark mode: the moon in one box turns them all dark, with no tails.
+	const isDark = (id) => inBox(id, `document.body.classList.contains('dark')`);
+	await inBox(PA, `document.getElementById('theme').click()`);
+	check(await until(async () => (await isDark(PA)) && (await isDark(PB))), 'dark mode turns every box dark');
+	check(await inBox(PA, `getComputedStyle(document.querySelector('.bubble')).backgroundColor !== 'rgb(255, 255, 255)' && getComputedStyle(document.getElementById('text')).color !== 'rgb(27, 36, 64)'`), 'a dark bubble, light text');
+	const darkNear = await tailAt(PA, { x: pb.x - sw.x + pb.width / 2, y: pb.y - sw.y + pb.height + 130 });
+	check(!darkNear, `a dark box has no tail, even near its slime (${JSON.stringify(darkNear)})`);
+	await shot('dark');
+	await inBox(PB, `document.getElementById('theme').click()`);
+	check(await until(async () => !(await isDark(PA)) && !(await isDark(PB))), 'and the sun turns them all light again');
 	// ✕ closes a pinned box.
 	await inBox(PA, `document.getElementById('close').click()`);
 	check(await until(() => !boxOf(PA)), 'its ✕ closes a pinned box');
