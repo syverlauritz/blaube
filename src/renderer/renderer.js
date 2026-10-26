@@ -1148,6 +1148,14 @@
   // whizzes past, shifts its weight when it's bored, and wriggles when it's
   // held up too long. All of it goes in as forces; the body does the rest.
 
+  // The slime you're dangling right over this one (it braces), if any.
+  function heldOver(b) {
+    const h = drag && drag.buddy;
+    if (!h || h === b || CFG.spectate <= 0 || b.body.grab || !b.body.onFloor()) return null;
+    const c = b.body.centroid(), hc = h.body.centroid(), r = b.body.o.radius;
+    return hc.y < c.y - r && c.y - hc.y < r * 5 && Math.abs(hc.x - c.x) < r * 1.3 ? h : null;
+  }
+
   // The nearest slime whizzing by (flying fast, or flung about), if any is
   // close enough to watch: { o, c, d }.
   function spectate(b) {
@@ -1194,6 +1202,8 @@
       body.lean(-(Math.sign(dx) || 1) * CFG.flinch * r * 3.2, DT);
       body.squashTop(CFG.flinch * r * 2.2, DT);
     }
+    // Something held right over it: it hunkers down a little, bracing.
+    if (heldOver(b)) body.squashTop(CFG.spectate * r * 0.5 * 60 * DT, DT);
     // ...and a slime flying right at it makes it duck.
     if (CFG.spectate > 0 && time > (b.duckAt || 0)) {
       const s = spectate(b);
@@ -2213,8 +2223,15 @@
       b.gazeTarget = { x: c.x + v.x * 0.3, y: c.y + v.y * 0.3 };
       wantLook = Math.max(wantLook, CFG.eyeLife);
     }
+    // A slime you're holding up over it: it looks up at it, worried.
+    const over = !glaring && heldOver(b);
+    if (over) {
+      b.gazeTarget = over.body.centroid();
+      wantLook = Math.max(wantLook, 1);
+      if (expression === 'concentrate' || expression === 'sleepy' || expression === 'normal') { expression = 'normal'; mouth = 'o'; }
+    }
     // Another slime flying past: it watches it go, eyes wide if it's close.
-    const seen = !glaring && !body.grab && body.onFloor() && spectate(b);
+    const seen = !over && !glaring && !body.grab && body.onFloor() && spectate(b);
     let wideSeen = 0;
     if (seen) {
       b.gazeTarget = seen.c;
@@ -2258,7 +2275,7 @@
       }
     }
     // Startled (poked, flinching): eyes go wide for a moment.
-    const wide = CFG.eyeLife * Math.max(wideBy, wideSeen, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
+    const wide = CFG.eyeLife * Math.max(wideBy, wideSeen, over ? 0.5 : 0, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
     return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.6 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal',
     };
