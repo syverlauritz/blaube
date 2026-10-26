@@ -5955,9 +5955,122 @@
     return speed;
   }
 
-  function frame() {
-    const now = performance.now() / 1000;
-    acc += Math.min(0.05, now - last);
+  // Drawing between steps. The physics runs in fixed steps of 1/120 s, but
+  // frames go up on the screen's own beat (every other refresh of a 144 Hz
+  // one, say: 13.9 ms), so one frame showed one step's worth of movement and
+  // the next two, and anything going along steadily stuttered. So a frame is
+  // drawn part way between the last two steps, as far on as the time left
+  // over reaches (alpha = acc / DT): a step behind, but smooth. Only the
+  // drawing sees it: before each step, where everything is gets noted
+  // (tweenNote); draw() runs with it all put part way back (tweenIn), the
+  // clock too; afterwards it all goes back to where the step left it
+  // (tweenOut), plus anything the drawing itself moved.
+  const tween = { prev: new WeakMap(), gen: 0, live: [], time: 0 };
+  const TW_BODY = { pos: [], ang: ['angle'] }, TW_XY = { pos: ['x', 'y'], ang: [] }, TW_XYA = { pos: ['x', 'y'], ang: ['a'] };
+  const TW_PET = { pos: ['x', 'y'], ang: ['angle'] }, TW_BUBBLE = { pos: ['x', 'y', 'r'], ang: [] }, TW_FLUTTER = { pos: ['x', 'y'], ang: ['phase'] };
+  const TW_LOOK = { pos: ['hx', 'hy'], ang: ['a', 't'] }, TW_ANCHOR = { pos: [], ang: ['a', 'q'] }, TW_EAR = { pos: [], ang: ['0', '1', '2', '3', '4', '5'] };
+  const TW_ROPE = { pos: [], ang: ['phase'] };
+  const TW_JUMP = 150; // px in one step: put somewhere new, not moving (no smear)
+  function tweenEach(fn) {
+    for (const b of buddies.values()) {
+      fn(b.body, TW_BODY, true);
+      if (b.gaze) fn(b.gaze, TW_XY);
+      if (b.glasses) fn(b.glasses, TW_XYA);
+      const L = b.lookState;
+      if (L) {
+        fn(L, TW_LOOK);
+        if (L.anchors) for (const A of L.anchors.values()) fn(A, TW_ANCHOR);
+        if (L.ears) for (const E of L.ears) fn(E.a, TW_EAR);
+      }
+    }
+    for (const p of pets.values()) fn(p, TW_PET);
+    for (const u of bubbles) fn(u, TW_BUBBLE);
+    for (const f of flakes) fn(f, TW_XYA);
+    for (const u of flutters) fn(u, TW_FLUTTER);
+    for (const k of rockets) fn(k, TW_XY);
+    for (const p of sparks) fn(p, TW_XY);
+    for (const s of snowballs) fn(s, TW_XY);
+    if (rope) fn(rope, TW_ROPE);
+  }
+  function tweenNote() {
+    const gen = ++tween.gen;
+    tweenEach((o, K, body) => {
+      let p = tween.prev.get(o);
+      const n = K.pos.length + K.ang.length + (body ? 2 * o.n : 0);
+      if (!p || p.v.length !== n) tween.prev.set(o, p = { gen, v: new Float64Array(n), now: null, drawn: null });
+      p.gen = gen;
+      let j = 0;
+      for (const k of K.pos) p.v[j++] = o[k];
+      for (const k of K.ang) p.v[j++] = o[k];
+      if (body) { p.v.set(o.px, j); p.v.set(o.py, j + o.n); }
+    });
+  }
+  function tweenIn() {
+    const k = Math.max(0, Math.min(1, acc / DT)), back = 1 - k, live = tween.live;
+    live.length = 0;
+    tween.time = time;
+    if (back <= 0) return;
+    time -= back * DT;
+    tweenEach((o, K, body) => {
+      const p = tween.prev.get(o);
+      // (Made, or remade, in the last step: as it is.)
+      if (!p || p.gen !== tween.gen || p.v.length !== K.pos.length + K.ang.length + (body ? 2 * o.n : 0)) return;
+      const v = p.v, now = p.now || (p.now = new Float64Array(v.length)), drawn = p.drawn || (p.drawn = new Float64Array(v.length));
+      let j = 0;
+      for (const key of K.pos) {
+        const x = o[key];
+        now[j] = x;
+        drawn[j] = Math.abs(x - v[j]) > TW_JUMP || !Number.isFinite(x + v[j]) ? x : x - (x - v[j]) * back;
+        o[key] = drawn[j++];
+      }
+      for (const key of K.ang) {
+        const x = o[key];
+        now[j] = x;
+        drawn[j] = Number.isFinite(x + v[j]) ? x - Math.atan2(Math.sin(x - v[j]), Math.cos(x - v[j])) * back : x;
+        o[key] = drawn[j++];
+      }
+      if (body) {
+        const n = o.n, px = o.px, py = o.py, ox = o.ox, oy = o.oy;
+        let mx = 0, my = 0;
+        for (let i = 0; i < n; i++) { mx += px[i] - v[j + i]; my += py[i] - v[j + n + i]; }
+        const jump = Math.hypot(mx / n, my / n) > TW_JUMP;
+        for (let i = 0; i < n; i++) {
+          now[j + i] = px[i]; now[j + n + i] = py[i];
+          // (The previous positions move along with them, so its speed reads the same.)
+          const dx = jump ? 0 : (px[i] - v[j + i]) * back, dy = jump ? 0 : (py[i] - v[j + n + i]) * back;
+          px[i] -= dx; py[i] -= dy; ox[i] -= dx; oy[i] -= dy;
+          drawn[j + i] = px[i]; drawn[j + n + i] = py[i];
+        }
+      }
+      live.push(o, K, body, now, drawn);
+    });
+  }
+  function tweenOut() {
+    time = tween.time;
+    const live = tween.live;
+    for (let m = 0; m < live.length; m += 5) {
+      const o = live[m], K = live[m + 1], body = live[m + 2], now = live[m + 3], drawn = live[m + 4];
+      let j = 0;
+      for (const key of K.pos) { o[key] = now[j] + (o[key] - drawn[j]); j++; }
+      for (const key of K.ang) { o[key] = now[j] + (o[key] - drawn[j]); j++; }
+      if (body) {
+        const n = o.n;
+        if (o.px.length !== n || now.length !== j + 2 * n) continue;
+        for (let i = 0; i < n; i++) {
+          const dx = now[j + i] - drawn[j + i], dy = now[j + n + i] - drawn[j + n + i];
+          o.px[i] += dx; o.py[i] += dy; o.ox[i] += dx; o.oy[i] += dy;
+        }
+      }
+    }
+    live.length = 0;
+  }
+
+  // (By the refresh's own time, not when this got round to running: that
+  // wanders by a millisecond or so, and a frame drawn for the wrong moment
+  // is a frame out of step.)
+  function frame(stamp) {
+    const now = (stamp || performance.now()) / 1000;
+    acc += Math.max(0, Math.min(0.05, now - last));
     last = now;
     // How fast the cursor is going (a jump onto the screen doesn't count).
     // Worked out when it has moved (or has been still a moment), over the
@@ -5976,13 +6089,17 @@
     // worth, so once per screen refresh they were twice as strong on a
     // 240 Hz screen as on a 120 Hz one, and half as strong at 60 Hz.
     while (acc >= DT) {
+      tweenNote();
       step();
       time += DT;
       acc -= DT;
       for (const b of buddies.values()) behave(b);
     }
     checkPetting();
-    if (paintNow(now)) draw();
+    if (paintNow(now)) {
+      tweenIn();
+      try { draw(); } finally { tweenOut(); }
+    }
     updateIgnore();
     followTalk();
     requestAnimationFrame(frame);
