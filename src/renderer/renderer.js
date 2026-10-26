@@ -259,7 +259,7 @@
     if (CFG.font !== 'System' && document.fonts) document.fonts.load(`13px "${CFG.font}"`).catch(() => {});
     if (document.fonts) for (const w of [600, 700]) document.fonts.load(`${w} 15px "Nunito"`).catch(() => {}); // the bubbles' rounded letters
     // The Size setting scales every slime (and pet) at once.
-    for (const k of ['mainRadius', 'childRadius', 'mainMinRadius']) CFG[k] *= CFG.size;
+    for (const k of ['mainRadius', 'childRadius']) CFG[k] *= CFG.size;
     for (const b of buddies.values()) {
       const want = b.big ? CFG.mainPoints : CFG.childPoints;
       if (b.body.n !== want) {
@@ -501,17 +501,18 @@
 
   const bigs = () => [...buddies.values()].filter((b) => b.big && !b.dying);
 
-  // A mother gives up some of her volume to each of her children.
-  // Sessions grow with the tokens they've used: a step bigger each time
-  // the total doubles, counted from 100k.
+  // Sessions grow with the tokens they've used, their helpers' included: a
+  // step bigger each time the total doubles, counted from 100k.
   const sessionTotal = (m) => (m.session && m.session.tokens ? m.session.tokens.total : 0);
-  const tokenScale = (m) => BlaubeConfig.tokenGrowth(CFG, sessionTotal(m), 100000);
+  const liveMother = (b) => (b.mother && !b.mother.dying && !b.mother.removed ? b.mother : null);
 
   // Helpers grow the same way with their own tokens, counted from 20k
-  // (they use far fewer), and never past three quarters of their mother.
+  // (they use far fewer), and always stay a step smaller than their mother.
   function childRadius(b) {
-    const mother = b.mother && !b.mother.dying ? b.mother : null;
-    return BlaubeConfig.childRadius(CFG, (b.agent && b.agent.tokens) || 0, mother ? sessionTotal(mother) : null);
+    const mother = liveMother(b);
+    const kids = mother ? [...buddies.values()].filter((o) => o.kind === 'child' && o.mother === mother && !o.dying) : [b];
+    const radii = BlaubeConfig.childRadii(CFG, mother ? sessionTotal(mother) : null, kids.map((o) => (o.agent && o.agent.tokens) || 0));
+    return radii[Math.max(0, kids.indexOf(b))];
   }
 
   // How full the session's context window is, 0..1.
@@ -535,16 +536,7 @@
   // 0..1 between two thresholds.
   const ramp = (v, from, to) => Math.max(0, Math.min(1, (v - from) / Math.max(0.001, to - from)));
 
-  function radiusFor(m) {
-    // She gives up some of her volume to each child (as big as it is now,
-    // while it splits off). Not what it grows by from its own tokens: those
-    // count toward hers too, and her shrinking as they grew held them all
-    // down to one size.
-    let given = 0;
-    for (const b of buddies.values()) if (b.mother === m && !b.dying) given += Math.min(b.body.o.radius, CFG.childRadius) ** 2;
-    const R = CFG.mainRadius * tokenScale(m);
-    return Math.max(Math.min(CFG.mainMinRadius, R), Math.sqrt(Math.max(0, R * R - 0.5 * given)));
-  }
+  const radiusFor = (m) => BlaubeConfig.motherRadius(CFG, sessionTotal(m));
 
   function nearestBig(b, filter) {
     const c = b.body.centroid();
@@ -1198,7 +1190,12 @@
       const r = body.o.radius;
       if (b.big && !b.dying) b.targetR = radiusFor(b);
       else if (b.kind === 'child' && !b.dying && !b.splitting) b.targetR = childRadius(b);
-      if (Math.abs(b.targetR - r) > 0.05) body.setRadius(r + (b.targetR - r) * (b.dying ? 0.08 : 0.02));
+      let nextR = Math.abs(b.targetR - r) > 0.05 ? r + (b.targetR - r) * (b.dying ? 0.08 : 0.02) : r;
+      // Never within a step of its mother, even while she's still growing
+      // in or it's splitting off.
+      const mother = b.kind === 'child' && liveMother(b);
+      if (mother) nextR = Math.min(nextR, mother.body.o.radius / BlaubeConfig.MOTHER_STEP);
+      if (nextR !== r) body.setRadius(nextR);
       // A fuller context puffs the slime up tight; in pain it pants.
       b.fill = (b.fill || 0) + (contextFill(b) - (b.fill || 0)) * 0.01;
       b.pain = ramp(b.fill, CFG.painAt, 1);

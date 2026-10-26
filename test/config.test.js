@@ -9,18 +9,36 @@ test('the talk shortcut can be moved off Ctrl+Alt (AltGr on Windows) or turned o
   assert.equal(sanitize({ talkKey: 'Ctrl+Q' }).talkKey, 'Ctrl/⌘+Alt+B', 'unknown keys fall back');
 });
 
-test('a helper grows with its own tokens, counted from 20k, under its mother', () => {
-  const { childRadius, tokenGrowth } = require('../src/shared/config.js');
-  const cfg = Object.assign({}, DEFAULTS, { mainRadius: 129, childRadius: 86, tokenGrowth: 0.15, maxTokenGrowth: 1.6 });
-  assert.equal(childRadius(cfg, 0, 1e6), 86);
-  assert.ok(Math.abs(childRadius(cfg, 20000, 1e6) - 86 * 1.15) < 1e-9, 'a step bigger at 20k');
-  // Typical helpers (20k-150k) each come out a different size.
-  const sizes = [20000, 50000, 120000, 150000].map((t) => childRadius(cfg, t, 3e6));
-  for (let i = 1; i < sizes.length; i++) assert.ok(sizes[i] > sizes[i - 1] + 2, `${sizes}`);
-  assert.equal(childRadius(cfg, 1e8, null), 86 * 1.6, 'no bigger than maxTokenGrowth');
-  // Never past three quarters of what its mother's tokens make her...
-  assert.equal(childRadius(cfg, 1e8, 0), 0.75 * 129);
-  assert.equal(childRadius(cfg, 1e8, 100000), 0.75 * 129 * tokenGrowth(cfg, 100000, 100000));
-  // ...but never held below its own size.
-  assert.equal(childRadius(Object.assign({}, cfg, { childRadius: 110 }), 1e8, 0), 110);
+test('helpers grow with their own tokens, and their mother with all of theirs, always the biggest', () => {
+  const { childRadii, motherRadius, MOTHER_STEP } = require('../src/shared/config.js');
+  const yours = Object.assign({}, DEFAULTS, { mainRadius: 129, childRadius: 86, tokenGrowth: 0.15, maxTokenGrowth: 1.6 });
+  // [session total (its helpers' included), each helper's own tokens]
+  const scenes = [
+    [400000, [45000, 125000]],
+    [1000000, [20000, 50000, 120000]],
+    [3000000, [30000, 50000, 114000, 124000, 142000, 187000]],
+    [5000000, [42000, 45000, 48000, 50000, 114000, 120000, 124000, 142000, 182000, 275000]],
+    [150000, [5000, 80000, 600000]], // (more than the session: can't happen, but she still stays biggest)
+  ];
+  for (const cfg of [DEFAULTS, yours]) {
+    for (const [total, tokens] of scenes) {
+      const mother = motherRadius(cfg, total), kids = childRadii(cfg, total, tokens);
+      for (const r of kids) assert.ok(mother >= r * MOTHER_STEP - 1e-9, `mother ${mother} vs child ${r} (${total}: ${tokens})`);
+      // Each helper is its own size, bigger with more tokens.
+      for (let i = 1; i < kids.length; i++) assert.ok(kids[i] > kids[i - 1], `${kids}`);
+    }
+    assert.ok(motherRadius(cfg, 3e6) > motherRadius(cfg, 1e6), 'she grows as they do');
+    assert.ok(motherRadius(cfg, 1e12) <= cfg.mainRadius * cfg.maxTokenGrowth, 'up to a point');
+  }
+  // With room to spare a helper is just its own size, a step bigger at 20k.
+  assert.deepEqual(childRadii(yours, 1e6, [0]), [86]);
+  assert.ok(Math.abs(childRadii(yours, 1e6, [20000])[0] - 86 * 1.15) < 1e-9);
+  assert.deepEqual(childRadii(yours, null, [1e8]), [86 * 1.6], 'no mother: only maxTokenGrowth');
+  // Typical helpers (20k-150k) come out clearly different sizes.
+  const typical = childRadii(yours, 3e6, [20000, 50000, 120000, 150000]);
+  for (let i = 1; i < typical.length; i++) assert.ok(typical[i] > typical[i - 1] + 2, `${typical}`);
+  // Crowding her, they're scaled down together: the same proportions.
+  const squeezed = childRadii(yours, 0, [20000, 1e8]), free = childRadii(yours, null, [20000, 1e8]);
+  assert.ok(Math.abs(squeezed[1] - 129 / MOTHER_STEP) < 1e-9);
+  assert.ok(Math.abs(squeezed[0] / squeezed[1] - free[0] / free[1]) < 1e-9);
 });

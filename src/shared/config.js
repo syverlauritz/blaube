@@ -34,7 +34,6 @@
     ['Size', [
       ['mainRadius', 112, 30, 220, 1, 'Big blob radius'],
       ['childRadius', 96, 15, 120, 1, 'Small blob radius'],
-      ['mainMinRadius', 64, 20, 200, 1, 'Big blob min radius (after splits)'],
       ['mainPoints', 29, 12, 80, 1, 'Big blob skin points'],
       ['childPoints', 28, 10, 64, 1, 'Small blob skin points'],
       ['tokenGrowth', 0.15, 0, 0.5, 0.01, 'Growth each time tokens used double (from 100k)'],
@@ -261,17 +260,25 @@
     return Math.min(cfg.maxTokenGrowth, 1 + cfg.tokenGrowth * Math.log2(1 + total / from));
   }
 
-  // A helper's radius from its own tokens, never past three quarters of
-  // its mother's full size (what her tokens make her, before she gives any
-  // of it to her children: what she has left depends on how many she has,
-  // and would make them all the same size). motherTokens null: no mother.
-  function childRadius(cfg, tokens, motherTokens) {
-    const r = cfg.childRadius * tokenGrowth(cfg, tokens, 20000);
-    if (motherTokens == null) return r;
-    return Math.min(r, Math.max(cfg.childRadius, 0.75 * cfg.mainRadius * tokenGrowth(cfg, motherTokens, 100000)));
+  // A mother is always at least this much bigger (×) than her biggest child.
+  const MOTHER_STEP = 1.2;
+
+  // A session's radius from its tokens, which count its helpers' too: she
+  // grows as her children do.
+  const motherRadius = (cfg, sessionTokens) => cfg.mainRadius * tokenGrowth(cfg, sessionTokens, 100000);
+
+  // Her helpers' radii, each from its own tokens. If the biggest would come
+  // within a step of her, they're all scaled down together, so they still
+  // differ by their tokens and she stays the biggest. motherTokens null: no
+  // mother to stay under.
+  function childRadii(cfg, motherTokens, tokens) {
+    const want = tokens.map((t) => cfg.childRadius * tokenGrowth(cfg, t, 20000));
+    if (motherTokens == null || !want.length) return want;
+    const room = motherRadius(cfg, motherTokens) / MOTHER_STEP, top = Math.max(...want);
+    return top <= room ? want : want.map((r) => r * room / top);
   }
 
-  const api = { GROUPS, SETTINGS, DEFAULTS, PALETTE, sanitize, tokenGrowth, childRadius };
+  const api = { GROUPS, SETTINGS, DEFAULTS, PALETTE, sanitize, tokenGrowth, motherRadius, childRadii, MOTHER_STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.BlaubeConfig = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
