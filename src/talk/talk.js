@@ -993,7 +993,7 @@
     const box = $('quick');
     // (One that ended can be picked up right here, without a terminal.)
     // (One that can't hear you can carry on here instead.)
-    const deaf = s.canBring && api.bringHere && !s.typeable && (s.inbox === 'unknown' || !s.connected);
+    const deaf = s.canBring && api.bringHere && (s.offerBring || (!s.typeable && (s.inbox === 'unknown' || !s.connected)));
     const list = s.ended ? (s.cwd && !s.demo && api.continueHere ? [{ label: 'Pick it up here', prompt: 'Keep going with it here, no terminal needed', here: true }] : [])
       : s.ask || s.demo ? []
       : [...(deaf ? [{ label: 'Bring it here', prompt: 'It closes in its terminal and carries on here, conversation and all', bring: true }] : []),

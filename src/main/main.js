@@ -460,6 +460,7 @@ function pushTalk(id, focusField = false) {
     mode: s.mode || '', // (its permission mode)
     model: modelName(pickedModel.get(id) || (id.startsWith('demo-') ? '' : usage.sessionInfo(transcriptPath(s)).model)),
     canBring: canBringIn(s), // (it could carry on in Blaube instead)
+    offerBring: canBringIn(s) && ((inbox.log(id).slice(-1)[0] || {}).bring === true), // (a command it couldn't take: it could, here)
     context: contextOf(id), // (how full its context is, %)
     limit: limits.warn(usageLimits), // (your usage limits, once they're close)
     canBackground: !!foreground.get(id) && Date.now() - foreground.get(id).at >= 3000,
@@ -1079,7 +1080,8 @@ function notify(s, event, text, secs = 0) {
 // so it's one paste away.
 function handOver(s, cmd) {
   clipboard.writeText(cmd);
-  inbox.add(s.id, { who: 'note', text: `${cmd.split(/\s/)[0]} is for Claude Code itself, so it’s on your clipboard: paste it into its terminal.` });
+  const bring = canBringIn(s);
+  inbox.add(s.id, { who: 'note', text: `${cmd.split(/\s/)[0]} is for Claude Code itself, so it’s on your clipboard: paste it into its terminal.${bring ? ' Or bring it here, and commands like it go straight in.' : ''}`, bring });
   if (!TEST) goToSession(s);
 }
 
