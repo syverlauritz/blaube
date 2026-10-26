@@ -235,6 +235,11 @@
   .msg.claude { position: relative; }
   .msg .copyreply { position: absolute; right: -6px; bottom: -2px; background: #fff; border-radius: 999px; padding: 1px 8px; opacity: 0; transition: opacity .15s; }
   .msg.claude:hover .copyreply, .msg .copyreply:focus-visible { opacity: 1; }
+  .msg .fwd { position: absolute; right: 52px; bottom: -2px; background: #fff; border-radius: 999px; padding: 1px 8px; opacity: 0; transition: opacity .15s; }
+  .msg.claude:hover .fwd, .msg .fwd:focus-visible { opacity: 1; }
+  .fwdmenu { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .fwdmenu button { border: 0; border-radius: 999px; padding: 3px 11px; background: var(--soft); font: 700 13px var(--ui); color: var(--ink); cursor: pointer; box-shadow: inset 3px 0 0 var(--c); }
+  .fwdmenu button:hover { background: color-mix(in srgb, var(--c) 18%, var(--soft)); }
   .filelink { border: 0; background: none; padding: 0; font: inherit; color: var(--dim); cursor: pointer; text-decoration: underline; text-decoration-color: #dfe2ea; text-underline-offset: 3px; }
   .filelink:hover { color: var(--ink); }
   .turnmeta .undo { border: 0; background: none; padding: 0 0 0 3px; font: inherit; color: var(--faint); cursor: pointer; opacity: 0; transition: opacity .15s; }

@@ -255,6 +255,14 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await key('[', mod);
 	check(await until(() => talkId() === ID), '⌘[ goes to the one before');
 	check(await until(() => box(`(() => { const d = document.querySelector('#inner .since'); return !!d && /while you were looking/.test(d.nextElementSibling.textContent); })()`)), 'a line shows where what came in since you last looked begins');
+	// A reply passed on to another session, no copying between terminals.
+	await box(`[...document.querySelectorAll('#inner .msg.claude')].pop().querySelector('.fwd').click()`);
+	check(await until(() => box(`[...document.querySelectorAll('#inner .fwdmenu button')].map((b) => b.textContent).join() === 'website'`)), 'Send to… lists the other sessions');
+	await box(`document.querySelector('#inner .fwdmenu button').click()`);
+	const passed = () => [...inbox.log(ID2), ...(inbox.queue.get(ID2) || [])].some((e) => e.who === 'you' && /^\(This is from kalkis, another Claude Code session working in \/tmp\/kalkis; I'm passing it on:\)\n\nThis came while you were looking at the website\.$/.test(e.text));
+	check(await until(passed), 'and passes the reply on to the one you pick');
+	check(await until(() => inbox.log(ID).some((e) => e.who === 'note' && e.text === 'Sent to website')), 'saying where it went');
+	for (const e of inbox.queue.get(ID2) || []) inbox.unsend(ID2, e.n);
 
 	// ⌘F in the overview looks through every session.
 	await key('0', mod);

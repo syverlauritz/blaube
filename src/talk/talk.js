@@ -448,6 +448,35 @@
       const c = copyButton(() => m.text, 'Copy reply');
       c.classList.add('copyreply');
       e.append(c);
+      // Pass it on to another session ("tell the website what the API
+      // changed"), instead of copying between terminals.
+      const others = (current.others || []).filter((o) => o.id !== current.id && !o.demo);
+      if (others.length && api.forward) {
+        const f = document.createElement('button');
+        f.type = 'button';
+        f.className = 'copy fwd';
+        f.dataset.label = 'Send to…';
+        f.setAttribute('aria-label', 'Send this reply to another session');
+        f.title = 'Send this reply to another session';
+        f.onclick = (ev) => {
+          ev.stopPropagation();
+          const open = e.querySelector('.fwdmenu');
+          if (open) { open.remove(); return; }
+          const menu = document.createElement('div');
+          menu.className = 'fwdmenu';
+          for (const o of (current.others || []).filter((x) => x.id !== current.id)) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = o.project;
+            b.style.setProperty('--c', o.color);
+            b.onclick = (ev2) => { ev2.stopPropagation(); menu.remove(); api.forward(current.id, o.id, m.text); };
+            menu.append(b);
+          }
+          e.append(menu);
+          requestAnimationFrame(fitWindow);
+        };
+        e.append(f);
+      }
     }
     return out;
   }

@@ -1846,6 +1846,15 @@ app.whenReady().then(async () => {
   setInterval(() => carryTick(), 30e3).unref();
   if (TEST) global.__blaubeCarryTick = carryTick;
   if (TEST) global.__blaubeSessionMenu = sessionMenu;
+  // A reply passed on to another session, as if pasted into its terminal.
+  ipcMain.on('talk-forward', (_e, from, to, text) => {
+    const a = from === talkId && tracker.sessions.get(from);
+    const b = tracker.sessions.get(to);
+    if (!a || !b || from === to || to.startsWith('demo-') || !isReady(b) || typeof text !== 'string' || !text.trim() || text.length > 50000) return;
+    sendMessage(to, `(This is from ${a.title || a.project}, another Claude Code session working in ${a.cwd || 'another folder'}; I'm passing it on:)\n\n${text}`);
+    inbox.add(from, { who: 'note', text: `Sent to ${b.title || b.project}` });
+    if (win) win.webContents.send('nod', to);
+  });
   ipcMain.on('talk-send', (_e, id, text) => {
     if (!id || id !== talkId || !tracker.sessions.has(id) || id.startsWith('demo-')) return;
     sendMessage(id, text);
