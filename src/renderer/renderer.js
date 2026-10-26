@@ -646,6 +646,31 @@
         hearts.push({ x: p.x, y: p.y - petSize(), vx: 0, born: time, size: 8 });
       }
       const PET = petSize(), h = PET / 2;
+      // Riding on its slime's head (fetched): it sits on top and sways along,
+      // then hops off.
+      if (p.ride || p.rideOn) {
+        const o = p.ride || p.rideOn, ob = o.body;
+        let top = 0;
+        for (let i = 0; i < ob.n; i++) if (ob.py[i] < ob.py[top]) top = i;
+        const tx = ob.px[top], ty = ob.py[top] - h + 3;
+        if (o.dying || ob.grab || p.held || p.dying) p.ride = p.rideOn = null;
+        else if (p.ride && time > p.rideUntil) {
+          p.ride = null;
+          p.vx = (Math.random() < 0.5 ? -1 : 1) * 160; p.vy = -320; p.va = Math.sign(p.vx) * 3;
+          p.nextHop = time + 0.8;
+        } else if (p.ride) {
+          const v = ob.velocity(DT);
+          p.x = tx; p.y = ty; p.vx = v.x; p.vy = v.y;
+          p.angle += (Math.max(-0.5, Math.min(0.5, -v.x / 1200)) - p.angle) * 0.2;
+          p.happy = true;
+          if (time > p.nextBlink) p.nextBlink = time + 1.5 + Math.random() * 4;
+          continue;
+        } else if (p.vy > 0 && Math.abs(p.x - tx) < ob.o.radius * 0.8 && p.y >= ty - 4) {
+          // Landed on top of it.
+          p.ride = o; p.rideOn = null; p.rideUntil = time + 3.5;
+          continue;
+        } else if (time - (p.rideAt || 0) > 2) p.rideOn = null;
+      }
       const floor = floorAt(p.x, p.held ? undefined : p.y + h) - h;
       p.ledge = floor + h < floorAt(p.x) ? ledges.find((l) => l.y === floor + h && p.x >= l.x0 && p.x <= l.x1) : null;
       // Standing on the floor, or on top of a slime.
@@ -2774,6 +2799,51 @@
 
   // Bored, it plays with its task pet: a lean and a shove, and the pet
   // tumbles off and scampers back, pleased.
+  // Throw a slime's task pet and it goes after it, hopping, eyes on it; when
+  // it gets there the pet hops up onto its head ("got it!"), and it brings it
+  // back toward you.
+  function fetchPet(b) {
+    const f = b.fetch;
+    if (!f) return;
+    const p = f.pet, free = !b.body.grab && !b.merging && !b.dying && !b.tag && b.state !== 'working' && b !== buddies.get(talkingTo);
+    if (!free || p.dying || p.held || time - f.start > 10) { b.fetch = null; return; }
+    b.nextHop = time + 1;
+    b.glanceAt = { spot: p }; b.glanceUntil = time + 0.3;
+    const box = b.body.bbox(), c = b.body.centroid(), r = b.body.o.radius, PET = petSize();
+    if (f.got) {
+      // Brought back: a hop or two toward the cursor with it on its head.
+      b.happyUntil = time + 0.3;
+      if (time - f.got > 3 || (!p.ride && !p.rideOn)) { b.fetch = null; b.happyUntil = time + 1.5; return; }
+      const dx = mouse.x - c.x;
+      if (p.ride && b.body.onFloor() && !b.pendingHop && time > (f.next || 0) && Math.abs(dx) > r * 2) {
+        f.next = time + 0.9;
+        b.hop(Math.sign(dx) * Math.min(300, Math.abs(dx) * 1.2) * Math.min(1.5, CFG.fetch), -260);
+      }
+      return;
+    }
+    b.happyUntil = time + 0.3;
+    if (p.x > box.minX - PET * 0.6 && p.x < box.maxX + PET * 0.6 && p.y > box.minY - PET && p.y < box.maxY + PET * 0.5 && Math.abs(p.vy) < 600 && b.body.onFloor() && Math.abs(b.body.velocity(DT).x) < 150) {
+      // Got it: up it hops onto its head.
+      f.got = time;
+      f.next = time + 0.8;
+      const up = Math.sqrt(2 * CFG.gravity * Math.max(PET, p.y - box.minY + PET)), air = up / CFG.gravity * 1.6;
+      p.vx = (c.x - p.x) / air;
+      p.vy = -up;
+      p.rideOn = b; p.rideAt = time;
+      p.va = Math.sign(p.vx || 1) * 3;
+      p.nextHop = time + 2.5;
+      quip(b, 'got it!', 1.2);
+      hearts.push({ x: c.x, y: box.minY - 10, vx: 0, born: time, size: 10 });
+      return;
+    }
+    if (time - f.start > 0.35 && b.body.onFloor() && !b.pendingHop && time > (f.next || 0)) {
+      f.next = time + 0.25;
+      const dx = p.x + p.vx * 0.3 - c.x;
+      const k = Math.min(1.5, CFG.fetch);
+      b.hop(Math.sign(dx) * Math.min(460, Math.abs(dx) * 1.7 + 60) * k, -(240 + Math.random() * 80) * Math.min(1.3, k));
+    }
+  }
+
   function nudgePet(b) {
     if (CFG.play <= 0 || b.kind === 'child' || b.dying) return;
     const ok = (b.state === 'idle' || b.state === 'done') && !b.body.grab && b.body.onFloor() && !b.tag && !b.prank && !b.trick && !b.blow && !b.nibbling && (b.sleep || 0) < 0.1 && idleFor() < 60;
@@ -3067,6 +3137,7 @@
     welcome(b);
     nibble(b);
     nudgePet(b);
+    fetchPet(b);
     petWorry(b);
     leafPile(b);
     hiccup(b);
@@ -3791,7 +3862,7 @@
         p.vy = -420;
         p.va = (Math.random() < 0.5 ? -1 : 1) * Math.PI * 2;
         if (p.owner) p.owner.say([p.task.description, p.task.command].filter(Boolean).map((text) => ({ text })), 4);
-      }
+      } else if (p.owner && CFG.fetch > 0 && Math.hypot(p.vx, p.vy) > 500) p.owner.fetch = { pet: p, start: time }; // (thrown: its slime goes after it)
     } else {
       drag.buddy.body.endGrab();
       if (tap) click(drag.buddy, e);

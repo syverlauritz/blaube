@@ -140,6 +140,7 @@
       ['spectate', 1, 0, 2, 0.05, 'Watch a slime fly past (and duck if it comes right at them)'],
       ['cheerOthers', 1, 0, 2, 0.05, 'When one finishes, the others look over and nearby ones are pleased for it'],
       ['play', 1, 0, 2, 0.05, 'Two bored slimes now and then play tag: hop after, bump, "tag!", swap'],
+      ['fetch', 1, 0, 2, 0.05, 'Throw a slime\'s task pet and it chases after it, then brings it back to you'],
       ['greetNew', 1, 0, 2, 0.05, 'A new session\'s slime lands and the nearest calm one hops over to say hi'],
       ['allDoneWave', 1, 0, 2, 0.05, 'When the last busy session finishes, they do a wave of hops along the row: all done!'],
       ['copycat', 0.6, 0, 1, 0.05, 'Chance a calm slime nearby copies another\'s trick, hop for hop'],
