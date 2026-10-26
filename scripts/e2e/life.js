@@ -102,15 +102,15 @@ module.exports = async function run({ win, tracker }) {
 	ev('s1', 'Stop', { last_assistant_message: 'Gave up for now.' });
 	check(await until(() => js(`!__blaube.buddies.get('s1').stuck`), 1500), 'the turn ends, it calms down');
 	// Two bored slimes play tag.
-	win.webContents.send('system', { kind: 'idle', seconds: 1 }); // (you're around; the real idle time under xvfb only grows)
 	await sleep(1500);
-	const startTag = `(() => { const a = __blaube.buddies.get('s1'), b = __blaube.buddies.get('s2'); if (a.tag) return true; const c = a.body.centroid(); if (Math.abs(b.body.centroid().x - c.x) > a.body.o.radius * 6) b.body.teleport(c.x + a.body.o.radius * 4, c.y); a.nextTag = 0; return false; })()`;
-	check(await until(() => js(startTag), 9000), 'two bored slimes start a game of tag');
+	const startTag = `(() => { const a = __blaube.buddies.get('s1'), b = __blaube.buddies.get('s2'); __blaube.sys.idle = 0; __blaube.sys.idleAt = performance.now() / 1000; if (a.tag) return true; const r = a.body.o.radius, y = innerHeight - r * 1.5; if (!a.body.onFloor() || Math.abs(b.body.centroid().x - a.body.centroid().x) > r * 6) { a.body.teleport(innerWidth * 0.3, y); b.body.teleport(innerWidth * 0.3 + r * 4, y); } a.nextTag = 0; return false; })()`;
+	const ok = await until(() => js(startTag), 9000);
+	if (!ok) console.log(await js(`JSON.stringify(['s1', 's2'].map((k) => { const o = __blaube.buddies.get(k); return { k, st: o.state, g: !!o.body.grab, m: !!o.merging, p: !!o.prank, t: !!o.trick, bl: !!o.blow, s: o.sleep, sb: !!o.stackedBy, f: o.body.onFloor(), x: Math.round(o.body.centroid().x), y: Math.round(o.body.centroid().y), nt: o.nextTag }; }).concat([__blaube.now()]))`));
+	check(ok, 'two bored slimes start a game of tag');
 	check(await until(() => js(`(__blaube.buddies.get('s1').tag || {}).n > 0`), 8000), 'a bump, and the other is it');
 	// A bored slime blows a bubble, and it floats off.
-	win.webContents.send('system', { kind: 'idle', seconds: 1 }); // (you're around; the real idle time under xvfb only grows)
 	await until(() => js(`!__blaube.buddies.get('s1').tag && !__blaube.buddies.get('s2').tag`), 15000);
-	check(await until(() => js(`(() => { const a = __blaube.buddies.get('s2'), g = a.blow; if (!g) a.nextBlow = 0; return !!(g && g.bubble && g.bubble.away); })()`), 8000), 'a bored slime blows a bubble and it floats off');
+	check(await until(() => js(`(() => { const a = __blaube.buddies.get('s2'), g = a.blow; __blaube.sys.idle = 0; __blaube.sys.idleAt = performance.now() / 1000; if (!g) a.nextBlow = 0; return !!(g && g.bubble && g.bubble.away); })()`), 8000), 'a bored slime blows a bubble and it floats off');
 	await sleep(1500);
 	check(await js(`[...__blaube.buddies.values()].every((b) => [...b.body.px].every(Number.isFinite))`), 'bodies still finite after all that');
 	check(errs.length === 0, 'no renderer errors ' + errs.slice(0, 3).join(' | '));
