@@ -208,6 +208,12 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	const text = await said();
 	check(/You asked it to stop/.test(text) && !/Something went wrong/.test(text), 'and says you stopped it, not that something went wrong');
 	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Carry on')`)), 'with Carry on a tap away');
+	await type('slow');
+	await until(() => tracker.sessions.get(id).state === 'working', 3000);
+	const stopItem = () => { const r = global.__blaubeTrayMenu().items.find((i) => i.submenu && i.submenu.items.some((x) => x.label === 'Stop')); return r && r.submenu.items.find((x) => x.label === 'Stop'); };
+	check(await until(() => !!stopItem(), 3000), 'while it works, the menu bar menu has Stop for it');
+	stopItem().click();
+	check(await until(() => tracker.sessions.get(id).state !== 'working', 3000), 'which stops it at once');
 
 	// Fork: a copy of the conversation in a new session (a new slime), the original carrying on.
 	const before = new Set(owned.list());

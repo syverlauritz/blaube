@@ -1486,7 +1486,22 @@ function trayMenu() {
   const rows = live.map((o) => {
     const g = glanceAt(o);
     // (Only macOS shows a sublabel: elsewhere the status goes on the line.)
-    return { label: `${mark[o.state] || '•'}  ${o.project}${process.platform === 'darwin' || !g.status ? '' : `  ·  ${g.status.length > 40 ? g.status.slice(0, 39) + "…" : g.status}`}`, sublabel: g.status, toolTip: g.meta, click: () => { if (!win) return; if (process.platform === 'darwin') app.focus({ steal: true }); win.webContents.send('open-talk', o.id); } };
+    const row = { label: `${mark[o.state] || '•'}  ${o.project}${process.platform === 'darwin' || !g.status ? '' : `  ·  ${g.status.length > 40 ? g.status.slice(0, 39) + "…" : g.status}`}`, sublabel: g.status, toolTip: g.meta };
+    const open = () => { if (!win) return; if (process.platform === 'darwin') app.focus({ steal: true }); win.webContents.send('open-talk', o.id); };
+    // Answered or stopped right from the menu bar, without opening anything.
+    const ask = o.state === 'waiting' ? (inbox.asks.get(o.id) || [])[0] : null;
+    const acts = [];
+    if (ask && ask.kind === 'tool') {
+      const what = ask.detail ? `: ${ask.detail.length > 50 ? ask.detail.slice(0, 49) + '…' : ask.detail}` : '';
+      acts.push({ label: `Allow ${ask.tool || 'it'}${what}`, click: () => inbox.decide(o.id, ask.key, 'allow') }, { label: 'Deny', click: () => inbox.decide(o.id, ask.key, 'deny') });
+    }
+    if (o.state === 'working' && (owned.has(o.id) || inbox.steerable.has(o.id))) {
+      acts.push({ label: 'Stop', click: () => {
+        const asked = inbox.stop(o.id);
+        if (owned.has(o.id)) { if (!asked && !inbox.stops.has(o.id)) inbox.add(o.id, { who: 'note', text: 'You asked it to stop', stop: true }); owned.control(o.id, { subtype: 'interrupt' }, () => {}); }
+      } });
+    }
+    return acts.length ? Object.assign(row, { submenu: [{ label: 'Open', click: open }, { type: 'separator' }, ...acts] }) : Object.assign(row, { click: open });
   });
   // (And your usage limits, as /usage says them, once Blaube has heard.)
   const used = limits.line(usageLimits).replace(/^Usage: /, '');
@@ -2013,7 +2028,7 @@ app.whenReady().then(async () => {
       Object.assign(now, { transcript: '', tasks: [], agents: [] });
       inbox.logs.set(to, log.slice(0, idx));
       inbox.todos.delete(to);
-      for (const m of [mcpStates, foreground, shellRan, rewound]) m.delete(to);
+      for (const m of [mcpStates, foreground, pickedModel, shellRan, rewound]) m.delete(to); // (it starts on the model it was started on)
       inbox.add(to, { who: 'note', text: `Went back to before that message${put ? ', and put its files back' : ''}. The conversation as it was is under Pick up where you left off.` });
       hubCache = null;
       sendMessage(to, text);

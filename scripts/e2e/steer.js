@@ -278,6 +278,16 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await box(`[...document.querySelectorAll('#overview .rowask')].find((e) => /npm run build/.test(e.textContent)).querySelector('.allow').click()`);
 	await new Promise((r) => { asking2.on('exit', r); setTimeout(r, 4000); });
 	check(/"behavior":"allow"/.test(answer2), 'and Allow there answers it');
+	// And from the menu bar, without opening anything.
+	const asking3 = spawn('sh', ['-c', permissionCommand(PORT)], { env: Object.assign({}, process.env, { CLAUDE_CODE_ENTRYPOINT: 'cli' }) });
+	let answer3 = '';
+	asking3.stdout.on('data', (d) => { answer3 += d; });
+	asking3.stdin.end(JSON.stringify({ session_id: ID2, cwd: '/tmp/website', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'npm publish' } }));
+	const trayRow = () => global.__blaubeTrayMenu().items.find((i) => /website/.test(i.label) && i.submenu);
+	check(await until(() => { const r = trayRow(); return !!r && r.submenu.items.some((i) => /^Allow .*npm publish/.test(i.label)); }), 'the menu bar menu offers Allow and Deny for what a session asks');
+	trayRow().submenu.items.find((i) => i.label === 'Deny').click();
+	await new Promise((r) => { asking3.on('exit', r); setTimeout(r, 4000); });
+	check(/"behavior":"deny"/.test(answer3), 'and Deny there answers it');
 
 	await key('f', mod);
 	await box(`(() => { const f = document.getElementById('find'); f.value = 'footer'; f.dispatchEvent(new Event('input')); })()`);
