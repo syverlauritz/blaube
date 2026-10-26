@@ -208,7 +208,7 @@
   }
 
   // How its mouth is shaped right now, while it talks (null when quiet).
-  function talkMouth(b) {
+  function talkMouth(b, ease = (k) => k) {
     if (!b.speech || !audio) return null;
     let m = BlaubeVoice.mouthAt(b.speech.line, audio.ctx.currentTime - b.speech.at);
     // Done: it eases shut before it lets go.
@@ -218,7 +218,7 @@
     }
     // Eased, so the jaw moves instead of popping open and shut.
     const was = b.mouth || { open: 0, wide: m.wide, round: m.round };
-    b.mouth = { open: was.open + (m.open - was.open) * 0.4, wide: was.wide + (m.wide - was.wide) * 0.3, round: was.round + (m.round - was.round) * 0.3 };
+    b.mouth = { open: was.open + (m.open - was.open) * ease(0.4), wide: was.wide + (m.wide - was.wide) * ease(0.3), round: was.round + (m.round - was.round) * ease(0.3) };
     return b.mouth;
   }
 
@@ -4398,8 +4398,11 @@
       if (!cl) continue;
       const box = b.body.bbox(), r = b.body.o.radius;
       const tx = (box.minX + box.maxX) / 2, ty = box.minY - r * 1.1 - 14;
-      cl.x += (tx - cl.x) * Math.min(1, DT * 3);
-      cl.y += (ty - cl.y) * Math.min(1, DT * 3);
+      // (Only moved when drawn, so eased by the time since it last was.)
+      const follow = 1 - Math.exp(-3 * Math.min(0.1, Math.max(0, time - (cl.drawnAt ?? time))));
+      cl.drawnAt = time;
+      cl.x += (tx - cl.x) * follow;
+      cl.y += (ty - cl.y) * follow;
       const k = cl.gone ? 1 - (time - cl.gone) / 0.6 : Math.min(1, (time - cl.born) / 1.5);
       if (k <= 0) continue;
       const w = r * (cl.gone ? 1 + (time - cl.gone) : 1), x = cl.x, y = cl.y;
@@ -4716,16 +4719,17 @@
   }
 
   function behave(b) {
-    // Blinking.
+    // Blinking (shut in about 70 ms, open again in 80, so a blink still
+    // shows when frames are drawn only 30 times a second).
     if (time > b.nextBlink) {
-      b.blink = Math.min(1, b.blink + 0.25);
+      b.blink = Math.min(1, b.blink + 15 * DT);
       if (b.blink >= 1) {
         // Now and then a quick second blink right after.
         const again = !b.doubled && Math.random() < 0.18 * CFG.eyeLife;
         b.doubled = again;
         b.nextBlink = time + (again ? 0.16 : (2 + Math.random() * 4) / trait(b, 'blinky'));
       }
-    } else b.blink = Math.max(0, b.blink - 0.2);
+    } else b.blink = Math.max(0, b.blink - 12 * DT);
 
     if (b.bubble && time > b.bubble.until) b.bubble = null;
     if (b.pulse) {
@@ -4901,6 +4905,12 @@
   const nodding = (b) => b.nodAt >= 0 && time - b.nodAt < NOD_TIME + 0.2;
 
   function faceFor(b) {
+    // Only called when a frame is drawn (30-72 times a second, see
+    // paintNow), so its easing goes by the time since the last one: tuned
+    // as so much per refresh of a 144 Hz screen.
+    const since = Math.min(0.1, Math.max(0, time - (b.faceAt ?? time)));
+    b.faceAt = time;
+    const ease = (k) => 1 - Math.pow(1 - k, since * 144);
     const st = b.state;
     const body = b.body;
     const v = body.velocity(DT);
@@ -4977,8 +4987,8 @@
     if (peeking) { expression = 'peek'; mouth = 'flat'; }
     const moving = expression === 'concentrate' && time < b.furrowUntil;
     const wantFurrow = moving && b.browMove === 'furrow' ? 1 : 0, wantRaise = moving && b.browMove === 'raise' ? 1 : 0;
-    b.furrow = (b.furrow || 0) + (wantFurrow - (b.furrow || 0)) * 0.15;
-    b.raise = (b.raise || 0) + (wantRaise - (b.raise || 0)) * 0.15;
+    b.furrow = (b.furrow || 0) + (wantFurrow - (b.furrow || 0)) * ease(0.15);
+    b.raise = (b.raise || 0) + (wantRaise - (b.raise || 0)) * ease(0.15);
     // Only calm, awake slimes look at the mouse: idle, or done and already
     // seen. Busy ones mind their work. Eased, so the face glides back
     // instead of snapping.
@@ -5084,7 +5094,7 @@
         wantLook = k;
       }
     }
-    b.lookAmount = (b.lookAmount ?? wantLook) + (wantLook - (b.lookAmount ?? wantLook)) * 0.08;
+    b.lookAmount = (b.lookAmount ?? wantLook) + (wantLook - (b.lookAmount ?? wantLook)) * ease(0.08);
     // While the face isn't turning (working, not looking at anything), its
     // gaze waits right on what it would look at, so a glance turns straight
     // there (it used to start from wherever the mouse was, often the
@@ -5095,7 +5105,7 @@
     }
     // Talking: the mouth follows its babble (not mid-yawn or seeing stars).
     // Shut between syllables, it's its own mouth (a smile, mostly).
-    const talk = talkMouth(b);
+    const talk = talkMouth(b, ease);
     b.talkOpen = talk ? talk.open : 0; // the body bobs along (see liven)
     if (b.singing && expression !== 'dizzy') expression = 'happy'; // eyes shut, singing its heart out
     if (talk && mouth !== 'yawn' && expression !== 'dizzy') {
@@ -5116,7 +5126,7 @@
       // Needing you, with you right there: big pleading eyes, on you.
       if (st === 'waiting' && !body.grab) {
         const c = body.centroid();
-        if (Math.hypot(mouse.x - c.x, mouse.y - c.y) < body.o.radius * 3) { wideBy = 0.5; b.lookAmount += (1 - b.lookAmount) * 0.1; b.gazeTarget = null; }
+        if (Math.hypot(mouse.x - c.x, mouse.y - c.y) < body.o.radius * 3) { wideBy = 0.5; b.lookAmount += (1 - b.lookAmount) * ease(0.1); b.gazeTarget = null; }
       }
     }
     // Startled (poked, flinching): eyes go wide for a moment.
@@ -5522,12 +5532,16 @@
     mouse.vx += ((jump ? 0 : mdx / fdt) - mouse.vx) * 0.5;
     mouse.vy += ((jump ? 0 : mdy / fdt) - mouse.vy) * 0.5;
     mouse.px = mouse.x; mouse.py = mouse.y;
+    // What the slimes get up to runs with the physics, a fixed 120 times a
+    // second: its pushes (impulses, leans, squashes) are each one step's
+    // worth, so once per screen refresh they were twice as strong on a
+    // 240 Hz screen as on a 120 Hz one, and half as strong at 60 Hz.
     while (acc >= DT) {
       step();
       time += DT;
       acc -= DT;
+      for (const b of buddies.values()) behave(b);
     }
-    for (const b of buddies.values()) behave(b);
     checkPetting();
     if (paintNow(now)) draw();
     updateIgnore();
