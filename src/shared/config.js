@@ -48,7 +48,7 @@
       ['pressure', 0.1, 0, 1.5, 0.01, 'Gas pressure'],
       ['fullness', 0.71, 0.5, 1, 0.01, 'Fullness (lower = saggier)'],
       ['shapeStiffness', 0.002, 0, 0.2, 0.001, 'Shape memory'],
-      ['upright', 0.005, 0, 0.3, 0.005, 'Self-righting'],
+      ['upright', 0.05, 0, 0.3, 0.005, 'Self-righting'],
       ['bounce', 0, 0, 1, 0.01, 'Bounciness'],
       ['friction', 0.15, 0, 1, 0.01, 'Friction'],
       ['maxSpeed', 4000, 500, 12000, 100, 'Speed limit (px/s)'],
