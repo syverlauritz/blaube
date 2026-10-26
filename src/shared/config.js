@@ -208,6 +208,9 @@
   const FONTS = ['System', 'Coiny', 'Concert One', 'DynaPuff', 'Rubik Spray Paint'];
   const SETTINGS = [
     ['size', 0.75, 0.5, 2, 0.05, 'Size'],
+    // (0: no limit. Past it, the least relevant blobs are put away; one that
+    // needs you always shows. See main/visibility.js.)
+    ['maxBlobs', 0, 0, 20, 1, 'Max blobs on screen (ones that need you always show)'],
     ['font', 'Coiny', FONTS, 0, 0, 'Speech bubble font'],
     ['statusBubbles', 'On hover', ['On hover', 'Always'], 0, 0, 'Status bubbles'],
     ['looks', 'On', ['On', 'Off'], 0, 0, 'Fun looks (bows, ears, antennas...)'],

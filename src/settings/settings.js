@@ -5,7 +5,9 @@
 	const { SETTINGS } = globalThis.BlaubeConfig;
 	const api = window.blaubeTuning;
 	const root = document.getElementById('rows');
-	const pct = (v) => `${Math.round(v * 100)}%`;
+	const pctOf = (v) => `${Math.round(v * 100)}%`;
+	// (A count, not a share: Max blobs.)
+	const COUNTS = { maxBlobs: (v) => (v ? String(v) : 'No limit') };
 	// key -> shows a value, so a change made elsewhere (a right-click menu)
 	// shows here too.
 	const shows = new Map();
@@ -28,6 +30,7 @@
 				root.appendChild(row);
 				continue;
 			}
+			const pct = COUNTS[key] || pctOf;
 			row.innerHTML = `<label><span>${label}</span><output></output></label><input type="range"><div class="ends"><span>${pct(min)}</span><span>${pct(max)}</span></div>`;
 			const input = row.querySelector('input'), out = row.querySelector('output');
 			Object.assign(input, { min, max, step, value: cfg[key] });

@@ -1076,6 +1076,19 @@
         box.append(ask);
       }
     }
+    // Which of them have their blob out: Blobs, with an eye for each.
+    if (api.blobs && (s.others || []).length) {
+      const chips = document.createElement('div');
+      chips.className = 'chips blobchips';
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'dim';
+      b.textContent = s.blobsHidden ? `Blobs on screen… (${s.blobsHidden} hidden)` : 'Blobs on screen…';
+      b.title = 'Show or hide each one’s blob, and how many at most';
+      b.onclick = () => api.blobs();
+      chips.append(b);
+      box.append(chips);
+    }
     drawHub(box);
     box.scrollTop = scroll;
     requestAnimationFrame(fitWindow);

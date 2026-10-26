@@ -63,6 +63,7 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   pickUp: (id) => ipcRenderer.send('talk-pickup', id),
   continueHere: (id) => ipcRenderer.send('talk-continue', id),
   switchTo: (id) => ipcRenderer.send('talk-switch', id),
+  blobs: () => ipcRenderer.send('talk-blobs'), // (the Blobs overview: show or hide each one's blob)
   copy: (text) => ipcRenderer.send('talk-copy', text),
   openLink: (url) => ipcRenderer.send('talk-link', url),
   reveal: (id, file) => ipcRenderer.send('talk-reveal', id, file),

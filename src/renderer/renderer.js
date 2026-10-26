@@ -610,8 +610,11 @@
 
   // --- Sessions -----------------------------------------------------------
 
-  function syncSessions(sessions, pending = 0) {
+  // hidden: sessions whose blobs you've hidden (see Blobs): they go back in
+  // quietly, no goodbyes, as their sessions carry on.
+  function syncSessions(sessions, pending = 0, hidden = []) {
     const live = new Set();
+    const away = new Set(hidden);
     for (const s of sessions) {
       live.add(s.id);
       let m = buddies.get(s.id);
@@ -651,12 +654,13 @@
     for (const b of buddies.values()) {
       if (b.kind !== 'home' && !live.has(b.key) && !b.merging && !b.dying) {
         b.merging = { since: time };
-        if (b.kind === 'mother') farewell(b);
+        if (b.kind === 'mother' && !away.has(b.key)) farewell(b);
       }
     }
     // With no sessions left, the biggest one stays behind as the home slime.
     if (!sessions.length && !pending && !buddies.has(HOME)) {
-      const keep = bigs().sort((a, b) => b.body.o.radius - a.body.o.radius)[0];
+      // (Not one you just hid: that one goes in, to a home slime of its own.)
+      const keep = bigs().filter((o) => !away.has(o.key)).sort((a, b) => b.body.o.radius - a.body.o.radius)[0];
       if (keep) {
         rekey(keep, HOME);
         Object.assign(keep, { kind: 'home', session: null, state: 'idle', merging: null, bubble: null });
@@ -6146,7 +6150,7 @@
   let nudged = false;
   api.onState((s) => {
     settings = s.settings || settings;
-    syncSessions(s.sessions || [], s.pending || 0);
+    syncSessions(s.sessions || [], s.pending || 0, s.hidden || []);
     if (!nudged && (settings.noClaude || settings.hooksInstalled === false)) {
       nudged = true;
       setTimeout(() => {

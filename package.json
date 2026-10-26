@@ -17,7 +17,8 @@
     "e2e": "BLAUBE_TEST=scripts/e2e/talk.js BLAUBE_PORT=47870 electron .",
     "e2e:start": "BLAUBE_TEST=scripts/e2e/start.js BLAUBE_PORT=47871 electron .",
     "e2e:life": "BLAUBE_TEST=scripts/e2e/life.js BLAUBE_PORT=47872 electron .",
-    "e2e:grab": "BLAUBE_TEST=scripts/e2e/grab.js BLAUBE_PORT=47877 electron ."
+    "e2e:grab": "BLAUBE_TEST=scripts/e2e/grab.js BLAUBE_PORT=47877 electron .",
+    "e2e:blobs": "BLAUBE_TEST=scripts/e2e/blobs.js BLAUBE_PORT=47878 electron ."
   },
   "build": {
     "appId": "app.blaube.desktop",

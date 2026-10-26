@@ -41,7 +41,7 @@ module.exports = async function run({ win, tracker }) {
 	check(['Sound', 'Volume', 'Wah at the start of each note'].every((l) => its.includes(l)), 'the sound settings are at its top level');
 	check(!find(slime(), 'Blaube').submenu.items.some((i) => i.label === 'Sound'), 'and not again in its Blaube submenu');
 	check(['Notify me about this one', 'Save conversation as Markdown', 'Copy resume command'].every((l) => find(slime(), 'More').submenu.items.some((i) => i.label === l)), 'the rarer ones under More');
-	check(its[its.length - 1] === 'Hide this blob', 'hiding it last');
+	check(its[its.length - 1] === 'Hide', 'hiding it last');
 	check(its.includes('Colour'), 'its own colour in it');
 
 	// The tray: no app-wide Colour; a row per session, its status said once,
@@ -56,7 +56,7 @@ module.exports = async function run({ win, tracker }) {
 		check(!!status && r.label.split(status).length === 2 && !r.sublabel, 'its status said once, on the row');
 		const sub = labels(r.submenu);
 		check(sub.includes('Talk') && sub.includes('Colour'), 'its submenu has Talk and its Colour');
-		check(sub.indexOf('Talk') < sub.indexOf('Open project folder') && sub.indexOf('Open project folder') < sub.indexOf('Colour') && sub.indexOf('Colour') < sub.indexOf('Hide this blob'), 'in the same order as right-clicking it');
+		check(sub.indexOf('Talk') < sub.indexOf('Open project folder') && sub.indexOf('Open project folder') < sub.indexOf('Colour') && sub.indexOf('Colour') < sub.indexOf('Hide'), 'in the same order as right-clicking it');
 		check(!sub.includes('Sound') && !sub.includes('Blaube'), 'and no sound or Blaube submenu in it');
 	}
 
