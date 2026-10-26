@@ -64,6 +64,21 @@ test('grab drags the body and release keeps the toss velocity', () => {
   assert.ok(v.x > 500 && v.y < -300, `kept momentum, got ${v.x},${v.y}`);
 });
 
+test('calm takes out spin and wobble but keeps the way it was going, up to a speed', () => {
+  const b = new SoftBody(400, 300);
+  b.setBounds(0, 0, 800, 600);
+  b.spin(15, DT);
+  b.impulse(1200, -300, DT);
+  b.pushAt(400, 244, 0, 400, 20, DT);
+  const shape = [...b.px];
+  b.calm(400, DT);
+  assert.ok(Math.abs(b.angularVelocity(DT)) < 1e-6, `no spin, got ${b.angularVelocity(DT)}`);
+  const v = b.velocity(DT);
+  assert.ok(Math.abs(Math.hypot(v.x, v.y) - 400) < 1e-6 && v.x > 0 && v.y < 0, `capped along its way, got ${v.x},${v.y}`);
+  for (let i = 0; i < b.n; i++) assert.ok(Math.abs((b.px[i] - b.ox[i]) / DT - v.x) < 1e-6, 'every point moving together');
+  assert.deepStrictEqual([...b.px], shape, 'same shape');
+});
+
 test('hit testing', () => {
   const b = new SoftBody(100, 100);
   assert.ok(b.contains(100, 100));

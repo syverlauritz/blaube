@@ -145,6 +145,18 @@
       }
     }
 
+    // Takes out its spin and its skin's own wobbling, leaving every point
+    // moving together, at no more than maxSpeed (px/s): caught in a hand,
+    // it stops whirling and flinging about but keeps its shape.
+    calm(maxSpeed, dt) {
+      const n = this.n;
+      let vx = 0, vy = 0;
+      for (let i = 0; i < n; i++) { vx += (this.px[i] - this.ox[i]) / n; vy += (this.py[i] - this.oy[i]) / n; }
+      const s = Math.hypot(vx, vy), cap = maxSpeed * dt;
+      if (s > cap) { vx *= cap / s; vy *= cap / s; }
+      for (let i = 0; i < n; i++) { this.ox[i] = this.px[i] - vx; this.oy[i] = this.py[i] - vy; }
+    }
+
     // How fast it's turning (radians/s), from how its skin is moving round
     // its middle.
     angularVelocity(dt) {

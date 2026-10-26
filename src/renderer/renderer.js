@@ -632,7 +632,7 @@
 
   // The shots script (scripts/shots) opens the window with ?debug to look
   // inside while it plays a scene.
-  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, now: () => time, sys, spoken };
+  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, now: () => time, sys, spoken, input: { down: (e) => onDown(e), move: (e) => onMove(e), up: (e) => onUp(e) }, ownMouse: false };
   const petSize = () => 34 * CFG.size;
 
   function syncPets(sessions) {
@@ -1432,6 +1432,7 @@
       else { quip(b, 'eww!', 1); if (by && !by.dying) { b.annoyedAt = by; b.annoyedUntil = time + 1.2; } }
       if (by && !by.dying) { b.glanceAt = by; b.glanceUntil = time + 1.2; }
     }
+    if (body.grab) b.sneeze = null; // (held, it doesn't: see pickUp)
     if (b.sneeze) {
       const r = body.o.radius;
       if (time < b.sneeze.at) { if (body.onFloor()) body.squashTop(-r * 0.12 * 60 * DT * 60 * DT, DT); }
@@ -1460,7 +1461,7 @@
       }
     }
     // Shaking off leaves or snow: a quick side-to-side wobble.
-    if (time < (b.shakeOffUntil || 0) && body.onFloor()) body.lean((Math.sin(time * 70) > 0 ? 1 : -1) * body.o.radius * 2.2 * 60 * DT, DT);
+    if (time < (b.shakeOffUntil || 0) && body.onFloor() && !body.grab) body.lean((Math.sin(time * 70) > 0 ? 1 : -1) * body.o.radius * 2.2 * 60 * DT, DT);
     if (body.grab) { held(b); return; }
     b.stillFor = 0;
     b.wriggling = false;
@@ -2555,6 +2556,20 @@
     const dv = CFG.crouchDepth * 80 * body.o.radius * h.power * DT;
     h.v += dv;
     body.squashTop(dv, DT);
+  }
+
+  // Picked up, whatever it was in the middle of stops there and then: a hop
+  // still to go off, a trick, a somersault, a tumble or a roll, a bounce or
+  // a sneeze to come. It rights itself as usual again, and the hand takes
+  // out its spin and most of its speed, so it hangs from the cursor instead
+  // of whirling round it or flinging itself out long.
+  function pickUp(b) {
+    b.pendingHop = null;
+    b.flip = null; b.forceFlip = false;
+    b.trick = null; b.tumble = null; b.roll = null;
+    b.bounceAt = 0; b.sneeze = null;
+    b.body.o.upright = CFG.upright;
+    b.body.calm(400, DT);
   }
 
   // Held up: shake it and it gets dizzy; hold it still and, after a
@@ -5636,6 +5651,7 @@
     const b = buddyAt(e.clientX, e.clientY);
     if (!b) return;
     drag = { buddy: b, x0: e.clientX, y0: e.clientY, t0: time, moved: false };
+    pickUp(b);
     b.body.startGrab(e.clientX, e.clientY);
     // Pressed: the skin under the cursor gives in, and it springs back.
     if (CFG.pokeDent > 0) {
@@ -5698,6 +5714,7 @@
   const fromApp = !!(api.usesPointer && api.onPointer) && !new URLSearchParams(location.search).has('debug');
   if (fromApp) {
     api.onPointer((p) => {
+      if (globalThis.__blaube && globalThis.__blaube.ownMouse) return;
       const e = { button: p.button, clientX: p.x, clientY: p.y, altKey: p.alt };
       if (p.kind === 'down' && p.button === 2) onContext(e);
       else if (p.kind === 'down') onDown(e);
@@ -5923,6 +5940,7 @@
   // The app also reports the cursor, so the eyes follow it even when the
   // window isn't getting mouse moves.
   if (api.onCursor) api.onCursor((p) => {
+    if (globalThis.__blaube && globalThis.__blaube.ownMouse) return; // (a test drives the mouse itself)
     if (fromApp) return onMove({ clientX: p.x, clientY: p.y });
     if (p.x !== mouse.x || p.y !== mouse.y) mouse.lastMove = performance.now() / 1000;
     mouse.x = p.x;
