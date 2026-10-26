@@ -57,3 +57,29 @@ test('/model and /plan are asked of Claude Code; anything else is a message', ()
   assert.equal(control('/model is broken in prod'), null);
   assert.equal(control('hello'), null);
 });
+
+test('a fork starts from a copy of a session’s conversation under a new id; sends carry their id', async (t) => {
+  if (process.platform === 'win32') return t.skip('a script as the binary');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-owned-'));
+  const bin = path.join(dir, 'claude');
+  // Says what it was started with, and echoes each message it gets.
+  fs.writeFileSync(bin, `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({ type: 'args', args: process.argv.slice(2), checkpoints: process.env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING }) + '\\n');
+require('node:readline').createInterface({ input: process.stdin }).on('line', (l) => process.stdout.write(JSON.stringify({ type: 'echo', got: JSON.parse(l) }) + '\\n'));
+`, { mode: 0o755 });
+  const owned = new Owned(() => bin);
+  const seen = [];
+  const orig = owned.read.bind(owned);
+  owned.read = (id, m) => { seen.push(m); return orig(id, m); };
+  const id = owned.start(dir, [], null, '', 'orig-1234');
+  assert.notEqual(id, 'orig-1234');
+  owned.send(id, 'try it the other way', 'u-1');
+  const until = async (fn) => { for (let i = 0; i < 100 && !fn(); i++) await new Promise((r) => setTimeout(r, 20)); return fn(); };
+  assert.ok(await until(() => seen.some((m) => m.type === 'echo')));
+  const args = seen.find((m) => m.type === 'args');
+  assert.deepEqual(args.args.slice(args.args.indexOf('--resume'), args.args.indexOf('--resume') + 4), ['--resume', 'orig-1234', '--fork-session', '--session-id']);
+  assert.equal(args.args[args.args.indexOf('--session-id') + 1], id);
+  assert.equal(args.checkpoints, '1', 'checkpoints on, so a turn can be put back');
+  assert.equal(seen.find((m) => m.type === 'echo').got.uuid, 'u-1');
+  owned.end(id);
+});

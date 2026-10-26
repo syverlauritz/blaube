@@ -600,7 +600,7 @@ if (TEST) global.__blaubeSweep = sweep;
 
 // Starts Claude Code in `cwd`, with no terminal: its slime pops out with
 // its talk box open, ready for your first message.
-function startSession(cwd, extra = [], resume = '') {
+function startSession(cwd, extra = [], resume = '', fork = '') {
   if (!cwd) return null;
   // Not connected yet: give this session Blaube's hooks itself, so its
   // slime still knows what it's doing and can still ask you things.
@@ -609,7 +609,7 @@ function startSession(cwd, extra = [], resume = '') {
     settings = claudeHooks.withBlaube({}, PORT);
     settings.hooks.Stop = settings.hooks.Stop.filter((g) => !g.hooks.some((h) => h.asyncRewake));
   }
-  const id = owned.start(cwd, ['--append-system-prompt', STYLE, ...extra], settings, resume);
+  const id = owned.start(cwd, ['--append-system-prompt', STYLE, ...extra], settings, resume, fork);
   prefs.recentFolders = [cwd, ...(prefs.recentFolders || []).filter((f) => f !== cwd)].slice(0, 5);
   savePrefs();
   log(`started a session in ${cwd}: ${id}`);
@@ -1259,6 +1259,7 @@ function sessionMenu(id) {
       { label: 'Resume in a new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
       { label: 'Bring it into Blaube', enabled: canBringIn(s), click: () => bringIn(s) },
     ]),
+    { label: 'Fork into a new session', toolTip: 'A copy of this conversation in a new session, to try something else; this one carries on as it is', enabled: !isDemo && !!s.cwd, click: () => forkSession(s) },
     { label: 'Copy resume command', click: () => clipboard.writeText(`cd "${s.cwd}" && ${resumeCommand(s.id)}`) },
     { label: 'Notify me about this one', type: 'checkbox', checked: !muted.has(id), enabled: !isDemo && (prefs.config.notify || 'Behind windows') !== 'Off', click: (item) => { if (item.checked) muted.delete(id); else muted.add(id); } },
     { label: 'Save conversation as Markdown', enabled: !isDemo && inbox.log(id).length > 0, click: () => { const f = saveConversation(id); if (f) shell.showItemInFolder(f); } },
@@ -1270,6 +1271,16 @@ function sessionMenu(id) {
     { type: 'separator' },
     { label: 'Hide this slime', toolTip: 'Until its session ends', click: () => tracker.dismiss(id) },
   ]);
+}
+
+// A copy of its conversation in a new session (a new slime), to try
+// something else while it carries on: --resume --fork-session.
+function forkSession(s) {
+  const id = startSession(s.cwd, [], '', s.id);
+  if (!id) return null;
+  inbox.add(id, { who: 'note', text: `A copy of ${s.title || s.project}’s conversation: try something else here, it carries on as it was` });
+  inbox.add(s.id, { who: 'note', text: 'Forked into a new session' });
+  return id;
 }
 
 // What it may do without asking (its "Always allow" rules), each a tap

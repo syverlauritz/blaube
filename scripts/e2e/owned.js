@@ -15,6 +15,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const FAKE = `#!/usr/bin/env node
 let model = 'claude-opus', turn = null, used = [12, 40], mcpUp = false; const seen = new Set();
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
+require('node:fs').writeFileSync(require('node:path').join(process.cwd(), 'args-' + process.pid), JSON.stringify(process.argv.slice(2)));
 out({ type: 'system', subtype: 'init', permissionMode: 'default' });
 require('node:readline').createInterface({ input: process.stdin }).on('line', (l) => {
   const m = JSON.parse(l);
@@ -162,6 +163,19 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(/You asked it to stop/.test(text) && !/Something went wrong/.test(text), 'and says you stopped it, not that something went wrong');
 	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Carry on')`)), 'with Carry on a tap away');
 
+	// Fork: a copy of the conversation in a new session (a new slime), the original carrying on.
+	const before = new Set(owned.list());
+	const forkItem = global.__blaubeSessionMenu(id).items.find((i) => i.label === 'Fork into a new session');
+	check(!!forkItem && forkItem.enabled, 'its menu offers Fork into a new session');
+	forkItem.click();
+	check(await until(() => owned.list().some((x) => !before.has(x))), 'which starts a new session');
+	const forked = owned.list().find((x) => !before.has(x));
+	await sleep(300);
+	const argsOf = fs.readdirSync(dir).filter((f) => f.startsWith('args-')).map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'))).find((a) => a.includes('--fork-session'));
+	check(!!argsOf && argsOf[argsOf.indexOf('--resume') + 1] === id && argsOf[argsOf.indexOf('--session-id') + 1] === forked, 'from a copy of this one’s conversation, under its own id');
+	check(owned.has(id) && inbox.log(id).some((e) => e.text === 'Forked into a new session'), 'and the original carries on');
+	check(await until(() => talkId() === forked, 8000), 'its box opens on the copy');
+	owned.end(forked);
 	owned.end(id);
 
 	// A session in a terminal (here: a stand-in process) brought into Blaube.
