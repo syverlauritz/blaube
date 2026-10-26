@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { edgeToward, tailShown } = require('../src/shared/talkTail.js');
+const { edgeToward, tailLength, tailShown, FADE } = require('../src/shared/talkTail.js');
 
 const box = { x: 100, y: 100, w: 400, h: 300 }, R = 30;
 const near = (a, b, what) => assert.ok(Math.abs(a - b) < 1e-6, `${what}: ${a} vs ${b}`);
@@ -39,16 +39,23 @@ test('under the box, the slime is inside it', () => {
   assert.ok(edgeToward(box, { x: 300, y: 395 }, R).out < 0);
 });
 
-test('the tail shows near its slime and fades out smoothly as they part', () => {
-  const r = 80;
+test('a tail is a stubby wedge: 70 to 100 px at most, a little longer for a bigger slime', () => {
+  assert.equal(tailLength(20), 70);
+  assert.equal(tailLength(80), 88);
+  assert.equal(tailLength(300), 100);
+  assert.ok(tailLength(90) > tailLength(60));
+});
+
+test('the tail shows while a full-length one reaches its slime, then fades out smoothly', () => {
+  const r = 80, max = tailLength(r);
   assert.equal(tailShown(0, r), 1);
-  assert.equal(tailShown(2 * r, r), 1, 'all of it up to two radii away');
-  assert.equal(tailShown(3 * r, r), 0, 'none of it from three');
+  assert.equal(tailShown(max, r), 1, 'all of it while a full-length tail reaches');
+  assert.equal(tailShown(max * (1 + FADE), r), 0, 'none of it from half that again');
   assert.equal(tailShown(900, r), 0);
-  near(tailShown(2.5 * r, r), 0.5, 'half way');
+  near(tailShown(max * (1 + FADE / 2), r), 0.5, 'half way');
   let prev = 1;
-  for (let g = 2 * r; g <= 3 * r; g += 4) {
-    const k = tailShown(g, r);
+  for (let l = max; l <= max * (1 + FADE); l += 2) {
+    const k = tailShown(l, r);
     assert.ok(k <= prev && prev - k < 0.08, 'smoothly');
     prev = k;
   }

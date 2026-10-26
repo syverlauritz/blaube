@@ -5541,7 +5541,8 @@
   // slime comes up against the bubble (under it, it's gone).
   // Every open box (a pinned one each, and the one that comes and goes),
   // each with its own tail to its own slime. The tail only shows while the
-  // box is near its slime (BlaubeTalkTail.tailShown): moved away, or with
+  // box is near its slime (BlaubeTalkTail.tailShown: while a full-length
+  // tail reaches it): moved away, or with
   // the slime carried off, it shrinks out, and grows back as they meet.
   const tails = new Map(); // session id -> { rect, at, bend, frame, now, sent }
   let talkRect = null; // (the box of the slime you're talking to, for its glances)
@@ -5565,7 +5566,7 @@
     t.now = null;
     const b = buddies.get(id), rect = t.rect;
     if (!b || b.dying || rect.dark) return; // (a dark box has no tail)
-    const body = b.body, c = body.centroid(), PAD = 12, RADIUS = 30, GAP = 8, W = 20, INSET = 10;
+    const body = b.body, c = body.centroid(), PAD = 12, RADIUS = 30, GAP = 8, W = 22, INSET = 10;
     const box = { x: rect.x + PAD, y: rect.y + PAD, w: rect.w - PAD * 2, h: rect.h - PAD * 2 };
     const e = BlaubeTalkTail.edgeToward(box, c, RADIUS);
     // How far the slime reaches towards the bubble from its middle: its skin
@@ -5578,15 +5579,20 @@
       reach += Math.max(0, top - (body.lookTop ?? top)) * e.ny;
     }
     const gap = e.out - reach, len = gap - GAP;
-    // Near its slime it shows; farther off it shrinks out.
-    const shown = BlaubeTalkTail.tailShown(gap, body.o.radius);
+    // Near its slime it shows; farther off than a full-length tail reaches,
+    // it shrinks out.
+    const shown = BlaubeTalkTail.tailShown(len, body.o.radius);
     t.now = { edge: { x: e.x, y: e.y }, nx: e.nx, ny: e.ny, len: Math.max(0, len), aim: { x: c.x, y: c.y }, shown };
     if (len <= 0 || shown <= 0) return; // up against the bubble, under it, or far from it
-    // Close to the bubble it gets shorter and thinner, down to nothing.
-    const thin = Math.min(1, len / 30) * shown;
+    // As long as it needs to be to reach its slime, never longer than a
+    // stubby wedge (tailLength), and as wide as it is long: close to the
+    // bubble it gets shorter and thinner, down to nothing.
+    const long = Math.min(len, BlaubeTalkTail.tailLength(body.o.radius)) * shown;
+    if (long < 6) return; // (too little to read as a tail: none, not a stub)
+    const thin = Math.min(1, long / 30);
     // Leaves from just inside the bubble (same white, so there's no seam).
     const base = { x: e.x - e.nx * INSET, y: e.y - e.ny * INSET };
-    let tip = { x: e.x + e.nx * len * shown, y: e.y + e.ny * len * shown };
+    let tip = { x: e.x + e.nx * long, y: e.y + e.ny * long };
     const across = { x: -e.ny, y: e.nx }; // which way its base runs (along the outline)
     // Grows out from the bubble when it opens (with the bubble's own pop).
     const grow = Math.min(1, (time - t.at) / 0.26), ease = 1 - Math.pow(1 - grow, 3) * (1 - 1.6 * grow);
@@ -5599,7 +5605,7 @@
     t.frame = time;
     const want = Math.max(-14, Math.min(14, -(v.x * across.x + v.y * across.y) * 0.02)) * thin;
     t.bend += (want - t.bend) * Math.min(1, dt * 10);
-    const w = W * thin;
+    const w = Math.min(W, (long + INSET) * 0.28) * thin;
     const dx = tip.x - base.x, dy = tip.y - base.y, l = Math.hypot(dx, dy) || 1;
     const flip = -dy * across.x + dx * across.y < 0 ? -1 : 1; // (same way as the base runs)
     const nx = -dy / l * flip, ny = dx / l * flip; // across the wedge's own axis

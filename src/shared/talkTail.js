@@ -24,20 +24,24 @@
 		return { x: qx + nx * R, y: qy + ny * R, nx, ny, out: d - R };
 	}
 
-	// How much of the tail shows (0 to 1), for a gap of `gap` between the
-	// box's outline and its slime (of radius r): all of it up to two radii
-	// away, fading out smoothly by three, so a box
-	// moved away from its slime (or a slime carried off) loses its tail, and
-	// gets it back as they come close again.
-	const NEAR = 2, FAR = 3;
-	function tailShown(gap, r) {
-		const k = (gap - NEAR * r) / ((FAR - NEAR) * r);
+	// The longest a tail gets for a slime of radius r: a stubby, confident
+	// wedge (70 to 100 px), never a long needle.
+	const tailLength = (r) => Math.max(70, Math.min(100, 56 + r * 0.4));
+	// How much of the tail shows (0 to 1) when it would need to be `len`
+	// long to reach its slime: all of it while a full-length tail reaches,
+	// fading out smoothly over the next half of that length beyond, so a
+	// box moved away from its slime (or a slime carried off) loses its tail,
+	// and gets it back as they come close again.
+	const FADE = 0.5;
+	function tailShown(len, r) {
+		const max = tailLength(r);
+		const k = (len - max) / (max * FADE);
 		if (!(k > 0)) return 1;
 		if (k >= 1) return 0;
 		return 1 - k * k * (3 - 2 * k);
 	}
 
-	const api = { edgeToward, tailShown, NEAR, FAR };
+	const api = { edgeToward, tailLength, tailShown, FADE };
 	if (typeof module !== 'undefined' && module.exports) module.exports = api;
 	else root.BlaubeTalkTail = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -80,8 +80,10 @@ ships that breaks a "must".
   wherever the blob is carried; up against or under the box, the tail
   shrinks away. A pin in its header keeps it open (several pinned boxes at
   once, one per session); dragging its header moves it, and it stays where
-  you put it. The tail shows only while the box is near its blob (within
-  two of the blob's radii, fading out by three).
+  you put it. The tail is always a stubby wedge, never a needle: at most
+  70 to 100 px long (a little longer for a bigger blob), its base in
+  proportion. It shows only while a full-length tail reaches its blob, and
+  fades out over half that length again beyond.
 - The talk box has a dark mode (the moon in its header, kept for every
   box): the same flat bubble in a deep slate with light ink, and no tail.
 - Blobs talk out loud in a made-up babble through a talkbox: a buzzy
