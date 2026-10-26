@@ -670,7 +670,7 @@ const SCENES = {
 // The box where it opened, its slime carried round it (talk.box: the box's
 // window; talk.hold: where the slime is held): the tail leaves from the
 // edge facing it, all the way round. The last one is a box resized smaller.
-const aroundTalk = (hold, box = { x: 300, y: 170, w: 600, h: 440 }) => ({ sessions: [session('ar', 'blaube', 'idle')], wait: 2500, size: [1200, 820], talk: { key: 'ar', box, hold, inbox: 'ready', log: [{ who: 'you', text: 'is it green?' }, { who: 'claude', text: 'All 66 tests pass.' }] } });
+const aroundTalk = (hold, box = { x: 300, y: 170, w: 600, h: 440 }) => ({ sessions: [session('ar', 'blaube', 'idle')], wait: 2500, size: [1200, 820], config: { seasons: 0 }, talk: { key: 'ar', box, hold, inbox: 'ready', log: [{ who: 'you', text: 'is it green?' }, { who: 'claude', text: 'All 66 tests pass.' }] } });
 SCENES.talkAroundBelow = aroundTalk([600, 720]);
 SCENES.talkAroundBelowRight = aroundTalk([1010, 700]);
 SCENES.talkAroundLeft = aroundTalk([170, 400]);
@@ -680,12 +680,15 @@ SCENES.talkAroundAbove = aroundTalk([560, 62]);
 SCENES.talkAroundUnder = aroundTalk([600, 560]);
 SCENES.talkResized = aroundTalk([860, 690], { x: 360, y: 200, w: 460, h: 380 });
 SCENES.talkResizedBig = aroundTalk([140, 700], { x: 300, y: 40, w: 860, h: 640 });
+// One box, its slime carried from near it to far off: the tail grows to a
+// stubby wedge, then fades out once a full-length one can't reach.
+[['Near', 775], ['Mid', 805], ['Reach', 820], ['Fading', 845], ['Far', 900]].forEach(([n, x]) => { SCENES['talkTail' + n + 'Away'] = aroundTalk([x, 390], { x: 60, y: 170, w: 600, h: 440 }); });
 // Two pinned boxes: one moved off to the top left, far from its slime (no
 // tail), one still near its own (its tail points at it).
 SCENES.talkPinnedTwo = {
-	sessions: [session('pa', 'blaube', 'idle'), session('pb', 'kalkis', 'idle', { color: '#5B8DEF' })], wait: 2500, size: [1400, 860],
+	sessions: [session('pa', 'blaube', 'idle'), session('pb', 'kalkis', 'idle', { color: '#5B8DEF' })], wait: 2500, size: [1400, 860], config: { seasons: 0 },
 	talk: { key: 'pa', x: 1300, box: { x: 40, y: 30, w: 520, h: 420 }, pinned: true, inbox: 'ready', log: [{ who: 'you', text: 'is it green?' }, { who: 'claude', text: 'All 66 tests pass.' }],
-		also: [{ key: 'pb', stand: [900, 700], box: { x: 640, y: 150, w: 520, h: 400 }, inbox: 'ready', log: [{ who: 'claude', text: 'Deployed to production.' }] }] },
+		also: [{ key: 'pb', stand: [900, 700], box: { x: 640, y: 250, w: 520, h: 400 }, inbox: 'ready', log: [{ who: 'claude', text: 'Deployed to production.' }] }] },
 };
 
 // Dark mode: a long chat, a permission card, a question, a plan, and a
