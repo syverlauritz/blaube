@@ -1892,6 +1892,45 @@
 
   // Wave the cursor just above an idle slime, like a toy on a string: it
   // watches, wiggles, then jumps for it. Catch it and a heart pops out.
+  // Now and then a calm slime sneaks up beside another and pops up tall:
+  // "boo!" The other jumps, then glares. (More often on Halloween.)
+  function prank(b) {
+    if (CFG.pranks <= 0 || b.kind !== 'mother') return;
+    const calmOf = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && o.body.onFloor() && !o.stackedBy && o !== buddies.get(talkingTo);
+    const p = b.prank;
+    if (p) {
+      const busy = (o) => o.dying || o.body.grab || o.merging || (o.state !== 'idle' && o.state !== 'done');
+      if (busy(b) || busy(p.o) || time - p.at > 6) { b.prank = null; return; }
+      if (!b.body.onFloor() || b.pendingHop) return; // still on its way
+      if (p.stage === 'sneak' && time - p.at > 0.5) {
+        const r = b.body.o.radius, oc = p.o.body.centroid(), c = b.body.centroid();
+        if (Math.abs(oc.x - c.x) > (r + p.o.body.o.radius) * 1.6) { b.prank = null; return; } // didn't make it
+        p.stage = 'boo'; p.at = time;
+        b.body.squashTop(-r * 22 * Math.min(1.5, CFG.pranks), DT);
+        b.booUntil = time + 0.7;
+        b.say([{ text: 'boo!' }], 1, false, false);
+        const o = p.o, away = Math.sign(oc.x - c.x) || 1;
+        o.startleUntil = time + 0.6; o.surpriseUntil = time + 0.6;
+        o.body.lean(away * o.body.o.radius * 4, DT);
+        o.hop(away * 160, -340);
+        setTimeout(() => { if (!o.dying && !b.dying) { o.annoyedUntil = time + 1.4; o.annoyedAt = b; b.happyUntil = time + 1.6; } }, 700);
+      } else if (p.stage === 'boo' && time - p.at > 1.5) b.prank = null;
+      return;
+    }
+    if (!calmOf(b) || time < (b.nextPrank ?? (b.nextPrank = time + (60 + Math.random() * 180) / CFG.pranks))) return;
+    const d = new Date(), spooky = d.getMonth() === 9 && d.getDate() === 31;
+    b.nextPrank = time + (spooky ? 25 + Math.random() * 40 : 120 + Math.random() * 360) / CFG.pranks;
+    const c = b.body.centroid(), r = b.body.o.radius;
+    const others = [...buddies.values()].filter((o) => o !== b && o.big && calmOf(o) && Math.abs(o.body.centroid().y - c.y) < r && Math.abs(o.body.centroid().x - c.x) < r * 12);
+    if (!others.length) return;
+    const o = others[Math.floor(Math.random() * others.length)], oc = o.body.centroid();
+    // Land just beside it, on the near side.
+    const side = Math.sign(c.x - oc.x) || 1, tx = oc.x + side * (o.body.o.radius + r * 1.05);
+    const vy = 300, air = 2 * vy / CFG.gravity;
+    b.prank = { o, stage: 'sneak', at: time };
+    b.hop((tx - c.x) / air * 0.8, -vy);
+  }
+
   function pounce(b) {
     if (time < (b.pounceUntil || 0)) {
       if (!b.caught && b.body.contains(mouse.x, mouse.y)) {
@@ -1976,6 +2015,7 @@
     }
     stackPlay(b);
     pounce(b);
+    prank(b);
     // Hanging over the edge of a window: it clings and shuffles back on.
     const l = b.body.onLedge;
     if (l && !b.body.grab) {
@@ -2085,6 +2125,7 @@
     else if (time < (b.cheerUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
     else if (body.grab && b.wriggling) { expression = 'worried'; mouth = 'wobble'; }
     else if (body.grab || time < (b.surpriseUntil || 0)) { mouth = 'o'; }
+    else if (time < (b.booUntil || 0)) { expression = 'normal'; mouth = 'o'; }
     else if (b.merging && b.kind === 'child') { expression = 'happy'; mouth = 'smile'; }
     else if (nodding(b)) { expression = 'happy'; mouth = 'smile'; }
     else if (time < (b.pettedUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
@@ -2201,7 +2242,7 @@
     }
     // A big toss: past the top it looks down at what's coming ("uh-oh"),
     // and just before it lands it screws its eyes shut and braces.
-    let wideBy = 0;
+    let wideBy = time < (b.booUntil || 0) ? 1 : 0; // (boo!: big eyes)
     if (CFG.eyeLife > 0 && !body.grab && !meditating(b) && expression !== 'dizzy') {
       if (v.y < -900 && !body.onFloor()) b.tossUp = time;
       if (b.tossUp && time - b.tossUp < 2 && !body.onFloor() && v.y > 0) {
