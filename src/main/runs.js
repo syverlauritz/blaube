@@ -9,20 +9,38 @@ const { EventEmitter } = require('node:events');
 const { localUrl } = require('./taskOutput');
 
 // The ones that keep running (a server, a watcher), by their name.
-const LONG = /^(dev|start|serve|preview|watch|storybook)(:|$)|[:-](dev|serve|watch|start)$/;
+const LONG = /^(dev|start|serve|preview|watch|storybook)(:|$)|[:-](dev|serve|watch|start)$/; // (and `make run`? It may end: only Cargo's and Go's run are taken as long)
 const NAME = /^[\w][\w:.@/-]{0,79}$/; // (what goes in the command: nothing a shell reads)
 
-// Its scripts, the usual ones first: [{ name, long, command }], or [].
-const seen = new Map(); // cwd -> { mtime, list } (read again only once package.json changes)
+// Its scripts, the usual ones first: [{ name, long, command }], or []:
+// package.json's, then a Makefile's targets, then Cargo's or Go's own.
+const MANIFESTS = ['package.json', 'Makefile', 'makefile', 'Cargo.toml', 'go.mod'];
+const seen = new Map(); // cwd -> { mtime, list } (read again only once one of them changes)
 function scripts(cwd) {
-  let mtime = 0;
-  try { mtime = fs.statSync(path.join(cwd, 'package.json')).mtimeMs; } catch { /* none */ }
+  const mtime = MANIFESTS.map((f) => { try { return fs.statSync(path.join(cwd, f)).mtimeMs; } catch { return 0; } }).join();
   const hit = seen.get(cwd);
   if (hit && hit.mtime === mtime) return hit.list;
-  const list = mtime ? readScripts(cwd) : [];
+  const list = /[1-9]/.test(mtime) ? readAll(cwd) : [];
   seen.set(cwd, { mtime, list });
   if (seen.size > 100) seen.delete(seen.keys().next().value);
   return list;
+}
+function readAll(cwd) {
+  const has = (f) => { try { return fs.statSync(path.join(cwd, f)).isFile(); } catch { return false; } };
+  const out = has('package.json') ? readScripts(cwd) : [];
+  const add = (name, command, long) => { if (out.length < 10 && NAME.test(name) && !out.some((x) => x.name === name)) out.push({ name, long, command }); };
+  for (const mk of ['Makefile', 'makefile']) if (has(mk)) { for (const t of makeTargets(cwd, mk)) add(t, `make ${t}`, LONG.test(t)); break; }
+  if (has('Cargo.toml')) { add('run', 'cargo run', true); add('test', 'cargo test', false); add('build', 'cargo build', false); }
+  if (has('go.mod')) { add('run', 'go run .', true); add('test', 'go test ./...', false); add('build', 'go build ./...', false); }
+  return out;
+}
+// A Makefile's own targets (not its special or pattern ones), in order.
+function makeTargets(cwd, file) {
+  let text = '';
+  try { text = fs.readFileSync(path.join(cwd, file), 'utf8').slice(0, 200e3); } catch { return []; }
+  const out = [];
+  for (const m of text.matchAll(/^([A-Za-z0-9][\w.-]*)\s*:(?![:=])/gm)) if (!out.includes(m[1]) && !/\.(o|c|h|PHONY)$/.test(m[1])) out.push(m[1]);
+  return out.slice(0, 10);
 }
 function readScripts(cwd) {
   let pkg;

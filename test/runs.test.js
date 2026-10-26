@@ -85,3 +85,20 @@ test('packages need installing: no node_modules, or older than its lockfile', ()
     assert.equal(needsInstall(dir), '');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('a Makefile’s targets, and Cargo’s and Go’s own, after package.json’s', () => {
+  const dir = project({ dev: 'vite', test: 'node --test' });
+  try {
+    fs.writeFileSync(path.join(dir, 'Makefile'), '.PHONY: serve lint\nCC=gcc\nserve:\n\tpython -m http.server\nlint: deps\n\truff .\ntest:\n\tpytest\n%.o: %.c\n\t$(CC)\nmain.o: main.c\nX := 1\n');
+    assert.deepEqual(runs.scripts(dir).map((s) => `${s.name}${s.long ? '*' : ''} ${s.command}`), ['dev* npm run dev', 'test npm run test', 'serve* make serve', 'lint make lint']);
+    fs.rmSync(path.join(dir, 'package.json'));
+    fs.rmSync(path.join(dir, 'Makefile'));
+    fs.writeFileSync(path.join(dir, 'Cargo.toml'), '[package]\nname = "x"\n');
+    assert.deepEqual(runs.scripts(dir).map((s) => `${s.name}${s.long ? '*' : ''} ${s.command}`), ['run* cargo run', 'test cargo test', 'build cargo build']);
+    fs.rmSync(path.join(dir, 'Cargo.toml'));
+    fs.writeFileSync(path.join(dir, 'go.mod'), 'module x\n');
+    assert.equal(runs.scripts(dir)[1].command, 'go test ./...');
+    fs.rmSync(path.join(dir, 'go.mod'));
+    assert.deepEqual(runs.scripts(dir), []);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
