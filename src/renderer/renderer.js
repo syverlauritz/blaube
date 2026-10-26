@@ -66,8 +66,10 @@
       return this.parent && time - this.born < SPLIT_TIME;
     }
 
-    say(lines, seconds, sticky = false, aloud = true) {
+    // (Silent unless asked: out loud is only for what matters, see speak.)
+    say(lines, seconds, sticky = false, aloud = false) {
       this.bubble = { lines: typeof lines === 'string' ? [{ text: lines }] : lines, until: time + seconds, sticky };
+      spoken.said++;
       if (aloud) speak(this, this.bubble.lines.map((l) => l.text).join(' '));
     }
 
@@ -102,10 +104,28 @@
 
   const buddies = new Map();
 
+  // How much they say. What you need to know (a session needs you, is done,
+  // an error, its context full) always gets its balloon. The rest is
+  // rationed for the whole stage at once, however many slimes there are: a
+  // line of personality (a game's "tag!", "lunch time?", a sleepy mumble) at
+  // most every three minutes, and a word back when you play with one
+  // yourself (swing it, throw it, tickle it) at most every half a minute.
+  // Most of what they get up to says nothing; their faces do the talking.
+  const TALK_GAP = { flavour: 180, react: 30 };
+  const spoken = { flavour: -1e9, react: -1e9, said: 0, voiced: 0 }; // (when each last went, and counts)
+  function mayTalk(kind) {
+    if (time - spoken[kind] < TALK_GAP[kind]) return false;
+    spoken[kind] = time;
+    return true;
+  }
+
   // Talking out loud: a babble in its own voice (voice.js), lower the
-  // bigger it is, with the mouth moving along. One line at a time each; a
-  // new one cuts the last short.
-  let audio = null;
+  // bigger it is, with the mouth moving along. Only for what matters (a
+  // session done or needing you, a reply, an error), and one voice on the
+  // stage at a time: a line that comes while another slime is talking waits
+  // for it to finish (a few seconds at most); a minor one (a giggle) is
+  // just let go. Its own new line cuts its last one short.
+  let audio = null, voice = null; // voice: { b, until } the line playing (audio time)
   function ensureAudio() {
     if (!audio) {
       const ctx = new AudioContext();
@@ -118,12 +138,21 @@
     if (CFG.voice === 'Off' || !text || b.dying || b.singing) return;
     try {
       ensureAudio();
+      const now = audio.ctx.currentTime;
+      if (voice && voice.b !== b && voice.b.speech && !voice.b.dying && now < voice.until) {
+        const wait = voice.until - now + 0.25, since = how.since ?? performance.now() / 1000;
+        if (how.minor || performance.now() / 1000 + wait - since > 8) return;
+        setTimeout(() => speak(b, text, Object.assign({}, how, { since })), wait * 1000);
+        return;
+      }
       if (b.speech) b.speech.line.stop();
-      const at = audio.ctx.currentTime + 0.03;
+      const at = now + 0.03;
       const line = BlaubeVoice.speak(audio.ctx, text, {
         at, out: audio.out, pitch: BlaubeVoice.pitchFor(b.body.o.radius, !b.big) * (how.higher || 1), seed: BlaubeVoice.hash(b.key), volume: CFG.voiceVolume * (how.softer || 1), wah: CFG.voiceWah, pace: how.pace,
       });
       b.speech = { line, at };
+      voice = { b, until: at + line.length };
+      spoken.voiced++;
     } catch (e) { b.speech = null; }
   }
   // The choir (Play > Choir): everyone sings a song together, each its own
@@ -406,7 +435,7 @@
           fl.length = 0;
           for (const b of buddies.values()) {
             if (!b.body.onLedge || b.body.onLedge.id !== l.id || b.body.grab) continue;
-            if (time > b.dizzyUntil) quip(b, 'whoa…', 1.2);
+            if (time > b.dizzyUntil) quipBack(b, 'whoa…', 1.2);
             b.dizzyUntil = time + 1.8;
           }
         }
@@ -555,7 +584,7 @@
       m.lastActivity = s.activity;
       const context = s.tokens ? s.tokens.context : 0;
       if (m.lastContext > 40000 && context < m.lastContext * 0.6) {
-        m.say([{ text: '\u{1F62E}\u{200D}\u{1F4A8}', size: 30 }], 2);
+        quip(m, '\u{1F62E}\u{200D}\u{1F4A8}', 2, 30);
         if (m.body.onFloor()) m.hop(0, -380);
       }
       m.lastContext = context;
@@ -613,7 +642,7 @@
 
   // The shots script (scripts/shots) opens the window with ?debug to look
   // inside while it plays a scene.
-  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, now: () => time, sys };
+  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, now: () => time, sys, spoken };
   const petSize = () => 34 * CFG.size;
 
   function syncPets(sessions) {
@@ -1293,7 +1322,7 @@
       a: 0, va: (Math.random() - 0.5) * 24,
       r: r * CFG.faceScale, held: null, since: time,
     };
-    b.say('My glasses!', 1.6);
+    quipBack(b, 'My glasses!', 1.6);
   }
 
   const glassesBox = (g) => ({ hw: g.r * 0.62, hh: g.r * 0.2 });
@@ -1544,7 +1573,7 @@
       if (Math.random() < 0.45 * CFG.raspberry) {
         b.raspUntil = time + 1.1;
         b.nextRasp = time + 8 + Math.random() * 8;
-        quip(b, 'pbbbt!', 1.4);
+        quipBack(b, 'pbbbt!', 1.4);
       }
     }
     if (time < (b.raspUntil || 0)) {
@@ -1568,7 +1597,6 @@
   // Two calm slimes sitting together now and then have a little chat: they
   // look at each other and take turns, the one talking bobbing and leaning
   // in, the other leaning in a little to listen.
-  const CHATTER = ['…', '!', '?', '♪', 'hm', 'ooh', 'haha', 'mhm', 'ya', 'heh'];
   function chat(b, r, c) {
     if (CFG.socialize <= 0) return false;
     const ch = b.chat;
@@ -1581,9 +1609,6 @@
       b.body.lean(side * (speaker ? 14 : 6) * k, DT);
       b.body.impulse(-b.body.velocity(DT).x * 0.15, 0, DT); // feet planted
       if (speaker) b.body.squashTop(Math.sin((time - ch.from) * 14) * 18 * k, DT);
-      // Now and then a word of it floats up.
-      const turn = Math.floor((time - ch.from) / ch.turn);
-      if (speaker && b.chatTurn !== turn) { b.chatTurn = turn; if (Math.random() < 0.4) quip(b, CHATTER[Math.floor(Math.random() * CHATTER.length)], ch.turn * 0.9); }
       b.glanceAt = o;
       b.glanceUntil = time + 0.2;
       return true;
@@ -1694,7 +1719,7 @@
     u.popped = true;
     pops.push({ x: u.x, y: u.y, r: u.r, born: time, color: u.owner.color });
     const o = u.owner;
-    if (by && !o.dying) { o.happyUntil = time + 1.4; if (Math.random() < 0.5) quip(o, by === 'you' ? 'hehe' : 'pop!', 1); }
+    if (by && !o.dying) { o.happyUntil = time + 1.4; if (Math.random() < 0.5) { if (by === 'you') quipBack(o, 'hehe', 1); else quip(o, 'pop!', 1); } }
     if (by && by !== 'you' && !by.dying) by.happyUntil = time + 1.4;
   }
   function stepBubbles() {
@@ -2557,7 +2582,7 @@
         sw.length = 0;
         b.wheeUntil = time + 1.6 * Math.min(1.5, CFG.swing);
         feel(b, 0.05);
-        if (time > (b.nextWhee || 0)) { quip(b, 'wheee!', 1.2); b.nextWhee = time + 6; }
+        if (time > (b.nextWhee || 0)) { quipBack(b, 'wheee!', 1.2); b.nextWhee = time + 6; }
       }
     }
     b.stillFor = Math.hypot(g.vx, g.vy) < 90 ? (b.stillFor || 0) + DT : 0;
@@ -2626,7 +2651,7 @@
         body.impulse(v.x * 0.15 * kk, 0, DT);
         body.squashTop(r * 4 * kk, DT);
         b.bumpedAt = f.bumpedAt = time; // (no glare, no stars: it meant to)
-        quip(b, Math.random() < 0.5 ? 'got you!' : 'caught!', 1.1);
+        quipBack(b, Math.random() < 0.5 ? 'got you!' : 'caught!', 1.1);
         b.cheerUntil = time + 1.4; f.happyUntil = time + 1.6; f.dizzyUntil = 0;
         hearts.push({ x: (c.x + fc.x) / 2, y: Math.min(body.bbox().minY, f.body.bbox().minY) - 8, vx: 0, born: time, size: 12 });
         f.giggleAt = time + 0.8;
@@ -2660,7 +2685,7 @@
     o.dizzyUntil = Math.max(o.dizzyUntil || 0, time + 0.8);
     if (f.pins.size === 2) {
       f.cheerUntil = time + 1.8;
-      quip(f, 'strike!', 1.3);
+      quipBack(f, 'strike!', 1.3);
       hearts.push({ x: f.body.centroid().x, y: f.body.bbox().minY - 8, vx: 0, born: time, size: 13 });
     }
   }
@@ -2743,7 +2768,7 @@
         b.body.squashTop(Math.min(900, fall * 0.35) * Math.min(1.5, CFG.trampoline), DT);
         on.bounceAt = time + 0.08; on.bounceV = Math.min(1500, fall) * 1.0 * Math.min(1.5, CFG.trampoline);
         b.surpriseUntil = time + 0.6; on.cheerUntil = time + 1.2;
-        quip(on, 'boing!', 1);
+        quipBack(on, 'boing!', 1);
       }
       return;
     }
@@ -3915,7 +3940,7 @@
       p.rideOn = b; p.rideAt = time;
       p.va = Math.sign(p.vx || 1) * 3;
       p.nextHop = time + 2.5;
-      quip(b, 'got it!', 1.2);
+      quipBack(b, 'got it!', 1.2);
       hearts.push({ x: c.x, y: box.minY - 10, vx: 0, born: time, size: 10 });
       return;
     }
@@ -3995,7 +4020,7 @@
       t.landed = time;
       b.body.o.upright = CFG.upright;
       b.body.spin(-b.body.angularVelocity(DT) * 0.6, DT); // (the floor grabs it)
-      if (t.turned > Math.PI * 4) { b.dizzyUntil = Math.max(b.dizzyUntil, time + 2); quip(b, 'whoa…', 1.2); }
+      if (t.turned > Math.PI * 4) { b.dizzyUntil = Math.max(b.dizzyUntil, time + 2); quipBack(b, 'whoa…', 1.2); }
     }
     // Landed upside down or on its side: after a moment it flops back over.
     if (t.landed && !t.flop && time - t.landed > 0.7 && Math.abs(b.body.angle) > 0.5 && b.body.onFloor()) {
@@ -4152,7 +4177,7 @@
       }
       return;
     }
-    if (b.giggleAt && time > b.giggleAt) { b.giggleAt = 0; quip(b, 'hehe', 1); b.cheerUntil = time + 1; }
+    if (b.giggleAt && time > b.giggleAt) { b.giggleAt = 0; quipBack(b, 'hehe', 1); b.cheerUntil = time + 1; }
     if (CFG.balloon <= 0 || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || b.merging || b.dying || !body.onFloor() || b.pendingHop || b.stackedBy || b.shape || b.tower || b.frog || b.tag || b.parade || b.trick || b.keepy || b.roll || b.measure || b.rope || b.seek || b.pile || b.tot || b.skate || b.comforting || (b.mood || 0) < 0 || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
     if (time < (b.nextBalloon ?? (b.nextBalloon = time + (300 + Math.random() * 600) / CFG.balloon))) return;
     b.nextBalloon = time + (600 + Math.random() * 900) / CFG.balloon;
@@ -4259,7 +4284,7 @@
     if (Math.abs(ci.a) > CFG.circleDizzy * Math.PI * 2) {
       ci.a = 0;
       b.dizzyUntil = time + 2.2;
-      quip(b, 'whoa…', 1.4);
+      quipBack(b, 'whoa…', 1.4);
     }
   }
 
@@ -4339,11 +4364,9 @@
       if (free) b.hop(0, -520);
       const c = b.body.centroid();
       for (let i = 0; i < 3; i++) pops.push({ x: c.x + (i - 1) * 16, y: c.y - b.body.o.radius * 1.1, r: 8 + i * 4, born: time + i * 0.07, color: '#7bd88f', life: 0.5 });
-      quip(b, 'plan done!', 1.8);
       if (CFG.shapes > 0 && !b.shape) { b.shape = { at: time + 0.7, kind: 'star', quiet: true, hold: 2.6 }; b.cheerUntil = time + 3.2; } // (and it's a star for a moment)
     } else {
       if (free) b.hop(0, -300);
-      quip(b, `${pr.done}/${pr.total} \u2713`, 1.2, 15);
     }
   }
   function drawBeads(b) {
@@ -4648,11 +4671,14 @@
   let showingOff = false;
 
   // A little exclamation ("boo!", "hic!") in a balloon, unless it's
-  // already showing something that matters more.
-  function quip(b, text, seconds, size) {
+  // already showing something that matters more, and only now and then (see
+  // mayTalk): most go unsaid. A reaction is one to you playing with it.
+  function quip(b, text, seconds, size, kind = 'flavour') {
     if (b.bubble && b.bubble.until - time > 0.3) return;
-    b.say([size ? { text, size } : { text }], seconds, false, false);
+    if (!mayTalk(kind)) return;
+    b.say([size ? { text, size } : { text }], seconds);
   }
+  function quipBack(b, text, seconds) { quip(b, text, seconds, 0, 'react'); }
 
   function pounce(b) {
     if (time < (b.pounceUntil || 0)) {
@@ -5315,10 +5341,10 @@
     if (pet.flips.length < 3) return;
     target.pettedUntil = time + 1.2;
     // Tickled: it giggles (a slime, not a pet), now and then.
-    if (target.body && !target.speech && time > (target.nextGiggle || 0)) {
+    if (target.body && !target.speech && time > (target.nextGiggle || 0) && mayTalk('react')) {
       target.nextGiggle = time + 1.4 + Math.random();
       target.giggles = (target.giggles || 0) + 1;
-      speak(target, GIGGLES[Math.floor(Math.random() * GIGGLES.length)], { higher: 1.25, pace: 0.55 });
+      speak(target, GIGGLES[Math.floor(Math.random() * GIGGLES.length)], { higher: 1.25, pace: 0.55, minor: true });
     }
     if (time > (target.nextHeart || 0)) {
       target.nextHeart = time + 0.28;
@@ -5665,7 +5691,7 @@
     b.body.squashTop(d * CFG.scrollSquish * r * 4, DT);
     b.squished = Math.min(3, (time - (b.squishedAt || -9) < 0.6 ? b.squished || 0 : 0) + Math.abs(d) * 0.15);
     b.squishedAt = time;
-    if (b.squished > 1.2) { b.happyUntil = time + 1; b.squished = 0; if (Math.random() < 0.3) quip(b, 'hehe', 1.2); }
+    if (b.squished > 1.2) { b.happyUntil = time + 1; b.squished = 0; if (Math.random() < 0.3) quipBack(b, 'hehe', 1.2); }
   }, { passive: true });
   window.addEventListener('contextmenu', (e) => {
     e.preventDefault();
@@ -5700,20 +5726,21 @@
         const first = [...buddies.values()].find((b) => b.kind === 'home') || [...buddies.values()].find((b) => b.kind === 'mother');
         if (!first) return;
         first.say(settings.noClaude ? [{ text: 'I can’t find Claude Code. Right-click me to install it' }]
-          : [{ text: 'Right-click me to connect Claude Code' }, { text: 'so I can tell what your sessions are up to', dim: true }], 9);
+          : [{ text: 'Right-click me to connect Claude Code' }, { text: 'so I can tell what your sessions are up to', dim: true }], 9, false, true);
       }, 2500);
     }
   });
 
   api.onConfig(applyConfig);
-  // You told it something: a nod and a thumbs up.
+  // You told it something: a nod (and now and then a thumbs up; the nod
+  // says it already).
   if (api.onNod) api.onNod((id) => {
     const b = buddies.get(id);
     if (!b) return;
     b.nodAt = time;
-    b.nodQuiet = false; // the 👍 nod has its own bubble
+    b.nodQuiet = false; // (no thinking sign over it)
     if (b.body.onFloor()) b.body.impulse(0, 260, DT);
-    b.say([{ text: '👍', size: 30 }], 1.6);
+    quip(b, '👍', 1.6, 30, 'react');
   });
   if (api.onReact) api.onReact((m) => {
     const b = buddies.get(m.id);
@@ -5726,13 +5753,12 @@
     // often), a proper one with a cheer when the list is done.
     if (m.kind === 'tick' && once('tick', 8)) {
       if (grounded) b.hop(0, -220);
-      if (talkingTo !== m.id) b.say([{ text: `✓ ${m.done} of ${m.of}` }], 1.6);
       return;
     }
     if (m.kind === 'listdone' && once('listdone', 20)) {
       b.cheerUntil = time + 1.2;
       if (grounded) b.hop(0, -360);
-      if (talkingTo !== m.id) b.say([{ text: m.of > 1 ? `All ${m.of} done!` : 'Done!' }], 2);
+      if (talkingTo !== m.id) quip(b, m.of > 1 ? `All ${m.of} done!` : 'Done!', 2);
       return;
     }
     // Stop: it digs in and squashes down, like braking.
@@ -5744,7 +5770,7 @@
     if (m.kind === 'push' && once('push', 30)) {
       // Sent off: a little hop and a word.
       if (grounded) b.hop(0, -380);
-      b.say([{ text: 'Pushed!' }], 2);
+      quip(b, 'Pushed!', 2);
       return;
     }
     // Tests only get a reaction when the result changes (fixed, or broken),
@@ -5760,7 +5786,7 @@
         if (!was) return; // the first green run isn't news
         b.cheerUntil = time + 1.2;
         if (grounded) b.hop(0, -320);
-        b.say([{ text: 'Tests pass!' }], 2);
+        quip(b, 'Tests pass!', 2);
       } else {
         b.winceUntil = time + 0.8;
         b.droopUntil = time + 2.5;
@@ -5779,12 +5805,12 @@
         b.happyUntil = time + 2.5;
         const top = b.body.bbox().minY, c = b.body.centroid();
         for (let i = 0; i < 2; i++) hearts.push({ x: c.x + (i ? 12 : -12), y: top - 6, vx: (i ? 30 : -30), born: time + i * 0.15, size: 10 });
-        b.say([{ text: pick(['aw, thanks!', 'hehe', 'anytime!']) }], 1.8);
+        quipBack(b, pick(['aw, thanks!', 'hehe', 'anytime!']), 1.8);
       } else {
         b.sheepishUntil = time + 2.5;
         b.droopUntil = time + 2.5;
         if (grounded) b.body.impulse(0, 120 * Math.min(1.5, CFG.feelings), DT);
-        b.say([{ text: pick(['sorry…', 'oops…', 'on it…']) }], 1.8);
+        quipBack(b, pick(['sorry…', 'oops…', 'on it…']), 1.8);
       }
       return;
     }
@@ -5793,7 +5819,7 @@
     b.winceUntil = time + 0.7;
     b.droopUntil = time + 1.8;
     if (b.body.onFloor() && !b.body.grab) b.body.impulse((Math.random() - 0.5) * 120, 120, DT);
-    if (m.count > 1) b.say([{ text: 'oops' }], 1.8);
+    if (m.count > 1) quip(b, 'oops', 1.8);
   });
   // You're typing to it: it listens, with a little "mm-hm" bob now and then.
   if (api.onTyping) api.onTyping((id) => {
@@ -5820,7 +5846,7 @@
     // the reply itself. Whichever comes first is said; the other would
     // only cut it off and start again.
     const turnLine = (text) => {
-      if (b.speech && time - (b.turnSaidAt ?? -99) < 2) return;
+      if (time - (b.turnSaidAt ?? -99) < 2) return;
       b.turnSaidAt = time;
       speak(b, text);
     };
@@ -5830,8 +5856,7 @@
     // moments (done, needs you) are said out loud, bubble or not.
     if (m.status) {
       b.status = { text: m.text, at: time, state: b.state };
-      if (m.aloud && m.soft) speak(b, m.text, { softer: 0.55 });
-      else if (m.aloud) turnLine(m.text);
+      if (m.aloud) turnLine(m.text);
       if (CFG.statusBubbles !== 'Always') return;
     }
     b.say(m.text, m.seconds || 4, false, false);
