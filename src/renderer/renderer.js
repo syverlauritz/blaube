@@ -5526,15 +5526,20 @@
 
   function frame() {
     const now = performance.now() / 1000;
-    const fdt = Math.max(0.004, now - last);
     acc += Math.min(0.05, now - last);
     last = now;
     // How fast the cursor is going (a jump onto the screen doesn't count).
-    const mdx = mouse.x - mouse.px, mdy = mouse.y - mouse.py;
-    const jump = Math.abs(mdx) > 1500 || Math.abs(mdy) > 1500;
-    mouse.vx += ((jump ? 0 : mdx / fdt) - mouse.vx) * 0.5;
-    mouse.vy += ((jump ? 0 : mdy / fdt) - mouse.vy) * 0.5;
-    mouse.px = mouse.x; mouse.py = mouse.y;
+    // Worked out when it has moved (or has been still a moment), over the
+    // time since the last time: the cursor is reported about 60 times a
+    // second, so per refresh of a faster screen it would read as still,
+    // then twice as fast.
+    const mdx = mouse.x - mouse.px, mdy = mouse.y - mouse.py, since = now - (mouse.vAt ?? now - 1 / 60);
+    if (mdx || mdy || since > 0.05) {
+      const jump = Math.abs(mdx) > 1500 || Math.abs(mdy) > 1500, mdt = Math.max(0.004, Math.min(0.1, since));
+      mouse.vx += ((jump ? 0 : mdx / mdt) - mouse.vx) * 0.5;
+      mouse.vy += ((jump ? 0 : mdy / mdt) - mouse.vy) * 0.5;
+      mouse.px = mouse.x; mouse.py = mouse.y; mouse.vAt = now;
+    }
     // What the slimes get up to runs with the physics, a fixed 120 times a
     // second: its pushes (impulses, leans, squashes) are each one step's
     // worth, so once per screen refresh they were twice as strong on a
