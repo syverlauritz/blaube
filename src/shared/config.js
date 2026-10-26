@@ -150,6 +150,7 @@
       ['petNap', 1, 0, 1, 1, 'Its slime fast asleep, a task pet climbs onto its head to nap there too'],
       ['bubbles', 1, 0, 2, 0.05, 'A bored slime now and then blows a goo bubble; touch it with the cursor to pop it'],
       ['quirks', 1, 0, 10, 0.1, 'Rare little quirks, like a fit of hiccups (how often)'],
+      ['sneezeGust', 1, 0, 1.5, 0.05, 'A sneeze at a slime beside it blows that one back a step ("bless you!" or "eww!")'],
       ['sleepSlump', 0.1, 0, 0.3, 0.01, 'Slumps while dozing (and stretches on waking)'],
       ['nightSleepy', 1, 0, 2, 0.05, 'Sleepier late at night (doze sooner, more yawns)'],
       ['huddle', 1, 0, 2, 0.05, 'Dozing off, a slime shuffles over to curl up beside a neighbour'],

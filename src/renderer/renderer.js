@@ -1407,11 +1407,32 @@
     fume(b);
     // A sneeze: it breathes in (stretching up), then "achoo!", which knocks
     // everything off its head and rocks it back.
+    if (b.blownAt && time - b.blownAt > 0.7) {
+      // Blown back by a neighbour's sneeze: "bless you!", or "eww!".
+      const by = b.blownBy;
+      b.blownAt = 0;
+      if (Math.random() < 0.5) { quip(b, 'bless you!', 1.1); b.happyUntil = time + 1; }
+      else { quip(b, 'eww!', 1); if (by && !by.dying) { b.annoyedAt = by; b.annoyedUntil = time + 1.2; } }
+      if (by && !by.dying) { b.glanceAt = by; b.glanceUntil = time + 1.2; }
+    }
     if (b.sneeze) {
       const r = body.o.radius;
       if (time < b.sneeze.at) { if (body.onFloor()) body.squashTop(-r * 0.12 * 60 * DT * 60 * DT, DT); }
       else {
-        const dir = (Math.random() < 0.5 ? -1 : 1);
+        // At whoever's beside it, if anyone is: the blast rocks it back the
+        // other way and blows them back a step, leaves and all.
+        const c = body.centroid();
+        const near = [...buddies.values()].find((o) => o !== b && !o.dying && !o.body.grab && o.kind !== 'home' && Math.abs(o.body.centroid().y - c.y) < r * 1.5 && Math.abs(o.body.centroid().x - c.x) < r + o.body.o.radius * 3.5);
+        const dir = near ? -Math.sign(near.body.centroid().x - c.x) || 1 : (Math.random() < 0.5 ? -1 : 1);
+        if (near && CFG.sneezeGust > 0) {
+          const k = Math.min(1.5, CFG.sneezeGust), or = near.body.o.radius;
+          near.body.impulse(-dir * 220 * k, -90 * k, DT);
+          near.body.lean(-dir * or * 6 * k, DT);
+          near.surpriseUntil = time + 0.6; near.nextBlink = time;
+          near.blownAt = time; near.blownBy = b;
+          for (const f of flakes) if (f.on && f.on.b === near) { f.on = null; f.vx = -dir * (200 + Math.random() * 150); f.vy = -100 - Math.random() * 80; f.loose = time + 1.5; }
+        }
+        for (const f of flakes) if (CFG.sneezeGust > 0 && f.landed && !f.on && Math.abs(f.x - c.x) < r * 4 && Math.sign(f.x - c.x) === -dir) { f.landed = 0; f.vx = -dir * (180 + Math.random() * 200); f.vy = -150 - Math.random() * 150; f.loose = time + 1.5; }
         body.squashTop(r * 9, DT);
         body.lean(dir * r * 3, DT);
         body.impulse(-dir * 40, 0, DT);
