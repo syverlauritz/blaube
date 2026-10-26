@@ -454,6 +454,18 @@
     return t && t.limit ? Math.min(1, t.context / t.limit) : 0;
   }
 
+  // Its context nearly full: it says so, once (again only after it's been
+  // compacted down), so you know to wrap up or compact.
+  function warnFull(b) {
+    if (b.kind !== 'mother' || CFG.fullWarning <= 0) return;
+    const f = contextFill(b);
+    if (f < 0.5) b.warnedFull = false;
+    if (b.warnedFull || f < CFG.fullWarning) return;
+    b.warnedFull = true;
+    b.say([{ text: `Context ${Math.round(f * 100)}% full` }, { text: 'Time to wrap up, or compact it', size: 12 }], 5, false, false);
+    if (b.body.onFloor() && !b.body.grab) b.body.squashTop(-b.body.o.radius * 6, DT);
+  }
+
   // 0..1 between two thresholds.
   const ramp = (v, from, to) => Math.max(0, Math.min(1, (v - from) / Math.max(0.001, to - from)));
 
@@ -954,6 +966,7 @@
       // A fuller context puffs the slime up tight; in pain it pants.
       b.fill = (b.fill || 0) + (contextFill(b) - (b.fill || 0)) * 0.01;
       b.pain = ramp(b.fill, CFG.painAt, 1);
+      warnFull(b);
       b.breathPhase += DT * b.breathRate * 1.5 * b.pain;
       breatheTogether(b);
       // A setback (a failed tool or test) lets some air out for a moment.
