@@ -4454,8 +4454,8 @@
   function leafPile(b) {
     if (CFG.play <= 0 || b.kind === 'child' || b.dying || !flakes.length) return;
     const ok = (b.state === 'idle' || b.state === 'done') && !b.body.grab && b.body.onFloor() && !b.tag && !b.prank && !b.trick && !b.blow && !b.nibbling && (b.sleep || 0) < 0.1 && idleFor() < 60;
-    if (!ok || time < (b.nextPile ?? (b.nextPile = time + (90 + Math.random() * 200) / CFG.play))) return;
-    b.nextPile = time + (180 + Math.random() * 360) / CFG.play;
+    if (!ok || time < (b.nextLeafPile ?? (b.nextLeafPile = time + (90 + Math.random() * 200) / CFG.play))) return;
+    b.nextLeafPile = time + (180 + Math.random() * 360) / CFG.play;
     const c = b.body.centroid(), r = b.body.o.radius, bot = b.body.bbox().maxY;
     const ground = flakes.filter((f) => f.landed && !f.on && !f.ledge && !f.eaten && Math.abs(f.y - bot) < 24 && Math.abs(f.x - c.x) > r * 1.2 && Math.abs(f.x - c.x) < r * 7);
     let best = null, most = 3;
@@ -4586,12 +4586,12 @@
 
   // Fond of you (petted lately): it tags along after your cursor for a bit.
   function tagAlong(b) {
-    if ((b.mood || 0) < 0.75 || b.kind === 'child' || b.body.grab || !b.body.onFloor() || b.pendingHop || time < (b.nextTag || 0)) return;
+    if ((b.mood || 0) < 0.75 || b.kind === 'child' || b.body.grab || !b.body.onFloor() || b.pendingHop || time < (b.nextTagAlong || 0)) return;
     if (b.state !== 'idle' && b.state !== 'done') return;
     if (performance.now() / 1000 - mouse.lastMove > 3 || mouse.x < 0 || mouse.x > W) return;
     const c = b.body.centroid(), r = b.body.o.radius, dx = mouse.x - c.x;
     if (Math.abs(dx) < r * 3) return;
-    b.nextTag = time + 1.2 + Math.random() * 1.5;
+    b.nextTagAlong = time + 1.2 + Math.random() * 1.5;
     b.happyUntil = time + 1;
     b.hop(Math.sign(dx) * Math.min(480, (Math.abs(dx) - r * 2) * 1.2), -330);
   }
