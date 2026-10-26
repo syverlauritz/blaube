@@ -804,7 +804,7 @@
       const sway = p.happy ? Math.sin((time - p.heartAt) * 1.8) * 0.13 * Math.min(1, (time - p.heartAt) * 2) : 0;
       D.drawPet(ctx, {
         x: p.x, y: p.y, size: petSize() * grow, angle: p.angle, sway, color, lx, ly,
-        blink: time > p.nextBlink - 0.13 || (!!p.owner && (p.owner.sleep || 0) > 0.6), happy: p.happy || time < (p.pettedUntil || 0), heart: p.heartAt >= 0 ? time - p.heartAt : Infinity,
+        blink: time > p.nextBlink - 0.13 || (!!p.owner && (p.owner.sleep || 0) > 0.6), happy: p.happy || time < (p.pettedUntil || 0) || time < (p.playUntil || 0), heart: p.heartAt >= 0 ? time - p.heartAt : Infinity,
       }, floorAt(p.x), CFG.shadow);
     }
   }
@@ -2616,6 +2616,25 @@
     if (f) b.nibbling = { f, at: time };
   }
 
+  // Bored, it plays with its task pet: a lean and a shove, and the pet
+  // tumbles off and scampers back, pleased.
+  function nudgePet(b) {
+    if (CFG.play <= 0 || b.kind === 'child' || b.dying) return;
+    const ok = (b.state === 'idle' || b.state === 'done') && !b.body.grab && b.body.onFloor() && !b.tag && !b.prank && !b.trick && !b.blow && !b.nibbling && (b.sleep || 0) < 0.1 && idleFor() < 60;
+    if (!ok || time < (b.nextNudge ?? (b.nextNudge = time + (60 + Math.random() * 120) / CFG.play))) return;
+    b.nextNudge = time + (120 + Math.random() * 240) / CFG.play;
+    const c = b.body.centroid(), r = b.body.o.radius, PET = petSize(), bot = b.body.bbox().maxY;
+    const p = [...pets.values()].find((p) => p.owner === b && !p.dying && !p.held && Math.abs(p.x - c.x) < r + PET * 1.5 && Math.abs(p.y + PET / 2 - bot) < 12);
+    if (!p) return;
+    const dir = Math.sign(p.x - c.x) || 1, k = Math.min(1.5, CFG.play);
+    b.body.lean(dir * r * 4, DT);
+    b.body.pushAt(c.x + dir * r * 0.8, c.y + r * 0.3, dir * 160, 0, r * 0.4, DT);
+    p.vx = dir * (260 + Math.random() * 120) * k; p.vy = -(220 + Math.random() * 80) * k; p.va = dir * (6 + Math.random() * 4);
+    p.playUntil = time + 2;
+    b.happyUntil = time + 1.5;
+    b.glanceAt = { spot: p }; b.glanceUntil = time + 1.8;
+  }
+
   // On the floor, or sitting still on something (another slime, say).
   const resting = (o) => o.body.onFloor() || (!o.body.grab && Math.hypot(o.body.velocity(DT).x, o.body.velocity(DT).y) < 40);
 
@@ -2839,6 +2858,7 @@
     blow(b);
     welcome(b);
     nibble(b);
+    nudgePet(b);
     hiccup(b);
     // Hanging over the edge of a window: it clings and shuffles back on.
     const l = b.body.onLedge;
