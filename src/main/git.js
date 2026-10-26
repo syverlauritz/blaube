@@ -333,6 +333,30 @@ function unpark(cwd, branch, cb) {
     });
   });
 }
+// What's new upstream, fetched quietly (`git fetch`), so "N behind" and
+// Pull show without you fetching: never asking for a password, at most
+// every few minutes per repository. `asked`: you opened its box (any
+// remote); otherwise only an https one, so an ssh key's agent never pops
+// up a prompt out of nowhere. cb(whether it fetched).
+const fetched = new Map(); // root -> when
+const remotes = new Map(); // root -> its remote's address
+function fetchQuietly(root, cb, { asked = false, every = asked ? 2 * 60e3 : 10 * 60e3, now = Date.now(), byItself = /^https:\/\//i } = {}) {
+  if (!root || (fetched.has(root) && now - fetched.get(root) < every)) return cb(false);
+  const known = remotes.get(root);
+  if (known != null && !asked && !byItself.test(known)) return cb(false); // (no git asked for it)
+  execFile('git', ['ls-remote', '--get-url'], { cwd: root, timeout: 3000, windowsHide: true }, (e1, url) => {
+    url = e1 ? '' : String(url || '').trim();
+    remotes.set(root, url);
+    if (!url || (!asked && !byItself.test(url))) return cb(false);
+    fetched.set(root, now);
+    const env = Object.assign({}, process.env, { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', GIT_ASKPASS: '', SSH_ASKPASS: '' });
+    execFile('git', ['fetch', '--quiet', '--no-tags', '--no-recurse-submodules', '--no-write-fetch-head'], { cwd: root, env, timeout: 30000, windowsHide: true }, (err) => {
+      for (const [cwd, r] of roots) if (r === root) cache.delete(cwd);
+      cache.delete(root);
+      cb(!err);
+    });
+  });
+}
 const gitSaid = (errOut) => (String(errOut || '').split('\n').find((l) => /^(fatal|error):/.test(l)) || '').replace(/^(fatal|error):\s*/, '');
 
-module.exports = { park, parked, unpark, canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };
+module.exports = { fetchQuietly, park, parked, unpark, canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };

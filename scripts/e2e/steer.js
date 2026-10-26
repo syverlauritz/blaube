@@ -671,6 +671,17 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	// Finished a while ago, its changes not committed: its slime says so, once.
 	await page(`window.blaube.talk(${JSON.stringify(ID2)}, { x: 300, y: 600, r: 60 })`);
 	await until(() => talkId() === ID2);
+	// Someone pushed to its branch meanwhile: fetched by itself, its slime says so (Pull is its to tap).
+	const cur = execFileSync('git', ['branch', '--show-current'], { cwd: repo }).toString().trim(), other = repo + '-other';
+	execFileSync('git', ['push', '-q', '-u', 'origin', cur], { cwd: repo });
+	execFileSync('git', ['clone', '-q', '-b', cur, bare, other]);
+	execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'from a teammate'], { cwd: other });
+	execFileSync('git', ['push', '-q'], { cwd: other });
+	global.__blaubeFetchAll = true;
+	check(await until(() => (global.__blaubeFetchNews || {}).id === ID3 && global.__blaubeFetchNews.text === `1 new commit on ${cur} to pull`, 10000), `what’s new upstream is fetched by itself, and its slime says so (${JSON.stringify(global.__blaubeFetchNews)})`);
+	check(await until(() => { const o = ((global.__blaubeState || {}).sessions || []).find((x) => x.id === ID3); return !!o && /1 behind/.test(o.info.branch); }), 'and hovering it says how far behind');
+	global.__blaubeFetchAll = false;
+	execFileSync('git', ['merge', '-q', '--ff-only', '@{u}'], { cwd: repo });
 	global.__blaubeNudgeAfter = 0;
 	check(await until(() => (global.__blaubeNudged || {}).id === ID3 && /^\d+ files? changed, not committed yet$/.test(global.__blaubeNudged.text), 10000), `a while after it finished with changes uncommitted, its slime says so (${(global.__blaubeNudged || {}).text})`);
 	global.__blaubeNudged = null;

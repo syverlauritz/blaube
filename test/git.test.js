@@ -402,3 +402,26 @@ test('which branches have changes set aside', async () => {
     assert.deepEqual(await new Promise((r) => parked(dir, r)), ['main'], 'yours aren’t counted');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('what’s new upstream, fetched quietly: behind shows without you fetching', async () => {
+  const { fetchQuietly, status } = require('../src/main/git');
+  const top = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-fetch-'));
+  const env = Object.assign({}, process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
+  const g = (cwd, ...a) => execFileSync('git', a, { cwd, env }).toString().trim();
+  const mine = path.join(top, 'mine'), theirs = path.join(top, 'theirs'), hub = path.join(top, 'hub.git');
+  const fetch = (o) => new Promise((r) => fetchQuietly(mine, r, o));
+  try {
+    g(top, 'init', '-q', '--bare', '-b', 'main', hub);
+    g(top, 'clone', '-q', hub, theirs);
+    fs.writeFileSync(path.join(theirs, 'a.txt'), '1\n'); g(theirs, 'add', '.'); g(theirs, 'commit', '-qm', 'base'); g(theirs, 'push', '-q', 'origin', 'HEAD:main');
+    g(top, 'clone', '-q', hub, mine);
+    fs.writeFileSync(path.join(theirs, 'a.txt'), '2\n'); g(theirs, 'commit', '-qam', 'theirs'); g(theirs, 'push', '-q');
+    assert.equal(await fetch({ now: 1 }), false, 'not by itself: a local (not https) remote');
+    assert.equal(await fetch({ asked: true, now: 1 }), true, 'you opened its box');
+    assert.equal(await fetch({ asked: true, now: 60e3 }), false, 'once every few minutes');
+    const st = await new Promise((r) => status(mine, r));
+    assert.equal(st.behind, 1);
+    assert.equal(await fetch({ asked: true, now: 3 * 60e3 }), true);
+    assert.equal(await new Promise((r) => fetchQuietly('', r)), false);
+  } finally { fs.rmSync(top, { recursive: true, force: true }); }
+});

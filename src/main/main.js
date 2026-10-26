@@ -358,6 +358,7 @@ function openTalk(id, at) {
   talkId = id;
   talkTail = null;
   openTalkFor(id, at);
+  fetchFor(id, true);
 }
 
 // The talk box's window: made once, ahead of time (so the first click
@@ -542,6 +543,27 @@ const reminded = new Map(); // session id -> { since, told }: reminders it's had
 const nudged = new Map(); // session id -> the uncommitted changes its slime last mentioned
 const discarded = new Map(); // session id -> { root, rel }: the file whose changes you last discarded in its box
 const prStates = new Map(); // session id -> its branch's pull request, as gh last said (or null)
+// What's new upstream (git.fetchQuietly): when its box opens, and now and
+// then by itself (https remotes only); when that leaves its branch behind,
+// its slime says so, and Pull is among its quick actions.
+function fetchFor(id, asked) {
+  const s = tracker.sessions.get(id), st = gitStates.get(id);
+  if (!s || !s.cwd || id.startsWith('demo-') || !st || !st.upstream || s.state === 'working') return;
+  git.fetchQuietly(st.root || s.cwd, (did) => {
+    if (!did) return;
+    git.status(s.cwd, (now) => {
+      if (!now) return;
+      const line = gitLine(id);
+      gitStates.set(id, now);
+      if (gitLine(id) !== line) pushState();
+      if (id === talkId) pushTalk(id);
+      if (asked || !(now.behind > st.behind) || now.branch !== st.branch || !win || (talkWin && talkWin.isVisible() && talkId === id)) return;
+      const text = `${now.behind} new commit${now.behind === 1 ? '' : 's'} on ${now.branch} to pull`;
+      win.webContents.send('say', { id, text, seconds: 5, status: true });
+      if (TEST) global.__blaubeFetchNews = { id, text };
+    });
+  }, TEST ? { asked, every: 500, byItself: global.__blaubeFetchAll ? /./ : undefined } : { asked });
+}
 // Its git line: the branch and what's changed, and how its pull request stands.
 const gitLine = (id) => [gitStates.has(id) ? git.summary(gitStates.get(id)) : '', pulls.words(prStates.get(id))].filter(Boolean).join(' · ');
 
@@ -1888,6 +1910,7 @@ app.whenReady().then(async () => {
           win.webContents.send('say', { id: o.id, text: left.text, seconds: 5, status: true });
           if (TEST) global.__blaubeNudged = { id: o.id, text: left.text };
         }
+        fetchFor(o.id, false);
         if (!bin || !st.branch) return;
         pulls.look(o.cwd, st.branch, (now) => {
           const was = prStates.get(o.id);
