@@ -1463,6 +1463,25 @@
       if (mouse.y - top > r * 0.1) body.squashTop(-CFG.headPat * r * 0.6 * 60 * DT, DT);
       if (time - b.patSince > 1.5 && !b.patHeart) { b.patHeart = true; hearts.push({ x: c.x, y: top - 6, vx: 0, born: time, size: 10 }); }
     } else { b.patSince = 0; b.patHeart = false; }
+    // The cursor held still just out of reach above its head: it stretches
+    // up on tiptoe toward it, eyes on it, and leans under it. If it still
+    // can't reach after a moment it gives a little hop up to boop it (and a
+    // heart if it does; see pounce). Reaching it, it's a head pat.
+    const calmNow = (b.state === 'idle' || b.state === 'done') && b.kind !== 'home' && !b.stackedBy && (b.mood || 0) > -0.3;
+    const gap = body.bbox().minY - mouse.y;
+    if (CFG.reach > 0 && calmNow && !drag && !b.patted && Math.abs(dx) < r * 0.7 && gap > 0 && gap < r * 1.3 && performance.now() / 1000 - mouse.lastMove > 0.6 && time > (b.nextReach || 0)) {
+      if (!b.reachSince) b.reachSince = time;
+      const t = time - b.reachSince, k = CFG.reach;
+      body.squashTop(-k * r * Math.min(1, t / 0.5) * 0.9 * 60 * DT, DT);
+      body.lean(Math.max(-1, Math.min(1, dx / r)) * k * r * 2 * DT, DT);
+      if (t > 2.2 && !b.pendingHop) {
+        b.reachSince = 0;
+        b.nextReach = time + 4;
+        b.hop(dx * 3, -Math.sqrt(2 * CFG.gravity * (gap + r * 0.6)) * 1.05);
+        b.pounceUntil = time + 0.9;
+        b.caught = false;
+      }
+    } else b.reachSince = 0;
     // The cursor resting right on its face: it goes shy, blushing and looking
     // away, peeking back now and then; keep it up and it giggles and squirms.
     const staring = CFG.shy > 0 && !drag && !b.patted && body.contains(mouse.x, mouse.y) && performance.now() / 1000 - mouse.lastMove > 0.8;
@@ -4057,6 +4076,7 @@
     else if (b.blow && time > b.blow.at) { expression = 'normal'; mouth = 'o'; } // (blowing a bubble)
     else if (b.nibbling) { expression = 'happy'; mouth = time - b.nibbling.at < 0.5 ? 'o' : Math.round((time - b.nibbling.at) / 0.18) % 2 ? 'grin' : 'flat'; } // (chomp chomp)
     else if (b.patted) { expression = 'happy'; mouth = 'smile'; }
+    else if (b.reachSince && time - b.reachSince > 0.3) { mouth = 'o'; }
     else if (time < (b.petWorryUntil || 0)) { expression = 'worried'; mouth = 'o'; }
     else if (b.teeter && !body.grab) { expression = 'worried'; mouth = 'o'; } // (on the brink)
     else if (time < (b.sheepishUntil || 0)) { expression = 'worried'; mouth = 'wobble'; } // (told off)
@@ -4183,6 +4203,12 @@
       b.gazeTarget = { x: mouse.x, y: mouse.y };
       wantLook = Math.max(wantLook, 1);
       if (expression === 'concentrate' || expression === 'sleepy') { expression = 'normal'; mouth = 'o'; }
+    }
+    // Reaching up for the cursor: eyes right up on it.
+    if (b.reachSince && !glaring) {
+      const c = body.centroid();
+      b.gazeTarget = { x: mouse.x, y: c.y + (mouse.y - c.y) * 3 };
+      wantLook = Math.max(wantLook, 1);
     }
     // On the brink of a window: eyes down over the drop.
     if (b.teeter && !body.grab && !glaring) {

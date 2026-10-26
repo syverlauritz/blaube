@@ -122,6 +122,7 @@
       ['swing', 1, 0, 1.5, 0.05, 'Held and swung gently from side to side, it loves it ("wheee!"); a hard shake still makes it dizzy'],
       ['circleDizzy', 3, 0, 10, 0.5, 'Run the cursor round a slime this many times and it gets dizzy; its eyes follow it round (0 = off)'],
       ['hugs', 1, 0, 1.5, 0.05, 'Hold a slime you carry gently against another for a moment and they hug, hearts and all'],
+      ['reach', 1, 0, 3, 0.05, 'Hold the cursor still just above its head: it stretches up to reach it, then hops to boop it'],
       ['headPat', 1, 0, 3, 0.05, 'Rest the cursor on its head: it pushes up into it like a cat'],
       ['listen', 1, 0, 2, 0.05, 'Typing to it in its talk box: it watches and bobs along'],
       ['seekYou', 1, 0, 2, 0.05, 'Needing you a while, it hops over to your cursor'],
