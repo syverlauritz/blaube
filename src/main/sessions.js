@@ -90,6 +90,8 @@ class SessionTracker extends EventEmitter {
       tasksSeeded: !!(prev && prev.tasksSeeded),
       // Its todo list (see plan.js); a finished one is put away at the next prompt.
       plan: planNow(prev && prev.plan, payload),
+      // What this turn has done so far: files edited, commands run.
+      turn: turnAfter(event === 'UserPromptSubmit' ? null : prev && prev.turn, payload),
       updatedAt: this.now(),
     };
     session.progress = progress(session.plan);
@@ -242,6 +244,17 @@ class SessionTracker extends EventEmitter {
 
 // A tool runs between its PreToolUse and PostToolUse; the rest of a turn
 // is the model thinking.
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+function turnAfter(turn, p) {
+  const t = turn || { files: [], cmds: 0 };
+  if (p.hook_event_name !== 'PreToolUse') return t;
+  const input = p.tool_input || {};
+  const file = input.file_path || input.notebook_path;
+  if (EDIT_TOOLS.has(p.tool_name) && file && !t.files.includes(String(file))) return { files: [...t.files, String(file)].slice(-200), cmds: t.cmds };
+  if (p.tool_name === 'Bash') return { files: t.files, cmds: t.cmds + 1 };
+  return t;
+}
+
 function planNow(plan, p) {
   if (p.hook_event_name === 'PostToolUse') return planAfter(plan, p) || null;
   const pr = progress(plan);

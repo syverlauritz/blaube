@@ -3986,6 +3986,10 @@
     // How long this turn has been going.
     const turn = b.state === 'working' && b.kind === 'mother' && b.session && b.session.turnStart ? Math.floor((Date.now() - b.session.turnStart) / 60000) : 0;
     if (turn >= 1) lines.push({ text: `Working for ${turn} min`, dim: true });
+    // What its turn has done: files edited, commands run.
+    const tw = b.kind === 'mother' && b.session && b.session.turn;
+    const did = tw ? [tw.files.length ? `${tw.files.length} file${tw.files.length > 1 ? 's' : ''} edited` : '', tw.cmds ? `${tw.cmds} command${tw.cmds > 1 ? 's' : ''} run` : ''].filter(Boolean) : [];
+    if (did.length && (b.state === 'working' || b.state === 'done' || b.state === 'waiting')) lines.push({ text: (b.state === 'done' ? 'Did: ' : 'So far: ') + did.join(' \u00b7 '), dim: true });
     // How far through its todo list.
     const pr = b.kind === 'mother' && b.session && b.session.progress;
     if (pr && pr.total) lines.push({ text: `Plan: ${pr.done} of ${pr.total}${pr.current ? ' \u00b7 ' + pr.current : ''}`, dim: true });
