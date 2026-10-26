@@ -92,6 +92,8 @@ class SessionTracker extends EventEmitter {
       plan: planNow(prev && prev.plan, payload),
       // What this turn has done so far: files edited, commands run.
       turn: turnAfter(event === 'UserPromptSubmit' ? null : prev && prev.turn, payload),
+      // Today's tally: turns finished and time spent working on them.
+      today: todayAfter(prev, event, this.now()),
       updatedAt: this.now(),
     };
     session.progress = progress(session.plan);
@@ -260,6 +262,13 @@ function turnAfter(turn, p) {
   return t;
 }
 
+function todayAfter(prev, event, now) {
+  const day = new Date(now).toDateString();
+  const t = prev && prev.today && prev.today.day === day ? prev.today : { day, turns: 0, workMs: 0 };
+  if (event !== 'Stop' || !prev || prev.state !== 'working' || !prev.turnStart) return t;
+  return { day, turns: t.turns + 1, workMs: t.workMs + Math.max(0, now - Math.max(prev.turnStart, new Date(day).getTime())) };
+}
+
 function planNow(plan, p) {
   if (p.hook_event_name === 'PostToolUse') return planAfter(plan, p) || null;
   const pr = progress(plan);
@@ -300,4 +309,4 @@ function nextState(current, p) {
   }
 }
 
-module.exports = { SessionTracker, nextState, worktreeAgentId };
+module.exports = { SessionTracker, nextState, worktreeAgentId, todayAfter };

@@ -4816,6 +4816,12 @@
     const did = tw ? [tw.files.length ? `${tw.files.length} file${tw.files.length > 1 ? 's' : ''} edited` : '', tw.cmds ? `${tw.cmds} command${tw.cmds > 1 ? 's' : ''} run` : '', tw.fails ? `${tw.fails} failed` : ''].filter(Boolean) : [];
     if (did.length && (b.state === 'working' || b.state === 'done' || b.state === 'waiting')) lines.push({ text: (b.state === 'done' ? 'Did: ' : 'So far: ') + did.join(' \u00b7 '), dim: true });
     if (tw && tw.lastFail && b.state !== 'idle') lines.push({ text: `Last failed: ${tw.lastFail}`, dim: true });
+    // Today's tally, once there's something to tally.
+    const day = b.kind === 'mother' && b.session && b.session.today;
+    if (day && day.turns && day.day === new Date().toDateString()) {
+      const m = Math.round(day.workMs / 60000), worked = m < 1 ? 'under a minute' : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60 ? (m % 60) + ' min' : ''}`.trim();
+      lines.push({ text: `Today: ${day.turns} turn${day.turns > 1 ? 's' : ''} · ${worked} of work`, dim: true });
+    }
     // How far through its todo list.
     const pr = b.kind === 'mother' && b.session && b.session.progress;
     if (pr && pr.total) lines.push({ text: `Plan: ${pr.done} of ${pr.total}${pr.current ? ' \u00b7 ' + pr.current : ''}`, dim: true });

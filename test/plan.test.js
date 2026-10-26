@@ -56,3 +56,17 @@ test('a turn counts the files it edits and the commands it runs', () => {
   ev('UserPromptSubmit');
   assert.deepEqual(t.sessions.get('s').turn, { files: [], cmds: 0 });
 });
+
+test("a session tallies today's turns and time worked, fresh each day", () => {
+  let now = new Date(2026, 9, 26, 10, 0).getTime();
+  const t = new SessionTracker(() => now);
+  const ev = (e, extra = {}) => t.handle({ session_id: 's', cwd: '/tmp/x', hook_event_name: e, ...extra });
+  ev('UserPromptSubmit'); now += 5 * 60e3; ev('Stop');
+  ev('UserPromptSubmit'); now += 3 * 60e3; ev('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' } }); now += 2 * 60e3; ev('Stop');
+  ev('Stop'); // (a second Stop isn't another turn)
+  assert.deepEqual(t.sessions.get('s').today, { day: new Date(now).toDateString(), turns: 2, workMs: 10 * 60e3 });
+  // A turn over midnight only counts from midnight, and the tally starts again.
+  now = new Date(2026, 9, 26, 23, 50).getTime(); ev('UserPromptSubmit');
+  now = new Date(2026, 9, 27, 0, 20).getTime(); ev('Stop');
+  assert.deepEqual(t.sessions.get('s').today, { day: new Date(now).toDateString(), turns: 1, workMs: 20 * 60e3 });
+});
