@@ -5537,6 +5537,9 @@
     const did = tw ? [tw.files.length ? `${tw.files.length} file${tw.files.length > 1 ? 's' : ''} edited` : '', tw.cmds ? `${tw.cmds} command${tw.cmds > 1 ? 's' : ''} run` : '', tw.fails ? `${tw.fails} failed` : ''].filter(Boolean) : [];
     if (did.length && (b.state === 'working' || b.state === 'done' || b.state === 'waiting')) lines.push({ text: (b.state === 'done' ? 'Did: ' : 'So far: ') + did.join(' \u00b7 '), dim: true });
     if (tw && tw.lastFail && b.state !== 'idle') lines.push({ text: `Last failed: ${tw.lastFail}`, dim: true });
+    // What it's changed in its folder and not committed yet.
+    const ch = b.kind === 'mother' && b.session && b.session.changes;
+    if (ch && ch.files) lines.push({ text: `Not committed: ${ch.files} file${ch.files > 1 ? 's' : ''}${ch.add || ch.del ? ` (+${ch.add} \u2212${ch.del})` : ''}`, dim: true });
     // Today's tally, once there's something to tally.
     const day = b.kind === 'mother' && b.session && b.session.today;
     if (day && day.turns && day.day === new Date().toDateString()) {

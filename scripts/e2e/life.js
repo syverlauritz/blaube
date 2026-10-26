@@ -130,6 +130,14 @@ module.exports = async function run({ win, tracker }) {
 	check(await until(() => js(`(__blaube.buddies.get('s1').plan || {}).total === 3`), 2000), 'its todo list shows as beads');
 	ev('s1', 'PostToolUse', todos(1));
 	check(await until(() => js(`(__blaube.buddies.get('s1').beadAt || 0) > __blaube.now() - 2`), 2000), 'one ticked off, it hops');
+	// What it's changed in its folder and not committed shows on its hover.
+	const { execFileSync } = require('child_process'), fs = require('fs'), os = require('os'), path = require('path');
+	const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-git-'));
+	execFileSync('git', ['init', '-q', repo]);
+	fs.writeFileSync(path.join(repo, 'notes.txt'), 'one\ntwo\n');
+	tracker.handle({ session_id: 's2', cwd: repo, hook_event_name: 'PostToolUse', tool_name: 'Write' });
+	check(await until(() => js(`((__blaube.buddies.get('s2').session || {}).changes || {}).files === 1`), 15000), 'a file it wrote and hasn\'t committed shows on its hover');
+	fs.rmSync(repo, { recursive: true, force: true });
 	await sleep(1500);
 	check(await js(`[...__blaube.buddies.values()].every((b) => [...b.body.px].every(Number.isFinite))`), 'bodies still finite after all that');
 	check(errs.length === 0, 'no renderer errors ' + errs.slice(0, 3).join(' | '));

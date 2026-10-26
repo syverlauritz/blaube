@@ -14,6 +14,8 @@ const { startAgentsPoller, listAgents, findClaude } = require('./agents');
 const { Owned } = require('./owned');
 const { startFocusWatcher, transcriptPath } = require('./focus');
 const usage = require('./usage');
+const { createGitChanges } = require('./gitChanges');
+const gitChanges = createGitChanges();
 const { runningTasks } = require('./tasks');
 const dock = require('./dock');
 const { watchWindows, ledges } = require('./windows');
@@ -616,6 +618,7 @@ function pushState() {
       color: colorOf(s),
       tokens: tokens.get(s.id) || null,
       info: usage.sessionInfo(transcriptPath(s)),
+      changes: s.cwd && !s.id.startsWith('demo-') ? gitChanges.get(s.cwd) : null,
       effort: efforts.get(s.id) || defaultEffort(),
       agents: s.agents.map((a) => Object.assign({}, a, {
         description: agentDescription(s, a),
@@ -669,6 +672,8 @@ function refreshUsage() {
       else checkSeededTasks(s);
       if (checkedTasks.has(s.id)) { readySessions.add(s.id); changed = true; }
     }
+    // What it's changed and not committed yet (pushed when it comes in).
+    if (s.cwd && !s.id.startsWith('demo-')) gitChanges.refresh(s.cwd, (c) => { if (c) pushState(); });
     const old = tokens.get(s.id);
     if (u && (!old || old.total !== u.total || old.context !== u.context || old.limit !== u.limit)) {
       tokens.set(s.id, u);
@@ -679,6 +684,7 @@ function refreshUsage() {
   for (const k of efforts.keys()) if (!live.has(k)) efforts.delete(k);
   for (const set of [readySessions, checkedTasks]) for (const id of set) if (!tracker.sessions.has(id)) set.delete(id);
   usage.forget(files);
+  gitChanges.forget(new Set(tracker.list().map((s) => s.cwd).filter(Boolean)));
   if (changed) pushState();
 }
 
