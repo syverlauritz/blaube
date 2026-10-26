@@ -247,7 +247,7 @@ test('discarding a file’s changes keeps them in git’s stash, to put back', a
   const g = (...a) => execFileSync('git', a, { cwd: dir, env }).toString().trim();
   const p = (f, ...a) => new Promise((r) => f(dir, ...a, r));
   try {
-    g('init', '-q', '-b', 'main');
+    g('init', '-q', '-b', 'main'); g('config', 'core.autocrlf', 'false');
     fs.mkdirSync(path.join(dir, 'sub'));
     for (const f of ['a.txt', 'b.txt', 'sub/c.txt']) fs.writeFileSync(path.join(dir, f), 'one\n');
     g('add', '.'); g('commit', '-qm', 'base');
@@ -376,7 +376,7 @@ test('changes set aside on their branch come back with it', async () => {
   const g = (...a) => execFileSync('git', a, { cwd: dir, env }).toString().trim();
   const p = (f, ...a) => new Promise((r) => f(dir, ...a, (...out) => r(out)));
   try {
-    g('init', '-q', '-b', 'main');
+    g('init', '-q', '-b', 'main'); g('config', 'core.autocrlf', 'false');
     fs.writeFileSync(path.join(dir, 'a.txt'), '1\n'); g('add', '.'); g('commit', '-qm', 'base');
     g('branch', 'topic');
     fs.writeFileSync(path.join(dir, 'a.txt'), '2\n');
@@ -440,7 +440,7 @@ test('a file in conflict, settled: your version or theirs (flipped in a rebase),
   const read = (f) => fs.readFileSync(path.join(dir, f), 'utf8');
   const p = (rel, side) => new Promise((r) => settle(dir, rel, side, r));
   try {
-    g('init', '-q', '-b', 'main');
+    g('init', '-q', '-b', 'main'); g('config', 'core.autocrlf', 'false');
     fs.writeFileSync(path.join(dir, 'a.txt'), 'base\n'); fs.writeFileSync(path.join(dir, 'b.txt'), 'base\n'); g('add', '.'); g('commit', '-qm', 'base');
     g('switch', '-q', '-c', 'theirs');
     fs.writeFileSync(path.join(dir, 'a.txt'), 'theirs\n'); g('rm', '-q', 'b.txt'); g('commit', '-qam', 'theirs');
@@ -584,7 +584,7 @@ test('changes you set aside yourself (git stash), and bringing them back', async
   const g = (...a) => execFileSync('git', a, { cwd: dir, env, stdio: 'pipe' }).toString().trim();
   const list = () => new Promise((r) => stashes(dir, r));
   try {
-    g('init', '-q', '-b', 'main');
+    g('init', '-q', '-b', 'main'); g('config', 'core.autocrlf', 'false');
     fs.writeFileSync(path.join(dir, 'a.txt'), '1\n'); g('add', '.'); g('commit', '-qm', 'base');
     assert.deepEqual(await list(), []);
     fs.writeFileSync(path.join(dir, 'a.txt'), '2\n'); g('stash', 'push', '-q');

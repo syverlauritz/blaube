@@ -30,7 +30,7 @@ function candidates(platform = process.platform, home = os.homedir(), env = proc
   }
   const bins = ['/usr/bin', '/usr/local/bin', '/snap/bin', path.join(home, '.local', 'bin')];
   const out = [];
-  for (const [name, exe, kind] of [['VS Code', 'code', 'code'], ['Cursor', 'cursor', 'code'], ['Windsurf', 'windsurf', 'code'], ['Zed', 'zed', 'zed']]) for (const d of bins) out.push({ name, bin: path.join(d, exe), kind });
+  for (const [name, exe, kind] of [['VS Code', 'code', 'code'], ['Cursor', 'cursor', 'code'], ['Windsurf', 'windsurf', 'code'], ['Zed', 'zed', 'zed']]) for (const d of bins) out.push({ name, bin: path.posix.join(d, exe), kind });
   return out;
 }
 
