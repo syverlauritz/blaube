@@ -664,6 +664,18 @@
       p.happy = happy;
       // Blinks now and then.
       if (time > p.nextBlink) p.nextBlink = time + 1.5 + Math.random() * 4;
+      // A leaf drifting down close by: it jumps to bat at it.
+      if (onFloor && !p.dying && CFG.seasons > 0 && time > (p.nextChase || 0)) {
+        const f = flakes.find((f) => !f.on && !f.landed && f.kind === 'leaves' && Math.abs(f.x - p.x) < 110 && p.y - f.y > 40 && p.y - f.y < 220);
+        if (f) {
+          p.nextChase = time + 2 + Math.random() * 3;
+          const up = Math.sqrt(2 * CFG.gravity * (p.y - f.y + 10)), air = up / CFG.gravity;
+          p.vx = (f.x + f.vx * air - p.x) / air;
+          p.vy = -up;
+          p.va = Math.sign(p.vx) * 4;
+          continue;
+        }
+      }
       // It feels for its slime: rushes over when it's seeing stars, and
       // bounces along when it's happy.
       if (m && CFG.petEmpathy > 0 && onFloor && !p.dying) {
@@ -1412,6 +1424,14 @@
         f.vx = mouse.vx * (0.4 + Math.random() * 0.3);
         f.vy = Math.min(mouse.vy * 0.4, 0) - 80 - Math.random() * 100;
         f.va = (Math.random() - 0.5) * 12;
+      }
+    }
+    // Batted by a pet: off it flies.
+    if (pets.size) {
+      const PET = petSize();
+      for (const p of pets.values()) for (const f of flakes) {
+        if (f.on || f.landed || Math.abs(f.x - p.x) > PET * 0.7 || Math.abs(f.y - (p.y - PET * 0.3)) > PET * 0.7) continue;
+        f.vx = (f.x - p.x) * 6 + p.vx * 0.3; f.vy = -180 - Math.random() * 80; f.va = (Math.random() - 0.5) * 14; f.loose = time + 0.8;
       }
     }
     const boxes = [...buddies.values()].filter((b) => !b.dying && !b.body.grab).map((b) => [b, b.body.bbox()]);
