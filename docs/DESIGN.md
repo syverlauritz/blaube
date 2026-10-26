@@ -50,6 +50,15 @@ ships that breaks a "must".
 - The Halloween ghost: a plain white sheet (flat, no outline) draped over
   the body and whatever it wears, with two dark eye holes and a scalloped
   hem; it is pulled down over the head and pulled off upward, never popped.
+- A cursor resting on a blob's face: it looks right at you (no shy looking
+  away or peeking back); keep it up and it giggles and squirms.
+- Calm gaze: looking around has a cooldown and glides; blobs doing work stay
+  focused, and mouse movement never wakes a sleeping blob.
+- About half of the blobs wear nothing. Horns are one to five blunt, rounded
+  triangles; accessories anchor smoothly and never twitch.
+- The mother is always the biggest blob; helpers are sized by their tokens.
+- No goo, no witch hats, no hand-on-head play: removed, not coming back.
+  Blobs are blobs, not slime.
 - Faces turn far toward the mouse (the face slides round the head); the
   "Eyes follow the mouse" amount is set high on purpose.
 - Pets are small rigid squares with black beady eyes, in a shade of their
