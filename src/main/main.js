@@ -887,6 +887,7 @@ function statusBubble({ session: s, agentId, payload: p }) {
 // behind your windows); clicking it opens that slime's talk box.
 const notified = new Map(); // session id -> when it last notified
 const shown = new Set(); // notifications still on screen
+let replyTo = null; // sendMessage, once the app is up
 const muted = new Set(); // sessions you turned notifications off for (from its slime's menu)
 function notify(s, event, text, secs = 0) {
   if (TEST || !Notification.isSupported() || s.id.startsWith('demo-')) return;
@@ -896,7 +897,9 @@ function notify(s, event, text, secs = 0) {
   const n = attention.notification({ event, project: s.project, title: usage.sessionInfo(transcriptPath(s)).title, text, secs, seen, enabled: mode !== 'Off' });
   if (!n || Date.now() - (notified.get(s.id) || 0) < 15000) return;
   notified.set(s.id, Date.now());
-  const note = new Notification({ title: n.title, body: n.body });
+  // (On macOS you can answer one that's done right in the notification.)
+  const note = new Notification(Object.assign({ title: n.title, body: n.body }, event === 'done' ? { hasReply: true, replyPlaceholder: `Reply to ${s.project}` } : {}));
+  note.on('reply', (_e, text) => { shown.delete(note); if (replyTo && tracker.sessions.has(s.id) && String(text || '').trim()) replyTo(s.id, String(text).trim()); });
   // (Held on to until it's gone, or a click may never arrive.)
   shown.add(note);
   note.on('click', () => { shown.delete(note); if (win && tracker.sessions.has(s.id)) win.webContents.send('open-talk', s.id); });
@@ -1501,6 +1504,10 @@ app.whenReady().then(async () => {
   ipcMain.on('talk', (_e, id, at) => openTalk(id, at || { x: 0, y: 0 }));
   ipcMain.on('talk-send', (_e, id, text) => {
     if (!id || id !== talkId || !tracker.sessions.has(id) || id.startsWith('demo-')) return;
+    sendMessage(id, text);
+  });
+  // What you say to a session (from its box, or a notification's reply).
+  function sendMessage(id, text) {
     if (!prefs.talked) { prefs.talked = true; savePrefs(); pushState(); } // no more "click to talk" hints
     // A session Blaube started: straight in, and its turn starts.
     if (owned.has(id)) {
@@ -1530,7 +1537,8 @@ app.whenReady().then(async () => {
     const how = inbox.send(id, text);
     log(`message for ${tracker.sessions.get(id).project}: ${how} (inbox ${inbox.view(id).inbox})`);
     setTimeout(() => typeQueued(id), 1500); // a moment for its inbox hook to ask first
-  });
+  }
+  replyTo = sendMessage;
   ipcMain.on('talk-stop', (_e, id) => {
     if (!id || id !== talkId || !tracker.sessions.has(id)) return;
     log(`stop ${tracker.sessions.get(id).project}: ${inbox.stop(id) ? 'at its next step' : 'can\'t'}`);
