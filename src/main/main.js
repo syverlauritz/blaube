@@ -1129,18 +1129,18 @@ function statusBubble({ session: s, agentId, payload: p }) {
     const now = Date.now();
     if (now - (lastBubble.get(key) || 0) < 4000) return;
     lastBubble.set(key, now);
-    // A helper murmurs it out loud too (softly); a session's own stay quiet.
-    if (agentId) win.webContents.send('say', { id: key, text: describeTool(p.tool_name, p.tool_input || {}), seconds: 2.5, status: true, aloud: true, soft: true });
-    else say(describeTool(p.tool_name, p.tool_input || {}), 2.5);
+    // (Kept for its hover; never said out loud, helpers included.)
+    say(describeTool(p.tool_name, p.tool_input || {}), 2.5);
   } else if (event === 'Stop') {
     const said = p.last_assistant_message || usage.lastText(transcriptPath(s));
     // How long the turn took, when it was worth waiting for.
     const secs = s.turnStart ? (Date.now() - s.turnStart) / 1000 : 0;
     const took = secs < 20 ? '' : secs < 60 ? ` in ${Math.round(secs)}s` : secs < 3600 ? ` in ${Math.round(secs / 60)}m` : ` in ${Math.floor(secs / 3600)}h ${Math.round((secs % 3600) / 60)}m`;
-    say(said ? `Done${took}: ` + shorten(said, 80) : `Done${took}!`, 6, true);
+    // (Out loud for a session; a helper finishing isn't news.)
+    say(said ? `Done${took}: ` + shorten(said, 80) : `Done${took}!`, 6, !agentId);
     if (!agentId) notify(s, 'done', said, secs);
   } else if (event === 'Notification' && s.state === 'waiting') {
-    say(shorten(p.message || 'I need you', 80), 6, true);
+    say(shorten(p.message || 'I need you', 80), 6, !agentId);
     if (!agentId) notify(s, 'waiting', p.message);
   }
 }
