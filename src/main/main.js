@@ -2887,7 +2887,7 @@ app.whenReady().then(async () => {
     pushTalk(id);
   }
   // A quick action from the menu bar, as a tap on it in the box would.
-  doQuick = (id, q) => (q.run ? gitRunFor(id, q.run) : q.install ? installFor(id) : q.env ? envFor(id) : sendMessage(id, q.prompt));
+  doQuick = (id, q) => !tracker.sessions.has(id) ? undefined : (q.run ? gitRunFor(id, q.run) : q.install ? installFor(id) : q.env ? envFor(id) : sendMessage(id, q.prompt)); // (a tray item can outlive its session)
   // Stops a background task: in a session Blaube started, asked of Claude
   // Code itself (stop_task); in a terminal's, the processes writing its
   // output (its own, under its claude process). false: the box asks Claude.
