@@ -1489,6 +1489,8 @@
     // (/model in a session Blaube started: the models it can switch to.)
     m = /^\/model\s+([\w.[\]-]*)$/i.exec(before);
     if (m && current.owned) return { kind: 'model', q: m[1], from: c - m[1].length };
+    m = /^\/effort\s+(\w*)$/i.exec(before);
+    if (m && current.owned) return { kind: 'effort', q: m[1], from: c - m[1].length };
     return null;
   }
   async function suggest() {

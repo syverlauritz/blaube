@@ -80,9 +80,14 @@ function expand(text, cwd = '', home = os.homedir()) {
 // What a session Blaube started can do right away, without a terminal:
 // /model sonnet switches its model, /plan makes it plan first. Returns {
 // request } for Claude Code, { help } when something's missing, or null.
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 function control(text) {
-  const m = /^\/(model|plan|context)(?:\s+(\S+))?\s*$/i.exec(String(text || '').trim());
+  const m = /^\/(model|plan|context|effort)(?:\s+(\S+))?\s*$/i.exec(String(text || '').trim());
   if (!m) return null;
+  if (m[1].toLowerCase() === 'effort') {
+    const level = (m[2] || '').toLowerCase();
+    return EFFORTS.includes(level) ? { request: { subtype: 'apply_flag_settings', settings: { effortLevel: level } } } : { help: `Say how hard it should think: /effort ${EFFORTS.join(', /effort ')}.` };
+  }
   if (m[1].toLowerCase() === 'context') return { request: { subtype: 'get_context_usage', detail: 'summary' } }; // (local estimates: no API calls)
   if (m[1].toLowerCase() === 'plan') return { request: { subtype: 'set_permission_mode', mode: 'plan' } };
   if (!m[2]) return { help: 'Say which: /model opus, /model sonnet or /model haiku (or a full model name).' };
@@ -101,4 +106,4 @@ function contextNote(r) {
   return { text: `Context: ${pct}% full (${kTokens(used)} of ${kTokens(r.maxTokens)})`, context: { max: r.maxTokens, parts: parts.map((p) => Object.assign(p, { label: `${p.name} ${kTokens(p.tokens)}` })) } };
 }
 
-module.exports = { slashCommand, commandNames, expand, control, contextNote };
+module.exports = { slashCommand, commandNames, expand, control, contextNote, EFFORTS };

@@ -69,3 +69,11 @@ test('/context is asked of Claude Code, and its answer drawn as what fills it', 
   assert.equal(n.context.max, 500000);
   assert.equal(contextNote(null), null);
 });
+
+test('/effort is asked of Claude Code (its flag settings)', () => {
+  const { control } = require('../src/main/commands');
+  assert.deepEqual(control('/effort high'), { request: { subtype: 'apply_flag_settings', settings: { effortLevel: 'high' } } });
+  assert.deepEqual(control('/effort MAX'), { request: { subtype: 'apply_flag_settings', settings: { effortLevel: 'max' } } });
+  assert.match(control('/effort').help, /\/effort low, \/effort medium, \/effort high, \/effort xhigh, \/effort max/);
+  assert.ok(control('/effort loads').help);
+});

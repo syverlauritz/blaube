@@ -16,7 +16,7 @@ const projectFiles = require('./files');
 const shellRun = require('./shellRun');
 const { failedTests, stoppedLast, erredLast } = require('./inbox');
 const { Notification } = require('electron');
-const { slashCommand, commandNames, expand: expandCommand, control: controlFor, contextNote } = require('./commands');
+const { slashCommand, commandNames, expand: expandCommand, control: controlFor, contextNote, EFFORTS } = require('./commands');
 const limits = require('./limits');
 const taskOutput = require('./taskOutput');
 const permRules = require('./permRules');
@@ -1812,7 +1812,7 @@ app.whenReady().then(async () => {
     if (prompt) { inbox.add(id, { who: 'note', text: `${String(text).trim().split(/\s/)[0]}: sent what it says` }); text = prompt; }
     // A session Blaube started: straight in, and its turn starts.
     if (owned.has(id)) {
-      // (/model, /plan and /context are for Claude Code: it's asked directly.)
+      // (/model, /plan, /context and /effort are for Claude Code: it's asked directly.)
       const c = controlFor(text);
       if (c && c.help) { inbox.add(id, { who: 'note', text: c.help }); return; }
       if (c) {
@@ -1821,6 +1821,12 @@ app.whenReady().then(async () => {
           if (c.request.subtype === 'get_context_usage') {
             const n = ok && contextNote(r);
             inbox.add(id, n ? Object.assign({ who: 'note' }, n) : { who: 'note', text: `Couldn’t see its context: ${ok ? 'no answer' : r}`, error: true });
+            return pushTalk(id);
+          }
+          if (c.request.subtype === 'apply_flag_settings') {
+            const level = c.request.settings.effortLevel;
+            if (ok) { efforts.set(id, level); pushState(); }
+            inbox.add(id, { who: 'note', text: ok ? `Effort: ${level}` : `Couldn’t change its effort: ${r}`, error: !ok });
             return pushTalk(id);
           }
           const what = c.request.subtype === 'set_model' ? (ok ? `Now using ${modelName(r.model) || r.model || c.request.model}` : `Couldn’t switch to ${c.request.model}: ${r}`)
@@ -2031,6 +2037,7 @@ app.whenReady().then(async () => {
     q = typeof q === 'string' ? q.slice(0, 200) : '';
     if (!s || !s.cwd || id.startsWith('demo-')) return resolve([]);
     if (kind === 'command') return resolve(commandNames(q, s.cwd).slice(0, 8).map((c) => ({ insert: '/' + c.name + ' ', label: '/' + c.name, about: c.about || '' })));
+    if (kind === 'effort') return resolve(owned.has(id) ? EFFORTS.filter((e) => e.startsWith(q.toLowerCase())).map((e) => ({ insert: e, label: e, about: e === (efforts.get(id) || '') ? 'now' : '' })) : []);
     if (kind === 'model') return modelsFor(id, (models) => {
       const want = q.toLowerCase();
       resolve(models.filter((m) => !want || m.value.toLowerCase().startsWith(want) || m.displayName.toLowerCase().startsWith(want)).slice(0, 8)
