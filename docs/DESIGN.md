@@ -17,8 +17,8 @@ ships that breaks a "must".
    anything (bodies, bubbles, pets, accessories). Only a soft floor shadow
    under bodies is allowed.
 2. One bubble style. Every bubble (speech, status, hover, "!", "?", thought)
-   is the same white, rounded shape family, same corner roundness, same tail
-   shape, same text colour (#1b2440), same padding rules. A thought bubble
+   is the same white, rounded shape family, same corner roundness, same pointed
+   tail shape, same text colour (#1b2440), same padding rules. A thought bubble
    differs only in having two small puffs instead of a tail.
 3. Legible. Bubble text is easy to read at a glance on a dark or light
    desktop: at least 14 px, the name line bold. Display fonts only where they
@@ -63,7 +63,7 @@ ships that breaks a "must".
 - Pets get happy "^ ^" eyes and a heart when they reach their owner.
 - The talk box (a blob's chat) is rounder than the little bubbles: 30 px
   corners on the box, pill-shaped buttons, softly rounded rows and code
-  boxes, a pointed wedge tail (the talk box's; the little bubbles' tails stay chubby and round-tipped).
+  boxes, a pointed wedge tail. The little speech and sign bubbles (text, "!", "?") have the same pointed wedge, smaller; only thought bubbles keep their trailing puffs.
   All of Blaube's words are in one rounded font, Nunito (chosen over
   Fredoka, Baloo 2 and Quicksand; not up for review): names, hover status,
   labels, the talk box. The one exception is what a slime says in its

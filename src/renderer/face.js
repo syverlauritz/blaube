@@ -545,6 +545,7 @@
     // It bends away from the way the balloon is moving.
     const bend = s ? Math.max(-18, Math.min(18, -s.vx * 0.05)) : 0;
     ctx.fillStyle = '#fff';
+    let tail = false;
     ctx.beginPath();
     if (thought) {
       // Two separate puffs at set places under the bubble (not along the
@@ -565,16 +566,19 @@
         ctx.arc(q.x, q.y, ideal[i].r, 0, Math.PI * 2);
       });
     } else {
-      // A chubby, round-tipped tail: the talk box's, smaller.
-      const midX = (mx + tip.x) / 2 + bend, midY = (by + tip.y) / 2;
-      ctx.moveTo(mx - 14, by);
-      ctx.quadraticCurveTo(midX - 8, midY, tip.x - 5, tip.y);
-      ctx.lineTo(tip.x + 5, tip.y);
-      ctx.quadraticCurveTo(midX + 9, midY, mx + 14, by);
-      ctx.closePath();
+		// A pointed wedge, the talk box's tail made small: wide where it joins
+		// the bubble, narrowing to a sharp point (softened by a pixel below).
+		const midX = (mx + tip.x) / 2 + bend, midY = (by + tip.y) / 2;
+		const dx = tip.x - mx, dy = tip.y - by, l = Math.hypot(dx, dy) || 1;
+		const nx = -dy / l, ny = dx / l, k = 7;
+		ctx.moveTo(mx - 12, by);
+		ctx.quadraticCurveTo(midX + nx * k, midY + ny * k, tip.x, tip.y);
+		ctx.quadraticCurveTo(midX - nx * k, midY - ny * k, mx + 12, by);
+		ctx.closePath();
+		tail = true;
     }
     ctx.fill();
-    if (!thought) { ctx.beginPath(); ctx.arc(tip.x, tip.y, 5.5, 0, Math.PI * 2); ctx.fill(); }
+    if (tail) { ctx.strokeStyle = '#fff'; ctx.lineJoin = 'round'; ctx.lineWidth = 1.5; ctx.stroke(); } // same white: only rounds the point by under a pixel
     ctx.beginPath();
     roundRect(ctx, x, y, w, h, rad);
     ctx.fill();
