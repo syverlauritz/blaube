@@ -523,6 +523,8 @@
   });
   if (api.onTail) api.onTail((t) => { placeTail(t); fitWindow(); });
   text.addEventListener('input', () => {
+    // Its slime listens as you type (at most a few times a second).
+    if (current && api.typing && Date.now() - (text.typedAt || 0) > 120) { text.typedAt = Date.now(); api.typing(current.id); }
     if (askKey && current.ask && current.ask.kind === 'plan') planButtons();
     fit(); send.disabled = !current || current.demo || !text.value.trim(); requestAnimationFrame(fitWindow); });
   text.addEventListener('keydown', (e) => {

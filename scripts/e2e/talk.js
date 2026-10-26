@@ -142,6 +142,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	// Send a message: the session's inbox hook gets it.
 	check(await until(() => inbox.view(ID).inbox === 'ready'), 'the session’s inbox hook is waiting');
 	await box(`(() => { const t = document.getElementById('text'); t.value = 'and update the changelog'; t.dispatchEvent(new Event('input')); document.getElementById('form').requestSubmit(); })()`);
+	check(await until(() => page(`(__blaube.buddies.get(${JSON.stringify(ID)}) || {}).listenAt > 0`), 1500), 'its slime listens while you type');
 	const got = await Promise.race([waiting.done, sleep(3000).then(() => null)]);
 	check(got && got.code === 2 && /update the changelog/.test(got.err), 'sending wakes Claude with the message (exit 2)');
 	check(await until(async () => (await box(`document.querySelectorAll('#inner .dots').length`)) === 1), 'thinking dots while it works on it');

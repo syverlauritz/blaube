@@ -11,4 +11,5 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   close: () => ipcRenderer.send('talk-close'),
   closing: () => ipcRenderer.send('talk-closing'),
   terminal: () => ipcRenderer.send('talk-terminal'),
+  typing: (id) => ipcRenderer.send('talk-typing', id),
 });

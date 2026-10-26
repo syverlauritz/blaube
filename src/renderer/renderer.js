@@ -1997,6 +1997,13 @@
           : time + (2 + Math.random() * Math.random() * 12) / b.curiosity;
       }
     }
+    // Listening to you type: eyes on the talk box, attentive.
+    const listening = CFG.listen > 0 && time - (b.listenAt ?? -9) < 1.2 && talkRect && !body.grab;
+    if (listening) {
+      b.glanceAt = { spot: { x: talkRect.x + talkRect.w / 2, y: talkRect.y + talkRect.h * 0.7 } };
+      b.glanceUntil = time + 0.1;
+      if (expression === 'concentrate' || expression === 'sleepy' || expression === 'peek') { expression = 'normal'; mouth = 'smile'; }
+    }
     if (b.glanceAt && time < (b.glanceUntil || 0) && !b.glanceAt.dying && !body.grab && (expression === 'concentrate' || expression === 'normal' || expression === 'sleepy')) {
       checkIn = true;
       if (expression !== 'normal') { expression = 'normal'; mouth = 'flat'; }
@@ -2609,6 +2616,16 @@
     if (b.body.onFloor() && !b.body.grab) b.body.impulse((Math.random() - 0.5) * 120, 120, DT);
     if (m.count > 1) b.say([{ text: 'oops' }], 1.8);
   });
+  // You're typing to it: it listens, with a little "mm-hm" bob now and then.
+  if (api.onTyping) api.onTyping((id) => {
+    const b = buddies.get(id);
+    if (!b || CFG.listen <= 0) return;
+    b.listenAt = time;
+    if (time > (b.nextMmhm || 0) && b.body.onFloor() && !b.body.grab) {
+      b.nextMmhm = time + 0.5 + Math.random() * 0.9;
+      b.body.squashTop(CFG.listen * b.body.o.radius * 2.5, DT);
+    }
+  });
   if (api.onTalking) api.onTalking((id) => { talkingTo = id; const b = id && buddies.get(id); if (b) b.talkAnchor = null; });
   // The app wants a slime's talk box open (a session you just started).
   if (api.onOpenTalk) api.onOpenTalk((id) => {
@@ -2685,7 +2702,7 @@
 
   // Lets the renderer run in a plain browser for development and screenshots.
   function devShim() {
-    const listeners = { state: [], command: [], config: [], world: [], ledges: [], system: [] };
+    const listeners = { state: [], command: [], config: [], world: [], ledges: [], system: [], typing: [], talkRect: [] };
     window.__blaube = {
       setState: (s) => listeners.state.forEach((f) => f(s)),
       command: (c) => listeners.command.forEach((f) => f(c)),
@@ -2693,6 +2710,8 @@
       setWorld: (w) => listeners.world.forEach((f) => f(w)),
       setLedges: (l) => listeners.ledges.forEach((f) => f(l)),
       system: (m) => listeners.system.forEach((f) => f(m)),
+      typing: (id) => listeners.typing.forEach((f) => f(id)),
+      talkRect: (r) => listeners.talkRect.forEach((f) => f(r)),
       sys: () => sys,
       now: () => time,
       idleFor: (seconds) => { mouse.lastMove = performance.now() / 1000 - seconds; },
@@ -2711,6 +2730,8 @@
       onWorld: (f) => listeners.world.push(f),
       onLedges: (f) => listeners.ledges.push(f),
       onSystem: (f) => listeners.system.push(f),
+      onTyping: (f) => listeners.typing.push(f),
+      onTalkRect: (f) => listeners.talkRect.push(f),
       onState: (f) => listeners.state.push(f),
       onCommand: (f) => listeners.command.push(f),
     };
