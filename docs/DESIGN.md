@@ -86,13 +86,15 @@ ships that breaks a "must".
   fades out over half that length again beyond.
 - The talk box has a dark mode (the moon in its header, kept for every
   box): the same flat bubble in a deep slate with light ink, and no tail.
-- Blobs say what's in their bubble, the real words, and only that: no
-  sound without a bubble saying it ("okay!" with the 👍 on a prompt, a
-  cheer when a turn's done, "hehe", "coffee?"). A small formant
-  synthesizer (Klatt's, MIT) in each blob's own cute voice, a little wah
-  opening each stressed syllable. Bigger is deeper, helpers are higher.
-  Singing keeps the talkbox (a buzzy note through a sweeping vowel
-  filter, wah on the attack only). The talking
+- Blobs babble what's in their bubble, and only that: no sound without a
+  bubble saying it ("okay!" with the 👍 on a prompt you typed, a cheer
+  when a turn's done, "hehe", "coffee?"). Abstract, not text-to-speech
+  ("too text-to-speechy" was rejected): a talkbox (a soft synth note
+  through a sweeping vowel filter, a wah opening each syllable) in
+  gibberish shaped like the words: one syllable per syllable, its vowel,
+  a "bl"/"ba"/hum/click from its first consonant, stressed ones longer, ?
+  rising, ! bouncy. Never nagging: a slime that needs you says so once
+  per wait. Bigger is deeper, helpers are higher. The talking
   mouth: shut, it's the blob's own mouth; open, a dark oval that drops
   from the top lip, never bigger than a yawn, a pink tongue when wide.
 - Choir mode: every blob sings in parts, fuller with more blobs, eyes

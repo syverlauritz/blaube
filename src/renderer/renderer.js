@@ -173,7 +173,9 @@
       setTimeout(() => { if (!b.dying) sayAloud(b, lines, seconds, Object.assign({}, how, { tries: (how.tries || 0) + 1 })); }, 250);
       return;
     }
-    const line = speak(b, spokenOf(lines), how);
+    // (A slime waiting on you says only that, once: its other bubbles,
+    // a sneeze, a giggle, show quietly.)
+    const line = b.state === 'waiting' && !how.important ? null : speak(b, spokenOf(lines), how);
     const show = () => { if (!b.dying) b.say(lines, Math.max(seconds, line ? line.length + 0.5 : 0)); };
     if (line && line.wait > 0.01) setTimeout(show, line.wait * 1000);
     else show();
@@ -984,7 +986,7 @@
   function setState(b, state) {
     const prev = b.state;
     b.state = state;
-    if (prev !== state) { b.stateSince = time; react(b, prev); }
+    if (prev !== state) { b.stateSince = time; if (state !== 'waiting') b.waitSaid = false; react(b, prev); }
   }
 
   function react(b, prev) {
@@ -6024,7 +6026,7 @@
     b.nodAt = time;
     b.nodQuiet = false; // (no thinking sign over it)
     if (b.body.onFloor()) b.body.impulse(0, 260, DT);
-    if (how && how.prompt) okayBack(b);
+    if (how && how.prompt && how.typed !== false) okayBack(b);
     else quip(b, '👍', 1.6, 30, 'react');
   });
   if (api.onReact) api.onReact((m) => {
@@ -6134,9 +6136,17 @@
     // summary under it, with Always), the words for needing you.
     if (m.status) {
       b.status = { text: m.text, at: time, state: b.state };
-      if (m.aloud) {
-        if (m.done) cheer(b, m.long, CFG.statusBubbles === 'Always' ? [{ text: m.text, size: 12 }] : []);
-        else b.say(m.text, m.seconds || 6, false, { important: true });
+      // Never nagging: a cheer only for a turn you started (not one a loop
+      // fed it), at most once a minute; needing you, said once per wait.
+      if (m.aloud && m.done && m.typed !== false && time - (b.cheeredAt ?? -1e9) >= 60) {
+        b.cheeredAt = time;
+        cheer(b, m.long, CFG.statusBubbles === 'Always' ? [{ text: m.text, size: 12 }] : []);
+        return;
+      }
+      const forWait = m.waiting || b.state === 'waiting';
+      if (m.aloud && !m.done && !(forWait && b.waitSaid)) {
+        if (forWait) b.waitSaid = true;
+        b.say(m.text, m.seconds || 6, false, { important: true });
         return;
       }
       if (CFG.statusBubbles !== 'Always') return;

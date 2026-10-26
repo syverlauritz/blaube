@@ -93,6 +93,11 @@ let talkKey = ''; // (the one registered now)
 
 let win = null;
 let tray = null;
+// Each session's last prompt, and whether you typed it: not one that
+// `claude agents` polling stands in for, a hook's or a tool's (wrapped in
+// <tags>), or the same words again (a loop feeding it). Only those get an
+// "okay!" out loud, and a cheer when their turn is done.
+const lastPrompt = new Map(); // id -> { text, typed }
 let tuningWin = null;
 let world = { obstacles: [] };
 let dockWindows = [];
@@ -1223,10 +1228,10 @@ function statusBubble({ session: s, agentId, payload: p }) {
     const secs = s.turnStart ? (Date.now() - s.turnStart) / 1000 : 0;
     const took = secs < 20 ? '' : secs < 60 ? ` in ${Math.round(secs)}s` : secs < 3600 ? ` in ${Math.round(secs / 60)}m` : ` in ${Math.floor(secs / 3600)}h ${Math.round((secs % 3600) / 60)}m`;
     // (Out loud for a session; a helper finishing isn't news.)
-    say(said ? `Done${took}: ` + shorten(said, 80) : `Done${took}!`, 6, !agentId, { done: true, long: secs > 300 });
+    say(said ? `Done${took}: ` + shorten(said, 80) : `Done${took}!`, 6, !agentId, { done: true, long: secs > 300, typed: !lastPrompt.has(s.id) || lastPrompt.get(s.id).typed });
     if (!agentId) notify(s, 'done', said, secs);
   } else if (event === 'Notification' && s.state === 'waiting') {
-    say(shorten(p.message || 'I need you', 80), 6, !agentId);
+    say(shorten(p.message || 'I need you', 80), 6, !agentId, { waiting: true });
     if (!agentId) notify(s, 'waiting', p.message);
   }
 }
@@ -1825,10 +1830,13 @@ app.whenReady().then(async () => {
     pushState();
     refreshTray();
   });
-  tracker.on('prompt', (s, text) => {
+  tracker.on('prompt', (s, text, source) => {
     doing.delete(s.id);
+    const was = lastPrompt.get(s.id), words = typeof text === 'string' ? text.trim() : '';
+    const typed = source !== 'agents' && !/^</.test(words) && !(words && was && was.text === words);
+    lastPrompt.set(s.id, { text: words, typed });
     if (!win) return;
-    win.webContents.send('nod', s.id, { prompt: true });
+    win.webContents.send('nod', s.id, { prompt: true, typed });
     // Thanked or told off: the slime blushes, or looks sheepish.
     const tone = toneOf(text);
     if (tone) win.webContents.send('react', { id: s.id, kind: tone });
@@ -1871,7 +1879,7 @@ app.whenReady().then(async () => {
   tracker.on('change', sweepSoon);
   // A message from the slime went in: its turn starts, as if typed.
   // One went in at its next step, mid-turn: it nods, as when you type.
-  inbox.on('heard', (id) => { if (win) win.webContents.send('nod', id, { prompt: true }); });
+  inbox.on('heard', (id) => { if (win) win.webContents.send('nod', id, { prompt: true, typed: true }); });
   // A to-do item ticked off, or Stop pressed: the slime feels it.
   inbox.on('ticked', (id, t) => { if (win) win.webContents.send('react', { id, kind: t.done === t.of ? 'listdone' : 'tick', done: t.done, of: t.of }); });
   inbox.on('stopping', (id) => { if (win) win.webContents.send('react', { id, kind: 'brace' }); });

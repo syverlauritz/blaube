@@ -2,17 +2,30 @@ const test = require('node:test');
 const assert = require('node:assert');
 const V = require('../src/renderer/voice.js');
 
-test('a syllable per vowel group, with its vowel and the consonant before it', () => {
+test('a syllable per syllable of the words, with its vowel and the consonant before it', () => {
   const s = V.syllables('Pushed! Okay, tests pass?', 14);
-  assert.deepEqual(s.map((y) => y.consonant + y.vowel), ['pu', 'he', 'o', 'ki', 'te', 'pa']);
-  assert.equal(s[1].gap, 'stop', 'a pause after the exclamation');
-  assert.equal(s[3].gap, 'comma');
+  assert.deepEqual(s.map((y) => y.consonant + y.vowel), ['pa', 'o', 'ke', 'te', 'pa'], 'an -ed is no syllable of its own');
+  assert.equal(s[0].gap, 'stop', 'a pause after the exclamation');
+  assert.equal(s[2].gap, 'comma');
   assert.equal(s[s.length - 1].gap, 'end');
+  assert.equal(s[0].end, '!');
+  assert.equal(s[s.length - 1].end, '?', 'the phrase rises');
 });
 
-test('a long reply is a short babble; an emoji is a hum', () => {
+test('the shape of the words: syllables, vowels, stress, how each starts', () => {
+  const shape = (t) => V.syllables(t, 14).map((y) => (y.stress ? '*' : '') + y.onset + y.vowel).join(' ');
+  assert.equal(shape('okay'), 'wo *ke', 'oh-EH');
+  assert.equal(shape('coffee'), '*ka wi', 'AH-ee');
+  assert.equal(shape('hurray'), 'wa *le', 'uh-LEH');
+  assert.equal(shape('time'), '*ka', 'a silent e is no syllable');
+  assert.equal(shape('hehe'), '*we we');
+  assert.equal(shape('little'), '*li le', 'an -le is one');
+  assert.equal(shape('boxes'), '*bo ke', 'and an -es after an x');
+});
+
+test('a long reply is a short babble; an emoji or a number says nothing', () => {
   assert.equal(V.syllables('word '.repeat(80), 14).length, 14);
-  assert.deepEqual(V.syllables('👍', 14).map((y) => y.vowel), ['u']);
+  assert.deepEqual(V.syllables('👍 42', 14), []);
 });
 
 test('bigger slimes have lower voices', () => {

@@ -101,7 +101,7 @@ class SessionTracker extends EventEmitter {
     };
     session.progress = progress(session.plan);
     this.sessions.set(id, session);
-    if (event === 'UserPromptSubmit') this.emit('prompt', session, payload.prompt);
+    if (event === 'UserPromptSubmit') this.emit('prompt', session, payload.prompt, source);
     if (source === 'hook' && (event === 'PreToolUse' || event === 'Stop' || event === 'Notification')) this.emit('activity', { session, agentId: '', payload });
     if (source === 'hook' && (event === 'PostToolUse' || event === 'PostToolUseFailure')) this.emit('tooldone', { session, agentId: '', payload, failed: event === 'PostToolUseFailure' });
     if (!prev || prev.state !== session.state || prev.plan !== session.plan) {
