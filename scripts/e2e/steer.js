@@ -136,6 +136,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await shot('stopping');
 	await hook({ hook_event_name: 'Stop', last_assistant_message: 'Stopped. The 2027 brackets are in; 2028 isn’t started.' });
 	check(await until(() => box(`document.getElementById('stop').hidden`)), 'when it finishes, the Stop button goes');
+	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Carry on')`)), 'and Carry on is a tap away');
 	const fresh = await tool({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: '/tmp/x' } });
 	check(!fresh.out, 'and the next turn isn’t stopped');
 	check(await until(() => box(`(() => { const t = [...document.querySelectorAll('#inner .turnmeta')].pop(); return !!t && /step/.test(t.textContent) && /tax\\.js/.test(t.textContent); })()`)), 'the reply says how many steps it took and which files changed');

@@ -564,3 +564,17 @@ test('it knows when its last turn’s tests failed (and not when they passed aft
   inbox.observe({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: 'something else' });
   assert.equal(failedTests(inbox.log('s1')), '', 'a new turn starts clean');
 });
+
+test('after you stop a turn it knows, until you say something new', () => {
+  const { stoppedLast } = require('../src/main/inbox.js');
+  const inbox = new Inbox();
+  const p = { session_id: 's1', hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: '/x' } };
+  inbox.observe({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: 'go' });
+  inbox.step(p, true);
+  assert.equal(stoppedLast(inbox.log('s1')), false);
+  inbox.stop('s1');
+  inbox.observe({ session_id: 's1', hook_event_name: 'Stop', last_assistant_message: 'Stopped.' });
+  assert.equal(stoppedLast(inbox.log('s1')), true);
+  inbox.observe({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: 'carry on' });
+  assert.equal(stoppedLast(inbox.log('s1')), false);
+});

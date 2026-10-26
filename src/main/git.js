@@ -29,11 +29,13 @@ function summary(st) {
 const MAIN = /^(main|master|trunk|develop)$/;
 
 // What you might want next, as { label, prompt }: only while it isn't busy.
-// `more`: { failedTests: the test command that failed last turn,
-// context: how full its context is, in %, canCompact }.
+// `more`: { stopped: you stopped its last turn, failedTests: the test
+// command that failed in it, context: how full its context is (%),
+// canCompact }.
 function quickActions(st, state, more = {}) {
   if (state === 'working' || state === 'waiting') return [];
   const out = [];
+  if (more.stopped) out.push({ label: 'Carry on', prompt: 'Carry on where you stopped.' });
   if (more.failedTests) out.push({ label: 'Fix the tests', prompt: `The tests failed (\`${more.failedTests}\`). Fix them, then run them again and tell me what was wrong.` });
   const n = st ? st.changed + st.untracked : 0;
   if (st && st.conflicts) out.push({ label: 'Fix conflicts', prompt: 'There are merge conflicts. Resolve them, keeping both sides’ intent, then tell me what you chose.' });

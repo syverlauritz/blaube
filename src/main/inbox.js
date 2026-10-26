@@ -84,7 +84,7 @@ class Inbox extends EventEmitter {
       a.reply(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: 'The user pressed Stop in Blaube, their desktop buddy. Stop now and say where you got to.' } } }));
       this.unasked(id, a.reply);
     }
-    this.add(id, { who: 'note', text: 'You asked it to stop' });
+    this.add(id, { who: 'note', text: 'You asked it to stop', stop: true });
     this.emit('stopping', id);
     return true;
   }
@@ -430,6 +430,16 @@ function failedTests(log) {
   return '';
 }
 
+// Whether you stopped its last turn (so it can be asked to carry on).
+function stoppedLast(log) {
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if (e.who === 'you' && !e.midTurn && e.status !== 'queued') return false;
+    if (e.who === 'note' && e.stop) return true;
+  }
+  return false;
+}
+
 // Keeps a session's to-do list up to date from TodoWrite (the whole list
 // each time) or the task tools (one item at a time). True if it changed.
 function todo(all, id, p) {
@@ -538,4 +548,4 @@ function alwaysLabel(updates, max = 70) {
   return text.length > max ? text.slice(0, max - 2) + '…' : text;
 }
 
-module.exports = { Inbox, frame, describe, toolName, alwaysLabel, stepText, stepDetail, turnOf, failedTests, STYLE };
+module.exports = { Inbox, frame, describe, toolName, alwaysLabel, stepText, stepDetail, turnOf, failedTests, stoppedLast, STYLE };
