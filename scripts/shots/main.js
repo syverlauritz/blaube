@@ -738,6 +738,26 @@ const SCENES = {
 		config: { size: 0.8 },
 		hover: 'tm/th', thinking: 'fixture', wait: 4500, size: [1200, 560],
 	},
+	// A helper with a long task, running a raw command: the task wraps, the
+	// command comes down to plain words. And one hovered in a crowd.
+	thoughtHelperLong: {
+		sessions: [
+			session('tm', 'blaube', 'working', { activity: 'tool', agents: [{ id: 'th', type: 'general-purpose', description: 'Move camera code into motion.js and keep the pan and zoom behaviour exactly the same as before', state: 'working', activity: 'tool' }] }),
+			session('tn', 'kalkis', 'working', { color: '#5B8DEF', activity: 'tool' }),
+		],
+		config: { size: 0.8 },
+		hover: 'tm/th', thinking: 'raw', wait: 4500, size: [1200, 560],
+	},
+	thoughtHelperCrowd: {
+		sessions: [
+			session('tc1', 'website', 'working', { color: '#5FB57A', activity: 'tool', agents: [{ id: 'tk', type: 'Explore', description: 'Find where the hover bubble is drawn', state: 'working', activity: 'tool' }] }),
+			session('tc2', 'notes', 'idle', { color: '#9B7BD8' }),
+			session('tc3', 'shop', 'working', { color: '#E07BA8', agents: [{ id: 'tj', type: 'general-purpose', description: 'Fix the checkout total', state: 'working', activity: 'thinking' }] }),
+			session('tc4', 'blaube', 'working', { activity: 'tool' }),
+		],
+		config: { size: 0.7 },
+		hover: 'tc1/tk', thinking: 'fixture', wait: 5000, size: [1100, 520],
+	},
 	thoughtCrowd: {
 		sessions: [
 			session('tc1', 'website', 'working', { color: '#5FB57A', activity: 'tool' }),
@@ -1145,6 +1165,7 @@ app.whenReady().then(async () => {
 	ipcMain.handle('thinking', async (_e, key) => {
 		if (!scene || !scene.thinking) return { text: '', doing: '' };
 		if (scene.thinking === 'doing') return { text: '', doing: 'Reading pancakes.md' };
+		if (scene.thinking === 'raw') return { text: '', doing: thinking.plainCommand('node C:/Users/syver/AppData/Local/Temp/claude/C--Git-blaube/probe-motion.js --check') };
 		const helper = String(key).includes('/');
 		return { text: await thinking.thinkingOf(helper ? thinking.helperFile(FIX, 'fixture-helper') : FIX, !helper), doing: 'Running npm test' };
 	});

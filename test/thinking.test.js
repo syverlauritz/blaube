@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { latestThinking, tailOf, thinkingOf, helperFile } = require('../src/main/thinking.js');
+const { latestThinking, tailOf, thinkingOf, helperFile, plainCommand } = require('../src/main/thinking.js');
 
 const FIX = path.join(__dirname, 'fixtures', 'thinking');
 const SESSION = path.join(FIX, 'fixture-session.jsonl');
@@ -51,4 +51,13 @@ test('reads only the end of a big file, and keeps the answer until the file chan
 	assert.strictEqual(await thinkingOf(file), 'and then the blush');
 	assert.strictEqual(await thinkingOf(path.join(path.dirname(file), 'missing.jsonl')), '');
 	assert.strictEqual(await thinkingOf(''), '');
+});
+
+test('a command in plain words: the program and a short hint, never the raw line', () => {
+	assert.strictEqual(plainCommand('node C:/Users/syver/AppData/Local/Temp/claude/probe-3f2a.js --fast'), 'Running node probe-3f2a.js');
+	assert.strictEqual(plainCommand('cd /c/Git/blaube && npm test'), 'Running npm test');
+	assert.strictEqual(plainCommand('git commit -m "Fix the hover bubble"'), 'Running git commit');
+	assert.strictEqual(plainCommand('BLAUBE_TEST=1 "C:/Program Files/nodejs/node.exe" -e "1"'), 'Running node');
+	assert.strictEqual(plainCommand('python -I scripts\\make_report.py'), 'Running python make_report.py');
+	assert.strictEqual(plainCommand(''), 'Running a command');
 });
