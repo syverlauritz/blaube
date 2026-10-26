@@ -115,9 +115,23 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await sleep(400);
 	const wb = win.getBounds(), tb = talk().getBounds();
 	last = await slime(); // where it is now (it may have been mid-hop when clicked; the box follows)
-	// It drifts after its slime, so let it settle first.
-	await sleep(1800);
-	last = await slime();
+	// It drifts after its slime, so let both settle first (the slime can
+	// still be coming down from a hop, or from being caught mid-hop by the
+	// click): until neither has moved for a moment. Counted in the slimes'
+	// own time: under xvfb, with the talk box up, their frames come slowly
+	// and a second of real time can be a tenth of one for them.
+	const t0 = await page('__blaube.now()');
+	for (let i = 0, prev = null; i < 150; i++) {
+		await sleep(300);
+		const s = await slime(), t = talk().getBounds(), now = { y: s.y, ty: t.y, tx: t.x, at: await page('__blaube.now()') };
+		if (now.at - t0 > 2.5 && prev && now.at - prev.at > 0.15 && Math.abs(now.y - prev.y) < 2 && now.ty === prev.ty && now.tx === prev.tx) break;
+		if (!prev || now.at - prev.at > 0.15) prev = now;
+	}
+	// Its head's top bobs with its breath and its ears' sway (the box only
+	// follows real moves), so take the middle of a second's worth.
+	const tops = [];
+	for (let i = 0; i < 10; i++) { last = await slime(); tops.push(last.top); await sleep(100); }
+	last.top = tops.sort((a, b) => a - b)[5];
 	const wbs = win.getBounds(), tbs = talk().getBounds();
 	Object.assign(tb, tbs); Object.assign(wb, wbs);
 	// The bubble floats a little above the head (its tail is drawn by the
