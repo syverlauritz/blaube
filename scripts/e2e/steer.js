@@ -464,6 +464,10 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => box(`[...document.querySelectorAll('#bg .bgout')].some((p) => !p.hidden && /ready on http/.test(p.textContent))`)), 'Output shows what it printed');
 	await sleep(500);
 	await shot('run');
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
+	check(await until(() => box(`[...document.querySelectorAll('.rowlink')].some((l) => /^dev · localhost:\\d+$/.test(l.firstChild.textContent))`)), 'the overview lists it with Open too');
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
+	await until(() => box(`!document.body.classList.contains('overview')`));
 	await box(`[...[...document.querySelectorAll('#bg li')].find((l) => l.firstChild.textContent === 'dev').querySelectorAll('button')].find((b) => b.textContent === 'Stop').click()`);
 	check(await until(() => box(`![...document.querySelectorAll('#bg li')].some((l) => l.firstChild.textContent === 'dev')`), 10000) && !inbox.log(ID3).some((e) => /npm run dev stopped/.test(e.text || '')), 'Stop stops it, and that’s no news');
 	fs.rmSync(path.join(repo, 'package.json')); fs.rmSync(path.join(repo, 'server.js'));

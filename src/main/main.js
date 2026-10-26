@@ -496,7 +496,7 @@ function pushTalk(id, focusField = false) {
     }),
     // Every slime, to switch between them from the box.
     today: attention.today([...inbox.logs.values()]),
-    others: tracker.list().filter(isReady).map((o) => Object.assign({ id: o.id, project: o.project, color: colorOf(o) || prefs.config.color || '#D97757', state: o.state, ask: askOf(o.id), urls: (o.tasks || []).map((t) => ({ label: t.description || t.command, url: taskUrls.get(`${o.id}/${t.id}`) || '' })).filter((t) => t.url).slice(0, 2) }, glanceAt(o))),
+    others: tracker.list().filter(isReady).map((o) => Object.assign({ id: o.id, project: o.project, color: colorOf(o) || prefs.config.color || '#D97757', state: o.state, ask: askOf(o.id), urls: (o.tasks || []).map((t) => ({ label: t.description || t.command, url: taskUrls.get(`${o.id}/${t.id}`) || '' })).concat(runs.list(o.id)).filter((t) => t.url).slice(0, 2).map((t) => ({ label: t.label, url: t.url })) }, glanceAt(o))),
   }, inbox.view(id), owned.has(id) ? { stoppable: true } : {})); // (one Blaube started can always be stopped)
   if (s.cwd && !id.startsWith('demo-')) {
     git.status(s.cwd, (st) => {
@@ -2346,7 +2346,7 @@ app.whenReady().then(async () => {
     }
     // "/help": what works here, in words.
     if (/^\/help\s*$/i.test(String(text).trim())) {
-      inbox.add(id, { who: 'note', text: `Talk to it as you would in its terminal. Start with ! to run a command here, # to remember something in CLAUDE.md, @ for its files, / for commands (each says what it does)${owned.has(id) ? '' : '; the ones only its terminal can take go there, or bring it here and they go straight in'}. ${process.platform === 'darwin' ? '⌘0 shows every session, ⌘F finds things, ⌘S saves the conversation, ⌘. stops it' : 'Ctrl+0 shows every session, Ctrl+F finds things, Ctrl+S saves the conversation, Ctrl+. stops it'}.${owned.has(id) ? ' To go back, tap edit under something you said; undo all under a reply puts its files back.' : ''}` });
+      inbox.add(id, { who: 'note', text: `Talk to it as you would in its terminal. Start with ! to run a command here, # to remember something in CLAUDE.md, @ for its files, / for commands (each says what it does; /run dev runs its dev server)${owned.has(id) ? '' : '; the ones only its terminal can take go there, or bring it here and they go straight in'}. ${process.platform === 'darwin' ? '⌘0 shows every session, ⌘F finds things, ⌘S saves the conversation, ⌘. stops it' : 'Ctrl+0 shows every session, Ctrl+F finds things, Ctrl+S saves the conversation, Ctrl+. stops it'}.${owned.has(id) ? ' To go back, tap edit under something you said; undo all under a reply puts its files back.' : ''}` });
       return;
     }
     // "/rewind" (Esc Esc in the terminal), in a session Blaube started: it's
