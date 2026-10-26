@@ -341,10 +341,10 @@
 			// toward you, so it looks shorter; turning sideways shows its edge,
 			// so it looks narrower.
 			const pitch = Math.min(1, Math.abs(turn.y / r) * 1.8), yaw = Math.min(1, Math.abs(turn.x / r) * 1.2);
-			// Turning one way brings the other side of the head toward you:
-			// turning left, a look on the right grows and one on the left
-			// shrinks.
-			const near = Math.max(0.55, Math.min(1.45, 1 - (turn.x / r) * 1.6 * Math.sin(round)));
+			// Turning to one side, what's on that side comes toward you and what's
+			// on the far side goes away: turning left, a look on the left grows
+			// and one on the right shrinks.
+			const near = Math.max(0.55, Math.min(1.45, 1 + (turn.x / r) * 1.6 * Math.sin(round)));
 			const shortest = name === 'bunny' ? 0.85 : 0.45;
 			ctx.scale(Math.max(0.6, Math.cos(yaw)) * part.scale * near, Math.max(shortest, Math.cos(pitch)) * part.scale * near);
 			// Its highest point, about 2.6 u out along the look.
