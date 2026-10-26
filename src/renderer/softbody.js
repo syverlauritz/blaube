@@ -226,20 +226,29 @@
     }
 
     // Reshapes the rest shape partway (t from 0 to 1) from its circle toward
-    // a heart. Shape matching then pulls the skin over toward it, pressure
-    // keeping it plump; t = 0 is a plain circle again.
-    morph(t) {
+    // a heart (or a star). Shape matching then pulls the skin over toward
+    // it, pressure keeping it plump; t = 0 is a plain circle again.
+    morph(t, shape = 'heart') {
       const n = this.n, r = this.o.radius;
-      if (!this.heart || this.heart.r !== r) {
-        // Points on the classic heart curve, one per vertex in the same order
-        // (from the top, clockwise on screen), centred and scaled to keep
-        // about the same area.
+      this.shapes = this.shapes || {};
+      if (!this.shapes[shape] || this.shapes[shape].r !== r) {
+        // Points on the shape's curve, one per vertex in the same order
+        // (vertex i at angle 2πi/n, clockwise on screen from the right),
+        // centred and scaled to keep about the same area.
         const hx = new Float64Array(n), hy = new Float64Array(n);
         let mx = 0, my = 0;
         for (let i = 0; i < n; i++) {
-          const u = (i / n) * Math.PI * 2 + Math.PI / 2;
-          hx[i] = 16 * Math.pow(Math.sin(u), 3);
-          hy[i] = -(13 * Math.cos(u) - 5 * Math.cos(2 * u) - 2 * Math.cos(3 * u) - Math.cos(4 * u));
+          const a = (i / n) * Math.PI * 2;
+          if (shape === 'star') {
+            // Five soft points, one straight up.
+            const k = 1 + 0.32 * Math.cos(5 * (a + Math.PI / 2));
+            hx[i] = Math.cos(a) * k; hy[i] = Math.sin(a) * k;
+          } else {
+            // The classic heart curve, starting from the dip at the top.
+            const u = a + Math.PI / 2;
+            hx[i] = 16 * Math.pow(Math.sin(u), 3);
+            hy[i] = -(13 * Math.cos(u) - 5 * Math.cos(2 * u) - 2 * Math.cos(3 * u) - Math.cos(4 * u));
+          }
           mx += hx[i] / n; my += hy[i] / n;
         }
         let area = 0, perim = 0;
@@ -247,9 +256,10 @@
         for (let i = 0; i < n; i++) { const j = (i + 1) % n; area += hx[i] * hy[j] - hx[j] * hy[i]; perim += Math.hypot(hx[j] - hx[i], hy[j] - hy[i]); }
         const k = Math.sqrt(polyArea(n, r) / Math.abs(area / 2));
         for (let i = 0; i < n; i++) { hx[i] *= k; hy[i] *= k; }
-        this.heart = { r, hx, hy, edge: (perim * k) / n };
+        this.shapes[shape] = { r, hx, hy, edge: (perim * k) / n };
       }
-      const h = this.heart, circle = 2 * r * Math.sin(Math.PI / n);
+      t = Math.max(0, Math.min(1, t));
+      const h = this.shapes[shape], circle = 2 * r * Math.sin(Math.PI / n);
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2;
         this.rx[i] = Math.cos(a) * r * (1 - t) + h.hx[i] * t;

@@ -3853,16 +3853,16 @@
     const g = b.shape, body = b.body;
     if (g) {
       const t = time - g.at, k = Math.min(1, CFG.shapes);
-      const amt = body.grab || b.dying ? 0 : Math.min(1, t / 0.6) * Math.max(0, Math.min(1, (3.2 - t) / 0.7));
-      body.morph(amt * k * 0.9);
+      const amt = body.grab || b.dying ? 0 : Math.max(0, Math.min(1, t / 0.6)) * Math.max(0, Math.min(1, ((g.hold || 3.2) - t) / 0.7));
+      body.morph(amt * k * 0.9, g.kind);
       b.shapeAmt = amt * k;
       if (amt > 0 && body.onFloor()) {
         // Balancing on its point: it keeps itself upright and in place.
         body.impulse(-body.velocity(DT).x * 0.3, 0, DT);
         body.spin((-body.angle * 4 - body.angularVelocity(DT)) * 0.3 * amt, DT);
       }
-      if (t > 0.7 && !g.said) { g.said = true; quip(b, 'ta-da!', 1.2); b.happyUntil = time + 2; hearts.push({ x: body.centroid().x, y: body.bbox().minY - 8, vx: 0, born: time, size: 12 }); }
-      if (amt <= 0 && t > 0.6) { body.morph(0); b.shape = null; b.shapeAmt = 0; }
+      if (t > 0.7 && !g.said && !g.quiet) { g.said = true; quip(b, 'ta-da!', 1.2); b.happyUntil = time + 2; hearts.push({ x: body.centroid().x, y: body.bbox().minY - 8, vx: 0, born: time, size: 12 }); }
+      if (amt <= 0 && t > 0.6) { body.morph(0, g.kind); b.shape = null; b.shapeAmt = 0; }
       b.nextHop = time + 1;
       return;
     }
@@ -4045,6 +4045,7 @@
       const c = b.body.centroid();
       for (let i = 0; i < 3; i++) pops.push({ x: c.x + (i - 1) * 16, y: c.y - b.body.o.radius * 1.1, r: 8 + i * 4, born: time + i * 0.07, color: '#7bd88f', life: 0.5 });
       quip(b, 'plan done!', 1.8);
+      if (CFG.shapes > 0 && !b.shape) { b.shape = { at: time + 0.7, kind: 'star', quiet: true, hold: 2.6 }; b.cheerUntil = time + 3.2; } // (and it's a star for a moment)
     } else {
       if (free) b.hop(0, -300);
       quip(b, `${pr.done}/${pr.total} \u2713`, 1.2, 15);
