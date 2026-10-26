@@ -28,6 +28,7 @@ const auth = require('./auth');
 const renamer = require('./rename');
 const branch = require('./branch');
 const ccDefaults = require('./ccDefaults');
+const { soundMenu } = require('./soundMenu');
 const cloner = require('./clone');
 const pulls = require('./pr');
 const runs = require('./runs');
@@ -190,6 +191,8 @@ function setConfig(next) {
   applyOnTop();
   applyTalkKey();
   if (win) win.webContents.send('config', prefs.config);
+  // (An open Settings window shows a change made from a menu.)
+  if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('config', prefs.config);
   updateWorld();
 }
 
@@ -1336,8 +1339,6 @@ function appMenu() {
   return Menu.buildFromTemplate(appMenuTemplate());
 }
 
-// Blaube's menu: what you came for first (connecting, a new session), then
-// the toys, then how it looks and behaves, then quitting.
 // Claude Code's own defaults for new sessions (its settings file), picked
 // here instead of edited in a terminal.
 function ccDefaultsMenu() {
@@ -1346,7 +1347,7 @@ function ccDefaultsMenu() {
   const models = (prefs.models && prefs.models.length ? prefs.models : [{ value: 'default', displayName: 'Default' }, { value: 'opus', displayName: 'Opus' }, { value: 'sonnet', displayName: 'Sonnet' }, { value: 'haiku', displayName: 'Haiku' }]);
   const set = (change) => { if (!ccDefaults.write(change, home) && !TEST) dialog.showMessageBox({ type: 'warning', message: 'Blaube can’t change your Claude Code settings', detail: `${ccDefaults.fileOf()} isn’t plain JSON, so Blaube leaves it alone.` }); };
   const known = models.some((m) => m.value === now.model || (!now.model && m.value === 'default'));
-  return { label: 'Claude Code defaults', submenu: [
+  return [
     { label: 'New sessions start on', enabled: false },
     ...models.map((m) => ({ label: String(m.displayName || m.value).replace(/\s*\(recommended\)/i, ''), type: 'radio', checked: m.value === 'default' ? !now.model : now.model === m.value, click: () => set({ model: m.value === 'default' ? '' : m.value }) })),
     ...(known ? [] : [{ label: now.model, type: 'radio', checked: true, enabled: false }]),
@@ -1355,10 +1356,36 @@ function ccDefaultsMenu() {
     ...ccDefaults.MODES.map(([mode, label]) => ({ label, type: 'radio', checked: (now.mode || 'default') === mode, click: () => set({ mode: mode === 'default' ? '' : mode }) })),
     { type: 'separator' },
     { label: 'Open the settings file', click: () => { const f = ccDefaults.fileOf(home); if (!fs.existsSync(f)) ccDefaults.write({}, home); if (!TEST) shell.openPath(f); } },
+  ];
+}
+
+// Everything about Claude Code itself in one place: the defaults new
+// sessions start with, then the connection (Disconnect last).
+function claudeCodeMenu(installed) {
+  return { label: 'Claude Code', submenu: [
+    ...ccDefaultsMenu(),
+    ...(installed ? [
+      { type: 'separator' },
+      { label: 'Connected ✓', enabled: false },
+      { label: 'Reconnect', click: installHooks },
+      { label: 'Disconnect…', click: uninstallHooks },
+    ] : []),
   ] };
 }
 
-function appMenuTemplate() {
+// The sound settings, as in Settings (see soundMenu.js). A slime's menu has
+// the voice ones at its top level, so its Blaube submenu leaves them out.
+function soundItems({ voice = true, choir = true } = {}) {
+  const set = (partial) => setConfig(Object.assign({}, prefs.config, partial));
+  const items = soundMenu(prefs.config, set, choir ? { songs: SONGS, sing: (id) => send('choir:' + id), stopSinging: () => send('choir-stop') } : {});
+  return voice ? items : items.filter((i) => i.label === 'Sing together');
+}
+
+// Blaube's menu, most used first: getting set up (until it is) and starting
+// a session; the sound; the toys and how it looks and behaves; then the
+// setup you rarely touch; quitting last. nested: it's the Blaube submenu of
+// a slime's menu, which has the voice settings already.
+function appMenuTemplate({ nested = false } = {}) {
   const installed = claudeHooks.isInstalled(undefined, PORT);
   const noClaude = !claudeFound();
   return [
@@ -1367,36 +1394,26 @@ function appMenuTemplate() {
     ...(noClaude ? [{ label: installing ? 'Installing Claude Code…' : 'Install Claude Code…', enabled: !installing, click: installClaude }]
       : installed ? [] : [{ label: claudeHooks.hasAnyBlaubeHooks() ? 'Update Claude Code connection…' : 'Connect Claude Code…', click: installHooks }]),
     ...newSessionMenu(),
-    ...(noClaude ? [] : [ccDefaultsMenu()]),
+    { type: 'separator' },
+    ...soundItems({ voice: !nested }),
     { type: 'separator' },
     { label: 'Play', submenu: [
       { label: 'Come here', click: () => send('come-here') },
       { label: 'Everyone hop!', click: () => send('hop') },
-      // Everyone sings, in parts: the more slimes, the fuller.
-      { label: 'Choir', submenu: [
-        ...SONGS.map((s) => ({ label: s.title, click: () => send('choir:' + s.id) })),
-        { type: 'separator' },
-        { label: 'Stop singing', click: () => send('choir-stop') },
-      ] },
       { label: 'Demo sessions', click: runDemo },
     ] },
-    { type: 'separator' },
-    { label: 'Colour', submenu: colorMenu(prefs.config.color, (hex) => setConfig(Object.assign({}, prefs.config, { color: hex }))) },
-    { label: 'Live on display', submenu: displayMenu() },
-    { label: 'Notifications', submenu: ['Behind windows', 'Always', 'Off'].map((m) => ({ label: m === 'Behind windows' ? 'When they’re behind windows' : m, type: 'radio', checked: (prefs.config.notify || 'Behind windows') === m, click: () => setConfig(Object.assign({}, prefs.config, { notify: m })) })) },
-    { label: 'Sounds', type: 'checkbox', checked: prefs.config.voice !== 'Off', click: (i) => setConfig(Object.assign({}, prefs.config, { voice: i.checked ? 'On' : 'Off' })) },
     { label: 'Stay in front of other windows', type: 'checkbox', checked: prefs.config.onTop !== 'Off', click: (i) => setConfig(Object.assign({}, prefs.config, { onTop: i.checked ? 'On' : 'Off' })) },
+    { label: 'Notifications', submenu: ['Behind windows', 'Always', 'Off'].map((m) => ({ label: m === 'Behind windows' ? 'When they’re behind windows' : m, type: 'radio', checked: (prefs.config.notify || 'Behind windows') === m, click: () => setConfig(Object.assign({}, prefs.config, { notify: m })) })) },
+    { label: 'Colour', submenu: colorMenu(prefs.config.color, (hex) => setConfig(Object.assign({}, prefs.config, { color: hex }))) },
     { label: 'Settings…', click: openSettings },
+    { type: 'separator' },
+    ...(noClaude ? [] : [claudeCodeMenu(installed)]),
+    { label: 'Live on display', submenu: displayMenu() },
+    { label: 'Open at login', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: (i) => app.setLoginItemSettings({ openAtLogin: i.checked }) },
     // Without Accessibility the Dock is a solid strip; with it, its icon row
     // is read so the slimes can bump into its ends.
     ...(process.platform === 'darwin' && !systemPreferences.isTrustedAccessibilityClient(false)
       ? [{ label: 'Bump into the Dock’s sides…', click: askDockAccess }] : []),
-    { label: 'Open at login', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: (i) => app.setLoginItemSettings({ openAtLogin: i.checked }) },
-    ...(installed ? [{ label: 'Claude Code', submenu: [
-      { label: 'Connected ✓', enabled: false },
-      { label: 'Reconnect', click: installHooks },
-      { label: 'Disconnect…', click: uninstallHooks },
-    ] }] : []),
     { type: 'separator' },
     { label: 'Quit Blaube', role: 'quit' },
   ];
@@ -1407,38 +1424,48 @@ function appMenuTemplate() {
 const INSTALL_URL = 'https://docs.claude.com/en/docs/claude-code/setup';
 const claudeFound = () => !!(findClaude() || owned.shellPath() || TEST);
 
+// A slime's menu, most used first: talking to it, getting to its terminal
+// and files; then moving or copying the session (the rarer bits under
+// More); its sound and colour; Blaube's own menu; and last what takes the
+// slime away.
 function sessionMenu(id) {
   const s = tracker.sessions.get(id);
   if (!s) return null;
   const word = { working: 'Working', waiting: 'Needs you', done: 'Done', idle: 'Idle' }[s.state] || s.state;
   const effort = { low: 'Low effort', medium: 'Medium effort', high: 'High effort', xhigh: 'Extra high effort', max: 'Max effort' }[efforts.get(id) || defaultEffort()];
   const isDemo = id.startsWith('demo-');
+  const mine = owned.has(id);
   return Menu.buildFromTemplate([
     { label: s.project, enabled: false },
     { label: `${word}${s.message && s.state === 'waiting' ? ': ' + s.message : ''}`, enabled: false },
     ...(effort ? [{ label: effort, enabled: false }] : []),
     { type: 'separator' },
     { label: 'Talk', enabled: !isDemo, click: () => win && win.webContents.send('open-talk', id) },
-    ...(owned.has(id) ? [
+    ...(mine ? [
       { label: 'Continue in terminal', click: () => continueInTerminal(s) },
-      { label: 'End session', click: () => endOwned(s) },
     ] : [
       { label: 'Go to its terminal', sublabel: process.platform === 'darwin' ? '⌥-click the blob' : 'Alt-click the blob', enabled: !isDemo, click: () => goToSession(s) },
       { label: 'Resume in a new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
-      { label: 'Bring it into Blaube', enabled: canBringIn(s), click: () => bringIn(s) },
     ]),
-    { label: 'Fork into a new session', toolTip: 'A copy of this conversation in a new session, to try something else; this one carries on as it is', enabled: !isDemo && !!s.cwd, click: () => forkSession(s) },
-    { label: 'Copy resume command', click: () => clipboard.writeText(`cd "${s.cwd}" && ${resumeCommand(s.id)}`) },
-    { label: 'Notify me about this one', type: 'checkbox', checked: !muted.has(id), enabled: !isDemo && (prefs.config.notify || 'Behind windows') !== 'Off', click: (item) => { if (item.checked) muted.delete(id); else muted.add(id); } },
-    { label: 'Save conversation as Markdown', enabled: !isDemo && inbox.log(id).length > 0, click: () => { const f = saveConversation(id); if (f) shell.showItemInFolder(f); } },
-    { label: 'Open project folder', enabled: !!s.cwd, click: () => shell.openPath(s.cwd) },
     ...(!isDemo && s.cwd && editorNow() ? [{ label: `Open in ${editorNow().name}`, click: () => openInEditor(id, '') }] : []),
-    ...(isDemo || !s.cwd ? [] : [allowedMenu(s)]),
+    { label: 'Open project folder', enabled: !!s.cwd, click: () => shell.openPath(s.cwd) },
     { type: 'separator' },
+    ...(mine ? [] : [{ label: 'Bring it into Blaube', toolTip: 'It closes in its terminal and carries on here, its conversation kept', enabled: canBringIn(s), click: () => bringIn(s) }]),
+    { label: 'Fork into a new session', toolTip: 'A copy of this conversation in a new session, to try something else; this one carries on as it is', enabled: !isDemo && !!s.cwd, click: () => forkSession(s) },
+    { label: 'More', submenu: [
+      { label: 'Notify me about this one', type: 'checkbox', checked: !muted.has(id), enabled: !isDemo && (prefs.config.notify || 'Behind windows') !== 'Off', click: (item) => { if (item.checked) muted.delete(id); else muted.add(id); } },
+      ...(isDemo || !s.cwd ? [] : [allowedMenu(s)]),
+      { type: 'separator' },
+      { label: 'Save conversation as Markdown', enabled: !isDemo && inbox.log(id).length > 0, click: () => { const f = saveConversation(id); if (f) shell.showItemInFolder(f); } },
+      { label: 'Copy resume command', click: () => clipboard.writeText(`cd "${s.cwd}" && ${resumeCommand(s.id)}`) },
+    ] },
+    { type: 'separator' },
+    ...soundItems({ choir: false }),
     { label: 'Colour', submenu: colorMenu(colorOf(s) || prefs.config.color, (hex) => { prefs.colors[colorKey(s)] = hex; savePrefs(); pushState(); }) },
-    { label: 'Blaube', submenu: appMenuTemplate() },
+    { label: 'Blaube', submenu: appMenuTemplate({ nested: true }) },
     { type: 'separator' },
     { label: 'Hide this blob', toolTip: 'Until its session ends', click: () => tracker.dismiss(id) },
+    ...(mine ? [{ label: 'End session', click: () => endOwned(s) }] : []),
   ]);
 }
 

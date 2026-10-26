@@ -1,4 +1,4 @@
-// Songs the choir knows (Play > Choir). All public domain.
+// Songs the choir knows (Sing together, in the menu). All public domain.
 //
 // notes: "pitch:beats:syllable" separated by spaces. A syllable of "-"
 // carries the one before over a new note (a slur). bpm counts beats.
