@@ -425,6 +425,7 @@ function pushTalk(id, focusField = false) {
     // reached us (it was started with them, whatever the file says now).
     connected: hooksOk || inbox.reachable.has(id) || inbox.steerable.has(id) || inbox.asks.has(id) || inbox.owned.has(id),
     doing: s.state === 'working' ? doing.get(id) || '' : '',
+    helpers: s.state === 'working' || s.state === 'waiting' ? (s.agents || []).slice(0, 5).map((a) => ({ name: agentDescription(s, a) || a.type, doing: helperDoing.get(`${id}/${a.id}`) || '', waiting: a.state === 'waiting' })) : [],
     focus: focusField,
     // Its git status and what you might ask for next (see git.js).
     git: gitStates.has(id) ? git.summary(gitStates.get(id)) : '',
@@ -824,6 +825,7 @@ function describeTool(name, input = {}) {
 
 const lastBubble = new Map(); // slime key -> time of its last tool bubble
 const doing = new Map(); // session id -> what its last tool was ("Editing face.js"), for its talk box
+const helperDoing = new Map(); // "session id/agent id" -> what that helper's last tool was
 function statusBubble({ session: s, agentId, payload: p }) {
   if (!agentId) {
     if (p.hook_event_name === 'PreToolUse') doing.set(s.id, describeTool(p.tool_name, p.tool_input || {}));
@@ -1266,6 +1268,13 @@ app.whenReady().then(async () => {
     if (c && c.to === 'gone' && c.session && inbox.logs.has(c.session.id) && !owned.has(c.session.id)) inbox.observe({ session_id: c.session.id, hook_event_name: 'SessionEnd' });
   });
   inbox.on('change', (id) => pushTalk(id));
+  // What each helper is on, for its mother's talk box.
+  tracker.on('activity', ({ session: s, agentId, payload: p }) => {
+    if (!agentId || p.hook_event_name !== 'PreToolUse') return;
+    helperDoing.set(`${s.id}/${agentId}`, describeTool(p.tool_name, p.tool_input || {}));
+    if (helperDoing.size > 200) helperDoing.delete(helperDoing.keys().next().value);
+    if (talkId === s.id) pushTalk(s.id);
+  });
   tracker.on('change', sweepSoon);
   // A message from the slime went in: its turn starts, as if typed.
   // One went in at its next step, mid-turn: it nods, as when you type.

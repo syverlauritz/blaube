@@ -13,7 +13,7 @@
   let drawn = { entries: [], thinking: -1, open: '' }, ends = []; // what the log shows, and each entry's last element
   const dots = document.createElement('div'); // the slime thinking
   dots.className = 'dots';
-  dots.innerHTML = '<i></i><i></i><i></i><span class="doing"></span>'; // and what it's doing ("Editing face.js")
+  dots.innerHTML = '<i></i><i></i><i></i><span class="doing"></span><ul class="helpers"></ul>'; // and what it's doing ("Editing face.js"), and its helpers
   const drafts = new Map(); // what you'd typed, per session
   const open = new Set(); // long replies you unfolded (by time)
 
@@ -306,7 +306,23 @@
         if (s.log[i].who === 'you' && s.log[i].status !== 'queued') { thinking = i; break; }
       }
     }
-    dots.lastChild.textContent = s.doing || '';
+    dots.querySelector('.doing').textContent = s.doing || '';
+    // Helpers it sent off, each with what it's on ("Finding the tax tables:
+    // Reading rates.js"); one waiting on you says so.
+    const hl = dots.querySelector('.helpers');
+    const hk = JSON.stringify(s.helpers || []);
+    if (hl.dataset.key !== hk) {
+      hl.dataset.key = hk;
+      hl.textContent = '';
+      for (const h of s.helpers || []) {
+        const li = document.createElement('li');
+        if (h.waiting) li.className = 'wants';
+        const b = document.createElement('b');
+        b.textContent = h.name;
+        li.append(b, h.waiting ? ' needs you' : h.doing ? ` · ${h.doing}` : '');
+        hl.append(li);
+      }
+    }
     // Only rebuild the log when it changed, so scrolling isn't reset; and not
     // while you're selecting text in it (it catches up after).
     // Only what changed is drawn: new entries are added at the end, so

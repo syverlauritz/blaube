@@ -74,6 +74,14 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	check(await box(`document.getElementById('text').placeholder === 'Add something…'`), 'and the field says you can add something now');
 	check(await box(`!/Connect Claude Code/.test(document.getElementById('hint').textContent)`), 'a session whose steps reach Blaube isn’t told to connect');
 
+	// A helper it sends off shows under the dots, with what it's on.
+	await hook({ hook_event_name: 'SubagentStart', agent_id: 'h1', agent_type: 'Explore' });
+	await tool({ hook_event_name: 'PreToolUse', agent_id: 'h1', agent_type: 'Explore', tool_name: 'Grep', tool_input: { pattern: 'brackets' } });
+	check(await until(() => box(`[...document.querySelectorAll('#inner .dots .helpers li')].some((li) => /Explore/.test(li.textContent) && /brackets/.test(li.textContent))`)), 'a helper it sent off shows under the dots, with what it’s on');
+	await shot('helpers');
+	await hook({ hook_event_name: 'SubagentStop', agent_id: 'h1' });
+	check(await until(() => box(`document.querySelectorAll('#inner .dots .helpers li').length === 0`)), 'and goes when it’s done');
+
 	// Tapping a step shows what it did.
 	await tool({ hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: '/tmp/kalkis/src/tax.js', old_string: 'export const brackets = [];', new_string: 'export const brackets = [2027];' }, tool_response: {} });
 	check(await until(() => box(`[...document.querySelectorAll('#inner .step.opens')].some((e) => /tax\.js/.test(e.textContent) && /Edit/.test(e.textContent))`)), 'an edit shows as a step you can open');
