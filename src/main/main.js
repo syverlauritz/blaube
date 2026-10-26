@@ -2198,7 +2198,7 @@ app.whenReady().then(async () => {
   // are watched here and passed on. A press counts if it starts over a
   // slime; its release always follows it.
   const pressed = { 0: false, 2: false };
-  startButtonWatcher((button, down, alt) => {
+  if (!TEST) startButtonWatcher((button, down, alt) => { // (tests click the page themselves, never with your mouse)
     if (!win || win.isDestroyed()) return;
     const { x, y, over } = cursorInWindow();
     if (down && (over || holding)) {
@@ -2226,7 +2226,7 @@ app.whenReady().then(async () => {
       clickable = over;
       applied = now;
     }
-    if (x !== cursorX || y !== cursorY) {
+    if (!TEST && (x !== cursorX || y !== cursorY)) { // (tests move their own mouse)
       cursorX = x; cursorY = y;
       win.webContents.send('cursor', { x, y });
     }

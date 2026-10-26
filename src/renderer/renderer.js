@@ -5663,8 +5663,9 @@
   }
 
   // On Windows the app reports presses (see main.js); elsewhere, and in the
-  // shots script, the window's own mouse events drive the same handlers.
-  const fromApp = !!(api.usesPointer && api.onPointer);
+  // shots script and the e2e tests (?debug, which send their own clicks), the
+  // window's own mouse events drive the same handlers.
+  const fromApp = !!(api.usesPointer && api.onPointer) && !new URLSearchParams(location.search).has('debug');
   if (fromApp) {
     api.onPointer((p) => {
       const e = { button: p.button, clientX: p.x, clientY: p.y, altKey: p.alt };
