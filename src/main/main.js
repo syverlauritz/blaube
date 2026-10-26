@@ -2132,13 +2132,15 @@ app.whenReady().then(async () => {
       const loaded = () => { if (owned.has(id)) owned.control(id, { subtype: 'reload_plugins' }, () => {}); };
       if (market) return runForSession(id, `${sq(bin)} plugin marketplace ${verb} ${sq(name)}`, `Marketplace ${name}: ${verb === 'add' ? 'added' : verb === 'update' ? 'updated' : 'removed'} (claude plugin marketplace ${verb})`, (code) => { if (code === 0) loaded(); });
       if (verb !== 'install') return runForSession(id, `${sq(bin)} plugin ${verb} ${sq(name)}`, `${name}: ${{ uninstall: 'uninstalled', enable: 'turned on', disable: 'turned off', update: 'updated' }[verb]} (claude plugin ${verb})`, (code) => { if (code === 0) loaded(); });
-      const install = (accept) => runForSession(id, `${sq(bin)} plugin install ${sq(name)} --json${accept ? ` --accept-command ${sq(accept)}` : ''}`, `Installed ${name} (claude plugin install)`, (code, out) => {
+      const install = (accept) => runForSession(id, `${sq(bin)} plugin install ${sq(name)} --json${accept ? ` --accept-command ${sq(accept)}` : ''}`, `Installed ${name} (claude plugin install)`, (code, out, step) => {
         let r = null;
         for (const line of String(out || '').split('\n').reverse()) { try { r = JSON.parse(line); break; } catch { /* not it */ } }
         if (code === 0) { loaded(); inbox.add(id, { who: 'note', text: owned.has(id) ? `It can use ${name} now` : `${name} is installed: sessions started from now on have it` }); return; }
         const sc = r && r.shownCommand;
         if (!accept && sc && /^[0-9a-f]{16,128}$/i.test(String(sc.sha256 || ''))) {
           const what = String(sc.command || sc.text || '').slice(0, 2000);
+          Object.assign(step, { ok: true, text: `${name} installs by running a command: asked you first` }); // (not a failure: it's waiting on you)
+          inbox.emit('change', id);
           const go = () => install(String(sc.sha256));
           if (TEST) { global.__blaubePluginCommand = what; if (global.__blaubeAcceptPluginCommand) go(); return; }
           dialog.showMessageBox({ type: 'warning', buttons: ['Run it and install', 'Cancel'], defaultId: 1, cancelId: 1, message: `${name} installs by running this command:`, detail: `${what}\n\nOnly go ahead if you trust where this plugin comes from.` }).then(({ response }) => { if (response === 0) go(); else inbox.add(id, { who: 'note', text: `Didn’t install ${name}` }); });
@@ -2285,18 +2287,29 @@ app.whenReady().then(async () => {
     // "/status": what it's running on, as Claude Code's /status says.
     if (/^\/status\s*$/i.test(String(text).trim()) && sess && !id.startsWith('demo-')) {
       const bin = owned.findClaude() || owned.shellPath();
-      const say = (version) => {
+      const say = (version, sections) => {
         const st = gitStates.get(id);
         const mode = { acceptEdits: 'accepting edits', plan: 'planning first', bypassPermissions: 'not asking', default: 'asking first' }[sess.mode || 'default'] || sess.mode;
-        inbox.add(id, { who: 'note', text: [
+        inbox.add(id, Object.assign(sections ? { sections } : {}, { who: 'note', text: [
           version ? `Claude Code ${version}` : '',
           modelName(pickedModel.get(id) || usage.sessionInfo(transcriptPath(sess)).model),
           mode,
           signedOutNow ? 'signed out' : '',
           sess.cwd ? `in ${sess.cwd.replace(os.homedir(), '~')}${st && st.branch ? ` (${st.branch})` : ''}` : '',
           owned.has(id) ? 'started by Blaube' : 'in a terminal',
-        ].filter(Boolean).join(' · ') });
+        ].filter(Boolean).join(' · ') }));
       };
+      // (One Blaube started: everything Claude Code's own /status says too,
+      // a tap away: how it's signed in, its MCP servers, its settings.)
+      if (owned.has(id)) {
+        return owned.control(id, { subtype: 'get_status' }, (ok, r) => {
+          const sections = ok && r && Array.isArray(r.sections) ? r.sections.slice(0, 12).map((x) => ({ title: String(x.title || '').slice(0, 60), rows: (Array.isArray(x.rows) ? x.rows : []).slice(0, 30).map((w) => ({ label: String(w.label || '').slice(0, 60), value: String(w.value == null ? '' : w.value).slice(0, 300) })) })).filter((x) => x.rows.length) : null;
+          const v = sections && ((sections[0] || { rows: [] }).rows.find((w) => w.label === 'Version') || {}).value;
+          if (v) return say(v, sections);
+          if (!bin) return say('', sections);
+          require('node:child_process').execFile(bin, ['--version'], { timeout: 8000, encoding: 'utf8', windowsHide: true }, (err, out) => say(err ? '' : String(out).trim().split(/\s/)[0], sections));
+        });
+      }
       if (!bin) return say('');
       require('node:child_process').execFile(bin, ['--version'], { timeout: 8000, encoding: 'utf8', windowsHide: true }, (err, out) => say(err ? '' : String(out).trim().split(/\s/)[0]));
       return;
@@ -2350,8 +2363,8 @@ app.whenReady().then(async () => {
         const asked = inbox.add(id, { who: 'note', text: `Asked on the side: ${q.length > 80 ? q.slice(0, 79) + '…' : q}` });
         owned.control(id, { subtype: 'side_question', question: q }, (ok, r) => {
           if (!ok || !r || typeof r.response !== 'string' || !r.response.trim()) { inbox.add(id, { who: 'note', text: `Couldn’t ask on the side: ${ok ? 'no answer' : r}`, error: true }); return; }
-          inbox.logs.set(id, inbox.log(id).filter((e) => e !== asked));
-          inbox.add(id, { who: 'note', aside: { question: q, answer: r.response }, text: `On the side: ${q} — ${r.response}` });
+          Object.assign(asked, { aside: { question: q, answer: r.response }, text: `On the side: ${q} — ${r.response}` }); // (the line saying it asked becomes the answer)
+          inbox.emit('change', id);
         }, 120e3);
         return;
       }
@@ -2472,8 +2485,9 @@ app.whenReady().then(async () => {
         shellRan.set(id, list.slice(-3));
       }
       inbox.emit('change', id);
-      then(code, shown);
+      then(code, shown, entry);
     });
+    return entry;
   }
   replyTo = sendMessage;
   // Stops a background task: in a session Blaube started, asked of Claude

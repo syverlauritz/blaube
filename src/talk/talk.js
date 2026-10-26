@@ -345,8 +345,32 @@
     if (m.who === 'note') {
       const e = document.createElement('div');
       // (A long one, such as /help or /permissions, wraps: it's worth reading.)
-      e.className = 'note' + (m.error ? ' error' : '') + (String(m.text || '').length > 64 ? ' long' : '');
+      e.className = 'note' + (m.error ? ' error' : '') + (String(m.text || '').length > 40 ? ' long' : '');
       e.textContent = m.text;
+      // (/status: everything Claude Code's own /status says, a tap away.)
+      if (Array.isArray(m.sections) && m.sections.length) {
+        const more = document.createElement('details');
+        more.className = 'statusmore';
+        const sum = document.createElement('summary');
+        sum.textContent = 'All of it';
+        more.append(sum);
+        for (const x of m.sections) {
+          const h = document.createElement('div');
+          h.className = 'stitle';
+          h.textContent = x.title;
+          const dl = document.createElement('dl');
+          for (const w of x.rows) {
+            const dt = document.createElement('dt');
+            dt.textContent = w.label;
+            const dd = document.createElement('dd');
+            dd.textContent = w.value;
+            dl.append(dt, dd);
+          }
+          more.append(h, dl);
+        }
+        more.addEventListener('toggle', () => requestAnimationFrame(fitWindow));
+        e.append(more);
+      }
       // (/context: a bar of what fills it, as the terminal draws it.)
       if (m.context && m.context.max) {
         e.classList.add('context');
