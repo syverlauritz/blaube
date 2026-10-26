@@ -4635,15 +4635,15 @@
     });
     at(73, () => { const b = big()[1] || big()[0]; if (b && !b.roll && !b.tower) rollNow(b); });
     at(77, () => { const b = big()[0]; if (b && !b.shape) b.shape = { at: time }; });
-    at(90, () => { const b = big()[1] || big()[0]; if (b && !b.balloon && !b.body.grab) balloonNow(b); });
-    at(97, () => {
+    at(81, () => { const b = big()[1] || big()[0]; if (b && !b.balloon && !b.body.grab) balloonNow(b); });
+    at(88, () => {
       const [b, p, q] = big();
       if (!b || !p || !q || rope || [b, p, q].some((o) => o.body.grab)) return;
       const y = H - b.body.o.radius * 1.2;
       b.body.teleport(W * 0.5, y); p.body.teleport(W * 0.5 - b.body.o.radius * 3.5, H - p.body.o.radius * 1.2); q.body.teleport(W * 0.5 + b.body.o.radius * 3.5, H - q.body.o.radius * 1.2);
       setTimeout(() => { if (!rope && ![b, p, q].some((o) => o.dying)) ropeNow(b, p, q); }, 1200);
     });
-    at(112, () => { seasonOverride = was; showingOff = false; });
+    at(103, () => { seasonOverride = was; showingOff = false; });
   }
   let showingOff = false;
 
