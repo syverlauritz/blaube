@@ -1404,6 +1404,9 @@
   }
   const LEAF_COLORS = ['#d9822b', '#c4572a', '#e0a53a', '#a8643a'];
 
+  // How high its middle sits when it's lying on something.
+  const rest = (f) => (f.kind === 'snow' ? f.size * 0.9 : f.size * 0.5);
+
   function stepSeason() {
     const kind = CFG.seasons > 0 ? season() : 'none';
     if (kind !== 'none' && flakes.length < 80) {
@@ -1455,8 +1458,8 @@
           // Lying on a window: it rides along, and falls when the window goes.
           let l = null;
           for (const m of ledges) if (m.id === f.ledge.id && (!l || Math.abs(m.y - f.y) < Math.abs(l.y - f.y))) l = m;
-          if (!l || Math.abs(l.y - f.size * 0.3 - f.y) > 40) { f.landed = 0; f.vy = 0; f.ledge = null; }
-          else { f.x = l.x0 + f.ledge.dx; f.y = l.y - f.size * 0.3; }
+          if (!l || Math.abs(l.y - rest(f) - f.y) > 40) { f.landed = 0; f.vy = 0; f.ledge = null; }
+          else { f.x = l.x0 + f.ledge.dx; f.y = l.y - rest(f); }
         } else if (floorAt(f.x, f.y) > f.y + f.size) { f.landed = 0; f.vy = 0; }
         continue;
       }
@@ -1491,8 +1494,9 @@
       }
       if (stuck) continue;
       const floor = floorAt(f.x, f.y);
-      if (f.y >= floor - f.size * 0.3) {
-        f.y = floor - f.size * 0.3; f.landed = time;
+      if (f.y >= floor - rest(f)) {
+        f.y = floor - rest(f); f.landed = time;
+        f.a = Math.round(f.a / Math.PI) * Math.PI + (Math.random() - 0.5) * 0.3; // a leaf comes to rest lying flat
         const l = ledges.find((m) => m.y === floor && f.x >= m.x0 && f.x <= m.x1);
         f.ledge = l ? { id: l.id, dx: f.x - l.x0 } : null;
       }
