@@ -19,6 +19,20 @@ jobs:
           ELECTRON_SKIP_BINARY_DOWNLOAD: 1
       - run: npm test
 
+  # The real app, invisible under a virtual screen, driven through fake hooks
+  # (no Claude Code, no tokens): the slimes' physics and voice behaviour.
+  life:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: sudo apt-get install -y xvfb
+      - run: BLAUBE_TEST=scripts/e2e/life.js BLAUBE_PORT=47872 xvfb-run -a npx electron --no-sandbox --disable-gpu-vsync --disable-frame-rate-limit .
+
   package:
     needs: test
     env:
