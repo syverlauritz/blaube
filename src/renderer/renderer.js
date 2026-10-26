@@ -5855,6 +5855,49 @@
     return { x: c.x, y: Math.min(b.body.lookTop ?? Infinity, c.y - r), r };
   }
 
+  // Drawing is what costs the GPU, so it isn't done on every screen refresh:
+  // at most CFG.maxFps (an even share of the refresh, so motion stays
+  // smooth: 72 on a 144 Hz screen), and CFG.calmFps while nothing on the
+  // stage is moving. Everything else still runs every refresh, so timings
+  // don't change with the frame rate.
+  let vsync = 1 / 60, lastTick = 0, paintedAt = 0, calmSince = null, wasEmpty = false;
+  function paintNow(now) {
+    const gap = now - lastTick;
+    if (lastTick && gap > 0.002 && gap < 0.05) vsync += (gap - vsync) * 0.05;
+    lastTick = now;
+    if (!buddies.size && !marks.length && !drops.length) { // nothing to draw: clear once, then rest
+      if (wasEmpty) return false;
+      wasEmpty = true;
+      return true;
+    }
+    wasEmpty = false;
+    calmSince = stageCalm() ? calmSince ?? now : null;
+    // Away from the computer: nobody's watching closely.
+    const fps = sys.away ? Math.min(10, CFG.calmFps) : calmSince !== null && now - calmSince > 0.5 ? CFG.calmFps : CFG.maxFps;
+    const every = Math.max(1, Math.ceil(1 / vsync / fps - 0.05)) * vsync;
+    if (now - paintedAt < every - vsync / 2) return false;
+    paintedAt = now;
+    return true;
+  }
+
+  // Still enough that a lower frame rate wouldn't show: no slime (no bit of
+  // its skin) or the cursor moving more than a slow drift, nothing held.
+  function stageCalm() {
+    if (drag || pet.target || Math.hypot(mouse.vx, mouse.vy) > 60) return false;
+    let moved = false;
+    for (const p of pets.values()) {
+      if (Math.abs(p.x - (p.calmX ?? p.x)) + Math.abs(p.y - (p.calmY ?? p.y)) > 0.3) moved = true;
+      p.calmX = p.x; p.calmY = p.y;
+    }
+    if (moved) return false;
+    for (const b of buddies.values()) {
+      const s = b.body;
+      if (s.grab || b.splitting || b.dying || b.merging) return false;
+      for (let i = 0; i < s.n; i++) if (Math.abs(s.px[i] - s.ox[i]) > 25 * DT || Math.abs(s.py[i] - s.oy[i]) > 25 * DT) return false;
+    }
+    return true;
+  }
+
   function frame() {
     const now = performance.now() / 1000;
     const fdt = Math.max(0.004, now - last);
@@ -5873,7 +5916,7 @@
     }
     for (const b of buddies.values()) behave(b);
     checkPetting();
-    draw();
+    if (paintNow(now)) draw();
     updateIgnore();
     followTalk();
     requestAnimationFrame(frame);
