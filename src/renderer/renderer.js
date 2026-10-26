@@ -263,6 +263,7 @@
   const STOPPED = 0.07; // s: no news for this long means the window stopped
   const seen = new Map(); // window id -> { wx, y, t, at, vx, vy }: last report
   const ridden = new Map(); // window id -> its speed last step (riders wobble when it changes)
+  const shook = new Map(); // window id -> which way it was going, and when it turned (shaking it)
   function setLedges(list) {
     rawLedges = list || [];
     const next = (CFG.windowLedges === 'Off' ? [] : rawLedges).map((m) => Object.assign({}, m));
@@ -286,7 +287,7 @@
       const s = seen.get(m.id);
       m.vx = s.vx; m.vy = s.vy; m.t = t;
     }
-    for (const id of seen.keys()) if (!done.has(id)) seen.delete(id);
+    for (const id of seen.keys()) if (!done.has(id)) { seen.delete(id); shook.delete(id); }
     noticeWindows(next, done);
     // Riders: keep them with where their window really is (only ever lifting
     // them: if it's lower, they're in the air above it).
@@ -396,6 +397,22 @@
       if (!fast && Math.abs(l.vx) > 300) gust(l);
       const was = ridden.get(l.id) ?? 0, kick = fast ? 0 : (l.vx - was) * CFG.rideWobble;
       ridden.set(l.id, fast ? 0 : l.vx);
+      // Shake the window back and forth and whoever's riding it gets dizzy.
+      if (!fast && Math.abs(l.vx) > 250 && CFG.shakeDizzy > 0) {
+        const k = shook.get(l.id) || { dir: 0, flips: [] }, dir = Math.sign(l.vx), fl = k.flips;
+        shook.set(l.id, k);
+        if (k.dir && k.dir !== dir) fl.push(time);
+        k.dir = dir;
+        while (fl.length && time - fl[0] > 1.5) fl.shift();
+        if (fl.length >= CFG.shakeDizzy) {
+          fl.length = 0;
+          for (const b of buddies.values()) {
+            if (!b.body.onLedge || b.body.onLedge.id !== l.id || b.body.grab) continue;
+            if (time > b.dizzyUntil) quip(b, 'whoa…', 1.2);
+            b.dizzyUntil = time + 1.8;
+          }
+        }
+      }
       if (l.up <= 0 && !l.vx && !l.vy && !kick) { l.up = 0; continue; }
       for (const b of buddies.values()) {
         if (!b.body.onLedge || b.body.onLedge.id !== l.id || b.body.grab) continue;
