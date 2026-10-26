@@ -1839,6 +1839,8 @@ app.whenReady().then(async () => {
     const secs = Math.round(r.delay / 1000);
     const said = `Claude’s servers are ${why}: trying again${secs >= 2 ? ` in ${secs}s` : ''}${r.attempt && r.max ? ` (${r.attempt} of ${r.max})` : ''}`;
     doing.set(id, said);
+    // (And its slime says so, once a retry, when you can't see its box.)
+    if (win && !(talkWin && talkWin.isVisible() && talkId === id)) win.webContents.send('say', { id, text: `Claude’s busy: trying again${secs >= 2 ? ` in ${secs}s` : ''}…`, seconds: Math.min(6, Math.max(2.5, secs)), status: true });
     setTimeout(() => { if (doing.get(id) === said) { doing.delete(id); if (talkId === id) pushTalk(id); } }, r.delay + 5000).unref(); // (it went through)
     pushState();
     if (talkId === id) pushTalk(id);
@@ -2128,6 +2130,15 @@ app.whenReady().then(async () => {
       try { if (!fs.existsSync(file)) fs.writeFileSync(file, `# ${path.basename(path.dirname(file))}\n\n`); } catch (e) { inbox.add(id, { who: 'note', text: `Couldn’t make CLAUDE.md: ${e.message}`, error: true }); return; }
       if (!TEST) shell.openPath(file);
       inbox.add(id, { who: 'note', text: `Opened ${path.basename(path.dirname(file))}/CLAUDE.md, what every session there reads first` });
+      // (One Blaube started: what else it reads, and what it has remembered
+      // on its own, as the terminal's /memory lists them.)
+      if (owned.has(id)) owned.control(id, { subtype: 'get_memory_dialog' }, (ok, r) => {
+        if (!ok || !r) return;
+        const reads = (Array.isArray(r.files) ? r.files : []).filter((f) => f && f.exists && f.path).map((f) => String(f.path).replace(os.homedir(), '~'));
+        const kept = (Array.isArray(r.memories) ? r.memories : []).filter((m) => m && m.name).slice(0, 12).map((m) => `${path.basename(String(m.name), '.md')}${m.description ? ` (${String(m.description).slice(0, 60)})` : ''}`);
+        const parts = [reads.length ? `It reads ${reads.join(', ')}` : '', kept.length ? `It remembers: ${kept.join(' · ')}${r.memories.length > 12 ? ` and ${r.memories.length - 12} more` : ''}` : ''].filter(Boolean);
+        if (parts.length) inbox.add(id, { who: 'note', text: parts.join('. ') });
+      });
       return;
     }
     // "/rename tax rewrite": its name, written where Claude Code keeps it.

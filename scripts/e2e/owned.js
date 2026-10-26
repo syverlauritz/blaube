@@ -46,6 +46,7 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
     if (r.subtype === 'mcp_toggle') { if (r.serverName === 'linear') linear = r.enabled ? 'connected' : 'disabled'; return ok({}); }
     if (r.subtype === 'reload_plugins') { require('node:fs').writeFileSync(require('node:path').join(__dirname, 'reloaded'), ''); return ok({}); }
     if (r.subtype === 'get_status') return ok({ sections: [{ title: 'Session', rows: [{ label: 'Version', value: '9.9.9' }, { label: 'Login method', value: 'Claude Max account' }] }, { title: 'Environment', rows: [{ label: 'Model', value: model }, { label: 'MCP servers', value: '1 connected, 1 failed · /mcp' }] }] });
+    if (r.subtype === 'get_memory_dialog') return ok({ files: [{ kind: 'user', path: require('node:os').homedir() + '/.claude/CLAUDE.md', exists: true }, { kind: 'project', path: process.cwd() + '/CLAUDE.md', exists: false }], memories: [{ name: 'pnpm.md', description: 'This repo uses pnpm, not npm' }] });
     if (r.subtype === 'get_session_cost') return ok({ text: 'Total cost:            $0.0123\\nTotal duration (API):  4s\\nTotal duration (wall): 1m 2s\\nTotal code changes:    3 lines added, 1 line removed' });
     if (r.subtype === 'mcp_reconnect') { mcpUp = r.serverName === 'github'; return ok({}); }
     if (r.subtype === 'get_usage') return ok({ session: {}, rate_limits_available: true, rate_limits: { five_hour: { utilization: used[0], resets_at: new Date(Date.now() + 7200e3).toISOString() }, seven_day: { utilization: used[1], resets_at: new Date(Date.now() + 4 * 86400e3).toISOString() } } });
@@ -145,6 +146,8 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(() => inbox.log(id).some((e) => /^Its MCP servers: .*linear \(turned off\)/.test(e.text || ''))), 'and /mcp says so');
 	await type('/mcp enable linear');
 	check(await until(() => inbox.log(id).some((e) => e.text === 'Turned linear on')), 'and /mcp enable turns it back on');
+	await type('/memory');
+	check(await until(() => inbox.log(id).some((e) => e.text === 'It reads ~/.claude/CLAUDE.md. It remembers: pnpm (This repo uses pnpm, not npm)')), '/memory lists what it reads and what it has remembered (get_memory_dialog)');
 	// Claude's servers busy: the box says it's trying again, not just dots.
 	await type('flaky');
 	check(await until(() => box(`/Claude’s servers are overloaded: trying again in 4s \\(2 of 10\\)/.test(document.getElementById('inner').textContent)`), 3000), 'while Claude Code tries again, the box says why (api_retry)');
