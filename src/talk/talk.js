@@ -693,14 +693,44 @@
   // In the overview, ⌘F looks through every session: the ones that said it,
   // with a snippet; a tap goes there with the same words found.
   let allQuery = '', allHits = [], pendingFind = '';
+  // (Past sessions too, a moment after you stop typing: they're on disk.)
+  let pastHits = [], pastFor = '', pastTimer = 0;
   function searchAll(q) {
     allQuery = String(q || '').trim();
-    if (!api.searchAll || allQuery.length < 2) { allHits = []; if (current) drawOverview(current); return; }
+    clearTimeout(pastTimer);
+    if (!api.searchAll || allQuery.length < 2) { allHits = []; pastHits = []; pastFor = ''; if (current) drawOverview(current); return; }
     const asked = allQuery;
-    api.searchAll(asked).then((r) => { if (asked !== allQuery) return; allHits = r || []; if (current && document.body.classList.contains('overview')) drawOverview(current); });
+    const redraw = () => { if (current && document.body.classList.contains('overview')) drawOverview(current); };
+    api.searchAll(asked).then((r) => { if (asked !== allQuery) return; allHits = r || []; redraw(); });
+    if (api.searchPast) pastTimer = setTimeout(() => api.searchPast(asked).then((r) => { if (asked !== allQuery) return; pastHits = r || []; pastFor = asked; redraw(); }), 300);
   }
   function drawHits(box) {
-    if (!allHits.length) { const n = document.createElement('div'); n.className = 'today'; n.textContent = allQuery.length < 2 ? 'Type a little more…' : 'Nothing found'; box.append(n); return; }
+    drawLiveHits(box);
+    if (pastFor !== allQuery || !pastHits.length) return;
+    const h = document.createElement('div'); h.className = 'hubhead'; h.textContent = 'Earlier sessions'; box.append(h);
+    for (const p of pastHits) {
+      const row = document.createElement('button');
+      row.className = 'row past found';
+      const name = document.createElement('b');
+      name.textContent = p.title;
+      const status = document.createElement('span');
+      status.className = 'status';
+      status.textContent = p.snippet;
+      const m = document.createElement('small');
+      m.textContent = p.where;
+      row.append(name, status, m);
+      row.title = 'Pick it up here';
+      row.onclick = () => api.pickUp(p.id);
+      box.append(row);
+    }
+  }
+  function drawLiveHits(box) {
+    if (!allHits.length) {
+      if (pastFor === allQuery && pastHits.length) return;
+      const n = document.createElement('div'); n.className = 'today';
+      n.textContent = allQuery.length < 2 ? 'Type a little more…' : pastFor === allQuery ? 'Nothing found' : 'Looking…';
+      box.append(n); return;
+    }
     for (const h of allHits) {
       const row = document.createElement('button');
       row.className = 'row hit';

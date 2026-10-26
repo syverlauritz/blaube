@@ -208,6 +208,20 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await key('f', mod);
 	await box(`(() => { const f = document.getElementById('find'); f.value = 'footer'; f.dispatchEvent(new Event('input')); })()`);
 	check(await until(() => box(`(() => { const r = [...document.querySelectorAll('#overview .row.hit')]; return r.length === 1 && /website/.test(r[0].textContent) && /fix the footer/.test(r[0].textContent); })()`)), '⌘F in the overview finds which session said it');
+	// ...and past sessions, to pick one up.
+	const pastDir = path.join(require('node:os').homedir(), '.claude', 'projects', '-blaube-e2e-' + process.pid);
+	fs.mkdirSync(pastDir, { recursive: true });
+	fs.writeFileSync(path.join(pastDir, '0e2e0e2e-0000-4000-8000-' + String(process.pid).padStart(12, '0') + '.jsonl'), [
+		{ type: 'user', cwd: '/tmp/zoo-site', message: { content: 'make the footer show the zebracorn' } },
+		{ type: 'assistant', message: { content: [{ type: 'text', text: 'The zebracorn is in the footer now.' }] } },
+	].map((e) => JSON.stringify(e)).join('\n') + '\n');
+	await box(`(() => { const f = document.getElementById('find'); f.value = 'zebracorn'; f.dispatchEvent(new Event('input')); })()`);
+	check(await until(() => box(`(() => { const r = [...document.querySelectorAll('#overview .row.found')]; return r.length === 1 && /zoo-site/.test(r[0].textContent) && /zebracorn is in the footer/.test(r[0].textContent) && /Earlier sessions/.test(document.getElementById('overview').textContent); })()`)), 'and past sessions, ready to pick up');
+	await sleep(800);
+	await shot('searchpast');
+	fs.rmSync(pastDir, { recursive: true, force: true });
+	await box(`(() => { const f = document.getElementById('find'); f.value = 'footer'; f.dispatchEvent(new Event('input')); })()`);
+	await until(() => box(`document.querySelectorAll('#overview .row.hit').length === 1`));
 	await sleep(1500);
 	await shot('searchall');
 	await box(`document.querySelector('#overview .row.hit').click()`);

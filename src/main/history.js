@@ -119,6 +119,56 @@ function pastSessions(live = new Set(), n = 8, home = os.homedir()) {
   return out;
 }
 
+// Past sessions that said something (⌘F in the overview, beyond the ones
+// running now): newest first, [{ id, cwd, title, at, file, hits, snippet }].
+// Looks at the `look` newest transcripts, the last 2 MB of each, without
+// holding everything else up.
+async function searchPast(q, live = new Set(), { n = 6, look = 40, home = os.homedir() } = {}) {
+  q = String(q || '').trim().toLowerCase();
+  if (q.length < 2) return [];
+  const root = path.join(home, '.claude', 'projects');
+  const found = [];
+  let dirs = [];
+  try { dirs = await fs.promises.readdir(root); } catch { return []; }
+  for (const d of dirs) {
+    let names = [];
+    try { names = await fs.promises.readdir(path.join(root, d)); } catch { continue; }
+    for (const f of names) {
+      const id = f.replace(/\.jsonl$/, '');
+      if (id === f || live.has(id) || !/^[0-9a-f-]{36}$/i.test(id)) continue;
+      try { found.push({ id, file: path.join(root, d, f), at: (await fs.promises.stat(path.join(root, d, f))).mtimeMs }); } catch { /* gone */ }
+    }
+  }
+  found.sort((a, b) => b.at - a.at);
+  const out = [];
+  for (const s of found.slice(0, look)) {
+    let text = '', cut = false;
+    try {
+      const fh = await fs.promises.open(s.file, 'r');
+      try {
+        const size = (await fh.stat()).size, len = Math.min(size, 2 << 20);
+        const buf = Buffer.alloc(len);
+        await fh.read(buf, 0, len, size - len);
+        text = buf.toString('utf8'); cut = size > len;
+      } finally { await fh.close(); }
+    } catch { continue; }
+    if (!text.toLowerCase().includes(q)) continue; // (most don't: skip the parsing)
+    let hits = 0, snippet = '';
+    const words = lines({ text, cut }).map(said).filter(Boolean);
+    for (let i = words.length - 1; i >= 0; i--) {
+      const t = words[i].text, at = t.toLowerCase().indexOf(q);
+      if (at < 0) continue;
+      hits++;
+      if (!snippet) { const from = Math.max(0, at - 30); snippet = (from ? '…' : '') + t.slice(from, at + q.length + 50).replace(/\s+/g, ' ').trim() + (at + q.length + 50 < t.length ? '…' : ''); }
+    }
+    if (!hits) continue;
+    const info = describe(s.file);
+    if (info) out.push({ id: s.id, cwd: info.cwd, title: info.title, at: s.at, file: s.file, hits, snippet });
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
 // "5 min ago", "yesterday", "3 days ago".
 function ago(at, now = Date.now()) {
   const m = Math.round((now - at) / 60000);
@@ -130,4 +180,4 @@ function ago(at, now = Date.now()) {
   return d === 1 ? 'yesterday' : `${d} days ago`;
 }
 
-module.exports = { pastSessions, recentMessages, messagesBefore, ago, said };
+module.exports = { pastSessions, recentMessages, messagesBefore, searchPast, ago, said };

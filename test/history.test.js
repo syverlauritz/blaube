@@ -74,3 +74,22 @@ test('what was said before a time, from the transcript', () => {
   assert.equal(messagesBefore(f, before, 1).length, 1);
   assert.deepEqual(messagesBefore(path.join(h, 'missing.jsonl'), before), []);
 });
+
+test('past sessions can be searched for what was said in them', async () => {
+  const { searchPast } = require('../src/main/history.js');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-past-'));
+  const dir = path.join(home, '.claude', 'projects', '-x');
+  fs.mkdirSync(dir, { recursive: true });
+  const write = (id, msgs) => fs.writeFileSync(path.join(dir, id + '.jsonl'), msgs.map((m) => JSON.stringify(m)).join('\n') + '\n');
+  const A = 'aaaaaaaa-0000-0000-0000-000000000000', B = 'bbbbbbbb-0000-0000-0000-000000000000';
+  write(A, [{ type: 'user', cwd: '/p/tax', message: { content: 'fix the VAT rounding' } }, { type: 'assistant', message: { content: [{ type: 'text', text: 'VAT now rounds half up.' }] } }]);
+  write(B, [{ type: 'user', cwd: '/p/web', message: { content: 'make the button blue' } }, { type: 'user', message: { content: [{ type: 'tool_result', content: 'vat' }] } }]);
+  const got = await searchPast('vat', new Set(), { home });
+  assert.equal(got.length, 1, 'tool output doesn’t count');
+  assert.equal(got[0].id, A);
+  assert.equal(got[0].hits, 2);
+  assert.equal(got[0].cwd, '/p/tax');
+  assert.match(got[0].snippet, /VAT now rounds/);
+  assert.deepEqual(await searchPast('vat', new Set([A]), { home }), [], 'not ones running now');
+  assert.deepEqual(await searchPast('v', new Set(), { home }), []);
+});

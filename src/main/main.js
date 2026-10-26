@@ -1753,7 +1753,15 @@ app.whenReady().then(async () => {
     pickUp({ id, cwd: last.cwd, at: 0, title: last.project, file: null });
   });
   ipcMain.on('talk-bring', (_e, id) => { const s = id === talkId && tracker.sessions.get(id); if (canBringIn(s)) bringIn(s); });
-  ipcMain.on('talk-pickup', (_e, id) => { const p = hubPast.find((x) => x.id === id); if (p) { hubCache = null; hideTalk(); pickUp(p); } });
+  ipcMain.on('talk-pickup', (_e, id) => { const p = hubPast.find((x) => x.id === id) || pastHits.find((x) => x.id === id); if (p) { hubCache = null; hideTalk(); pickUp(p); } });
+  // ⌘F in the overview also looks through past sessions, to pick one up.
+  let pastHits = [];
+  ipcMain.handle('talk-search-past', async (_e, q) => {
+    let found = [];
+    try { found = await history.searchPast(typeof q === 'string' ? q.slice(0, 200) : '', new Set(tracker.list().map((o) => o.id).concat(owned.list()))); } catch { /* none */ }
+    pastHits = found;
+    return found.map((p) => ({ id: p.id, title: p.title, where: `${path.basename(p.cwd)} · ${history.ago(p.at)}`, hits: p.hits, snippet: p.snippet }));
+  });
   // A web link in a reply, opened in your browser (web links only).
   ipcMain.on('talk-link', (_e, url) => {
     let u = null;
