@@ -78,7 +78,7 @@ module.exports = async function run({ win, tracker }) {
 	find(slime(), 'Wah at the start of each note').submenu.items.find((i) => i.label === 'None').click();
 	check(await until(async () => Number(await shown('voiceWah')) === 0, 3000), 'no wah, and Settings says so');
 	// Moved in Settings: the menus tick it.
-	await settings.webContents.executeJavaScript(`(() => { const i = [...document.querySelectorAll('.row')].find((r) => r.querySelector('span').textContent === 'Babble volume').querySelector('input'); i.value = '0.35'; i.dispatchEvent(new Event('input')); })()`);
+	await settings.webContents.executeJavaScript(`(() => { const i = [...document.querySelectorAll('.row')].find((r) => r.querySelector('span').textContent === 'Voice volume').querySelector('input'); i.value = '0.35'; i.dispatchEvent(new Event('input')); })()`);
 	check(await until(() => { const v = find(app(), 'Volume').submenu.items.find((i) => i.checked); return v && v.label === '35%'; }, 3000), 'a volume set in Settings shows ticked in the menu');
 	settings.close();
 

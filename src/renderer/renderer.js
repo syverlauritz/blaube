@@ -66,11 +66,13 @@
       return this.parent && time - this.born < SPLIT_TIME;
     }
 
-    // (Silent unless asked: out loud is only for what matters, see speak.)
+    // (Silent unless asked: aloud, true or how to say it, says the bubble's
+    // words as it shows; see sayAloud.)
     say(lines, seconds, sticky = false, aloud = false) {
-      this.bubble = { lines: typeof lines === 'string' ? [{ text: lines }] : lines, until: time + seconds, sticky };
+      if (typeof lines === 'string') lines = [{ text: lines }];
+      if (aloud) { sayAloud(this, lines, seconds, aloud === true ? {} : aloud); return; }
+      this.bubble = { lines, until: time + seconds, sticky };
       spoken.said++;
-      if (aloud) speak(this, this.bubble.lines.map((l) => l.text).join(' '));
     }
 
     hop(vx, vy) {
@@ -119,12 +121,11 @@
     return true;
   }
 
-  // Talking out loud: a babble in its own voice (voice.js), lower the
-  // bigger it is, with the mouth moving along. Only for what matters (a
-  // session done or needing you, a reply, an error), and one voice on the
-  // stage at a time: a line that comes while another slime is talking waits
-  // for it to finish (a few seconds at most); a minor one (a giggle) is
-  // just let go. Its own new line cuts its last one short.
+  // Talking out loud: a slime says what's in its bubble, the words
+  // themselves, in its own voice (voice.js), lower the bigger it is, with
+  // the mouth moving along. Nothing is said without a bubble saying it
+  // too. One voice on the stage at a time: its own new line cuts its last
+  // one short.
   let audio = null, voice = null; // voice: { b, until } the line playing (audio time)
   function ensureAudio() {
     if (!audio) {
@@ -134,26 +135,67 @@
     if (audio.ctx.state === 'suspended') audio.ctx.resume();
     return audio;
   }
+  // Another slime is talking right now.
+  const busy = (b) => !!(audio && voice && voice.b !== b && voice.b.speech && !voice.b.dying && audio.ctx.currentTime < voice.until);
+  // Says `text` now, unless it can't (voice off, another slime talking,
+  // nothing in it to say). Returns the line, with wait: how long until it's
+  // heard (seconds), or null.
   function speak(b, text, how = {}) {
-    if (CFG.voice === 'Off' || !text || b.dying || b.singing) return;
+    if (CFG.voice === 'Off' || !text || b.dying || b.singing || busy(b)) return null;
     try {
       ensureAudio();
-      const now = audio.ctx.currentTime;
-      if (voice && voice.b !== b && voice.b.speech && !voice.b.dying && now < voice.until) {
-        const wait = voice.until - now + 0.25, since = how.since ?? performance.now() / 1000;
-        if (how.minor || performance.now() / 1000 + wait - since > 8) return;
-        setTimeout(() => speak(b, text, Object.assign({}, how, { since })), wait * 1000);
-        return;
-      }
-      if (b.speech) b.speech.line.stop();
-      const at = now + 0.03;
+      const now = audio.ctx.currentTime, at = now + 0.03;
       const line = BlaubeVoice.speak(audio.ctx, text, {
         at, out: audio.out, pitch: BlaubeVoice.pitchFor(b.body.o.radius, !b.big) * (how.higher || 1), seed: BlaubeVoice.hash(b.key), volume: CFG.voiceVolume * (how.softer || 1), wah: CFG.voiceWah, pace: how.pace,
       });
+      if (!line) return null;
+      if (b.speech) b.speech.line.stop();
       b.speech = { line, at };
       voice = { b, until: at + line.length };
       spoken.voiced++;
-    } catch (e) { b.speech = null; }
+      return Object.assign({ wait: at - now + (audio.ctx.outputLatency || 0) }, line);
+    } catch (e) { b.speech = null; return null; }
+  }
+  // What a bubble says out loud: its first line, up to a colon, and a few
+  // words at most (the rest is for reading). No emoji.
+  function spokenOf(lines) {
+    const text = String((lines[0] && lines[0].text) || '').split(':')[0].replace(/[^\p{L}\p{N}\s'’.,!?…-]/gu, ' ').trim();
+    const words = text.split(/\s+/).filter(Boolean);
+    return words.length > 8 ? words.slice(0, 8).join(' ').replace(/[.,!?…]+$/, '') : text;
+  }
+  // A bubble said out loud: the bubble and the sound start together, and
+  // the bubble stays at least as long as the sound. While another slime is
+  // talking, a minor one just shows; one that matters (how.important: a
+  // session done, or needing you) waits its turn, bubble and all, a few
+  // seconds at most.
+  function sayAloud(b, lines, seconds, how = {}) {
+    if (CFG.voice !== 'Off' && busy(b) && how.important && (how.tries || 0) < 32) {
+      setTimeout(() => { if (!b.dying) sayAloud(b, lines, seconds, Object.assign({}, how, { tries: (how.tries || 0) + 1 })); }, 250);
+      return;
+    }
+    const line = speak(b, spokenOf(lines), how);
+    const show = () => { if (!b.dying) b.say(lines, Math.max(seconds, line ? line.length + 0.5 : 0)); };
+    if (line && line.wait > 0.01) setTimeout(show, line.wait * 1000);
+    else show();
+  }
+  // You told it something: it says "okay!" and the 👍 pops up as the "-kay"
+  // lands. Every time (it's you it answers, so it isn't rationed), at most
+  // every 2 s; while another slime is talking it just shows the 👍.
+  function okayBack(b) {
+    if (time - (b.okayAt ?? -1e9) < 2) return;
+    b.okayAt = time;
+    const thumb = (seconds) => { if (!b.dying) b.say([{ text: '👍', size: 30 }], seconds); };
+    const line = speak(b, 'okay!');
+    if (!line) { thumb(1.2); return; }
+    setTimeout(() => thumb(Math.max(0.8, line.length - line.land + 0.5)), (line.wait + line.land) * 1000);
+  }
+  // A turn done: a cheer, not the same one twice in a row, a bigger one
+  // for a long turn.
+  const CHEERS = ['Hurray!', 'Ta-da!', 'All done!'], BIG_CHEERS = ['Yippee!', 'Woo-hoo!'];
+  function cheer(b, long, more = []) {
+    const pool = (long ? BIG_CHEERS : CHEERS).filter((w) => w !== b.lastCheer);
+    b.lastCheer = pool[Math.floor(Math.random() * pool.length)];
+    sayAloud(b, [{ text: b.lastCheer }, ...more], 2.2, { important: true });
   }
   // The choir (Play > Choir): everyone sings a song together, each its own
   // part (shared/choir.js): the biggest take the bass, the smallest the
@@ -4773,13 +4815,14 @@
   }
   let showingOff = false;
 
-  // A little exclamation ("boo!", "hic!") in a balloon, unless it's
-  // already showing something that matters more, and only now and then (see
-  // mayTalk): most go unsaid. A reaction is one to you playing with it.
+  // A little exclamation ("boo!", "hic!") in a balloon, said out loud,
+  // unless it's already showing something that matters more, and only now
+  // and then (see mayTalk): most go unsaid. A reaction is one to you
+  // playing with it.
   function quip(b, text, seconds, size, kind = 'flavour') {
     if (b.bubble && b.bubble.until - time > 0.3) return;
     if (!mayTalk(kind)) return;
-    b.say([size ? { text, size } : { text }], seconds);
+    b.say([size ? { text, size } : { text }], seconds, false, { minor: true });
   }
   function quipBack(b, text, seconds) { quip(b, text, seconds, 0, 'react'); }
 
@@ -5231,7 +5274,7 @@
       const to = b.gazeTarget || mouse;
       b.gaze.x = to.x; b.gaze.y = to.y; b.gaze.vx = 0; b.gaze.vy = 0;
     }
-    // Talking: the mouth follows its babble (not mid-yawn or seeing stars).
+    // Talking: the mouth follows its words (not mid-yawn or seeing stars).
     // Shut between syllables, it's its own mouth (a smile, mostly).
     const talk = talkMouth(b, ease);
     b.talkOpen = talk ? talk.open : 0; // the body bobs along (see liven)
@@ -5480,7 +5523,7 @@
     if (target.body && !target.speech && time > (target.nextGiggle || 0) && mayTalk('react')) {
       target.nextGiggle = time + 1.4 + Math.random();
       target.giggles = (target.giggles || 0) + 1;
-      speak(target, GIGGLES[Math.floor(Math.random() * GIGGLES.length)], { higher: 1.25, pace: 0.55, minor: true });
+      target.say(GIGGLES[Math.floor(Math.random() * GIGGLES.length)], 1, false, { higher: 1.25, pace: 0.7, minor: true });
     }
     if (time > (target.nextHeart || 0)) {
       target.nextHeart = time + 0.28;
@@ -5964,15 +6007,16 @@
   });
 
   api.onConfig(applyConfig);
-  // You told it something: a nod (and now and then a thumbs up; the nod
-  // says it already).
-  if (api.onNod) api.onNod((id) => {
+  // You told it something: a nod and "okay!" with a thumbs up. (Anything
+  // else that nods, now and then a quiet thumbs up; the nod says it.)
+  if (api.onNod) api.onNod((id, how) => {
     const b = buddies.get(id);
     if (!b) return;
     b.nodAt = time;
     b.nodQuiet = false; // (no thinking sign over it)
     if (b.body.onFloor()) b.body.impulse(0, 260, DT);
-    quip(b, '👍', 1.6, 30, 'react');
+    if (how && how.prompt) okayBack(b);
+    else quip(b, '👍', 1.6, 30, 'react');
   });
   if (api.onReact) api.onReact((m) => {
     const b = buddies.get(m.id);
@@ -6073,26 +6117,24 @@
   if (api.onSay) api.onSay((m) => {
     const b = buddies.get(m.id);
     if (!b) return;
-    // Out loud only (its talk box is showing the words).
-    // The end of a turn arrives twice, about at once: the Done status and
-    // the reply itself. Whichever comes first is said; the other would
-    // only cut it off and start again.
-    const turnLine = (text) => {
-      if (time - (b.turnSaidAt ?? -99) < 2) return;
-      b.turnSaidAt = time;
-      speak(b, text);
-    };
-    if (m.voiceOnly) { turnLine(m.text); return; }
+    // A reply its talk box is showing: no bubble, so nothing said.
+    if (m.voiceOnly) return;
     // Status updates are kept for the hover bubble, and only pop up by
-    // themselves when the Status bubbles setting says Always. Only the big
-    // moments (done, needs you) are said out loud, bubble or not.
+    // themselves when the Status bubbles setting says Always. The big
+    // moments get a bubble said out loud: a cheer for a turn done (its
+    // summary under it, with Always), the words for needing you.
     if (m.status) {
       b.status = { text: m.text, at: time, state: b.state };
-      if (m.aloud) turnLine(m.text);
+      if (m.aloud) {
+        if (m.done) cheer(b, m.long, CFG.statusBubbles === 'Always' ? [{ text: m.text, size: 12 }] : []);
+        else b.say(m.text, m.seconds || 6, false, { important: true });
+        return;
+      }
       if (CFG.statusBubbles !== 'Always') return;
+      b.say(m.text, m.seconds || 4);
+      return;
     }
-    b.say(m.text, m.seconds || 4, false, false);
-    if (!m.status) turnLine(m.text);
+    b.say(m.text, m.seconds || 4, false, true);
   });
   api.onWorld((w) => setObstacles(w.obstacles));
   if (api.onSystem) api.onSystem(onSystem);

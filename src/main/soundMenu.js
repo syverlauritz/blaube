@@ -27,7 +27,7 @@ function levels(list, now, key, set, word = pct) {
 function soundMenu(config, set, { songs, sing, stopSinging } = {}) {
   const on = config.voice !== 'Off';
   return [
-    { label: 'Sound', type: 'checkbox', checked: on, toolTip: 'They babble out loud when they talk', click: (i) => set({ voice: i.checked ? 'On' : 'Off' }) },
+    { label: 'Sound', type: 'checkbox', checked: on, toolTip: 'They say what’s in their bubbles out loud', click: (i) => set({ voice: i.checked ? 'On' : 'Off' }) },
     { label: 'Volume', submenu: levels(VOLUMES, config.voiceVolume, 'voiceVolume', set) },
     { label: 'Wah at the start of each note', submenu: levels(WAHS, config.voiceWah, 'voiceWah', set, (v) => (v === 0 ? 'None' : pct(v))) },
     // Everyone sings, in parts: the more slimes, the fuller. (Not with the

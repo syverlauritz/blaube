@@ -1208,7 +1208,7 @@ function statusBubble({ session: s, agentId, payload: p }) {
   }
   if (!win) return;
   const key = agentId ? `${s.id}/${agentId}` : s.id;
-  const say = (text, seconds, aloud = false) => { if (text) win.webContents.send('say', { id: key, text, seconds, status: true, aloud }); };
+  const say = (text, seconds, aloud = false, more) => { if (text) win.webContents.send('say', Object.assign({ id: key, text, seconds, status: true, aloud }, more)); };
   const event = p.hook_event_name;
   if (event === 'PreToolUse') {
     // Not every tool: a busy session would never stop talking.
@@ -1223,7 +1223,7 @@ function statusBubble({ session: s, agentId, payload: p }) {
     const secs = s.turnStart ? (Date.now() - s.turnStart) / 1000 : 0;
     const took = secs < 20 ? '' : secs < 60 ? ` in ${Math.round(secs)}s` : secs < 3600 ? ` in ${Math.round(secs / 60)}m` : ` in ${Math.floor(secs / 3600)}h ${Math.round((secs % 3600) / 60)}m`;
     // (Out loud for a session; a helper finishing isn't news.)
-    say(said ? `Done${took}: ` + shorten(said, 80) : `Done${took}!`, 6, !agentId);
+    say(said ? `Done${took}: ` + shorten(said, 80) : `Done${took}!`, 6, !agentId, { done: true, long: secs > 300 });
     if (!agentId) notify(s, 'done', said, secs);
   } else if (event === 'Notification' && s.state === 'waiting') {
     say(shorten(p.message || 'I need you', 80), 6, !agentId);
@@ -1828,7 +1828,7 @@ app.whenReady().then(async () => {
   tracker.on('prompt', (s, text) => {
     doing.delete(s.id);
     if (!win) return;
-    win.webContents.send('nod', s.id);
+    win.webContents.send('nod', s.id, { prompt: true });
     // Thanked or told off: the slime blushes, or looks sheepish.
     const tone = toneOf(text);
     if (tone) win.webContents.send('react', { id: s.id, kind: tone });
@@ -1871,7 +1871,7 @@ app.whenReady().then(async () => {
   tracker.on('change', sweepSoon);
   // A message from the slime went in: its turn starts, as if typed.
   // One went in at its next step, mid-turn: it nods, as when you type.
-  inbox.on('heard', (id) => { if (win) win.webContents.send('nod', id); });
+  inbox.on('heard', (id) => { if (win) win.webContents.send('nod', id, { prompt: true }); });
   // A to-do item ticked off, or Stop pressed: the slime feels it.
   inbox.on('ticked', (id, t) => { if (win) win.webContents.send('react', { id, kind: t.done === t.of ? 'listdone' : 'tick', done: t.done, of: t.of }); });
   inbox.on('stopping', (id) => { if (win) win.webContents.send('react', { id, kind: 'brace' }); });

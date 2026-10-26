@@ -84,10 +84,13 @@ ships that breaks a "must".
   two of the blob's radii, fading out by three).
 - The talk box has a dark mode (the moon in its header, kept for every
   box): the same flat bubble in a deep slate with light ink, and no tail.
-- Blobs talk out loud in a made-up babble through a talkbox: a buzzy
-  synth note shaped by a sweeping vowel filter, with a wah on the attack of
-  each syllable only (it opens and stays open; no wah-wah on held notes).
-  Bigger is deeper, helpers are higher. Wanted ("hilarious"). The talking
+- Blobs say what's in their bubble, the real words, and only that: no
+  sound without a bubble saying it ("okay!" with the 👍 on a prompt, a
+  cheer when a turn's done, "hehe", "coffee?"). A small formant
+  synthesizer (Klatt's, MIT) in each blob's own cute voice, a little wah
+  opening each stressed syllable. Bigger is deeper, helpers are higher.
+  Singing keeps the talkbox (a buzzy note through a sweeping vowel
+  filter, wah on the attack only). The talking
   mouth: shut, it's the blob's own mouth; open, a dark oval that drops
   from the top lip, never bigger than a yawn, a pink tongue when wide.
 - Choir mode: every blob sings in parts, fuller with more blobs, eyes
