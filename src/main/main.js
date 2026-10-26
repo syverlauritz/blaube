@@ -14,7 +14,7 @@ const markdown = require('./markdown');
 const git = require('./git');
 const projectFiles = require('./files');
 const shellRun = require('./shellRun');
-const { failedTests, stoppedLast } = require('./inbox');
+const { failedTests, stoppedLast, erredLast } = require('./inbox');
 const { Notification } = require('electron');
 const { slashCommand, commandNames, expand: expandCommand, control: controlFor } = require('./commands');
 const { openResumeTerminal, resumeCommand, focusSessionApp, typeIntoSession } = require('./terminal');
@@ -460,6 +460,7 @@ function pushTalk(id, focusField = false) {
     lookedAt: looked.get(id) || 0, // (when its box was last closed: what's new since shows)
     quick: id.startsWith('demo-') ? [] : git.quickActions(gitStates.get(id) || null, s.state, {
       stopped: stoppedLast(inbox.log(id)),
+      apiError: erredLast(inbox.log(id)),
       failedTests: failedTests(inbox.log(id)),
       context: contextOf(id),
     }),

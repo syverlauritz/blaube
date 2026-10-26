@@ -431,6 +431,17 @@ function failedTests(log) {
 }
 
 // Whether you stopped its last turn (so it can be asked to carry on).
+// Whether its last turn ended on an API error (overloaded, say): nothing
+// you said since, and nothing Claude said after it.
+function erredLast(log) {
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if ((e.who === 'you' && !e.midTurn && e.status !== 'queued') || e.who === 'claude') return false;
+    if (e.who === 'note' && e.error) return true;
+  }
+  return false;
+}
+
 function stoppedLast(log) {
   for (let i = log.length - 1; i >= 0; i--) {
     const e = log[i];
@@ -548,4 +559,4 @@ function alwaysLabel(updates, max = 70) {
   return text.length > max ? text.slice(0, max - 2) + '…' : text;
 }
 
-module.exports = { Inbox, frame, describe, toolName, alwaysLabel, stepText, stepDetail, turnOf, failedTests, stoppedLast, STYLE };
+module.exports = { Inbox, frame, describe, toolName, alwaysLabel, stepText, stepDetail, turnOf, failedTests, stoppedLast, erredLast, STYLE };
