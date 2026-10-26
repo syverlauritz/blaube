@@ -262,6 +262,7 @@
   const YANK = 3000; // px/s
   const STOPPED = 0.07; // s: no news for this long means the window stopped
   const seen = new Map(); // window id -> { wx, y, t, at, vx, vy }: last report
+  const ridden = new Map(); // window id -> its speed last step (riders wobble when it changes)
   function setLedges(list) {
     rawLedges = list || [];
     const next = (CFG.windowLedges === 'Off' ? [] : rawLedges).map((m) => Object.assign({}, m));
@@ -370,9 +371,14 @@
       // than gravity allows.
       const window = fast ? 0 : -l.vy;
       l.up = Math.max(window, (l.up ?? window) - CFG.gravity * DT);
-      if (l.up <= 0 && !l.vx && !l.vy) { l.up = 0; continue; }
+      // A window that starts or stops moving leaves its riders' tops behind
+      // for a moment: they wobble like jelly on a plate.
+      const was = ridden.get(l.id) ?? 0, kick = fast ? 0 : (l.vx - was) * CFG.rideWobble;
+      ridden.set(l.id, fast ? 0 : l.vx);
+      if (l.up <= 0 && !l.vx && !l.vy && !kick) { l.up = 0; continue; }
       for (const b of buddies.values()) {
         if (!b.body.onLedge || b.body.onLedge.id !== l.id || b.body.grab) continue;
+        if (Math.abs(kick) > 5) b.body.lean(-Math.max(-900, Math.min(900, kick)) * 0.5, DT);
         b.body.shift(dx, 0);
         b.body.impulse(0, -l.up - b.body.velocity(DT).y, DT);
       }

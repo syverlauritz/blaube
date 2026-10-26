@@ -121,6 +121,7 @@
       ['huddle', 1, 0, 2, 0.05, 'Dozing off, a slime shuffles over to curl up beside a neighbour'],
       ['cheerOthers', 1, 0, 2, 0.05, 'When one finishes, the others look over and nearby ones are pleased for it'],
       ['fullWarning', 0.85, 0, 1, 0.01, 'Says so when its context gets this full (0 = never)'],
+      ['rideWobble', 1, 0, 3, 0.05, 'Riding a window you move: it wobbles as the window starts and stops'],
       ['systemLife', 1, 0, 2, 0.05, 'React to the computer: wake up with it, perk up on the charger, tire on low battery'],
       ['awayAfter', 300, 30, 1800, 10, 'You count as away after this long without keyboard or mouse (s)'],
       ['welcomeBack', true, 0, 0, 0, 'Back from away: say what changed while you were gone'],
