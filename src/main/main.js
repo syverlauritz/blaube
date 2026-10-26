@@ -840,7 +840,8 @@ function notify(s, event, text, secs = 0) {
 function talkShortcut() {
   if (talkWin && talkWin.isVisible()) { hideTalk(); return; }
   const s = attention.mostWanted(tracker.list().filter(isReady));
-  if (!s || !win) return;
+  if (!win) return;
+  if (!s) { newSession(); return; } // nobody to talk to: start someone
   if (process.platform === 'darwin') app.focus({ steal: true }); // a shortcut from another app: the box takes the keyboard
   win.webContents.send('open-talk', s.id);
 }
