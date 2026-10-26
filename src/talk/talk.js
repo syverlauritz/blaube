@@ -668,7 +668,7 @@
     requestAnimationFrame(fitWindow);
   }
   // Below the sessions: start one in a recent folder, or pick up a past one.
-  let hub = null, planFirst = false;
+  let hub = null, planFirst = false, ownTree = false;
   function loadHub() {
     if (!api.hub) return;
     api.hub().then((h) => { hub = h; if (document.body.classList.contains('overview') && current) drawOverview(current); });
@@ -687,20 +687,30 @@
     tick.onchange = () => { planFirst = tick.checked; };
     plan.append(tick, ' Plan first');
     plan.title = 'It shows you a plan to approve before it changes anything';
-    box.lastChild.append(plan);
+    // Own worktree: it works in a git worktree of its own (claude --worktree),
+    // so two sessions in one project don't trip over each other.
+    const tree = document.createElement('label');
+    tree.className = 'planfirst';
+    const tick2 = document.createElement('input');
+    tick2.type = 'checkbox';
+    tick2.checked = ownTree;
+    tick2.onchange = () => { ownTree = tick2.checked; };
+    tree.append(tick2, ' Own worktree');
+    tree.title = 'It works on a copy of the project in a git worktree of its own, so sessions side by side don’t trip over each other';
+    box.lastChild.append(plan, tree);
     const chips = document.createElement('div');
     chips.className = 'chips';
     for (const f of hub.folders) {
       const b = document.createElement('button');
       b.textContent = f.name;
       b.title = f.path;
-      b.onclick = () => api.newIn(f.path, { plan: planFirst });
+      b.onclick = () => api.newIn(f.path, { plan: planFirst, worktree: ownTree });
       chips.append(b);
     }
     const pick = document.createElement('button');
     pick.textContent = 'Another folder…';
     pick.className = 'dim';
-    pick.onclick = () => api.newIn('pick', { plan: planFirst });
+    pick.onclick = () => api.newIn('pick', { plan: planFirst, worktree: ownTree });
     chips.append(pick);
     box.append(chips);
     if (hub.past.length) {

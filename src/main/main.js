@@ -602,6 +602,11 @@ if (TEST) global.__blaubeSweep = sweep;
 // its talk box open, ready for your first message.
 function startSession(cwd, extra = [], resume = '', fork = '') {
   if (!cwd) return null;
+  // (Its own worktree needs a git repository to make one in.)
+  let noTree = false;
+  if (extra.includes('--worktree')) {
+    try { require('node:child_process').execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd, timeout: 3000, stdio: 'ignore', windowsHide: true }); } catch { noTree = true; extra = extra.filter((a) => a !== '--worktree'); }
+  }
   // Not connected yet: give this session Blaube's hooks itself, so its
   // slime still knows what it's doing and can still ask you things.
   let settings = null;
@@ -613,6 +618,7 @@ function startSession(cwd, extra = [], resume = '', fork = '') {
   prefs.recentFolders = [cwd, ...(prefs.recentFolders || []).filter((f) => f !== cwd)].slice(0, 5);
   savePrefs();
   log(`started a session in ${cwd}: ${id}`);
+  if (noTree) inbox.add(id, { who: 'note', text: `${path.basename(cwd)} isn’t a git repository, so it works right in the folder, not in a worktree of its own` });
   // Open its talk box once its slime is out.
   let tries = 0;
   const open = setInterval(() => {
@@ -1940,7 +1946,7 @@ app.whenReady().then(async () => {
   });
   // Only a folder the overview offered, and only if it's still there.
   ipcMain.on('talk-new', (_e, folder, opts) => {
-    const extra = opts && opts.plan === true ? ['--permission-mode', 'plan'] : []; // (Plan first)
+    const extra = [...(opts && opts.plan === true ? ['--permission-mode', 'plan'] : []), ...(opts && opts.worktree === true ? ['--worktree'] : [])]; // (Plan first, Own worktree)
     if (folder === 'pick') return newSession(extra);
     if (!hubFolders.includes(folder)) return;
     try { if (!fs.statSync(folder).isDirectory()) return; } catch { hubCache = null; return; }

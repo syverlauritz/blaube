@@ -176,6 +176,19 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(owned.has(id) && inbox.log(id).some((e) => e.text === 'Forked into a new session'), 'and the original carries on');
 	check(await until(() => talkId() === forked, 8000), 'its box opens on the copy');
 	owned.end(forked);
+	// Own worktree: only where there's a git repository to make one in.
+	const lastArgs = () => fs.readdirSync(dir).filter((f) => f.startsWith('args-')).map((f) => ({ f, t: fs.statSync(path.join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t).map((x) => JSON.parse(fs.readFileSync(path.join(dir, x.f), 'utf8')))[0];
+	const plain = startSession(dir, ['--worktree']);
+	await until(() => talkId() === plain, 8000);
+	await sleep(300);
+	check(!lastArgs().includes('--worktree') && inbox.log(plain).some((e) => /isn’t a git repository/.test(e.text)), 'Own worktree outside a git repository starts it in the folder, and says so');
+	owned.end(plain);
+	require('node:child_process').execFileSync('git', ['init', '-q'], { cwd: dir });
+	const treed = startSession(dir, ['--worktree']);
+	await until(() => talkId() === treed, 8000);
+	await sleep(300);
+	check(lastArgs().includes('--worktree') && !inbox.log(treed).some((e) => /isn’t a git repository/.test(e.text)), 'in one, it gets a worktree of its own (claude --worktree)');
+	owned.end(treed);
 	owned.end(id);
 
 	// A session in a terminal (here: a stand-in process) brought into Blaube.
