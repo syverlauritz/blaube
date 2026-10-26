@@ -1,4 +1,5 @@
 const path = require('node:path');
+const os = require('node:os');
 const fs = require('node:fs');
 const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, shell, clipboard, globalShortcut, systemPreferences } = require('electron');
 const { SessionTracker } = require('./sessions');
@@ -2001,6 +2002,23 @@ app.whenReady().then(async () => {
         inbox.add(to, { who: 'note', text: 'Cleared: a fresh conversation. The last one is under Pick up where you left off.' });
         hubCache = null;
         pushState();
+        return;
+      }
+      // "/add-dir ../api": another folder it may work in. Claude Code takes
+      // that when it starts, so it's started again (same conversation).
+      const addDir = /^\/add-dir(?:\s+(.+))?$/i.exec(String(text).trim());
+      if (addDir) {
+        const add = (dir) => {
+          let full = dir.replace(/^~(?=$|[\\/])/, os.homedir());
+          full = path.resolve((sess && sess.cwd) || os.homedir(), full);
+          let ok = false;
+          try { ok = fs.statSync(full).isDirectory(); } catch { /* not there */ }
+          if (!ok) { inbox.add(id, { who: 'note', text: `There’s no folder at ${full}`, error: true }); return; }
+          inbox.add(id, { who: 'note', text: `Adding ${path.basename(full)}: Claude Code starts again with it, same conversation${tracker.sessions.get(id) && tracker.sessions.get(id).state === 'working' ? ', once this turn is done' : ''}` });
+          owned.reopen(id, ['--add-dir', full], sess && sess.cwd, (done) => inbox.add(id, done ? { who: 'note', text: `It can work in ${full} too` } : { who: 'note', text: 'It had stopped, so nothing was added', error: true }));
+        };
+        if (addDir[1]) add(addDir[1].trim().replace(/^["']|["']$/g, ''));
+        else if (!TEST) dialog.showOpenDialog({ title: 'Another folder it may work in', defaultPath: (sess && sess.cwd) || undefined, properties: ['openDirectory'] }).then(({ canceled, filePaths }) => { if (!canceled && filePaths[0]) add(filePaths[0]); });
         return;
       }
       // (/model, /plan, /context and /effort are for Claude Code: it's asked directly.)

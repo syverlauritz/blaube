@@ -190,6 +190,24 @@ class Owned extends EventEmitter {
     return to;
   }
 
+  // Starts it again with more arguments (`--add-dir ~/other`), same
+  // conversation, same id: once it has finished its turn and closed (two at
+  // once on one conversation would trip over each other). `cwd`: where it's
+  // working now, as for clear. cb(ok).
+  reopen(id, more = [], cwd = '', cb = () => {}) {
+    const s = this.sessions.get(id);
+    if (!s) return cb(false);
+    const here = cwd && cwd !== s.cwd;
+    s.replaced = true;
+    s.proc.once('close', () => {
+      if (this.sessions.get(id) === s) this.sessions.delete(id);
+      this.start(here ? cwd : s.cwd, [...(here ? s.extra.filter((a) => a !== '--worktree') : s.extra), ...more], s.settings, id);
+      cb(true);
+    });
+    try { s.proc.stdin.end(); } catch { /* gone */ }
+    setTimeout(() => { if (s.proc.exitCode == null && s.proc.signalCode == null) stop(s.proc); }, 60e3);
+  }
+
   // Lets it finish and stop (it ends when its input does); stops it for
   // good if it hasn't after a few seconds.
   end(id) {

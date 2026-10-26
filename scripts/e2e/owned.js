@@ -270,6 +270,15 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(() => fs.readdirSync(dir).filter((f) => f.startsWith('args-')).some((f) => { const a = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); return a[a.indexOf('--session-id') + 1] === NID; })), 'started as a new session of Claude Code');
 	await type('and now?');
 	check(await until(async () => /claude-opus here\./.test(await said())), 'and it answers there');
+	// /add-dir: another folder, Claude Code started again with it, same conversation.
+	const other = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-other-'));
+	await type('/add-dir ' + other);
+	check(await until(() => inbox.log(NID).some((e) => e.text === `It can work in ${other} too`), 10000), '/add-dir adds a folder it may work in');
+	check(owned.has(NID) && fs.readdirSync(dir).filter((f) => f.startsWith('args-')).some((f) => { const a = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); return a[a.indexOf('--resume') + 1] === NID && a[a.indexOf('--add-dir') + 1] === other; }), 'by starting it again with --add-dir, same session');
+	await type('/add-dir /no/such/folder');
+	check(await until(() => inbox.log(NID).some((e) => e.error && e.text === 'There’s no folder at /no/such/folder')), 'and says so when there’s no such folder');
+	await type('still there?');
+	check(await until(async () => (await said()).split('claude-opus here.').length > 2), 'and it still answers');
 	owned.end(NID);
 
 	console.log(failed ? `\n${failed} failed` : '\nall passed');

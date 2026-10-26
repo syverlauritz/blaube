@@ -116,3 +116,30 @@ process.stdin.on('end', () => process.exit(0)); process.stdin.resume();
   assert.equal(owned.clear('nope'), null);
   owned.end(to);
 });
+
+test('reopen: the same conversation again, with more arguments, once the old one has closed', async (t) => {
+  if (process.platform === 'win32') return t.skip('a script as the binary');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-owned-'));
+  const bin = path.join(dir, 'claude');
+  fs.writeFileSync(bin, `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({ type: 'args', args: process.argv.slice(2) }) + '\\n');
+process.stdin.on('end', () => setTimeout(() => process.exit(0), 150)); process.stdin.resume();
+`, { mode: 0o755 });
+  const owned = new Owned(() => bin);
+  const seen = [], exits = [];
+  const orig = owned.read.bind(owned);
+  owned.read = (id, m) => { seen.push(m); return orig(id, m); };
+  owned.on('exit', (a) => exits.push(a));
+  const id = owned.start(dir, ['--model', 'opus']);
+  const until = async (fn) => { for (let i = 0; i < 100 && !fn(); i++) await new Promise((r) => setTimeout(r, 20)); return fn(); };
+  assert.ok(await until(() => seen.length === 1));
+  const ok = await new Promise((done) => owned.reopen(id, ['--add-dir', '/tmp/other'], '', done));
+  assert.ok(ok && owned.has(id));
+  assert.ok(await until(() => seen.length === 2));
+  const args = seen[1].args;
+  assert.deepEqual(args.slice(args.indexOf('--resume'), args.indexOf('--resume') + 2), ['--resume', id]);
+  assert.ok(args.includes('opus') && args.join(' ').endsWith('--add-dir /tmp/other'));
+  assert.deepEqual(exits, [], 'no end said');
+  owned.end(id);
+  assert.equal(await new Promise((done) => owned.reopen('nope', [], '', done)), false);
+});
