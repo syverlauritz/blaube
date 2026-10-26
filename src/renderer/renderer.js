@@ -321,7 +321,9 @@
   }
 
   // Window tops (from the app): slimes and pets can land on them. A slime
-  // standing on a window that moves rides along with it.
+  // standing on a window that moves rides along with it. The talk boxes'
+  // tops are ledges too (`talk`: whose box), whatever the setting for other
+  // windows says.
   let ledges = [], rawLedges = [];
   // Windows on the move. While one moves the app reports it about 60 times
   // a second (each report says when it was looked at); in between, a
@@ -337,7 +339,7 @@
   const shook = new Map(); // window id -> which way it was going, and when it turned (shaking it)
   function setLedges(list) {
     rawLedges = list || [];
-    const next = (CFG.windowLedges === 'Off' ? [] : rawLedges).map((m) => Object.assign({}, m));
+    const next = rawLedges.filter((m) => m.talk || CFG.windowLedges !== 'Off').map((m) => Object.assign({}, m));
     const t = performance.now() / 1000, done = new Set();
     for (const m of next) {
       if (!done.has(m.id)) {
@@ -383,7 +385,8 @@
   // around gets watched.
   let knownWindows = null;
   function noticeWindows(list, ids) {
-    const fresh = knownWindows ? [...ids].filter((id) => !knownWindows.has(id)) : [];
+    // (A talk box opening isn't news: you opened it.)
+    const fresh = knownWindows ? [...ids].filter((id) => !knownWindows.has(id) && !String(id).startsWith('talk:')) : [];
     knownWindows = new Set(ids);
     if (CFG.windowCurious <= 0) return;
     const spotOf = (l) => ({ x: (l.x0 + l.x1) / 2, y: l.y + 30 });
@@ -676,7 +679,7 @@
 
   // The shots script (scripts/shots) opens the window with ?debug to look
   // inside while it plays a scene.
-  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, hearts: () => hearts, now: () => time, sys, spoken, input: { down: (e) => onDown(e), move: (e) => onMove(e), up: (e) => onUp(e) }, ownMouse: false, ghost: (b, o) => ghostNow(b, o) };
+  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, hearts: () => hearts, now: () => time, sys, spoken, input: { down: (e) => onDown(e), move: (e) => onMove(e), up: (e) => onUp(e) }, ownMouse: false, ghost: (b, o) => ghostNow(b, o), ledges: () => ledges };
   const petSize = () => 34 * CFG.size;
 
   function syncPets(sessions) {
@@ -5718,6 +5721,9 @@
     if (!b || b.dying || rect.dark) return; // (a dark box has no tail)
     const body = b.body, c = body.centroid(), PAD = 12, RADIUS = 30, GAP = 8, W = 22, INSET = 10;
     const box = { x: rect.x + PAD, y: rect.y + PAD, w: rect.w - PAD * 2, h: rect.h - PAD * 2 };
+    // Sitting on its own box, or over it: no tail (it would have nowhere to go).
+    const bb = body.bbox();
+    if ((body.onLedge && body.onLedge.talk === id) || (bb.maxX > box.x && bb.minX < box.x + box.w && bb.maxY > box.y - 2 && bb.minY < box.y + box.h)) return;
     const e = BlaubeTalkTail.edgeToward(box, c, RADIUS);
     // How far the slime reaches towards the bubble from its middle: its skin
     // that way, and, from below, what it wears on its head too.
