@@ -132,3 +132,12 @@ test('/init, /review and the like as the same ask in words', () => {
   assert.equal(askInWords('/compact'), '');
   assert.equal(askInWords('/api returns 500'), '');
 });
+
+test('/bug: a new Claude Code issue with what you said, its version and system', () => {
+  const { bugUrl } = require('../src/main/commands.js');
+  const u = new URL(bugUrl('/bug it hangs on start', '2.1.0', 'darwin 24.0'));
+  assert.equal(u.origin + u.pathname, 'https://github.com/anthropics/claude-code/issues/new');
+  assert.equal(u.searchParams.get('title'), 'it hangs on start');
+  assert.match(u.searchParams.get('body'), /^it hangs on start\n\n[\s\S]*- Claude Code: 2\.1\.0\n- System: darwin 24\.0\n$/);
+  assert.equal(new URL(bugUrl('/bug')).searchParams.get('title'), '');
+});

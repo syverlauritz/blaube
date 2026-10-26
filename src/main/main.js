@@ -2125,6 +2125,18 @@ app.whenReady().then(async () => {
       inbox.add(id, { who: 'note', text: 'Opened Claude Code’s release notes in your browser' });
       return;
     }
+    // "/bug": a new Claude Code issue, in your browser, its version filled in.
+    if (/^\/bug(\s|$)/i.test(String(text).trim())) {
+      const bin = owned.findClaude() || owned.shellPath();
+      const open = (version) => {
+        const url = require('./commands').bugUrl(text, version);
+        if (TEST) global.__blaubeBugUrl = url; else shell.openExternal(url);
+        inbox.add(id, { who: 'note', text: 'Opened a new Claude Code issue in your browser, its version and system filled in' });
+      };
+      if (!bin) return open('');
+      require('node:child_process').execFile(bin, ['--version'], { timeout: 8000, encoding: 'utf8', windowsHide: true }, (err, out) => open(err ? '' : String(out).trim().split(/\s/)[0]));
+      return;
+    }
     // "/exit" in a session Blaube started: it ends (its conversation is
     // kept, to pick up later).
     if (/^\/(exit|quit)\s*$/i.test(String(text).trim()) && owned.has(id)) {

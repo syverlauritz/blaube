@@ -64,6 +64,7 @@ function skills(cwd = '', home = os.homedir()) {
 const ABOUT = {
   'add-dir': 'Another folder it may work in',
   agents: 'Opens the project’s agents folder',
+  bug: 'Reports a Claude Code bug on GitHub',
   clear: 'A fresh conversation, same slime',
   compact: 'Frees up its context',
   config: 'Opens your Claude Code settings',
@@ -138,6 +139,15 @@ function askInWords(text) {
   return typeof a === 'function' ? a(args) : args ? `${a}\n\n${args}` : a;
 }
 
+// "/bug it hangs on start": a new Claude Code issue on GitHub, its title
+// what you said, with its version and system filled in (nothing is sent
+// until you send it there).
+function bugUrl(text, version = '', system = `${process.platform} ${os.release()}`) {
+  const said = String(text || '').trim().replace(/^\/bug\b\s*/i, '').slice(0, 300);
+  const body = `${said ? said + '\n\n' : ''}**What happened**\n\n\n**What I expected**\n\n\n**Environment**\n- Claude Code: ${version || 'unknown'}\n- System: ${system}\n`;
+  return `https://github.com/anthropics/claude-code/issues/new?${new URLSearchParams({ title: said.split('\n')[0].slice(0, 120), body })}`;
+}
+
 // One of your own commands is only a prompt: what it says, with what you
 // typed after it in place of $ARGUMENTS ($1, $2... word by word), so it can
 // go as a message without the terminal. '' when it isn't one of yours, or
@@ -191,4 +201,4 @@ function contextNote(r) {
   return { text: `Context: ${pct}% full (${kTokens(used)} of ${kTokens(r.maxTokens)})`, context: { max: r.maxTokens, parts: parts.map((p) => Object.assign(p, { label: `${p.name} ${kTokens(p.tokens)}` })) } };
 }
 
-module.exports = { skills, skillPrompt, askInWords, slashCommand, commandNames, expand, control, contextNote, kTokens, EFFORTS };
+module.exports = { skills, skillPrompt, askInWords, bugUrl, slashCommand, commandNames, expand, control, contextNote, kTokens, EFFORTS };

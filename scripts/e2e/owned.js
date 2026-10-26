@@ -143,6 +143,8 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(() => inbox.log(id).some((e) => /^Saved the conversation to Downloads\/.+\.md$/.test(e.text || '') && fs.existsSync(e.file))), '/export saves the conversation to Downloads');
 	await type('/doctor');
 	check(await until(() => inbox.log(id).some((e) => e.who === 'step' && e.text === 'Checked Claude Code (claude doctor)' && !e.running && /No problems found/.test(e.detail || ''))), '/doctor runs Claude Code’s checkup right there, as a step');
+	await type('/bug the box froze');
+	check(await until(() => inbox.log(id).some((e) => e.text === 'Opened a new Claude Code issue in your browser, its version and system filled in') && /^https:\/\/github\.com\/anthropics\/claude-code\/issues\/new\?title=the\+box\+froze&body=.*Claude\+Code%3A\+9\.9\.9/.test(global.__blaubeBugUrl || '')), '/bug opens a new Claude Code issue, its version filled in');
 	await type('/usage');
 	check(await until(() => inbox.log(id).some((e) => /^Used: 12% of 5 hours \(resets .+\) · 40% of the week/.test(e.text || ''))), '/usage says how much of your limits you’ve used');
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
