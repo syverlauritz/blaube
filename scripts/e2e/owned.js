@@ -462,6 +462,21 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	const beforePr = new Set(owned.list());
 	await issueIt('https://github.com/acme/tax/pull/7/files');
 	check(await until(() => owned.list().some((x) => !beforePr.has(x) && (tracker.sessions.get(x) || {}).cwd === madeIn && inbox.log(x).some((e) => e.who === 'you' && /^Review GitHub pull request acme\/tax#7\. Check it out \(`gh pr checkout 7`\)/.test(e.text) && /Don't push or comment on GitHub\.$/.test(e.text))), 10000), 'a pull request’s link starts one that checks it out and reviews it');
+	// What's waiting for you on GitHub (a stand-in gh): a tap starts on one.
+	const ghDir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-gh-'));
+	fs.writeFileSync(path.join(ghDir, 'prs.json'), JSON.stringify([{ number: 7, title: 'Rounding fix', url: 'https://github.com/acme/tax/pull/7', repository: { nameWithOwner: 'acme/tax' }, updatedAt: new Date().toISOString() }]));
+	fs.writeFileSync(path.join(ghDir, 'issues.json'), JSON.stringify([{ number: 51, title: 'Brackets for 2027', url: 'https://github.com/acme/tax/issues/51', repository: { nameWithOwner: 'acme/tax' }, updatedAt: new Date().toISOString() }]));
+	fs.writeFileSync(path.join(ghDir, 'gh'), `#!/bin/sh\n[ "$1" = search ] && [ "$GH_PROMPT_DISABLED" = 1 ] && cat '${ghDir}'/"$2".json\n`, { mode: 0o755 });
+	global.__blaubeGh = path.join(ghDir, 'gh');
+	const toggleOverview = () => box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
+	if (await box(`document.body.classList.contains('overview')`)) await toggleOverview();
+	await toggleOverview();
+	check(await until(() => box(`(() => { const r = [...document.querySelectorAll('#overview .row.github')].map((x) => x.querySelector('b').textContent + ' | ' + x.querySelector('small').textContent.split(' · ')[0]); return r.join(';') === 'Review: Rounding fix | acme/tax#7;Brackets for 2027 | acme/tax#51' && /For you on GitHub/.test(document.getElementById('overview').textContent); })()`), 10000), 'the overview lists what’s waiting for you on GitHub: reviews asked of you, then your issues');
+	const beforeTodo = new Set(owned.list());
+	await box(`[...document.querySelectorAll('#overview .row.github')].find((x) => /Brackets/.test(x.textContent)).click()`);
+	check(await until(() => owned.list().some((x) => !beforeTodo.has(x) && (tracker.sessions.get(x) || {}).cwd === madeIn && inbox.log(x).some((e) => e.who === 'you' && /^Work on GitHub issue acme\/tax#51\./.test(e.text))), 10000), 'a tap on one starts a session on it, in your clone');
+	global.__blaubeGh = '';
+	fs.rmSync(ghDir, { recursive: true, force: true });
 	for (const x of owned.list()) if ([madeIn, clonedTo].includes((tracker.sessions.get(x) || {}).cwd)) owned.end(x);
 	owned.end(CLID);
 

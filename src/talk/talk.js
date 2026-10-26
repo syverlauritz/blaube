@@ -761,10 +761,13 @@
     requestAnimationFrame(fitWindow);
   }
   // Below the sessions: start one in a recent folder, or pick up a past one.
-  let hub = null, planFirst = false, ownTree = false, newModel = 'default';
+  let hub = null, planFirst = false, ownTree = false, newModel = 'default', forYou = [];
   function loadHub() {
     if (!api.hub) return;
-    api.hub().then((h) => { hub = h; if (document.body.classList.contains('overview') && current) drawOverview(current); });
+    const redraw = () => { if (document.body.classList.contains('overview') && current) drawOverview(current); };
+    api.hub().then((h) => { hub = h; redraw(); });
+    // (And what's waiting for you on GitHub, from your gh.)
+    if (api.githubTodo) api.githubTodo().then((list) => { if (JSON.stringify(list) !== JSON.stringify(forYou)) { forYou = list || []; redraw(); } });
   }
   function drawHub(box) {
     if (!hub) return;
@@ -858,6 +861,28 @@
     if (api.newProject) formChip('New project…', 'Its name', 'Make it', 'Making it…', api.newProject);
     if (api.issue) formChip('Work on an issue or PR…', 'An issue’s or PR’s link, or owner/repo#42', 'Start', 'Starting…', api.issue);
     box.append(chips);
+    // Issues assigned to you and reviews asked of you: a tap starts a
+    // session in your clone (cloned first if need be) to fix or review it.
+    if (forYou.length && api.issue) {
+      section('For you on GitHub');
+      for (const x of forYou) {
+        const row = document.createElement('button');
+        row.className = 'row past github';
+        const name = document.createElement('b');
+        name.textContent = x.kind === 'review' ? `Review: ${x.title}` : x.title;
+        const m = document.createElement('small');
+        m.textContent = `${x.repo}#${x.number}${x.when ? ` · ${x.when}` : ''}`;
+        row.append(name, m);
+        row.title = x.kind === 'review' ? 'Starts a session that checks it out and reviews it' : 'Starts a session that reads it and fixes it';
+        row.onclick = async () => {
+          row.disabled = true;
+          m.textContent = 'Starting…';
+          const err = await api.issue(x.url, { plan: planFirst, model: newModel });
+          if (err) { row.disabled = false; m.textContent = err; requestAnimationFrame(fitWindow); }
+        };
+        box.append(row);
+      }
+    }
     if (hub.past.length) {
       section('Pick up where you left off');
       for (const p of hub.past) {

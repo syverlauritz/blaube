@@ -2794,6 +2794,12 @@ app.whenReady().then(async () => {
       return file;
     } catch { return ''; }
   });
+  // What's waiting for you on GitHub (gh search): issues assigned to you,
+  // reviews asked of you. A tap starts a session on one (talk-issue).
+  ipcMain.handle('talk-github-todo', () => new Promise((done) => {
+    const bin = (TEST ? global.__blaubeGh : pulls.findGh()) || ''; // (tests: a stand-in, never the real gh)
+    require('./ghTodo').look((list) => done(list.map((x) => ({ kind: x.kind, number: x.number, title: x.title, url: x.url, repo: x.repo, when: x.at ? history.ago(x.at) : '' }))), { bin, fresh: TEST ? 0 : 5 * 60e3 });
+  }));
   // The overview's lower half: folders to start a session in, and recent
   // past sessions to pick up (read only when the overview opens).
   ipcMain.handle('talk-hub', () => {
