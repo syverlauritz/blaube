@@ -2366,6 +2366,13 @@
           : time + (2 + Math.random() * Math.random() * 12) / b.curiosity;
       }
     }
+    // A leaf (or snowflake) drifting down close by: its eyes follow it.
+    if (flakes.length && CFG.seasons > 0 && !body.grab && time > (b.nextLeafLook || 0) && !(b.glanceAt && time < (b.glanceUntil || 0))) {
+      b.nextLeafLook = time + 2 + Math.random() * 4;
+      const c = body.centroid(), r = body.o.radius;
+      const f = flakes.find((f) => !f.on && !f.landed && Math.abs(f.x - c.x) < r * 3 && c.y - f.y > r && c.y - f.y < r * 6);
+      if (f) { b.glanceAt = { spot: f }; b.glanceUntil = time + 1.5 + Math.random(); }
+    }
     // Listening to you type: eyes on the talk box, attentive.
     const listening = CFG.listen > 0 && time - (b.listenAt ?? -9) < 1.2 && talkRect && !body.grab;
     if (listening) {
