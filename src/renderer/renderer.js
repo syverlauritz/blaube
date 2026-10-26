@@ -1203,6 +1203,7 @@
       if (asleep) b.woke = false;
       body.areaScale *= 1 - CFG.sleepSlump * b.sleep;
       // Just gulped a helper back in: a swell that wobbles down.
+      if (b.puff) body.areaScale *= 1 + b.puff; // (puffed up like a balloon)
       if (b.gulpAt && time - b.gulpAt < 1.2) { const t = time - b.gulpAt; body.areaScale *= 1 + 0.1 * CFG.gulp * Math.sin(t * 9) * Math.exp(-t * 3); }
       body.o.pressure = Math.min(0.85, CFG.pressure * trait(b, 'firm') * (1 + CFG.contextTighten * b.fill)) * (1 - 0.5 * b.droop) * (1 - 2 * CFG.sleepSlump * b.sleep);
       if (sys.low > 0) { body.areaScale *= 1 - 0.06 * sys.low; body.o.pressure *= 1 - 0.35 * sys.low; }
@@ -3725,7 +3726,7 @@
       } else if (body.onFloor() && Math.round(t / 0.18) % 2 === 0 && t < 1.6) body.squashTop(r * 0.5 * 60 * DT, DT); // (chewing)
       return;
     }
-    const ok = (b.state === 'idle' || b.state === 'done') && !body.grab && body.onFloor() && !b.tag && !b.prank && !b.trick && !b.blow && (b.sleep || 0) < 0.1;
+    const ok = (b.state === 'idle' || b.state === 'done') && !body.grab && body.onFloor() && !b.tag && !b.prank && !b.trick && !b.blow && !b.tug && !b.balloon && !b.tower && !b.frog && !b.measure && (b.sleep || 0) < 0.1;
     if (!ok || !flakes.length || time < (b.nextNibble ?? (b.nextNibble = time + (60 + Math.random() * 180) / CFG.nibble))) return;
     b.nextNibble = time + (90 + Math.random() * 240) / CFG.nibble;
     const bb = body.bbox();
@@ -3955,6 +3956,64 @@
     if (time < (b.nextShape ?? (b.nextShape = time + (200 + Math.random() * 500) / CFG.shapes))) return;
     b.nextShape = time + (500 + Math.random() * 800) / CFG.shapes;
     b.shape = { at: time };
+  }
+  // Now and then a bored slime takes a huge breath and puffs itself up like
+  // a balloon until it floats off the floor, holds it, cheeks full... then
+  // lets go and zips about the screen, going down with a "pfffbt!", and
+  // lands dizzy and giggling.
+  function balloon(b) {
+    const g = b.balloon, body = b.body;
+    if (g) {
+      const t = time - g.at, k = Math.min(1.5, CFG.balloon), r = body.o.radius;
+      if (body.grab || b.dying || t > 9) { b.balloon = null; b.puff = 0; return; }
+      b.nextHop = time + 1;
+      if (g.stage === 'breathe') {
+        // Three big gulps of air, each a swell.
+        b.puff = 0.75 * k * Math.min(1, t / 1.8) * (1 + 0.08 * Math.sin(t * Math.PI * 2 / 0.6));
+        if (body.onFloor()) body.impulse(-body.velocity(DT).x * 0.2, 0, DT);
+        if (t > 1.8) { g.stage = 'float'; g.at = time; g.floor = body.bbox().maxY; }
+        return;
+      }
+      if (g.stage === 'float') {
+        // Lighter than air: it lifts off and bobs up a little way.
+        const up = g.floor - body.bbox().maxY;
+        const v = body.velocity(DT), rise = up < r * 1.1 ? -120 * Math.min(1, t / 0.4) : 10;
+        body.impulse((Math.sin(t * 2.2) * 25 - v.x) * 0.1, (rise - v.y) * 0.8, DT);
+        if (t > 1.8) {
+          g.stage = 'zip'; g.at = time; g.dir = -Math.PI / 2 + (Math.random() - 0.5) * 1.6; g.turn = (Math.random() < 0.5 ? -1 : 1) * (4 + Math.random() * 3);
+          b.surpriseUntil = time + 0.3;
+          quip(b, 'pfffbt!', 1.3);
+        }
+        return;
+      }
+      if (g.stage === 'zip') {
+        // Air rushing out pushes it about, wherever the hole's pointing; the
+        // hole wanders round, so it loops and swerves.
+        const left = Math.max(0, 1 - t / 1.4);
+        b.puff = 0.75 * k * left;
+        g.dir += g.turn * DT + (Math.random() - 0.5) * 6 * DT;
+        const v = body.velocity(DT), speed = 750 * Math.sqrt(left) * k;
+        body.impulse((Math.cos(g.dir) * speed - v.x) * 0.15 * left, (Math.sin(g.dir) * speed - v.y) * 0.15 * left, DT);
+        body.spin((g.turn * 0.6 - body.angularVelocity(DT)) * 0.1 * left, DT);
+        if (left <= 0) { g.stage = 'land'; g.at = time; }
+        return;
+      }
+      if (g.stage === 'land' && body.onFloor() && t > 0.3) {
+        b.balloon = null; b.puff = 0;
+        b.dizzyUntil = time + 1.2;
+        b.giggleAt = time + 1.3;
+        return;
+      }
+      return;
+    }
+    if (b.giggleAt && time > b.giggleAt) { b.giggleAt = 0; quip(b, 'hehe', 1); b.cheerUntil = time + 1; }
+    if (CFG.balloon <= 0 || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || b.merging || b.dying || !body.onFloor() || b.pendingHop || b.stackedBy || b.shape || b.tower || b.frog || b.tag || b.parade || b.trick || b.keepy || b.roll || b.measure || b.tug || b.tot || b.skate || b.comforting || (b.mood || 0) < 0 || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
+    if (time < (b.nextBalloon ?? (b.nextBalloon = time + (300 + Math.random() * 600) / CFG.balloon))) return;
+    b.nextBalloon = time + (600 + Math.random() * 900) / CFG.balloon;
+    balloonNow(b);
+  }
+  function balloonNow(b) {
+    b.balloon = { at: time, stage: 'breathe' };
   }
   // A real fright: it bristles all over for a moment, like a startled cat.
   function bristle(b) {
@@ -4395,7 +4454,7 @@
     at(29, () => { const b = big()[1] || big()[0]; if (b && !b.blow) b.blow = { at: time + 0.7, side: 1 }; });
     at(31, () => addFlutter());
     at(17, () => { const b = buddies.get(HOME) || big()[0]; if (b) b.say([{ text: 'While you were away (demo):' }, ...summaryLines()], 6, false, false); });
-    // Part two: a trampoline, a burp, a dream, a somersault, a tumble, leapfrog, a tower, a roly-poly, a heart, a tug of war.
+    // Part two: a trampoline, a burp, a dream, a somersault, a tumble, leapfrog, a tower, a roly-poly, a heart, a tug of war, a balloon.
     at(34, () => {
       const [b, o] = big();
       if (!b || !o || b.body.grab || o.body.grab) return;
@@ -4437,7 +4496,8 @@
       b.body.teleport(W * 0.35, y); o.body.teleport(W * 0.35 + (r + o.body.o.radius) * 1.1, y);
       setTimeout(() => { if (!b.dying && !o.dying && !b.tug && !o.tug) tugNow(b, o); }, 900);
     });
-    at(90, () => { seasonOverride = was; showingOff = false; });
+    at(90, () => { const b = big()[1] || big()[0]; if (b && !b.balloon && !b.body.grab) balloonNow(b); });
+    at(97, () => { seasonOverride = was; showingOff = false; });
   }
   let showingOff = false;
 
@@ -4531,6 +4591,7 @@
     roll(b);
     skate(b);
     shapeShift(b);
+    balloon(b);
     if (b.bounceAt && time > b.bounceAt) { // (sprung off a trampoline, see stackPlay)
       b.bounceAt = 0;
       if (!b.body.grab) { const v = b.body.velocity(DT); b.body.impulse((Math.random() - 0.5) * 120 - v.x * 0.5, -b.bounceV - v.y, DT); }
@@ -4679,6 +4740,8 @@
     if (time < b.dizzyUntil) { expression = 'dizzy'; mouth = 'flat'; }
     else if (b.splat) { expression = 'dizzy'; mouth = 'wobble'; }
     else if (time < (b.raspUntil || 0) && !body.grab) { expression = 'annoyed'; mouth = 'raspberry'; } // (pbbbt!)
+    else if (b.balloon && b.balloon.stage === 'zip') { expression = 'happy'; mouth = 'raspberry'; } // (the air rushing out)
+    else if (b.balloon && b.balloon.stage !== 'land') { expression = 'normal'; mouth = 'flat'; } // (cheeks full, holding it)
     else if (time < (b.annoyedUntil || 0) && b.annoyedAt && !b.annoyedAt.dying && !body.grab) { expression = 'annoyed'; mouth = 'flat'; }
     else if (time < (b.yawnUntil || 0)) { expression = 'sleepy'; mouth = 'yawn'; }
     else if (time < (b.napUntil || 0) && !body.grab) { expression = 'sleepy'; mouth = 'flat'; } // (a quick nap, for show)
