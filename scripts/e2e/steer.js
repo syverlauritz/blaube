@@ -205,6 +205,16 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	// ⌘F in the overview looks through every session.
 	await key('0', mod);
 	await until(() => box(`document.body.classList.contains('overview')`));
+	// Another session asking permission is answered right from the overview.
+	const asking2 = spawn('sh', ['-c', permissionCommand(PORT)], { env: Object.assign({}, process.env, { CLAUDE_CODE_ENTRYPOINT: 'cli' }) });
+	let answer2 = '';
+	asking2.stdout.on('data', (d) => { answer2 += d; });
+	asking2.stdin.end(JSON.stringify({ session_id: ID2, cwd: '/tmp/website', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'npm run build' } }));
+	check(await until(() => box(`[...document.querySelectorAll('#overview .rowask')].some((e) => /npm run build/.test(e.textContent))`)), 'the overview shows what another session asks permission for');
+	await box(`[...document.querySelectorAll('#overview .rowask')].find((e) => /npm run build/.test(e.textContent)).querySelector('.allow').click()`);
+	await new Promise((r) => { asking2.on('exit', r); setTimeout(r, 4000); });
+	check(/"behavior":"allow"/.test(answer2), 'and Allow there answers it');
+
 	await key('f', mod);
 	await box(`(() => { const f = document.getElementById('find'); f.value = 'footer'; f.dispatchEvent(new Event('input')); })()`);
 	check(await until(() => box(`(() => { const r = [...document.querySelectorAll('#overview .row.hit')]; return r.length === 1 && /website/.test(r[0].textContent) && /fix the footer/.test(r[0].textContent); })()`)), '⌘F in the overview finds which session said it');

@@ -466,7 +466,7 @@ function pushTalk(id, focusField = false) {
     }),
     // Every slime, to switch between them from the box.
     today: attention.today([...inbox.logs.values()]),
-    others: tracker.list().filter(isReady).map((o) => Object.assign({ id: o.id, project: o.project, color: colorOf(o) || prefs.config.color || '#D97757', state: o.state }, glanceAt(o))),
+    others: tracker.list().filter(isReady).map((o) => Object.assign({ id: o.id, project: o.project, color: colorOf(o) || prefs.config.color || '#D97757', state: o.state, ask: askOf(o.id) }, glanceAt(o))),
   }, inbox.view(id), owned.has(id) ? { stoppable: true } : {})); // (one Blaube started can always be stopped)
   if (s.cwd && !id.startsWith('demo-')) {
     git.status(s.cwd, (st) => {
@@ -506,6 +506,13 @@ function glanceNow(o) {
     // Replies since its talk box was last open (never opened: since Blaube started).
     unread: o.id === talkId ? 0 : inbox.log(o.id).filter((e) => e.who === 'claude' && e.at > (looked.get(o.id) || 0)).length,
   });
+}
+
+// What a session asks permission for, to answer from the overview: its
+// first tool request ({ key, tool, detail }), or null.
+function askOf(id) {
+  const a = (inbox.asks.get(id) || []).find((x) => x.kind === 'tool');
+  return a ? { key: a.key, tool: a.tool, detail: a.detail } : null;
 }
 
 // How full a session's context window is (%), 0 when unknown.
@@ -1406,6 +1413,14 @@ app.whenReady().then(async () => {
     if (c && c.to === 'gone' && c.session && inbox.logs.has(c.session.id) && !owned.has(c.session.id)) inbox.observe({ session_id: c.session.id, hook_event_name: 'SessionEnd' });
   });
   inbox.on('change', (id) => pushTalk(id));
+  // Another session asking (or no longer asking): the overview answers it.
+  const askCounts = new Map();
+  inbox.on('change', (id) => {
+    const n = (inbox.asks.get(id) || []).length;
+    if (id === talkId || n === (askCounts.get(id) || 0)) return;
+    if (n) askCounts.set(id, n); else askCounts.delete(id);
+    pushTalk(talkId);
+  });
   // What each helper is on, for its mother's talk box.
   tracker.on('activity', ({ session: s, agentId, payload: p }) => {
     if (!agentId || p.hook_event_name !== 'PreToolUse') return;
@@ -1899,6 +1914,11 @@ app.whenReady().then(async () => {
   });
   // If it wasn't decided (gone already, another session), the box is told
   // again what's really waiting.
+  // Allow or Deny from the overview, for any session.
+  ipcMain.on('talk-answer', (_e, id, key, choice) => {
+    if (typeof id !== 'string' || !tracker.sessions.has(id) || (choice !== 'allow' && choice !== 'deny')) return;
+    if (!inbox.decide(id, key, choice)) pushTalk(talkId);
+  });
   ipcMain.on('talk-permission', (_e, id, key, choice, answers) => {
     if (id && id === talkId && inbox.decide(id, key, choice, answers)) return;
     if (talkWin) talkWin.webContents.send('talk-refused', key);

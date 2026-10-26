@@ -697,6 +697,23 @@
       if (o.meta) { const m = document.createElement('small'); m.textContent = o.meta; row.append(m); }
       row.onclick = () => { showOverview(false); if (o.id !== s.id && api.switchTo) api.switchTo(o.id); };
       box.append(row);
+      // Asking permission: answered right here, without going to it.
+      if (o.ask && api.answer) {
+        const ask = document.createElement('div');
+        ask.className = 'rowask';
+        ask.style.setProperty('--c', o.color);
+        const what = document.createElement('span');
+        what.textContent = [o.ask.tool, o.ask.detail].filter(Boolean).join(': ');
+        what.title = what.textContent;
+        const deny = document.createElement('button');
+        deny.type = 'button'; deny.textContent = 'Deny';
+        const allow = document.createElement('button');
+        allow.type = 'button'; allow.textContent = 'Allow'; allow.className = 'allow';
+        deny.onclick = () => { ask.remove(); api.answer(o.id, o.ask.key, 'deny'); };
+        allow.onclick = () => { ask.remove(); api.answer(o.id, o.ask.key, 'allow'); };
+        ask.append(what, deny, allow);
+        box.append(ask);
+      }
     }
     drawHub(box);
     box.scrollTop = scroll;
