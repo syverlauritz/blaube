@@ -1337,12 +1337,12 @@
     const lines = [{ text: info.title || label(b) }, { text, color: D.STATE_COLORS[b.state] }];
     const extra = [info.branch, modelName(info.model)].filter(Boolean).join(' · ');
     if (extra) lines.push({ text: extra, dim: true });
-    // How far down its to-do list it is.
-    const todo = b.kind === 'mother' && b.session && b.session.todo;
-    if (todo) lines.push({ text: `${todo.done} of ${todo.of} on its list done`, dim: true });
     // How full its context window is.
     const tk = b.kind === 'mother' && b.session && b.session.tokens;
     if (tk && tk.limit && tk.context) lines.push({ text: `${Math.min(100, Math.round((tk.context / tk.limit) * 100))}% of context used`, dim: true });
+    // How far down its to-do list it is.
+    const todo = b.kind === 'mother' && b.session && b.session.todo;
+    if (todo) lines.push({ text: `${todo.done} of ${todo.of} on its list done`, dim: true });
     // Until you've talked to one, say you can.
     if (b.session && !String(b.session.id).startsWith('demo-')) {
       if (settings.hooksInstalled === false) lines.push({ text: 'Connect Claude Code in my menu for more', dim: true });
