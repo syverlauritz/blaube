@@ -2127,7 +2127,7 @@
   const WING_COLORS = ['#f2c14e', '#7fb3e6', '#f08aa5', '#f5f0e6'];
   // The week up to Halloween, a little bat flits across now and then
   // instead (it never lands).
-  const spooky = () => { const d = new Date(); return d.getMonth() === 9 && d.getDate() >= 24; };
+  const spooky = () => { const d = new Date(); return holiday === 'halloween' || (d.getMonth() === 9 && d.getDate() >= 24); };
   function addFlutter(bat) {
     const left = Math.random() < 0.5;
     flutters.push({ bat: !!bat, x: left ? -20 : W + 20, y: H * (0.35 + Math.random() * 0.35), vx: 0, vy: 0, phase: Math.random() * 6, color: WING_COLORS[Math.floor(Math.random() * WING_COLORS.length)],
@@ -2397,7 +2397,7 @@
   // Asleep at night, it's wearing a floppy nightcap, its tip swinging as the
   // body moves.
   // Christmas week, awake or asleep, it's a red one with white trim.
-  let holiday = null; // (dev: force 'christmas' or 'newyear')
+  let holiday = null; // (dev: force 'christmas', 'newyear' or 'halloween')
   const christmas = () => { const d = new Date(); return holiday === 'christmas' || (d.getMonth() === 11 && d.getDate() >= 20 && d.getDate() <= 26); };
   // The first minutes of the new year: fireworks, and they all cheer.
   const newYear = () => { const d = new Date(); return holiday === 'newyear' || (d.getMonth() === 0 && d.getDate() === 1 && d.getHours() === 0 && d.getMinutes() < 10); };
@@ -2491,6 +2491,7 @@
   }
   function nightcap(b) {
     const h = new Date().getHours(), santa = CFG.seasons > 0 && christmas();
+    if (!santa && CFG.seasons > 0 && CFG.witchHats > 0 && spooky() && b.body.o.radius > 12 && !b.dying) { witchHat(b); return; }
     const k = b.body.o.radius <= 12 || b.dying ? 0 : santa ? 1 : CFG.nightcap > 0 && (h >= 22 || h < 7) ? ramp(b.sleep || 0, 0.5, 0.85) : 0;
     if (k <= 0) { b.capSwing = 0; return; }
     const body = b.body, r = body.o.radius;
@@ -2513,6 +2514,40 @@
     ctx.fillStyle = '#f4f1ea';
     ctx.beginPath(); ctx.ellipse(x, y + ht * 0.12, w * 0.55, ht * 0.14, 0, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(tipX, tipY, r * 0.09 * k + 1, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // Halloween week: they dress up in pointy witch hats whose tips flop
+  // and swing as they move.
+  function witchHat(b) {
+    const body = b.body, r = body.o.radius, k = Math.min(1.3, CFG.witchHats);
+    let top = 0;
+    for (let i = 0; i < body.n; i++) if (body.py[i] < body.py[top]) top = i;
+    const x = body.px[top], y = body.py[top] + r * 0.06, side = b.key.length % 2 ? 1 : -1;
+    const v = body.velocity(DT);
+    b.capSwing = (b.capSwing || 0) + (-v.x * 0.0015 - (b.capSwing || 0)) * 0.08;
+    const bw = r * 0.78 * k, ht = r * 0.95 * k, cw = r * 0.42 * k;
+    // The tip bends over to one side, more as it swings.
+    const bend = side * 0.35 + b.capSwing * 1.4;
+    const midX = x + bend * ht * 0.25, midY = y - ht * 0.6, tipX = x + bend * ht * 0.75, tipY = y - ht * 0.82;
+    body.lookTop = Math.min(body.lookTop ?? Infinity, y - ht * 1.05);
+    ctx.save();
+    ctx.fillStyle = '#3a2f52';
+    ctx.beginPath(); ctx.ellipse(x, y, bw, r * 0.13 * k, 0, 0, Math.PI * 2); ctx.fill(); // (the brim)
+    ctx.beginPath();
+    ctx.moveTo(x - cw, y);
+    ctx.quadraticCurveTo(x - cw * 0.55 + bend * ht * 0.1, midY, tipX, tipY);
+    ctx.quadraticCurveTo(midX + cw * 0.35, midY + ht * 0.05, x + cw, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#e8892f'; // (a band round it)
+    ctx.beginPath();
+    ctx.moveTo(x - cw * 0.97, y - ht * 0.02);
+    ctx.lineTo(x + cw * 0.97, y - ht * 0.02);
+    ctx.lineTo(x + cw * 0.86, y - ht * 0.16);
+    ctx.lineTo(x - cw * 0.86, y - ht * 0.16);
+    ctx.closePath();
+    ctx.fill();
     ctx.restore();
   }
 

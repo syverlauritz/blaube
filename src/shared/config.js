@@ -138,6 +138,7 @@
       ['tricks', 1, 0, 5, 0.05, 'Bored but awake, it amuses itself now and then (three hops, each higher)'],
       ['flips', 1, 0, 2, 0.05, 'Now and then the last hop of a trick is a somersault'],
       ['nightcap', 1, 0, 1, 1, 'Asleep at night (10 pm to 7 am), it wears a floppy nightcap'],
+      ['witchHats', 1, 0, 1.3, 0.05, 'Halloween week (October 24 to 31): they wear pointy witch hats (how big)'],
       ['snoreBubble', 1, 0, 2, 0.05, 'Fast asleep, it blows a bubble that swells and shrinks with each breath, and pops when it wakes'],
       ['busySweat', 10, 0, 60, 1, 'Working through this many tools a minute, it breaks a sweat (0 = never)'],
       ['sleepTalk', 1, 0, 3, 0.05, 'Fast asleep, it mumbles now and then, often about what it was last doing'],
