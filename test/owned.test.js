@@ -91,7 +91,7 @@ test('/clear: a fresh session takes its place, and the old one ends quietly', as
   const bin = path.join(dir, 'claude');
   fs.writeFileSync(bin, `#!/usr/bin/env node
 process.stdout.write(JSON.stringify({ type: 'args', args: process.argv.slice(2), cwd: process.cwd() }) + '\\n');
-process.stdin.on('end', () => process.exit(0)); process.stdin.resume();
+process.stdin.on('end', () => { process.stdout.write(JSON.stringify({ type: 'result', result: 'late' }) + '\\n'); process.exit(0); }); process.stdin.resume();
 `, { mode: 0o755 });
   const owned = new Owned(() => bin);
   const seen = [], events = [];
@@ -99,6 +99,7 @@ process.stdin.on('end', () => process.exit(0)); process.stdin.resume();
   owned.read = (id, m) => { seen.push(Object.assign({ id }, m)); return orig(id, m); };
   owned.on('renamed', (a, b) => events.push(['renamed', a, b]));
   owned.on('exit', (a) => events.push(['exit', a]));
+  owned.on('result', (a) => events.push(['result', a]));
   const id = owned.start(dir, ['--worktree', '--model', 'opus'], { a: 1 });
   const until = async (fn) => { for (let i = 0; i < 100 && !fn(); i++) await new Promise((r) => setTimeout(r, 20)); return fn(); };
   assert.ok(await until(() => seen.some((m) => m.type === 'args')));
@@ -112,7 +113,7 @@ process.stdin.on('end', () => process.exit(0)); process.stdin.resume();
   assert.ok(!args.args.includes('--worktree') && args.args.includes('opus') && args.args.includes('--settings'));
   assert.equal(args.args[args.args.indexOf('--session-id') + 1], to);
   await new Promise((r) => setTimeout(r, 300));
-  assert.ok(!events.some((e) => e[0] === 'exit'), 'the old one ends without saying so');
+  assert.ok(!events.some((e) => e[0] === 'exit' || e[0] === 'result'), 'the old one ends without saying so, or anything else');
   assert.equal(owned.clear('nope'), null);
   owned.end(to);
 });

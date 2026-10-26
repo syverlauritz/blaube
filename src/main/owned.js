@@ -86,6 +86,7 @@ class Owned extends EventEmitter {
         s.buf = s.buf.slice(i + 1);
         let m;
         try { m = JSON.parse(line); } catch { continue; }
+        if (s.cleared) continue; // (/clear: a new one has its slime now)
         this.read(s.id, m);
       }
     });
@@ -98,7 +99,7 @@ class Owned extends EventEmitter {
     const ended = (code, signal) => {
       if (over) return;
       over = true;
-      if (s.buf.trim()) { try { this.read(s.id, JSON.parse(s.buf)); } catch { /* half a line */ } }
+      if (s.buf.trim() && !s.cleared) { try { this.read(s.id, JSON.parse(s.buf)); } catch { /* half a line */ } }
       if (this.sessions.get(s.id) === s) this.sessions.delete(s.id);
       if (settingsFile) fs.rm(settingsFile, { force: true }, () => {});
       if (s.replaced) return; // (/clear: it carries on as a new one)
@@ -181,7 +182,7 @@ class Owned extends EventEmitter {
     const s = this.sessions.get(id);
     if (!s) return null;
     const here = cwd && cwd !== s.cwd;
-    s.replaced = true;
+    s.replaced = s.cleared = true;
     this.sessions.delete(id);
     try { s.proc.stdin.end(); } catch { /* gone */ }
     setTimeout(() => stop(s.proc), 5000);

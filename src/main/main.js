@@ -1971,7 +1971,7 @@ app.whenReady().then(async () => {
     }
     // "/permissions": what it may do without asking; "allow Bash(npm
     // test:*)" adds a rule (this project, just you), "remove …" takes one back.
-    const perm = /^\/(?:permissions|allowed-tools)(?:\s+(allow|add|remove|deny)\s+(.+))?\s*$/i.exec(String(text).trim());
+    const perm = /^\/(?:permissions|allowed-tools)(?:\s+(allow|add|remove)\s+(.+))?\s*$/i.exec(String(text).trim());
     if (perm && sess && sess.cwd && !id.startsWith('demo-')) {
       const st = gitStates.get(id);
       const root = (st && st.root) || sess.cwd;
