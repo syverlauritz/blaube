@@ -423,8 +423,16 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await cloneIt('file://' + gitSrc);
 	const clonedTo = path.join(global.__blaubeCloneParent, 'tiny');
 	check(await until(() => fs.existsSync(path.join(clonedTo, '.git')) && owned.list().some((x) => (tracker.sessions.get(x) || {}).cwd === clonedTo), 10000), 'a repository is cloned next to your projects, and a session starts in it');
+	// New project: a folder of its own next to the others, then a session in it.
+	const CLONED = owned.list().find((x) => (tracker.sessions.get(x) || {}).cwd === clonedTo);
+	await until(() => talk() && talk().isVisible() && talkId() === CLONED, 8000);
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
+	await until(() => box(`[...document.querySelectorAll('#overview .chips button')].some((b) => b.textContent === 'New project…')`));
+	await box(`(() => { [...document.querySelectorAll('#overview .chips button')].find((x) => x.textContent === 'New project…').click(); const f = document.querySelector('#overview .cloneform'); f.querySelector('input').value = 'side quest'; f.requestSubmit(); })()`);
+	const madeIn = path.join(global.__blaubeCloneParent, 'side quest');
+	check(await until(() => fs.existsSync(madeIn) && owned.list().some((x) => (tracker.sessions.get(x) || {}).cwd === madeIn), 10000), 'New project… makes a folder next to your projects, and a session starts in it');
+	for (const x of owned.list()) if ([madeIn, clonedTo].includes((tracker.sessions.get(x) || {}).cwd)) owned.end(x);
 	owned.end(CLID);
-	for (const x of owned.list()) if ((tracker.sessions.get(x) || {}).cwd === clonedTo) owned.end(x);
 
 	// Claude Code's own defaults for new sessions, from Blaube's menu.
 	global.__blaubeCcHome = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-cchome-'));

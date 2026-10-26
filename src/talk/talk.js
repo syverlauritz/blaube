@@ -811,20 +811,20 @@
     pick.className = 'dim';
     pick.onclick = () => api.newIn('pick', { plan: planFirst, worktree: ownTree, model: newModel });
     chips.append(pick);
-    // Or a project you don't have yet: cloned, then started in.
-    if (api.clone) {
+    // Or a project you don't have yet: cloned, or made, then started in.
+    const formChip = (label, placeholder, verb, busy, act) => {
       const cl = document.createElement('button');
-      cl.textContent = 'Clone a repository…';
+      cl.textContent = label;
       cl.className = 'dim';
       cl.onclick = () => {
         const form = document.createElement('form');
         form.className = 'cloneform';
         const input = document.createElement('input');
-        input.placeholder = 'owner/repo, or its address';
-        input.setAttribute('aria-label', 'Repository to clone');
+        input.placeholder = placeholder;
+        input.setAttribute('aria-label', placeholder);
         const go = document.createElement('button');
         go.type = 'submit';
-        go.textContent = 'Clone';
+        go.textContent = verb;
         const said = document.createElement('div');
         said.className = 'clonesaid';
         form.append(input, go, said);
@@ -832,12 +832,12 @@
           e.preventDefault();
           if (!input.value.trim() || go.disabled) return;
           go.disabled = input.disabled = true;
-          go.textContent = 'Cloning…';
+          go.textContent = busy;
           said.textContent = '';
-          const err = await api.clone(input.value.trim(), { plan: planFirst, model: newModel });
+          const err = await act(input.value.trim(), { plan: planFirst, model: newModel });
           if (!err) return;
           go.disabled = input.disabled = false;
-          go.textContent = 'Clone';
+          go.textContent = verb;
           said.textContent = err;
           requestAnimationFrame(fitWindow);
         };
@@ -847,7 +847,9 @@
         requestAnimationFrame(fitWindow);
       };
       chips.append(cl);
-    }
+    };
+    if (api.clone) formChip('Clone a repository…', 'owner/repo, or its address', 'Clone', 'Cloning…', api.clone);
+    if (api.newProject) formChip('New project…', 'Its name', 'Make it', 'Making it…', api.newProject);
     box.append(chips);
     if (hub.past.length) {
       section('Pick up where you left off');

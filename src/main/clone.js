@@ -46,4 +46,15 @@ function clone(url, dest, cb, { run = execFile, timeout = 10 * 60e3, gh = '' } =
   });
 }
 
-module.exports = { parse, destFor, clone };
+// "New project…": a folder for it (a git repository, as most projects
+// start). The name is a folder name, nothing more. cb(error or '', dest).
+function newProject(parent, name, cb, { run = execFile } = {}) {
+  const n = String(name || '').trim();
+  if (!/^[\w][\w .-]{0,79}$/.test(n) || /\.\./.test(n)) return cb('Give it a name: letters, numbers, spaces, - and _', '');
+  const dest = path.join(parent, n);
+  if (fs.existsSync(dest)) return cb(`There’s already a ${n} in ${parent}`, dest);
+  try { fs.mkdirSync(dest, { recursive: true }); } catch (e) { return cb(`Couldn’t make it: ${e.message}`, dest); }
+  run('git', ['init', '-q', dest], { windowsHide: true, timeout: 30e3 }, () => cb('', dest)); // (no git: still a folder to work in)
+}
+
+module.exports = { parse, destFor, clone, newProject };

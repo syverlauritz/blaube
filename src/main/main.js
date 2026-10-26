@@ -2627,19 +2627,26 @@ app.whenReady().then(async () => {
   });
   // "Clone a repository…": git clone next to your other projects, then a
   // session in it. Resolves with '' when it's started, or why not.
+  const projectsDir = () => { const docs = path.join(os.homedir(), 'Documents'); return (TEST && global.__blaubeCloneParent) || (hubFolders[0] ? path.dirname(hubFolders[0]) : fs.existsSync(docs) ? docs : os.homedir()); };
+  const startNew = (dest, opts) => {
+    const model = opts && typeof opts.model === 'string' && /^[\w.\-[\]]{1,60}$/.test(opts.model) && opts.model !== 'default' ? opts.model : '';
+    hubCache = null;
+    hideTalk();
+    startSession(dest, [...(opts && opts.plan === true ? ['--permission-mode', 'plan'] : []), ...(model ? ['--model', model] : [])]);
+  };
+  // "New project…": a folder of its own next to your others, then a session in it.
+  ipcMain.handle('talk-new-project', (_e, name, opts) => new Promise((done) => {
+    cloner.newProject(projectsDir(), name, (err, dest) => { if (err) return done(err); startNew(dest, opts); done(''); });
+  }));
   ipcMain.handle('talk-clone', (_e, text, opts) => new Promise((done) => {
     const r = cloner.parse(text);
     if (!r) return done('That doesn’t look like a repository: paste its address, or owner/repo for GitHub');
-    const docs = path.join(os.homedir(), 'Documents');
-    const parent = (TEST && global.__blaubeCloneParent) || (hubFolders[0] ? path.dirname(hubFolders[0]) : fs.existsSync(docs) ? docs : os.homedir());
+    const parent = projectsDir();
     const dest = cloner.destFor(parent, r.name);
     if (!dest) return done(`There’s no free folder name for ${r.name} in ${parent}`);
     cloner.clone(r.url, dest, (err) => {
       if (err) return done(`Couldn’t clone it: ${err}`);
-      const model = opts && typeof opts.model === 'string' && /^[\w.\-[\]]{1,60}$/.test(opts.model) && opts.model !== 'default' ? opts.model : '';
-      hubCache = null;
-      hideTalk();
-      startSession(dest, [...(opts && opts.plan === true ? ['--permission-mode', 'plan'] : []), ...(model ? ['--model', model] : [])]);
+      startNew(dest, opts);
       done('');
     }, { gh: r.gh || '' });
   }));

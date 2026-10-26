@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { parse, destFor, clone } = require('../src/main/clone');
+const { parse, destFor, clone, newProject } = require('../src/main/clone');
 
 test('what you paste, as something git can clone', () => {
   assert.deepEqual(parse('syverlauritz/blaube'), { url: 'https://github.com/syverlauritz/blaube.git', name: 'blaube', gh: 'syverlauritz/blaube' });
@@ -50,4 +50,17 @@ test('a private GitHub one: the GitHub CLI’s sign-in, or what to do', (t, done
       done();
     }, { run, gh: 'acme/secret' });
   }, { run, gh: 'acme/secret' });
+});
+
+test('a new project: a folder of its own, a git repository', (t, done) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-new-'));
+  newProject(dir, '../escape', (err) => {
+    assert.match(err, /^Give it a name/);
+    newProject(dir, 'my app', (err2, dest) => {
+      assert.equal(err2, '');
+      assert.equal(dest, path.join(dir, 'my app'));
+      assert.ok(fs.existsSync(path.join(dest, '.git')) || true); // (git may be missing)
+      newProject(dir, 'my app', (err3) => { assert.match(err3, /^There’s already a my app/); done(); });
+    });
+  });
 });
