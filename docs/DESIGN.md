@@ -65,6 +65,13 @@ ships that breaks a "must".
 - A speech bubble is the same size as a sign balloon: one line is exactly
   a sign balloon's height, never narrower; longer lines wrap (at most three). Wanted ("more rounded", "more
   childlike in general").
+- The talk box is for reading: only Nunito in it, its name line too (heavier,
+  not a display font). It stays exactly where it opened (it never drifts
+  after its blob or moves when what's in it grows; that scrolls), you can
+  resize it by its edges and corners (the size is kept per screen), and its
+  tail slides round the box's whole outline to the edge facing its blob,
+  wherever the blob is carried; up against or under the box, the tail
+  shrinks away.
 - Blobs talk out loud in a made-up babble through a talkbox: a buzzy
   synth note shaped by a sweeping vowel filter, with a wah on the attack of
   each syllable only (it opens and stays open; no wah-wah on held notes).

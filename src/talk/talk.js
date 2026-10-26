@@ -50,7 +50,8 @@
   // from, `at` px along it (the tail itself is drawn by the slime's layer).
   function placeTail(tail) {
     const root = document.documentElement.style;
-    if (tail.side === 'bottom') { root.setProperty('--ox', tail.at + 'px'); root.setProperty('--oy', '100%'); }
+    if (Number.isFinite(tail.x)) { root.setProperty('--ox', tail.x + 'px'); root.setProperty('--oy', tail.y + 'px'); } // (where it is now, as its slime moves)
+    else if (tail.side === 'bottom') { root.setProperty('--ox', tail.at + 'px'); root.setProperty('--oy', '100%'); }
     else { root.setProperty('--ox', tail.side === 'left' ? '0px' : '100%'); root.setProperty('--oy', tail.at + 'px'); }
   }
 
@@ -662,8 +663,6 @@
     $('dot').style.background = DOTS[s.state] || DOTS.idle;
     $('stateChip').className = 'state ' + s.state;
     $('stateChip').hidden = !!s.demo;
-    // A long name in a display font gets hard to read: plain font then.
-    $('name').classList.toggle('plain', s.project.length > 16);
     // Its name beside the folder's (double-click either to rename it).
     $('subname').hidden = !s.title || s.title === s.project;
     $('subname').textContent = s.title || '';
@@ -672,10 +671,6 @@
     root.setProperty('--color', color);
     // White on the slime's colour only where it reads; ink otherwise.
     root.setProperty('--on', contrast(color, '#ffffff') >= 4.5 ? '#fff' : '#1b2440');
-    if (s.font) {
-      root.setProperty('--name', s.font === 'System' ? 'var(--ui)' : `"${s.font}", var(--ui)`);
-      root.setProperty('--nameWeight', s.font === 'System' || s.font === 'DynaPuff' ? '700' : '400');
-    }
     if (s.tail) placeTail(s.tail);
     $('terminal').style.display = s.demo || s.ended || s.owned ? 'none' : '';
     const stop = $('stop');
@@ -2124,7 +2119,31 @@
     $('hint').textContent = 'That didn’t go through. If it’s still asking, try again.';
     setTimeout(() => { if (current) $('hint').textContent = hint(current); }, 4000);
   });
-  if (api.onTail) api.onTail((t) => { placeTail(t); fitWindow(); });
+  if (api.onTail) api.onTail(placeTail);
+  // Dragging an edge or a corner resizes it (the app moves the window; what's
+  // in it flows to fit).
+  for (const g of document.querySelectorAll('.grips i')) {
+    g.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || !api.resize) return;
+      e.preventDefault();
+      g.setPointerCapture(e.pointerId);
+      const edge = g.dataset.edge;
+      let last = { x: e.screenX, y: e.screenY };
+      document.body.classList.add('resizing');
+      api.resize('start', edge, last.x, last.y);
+      const move = (m) => { last = { x: m.screenX, y: m.screenY }; api.resize('move', edge, last.x, last.y); };
+      const up = () => {
+        g.removeEventListener('pointermove', move);
+        g.removeEventListener('pointerup', up);
+        g.removeEventListener('lostpointercapture', up);
+        document.body.classList.remove('resizing');
+        api.resize('end', edge, last.x, last.y);
+      };
+      g.addEventListener('pointermove', move);
+      g.addEventListener('pointerup', up);
+      g.addEventListener('lostpointercapture', up);
+    });
+  }
   text.addEventListener('input', () => {
     // Its slime listens as you type (at most a few times a second).
     if (current && api.typing && Date.now() - (text.typedAt || 0) > 120) { text.typedAt = Date.now(); api.typing(current.id); }

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { placeTalk, GAP, PAD } = require('../src/main/talkPlace.js');
+const { placeTalk, resizeTalk, GAP, PAD } = require('../src/main/talkPlace.js');
 
 const area = { x: 0, y: 30, width: 1500, height: 900 };
 
@@ -46,4 +46,15 @@ test('a box that needs more room goes beside sooner, rather than squashed above'
   const p = placeTalk(at, area, 600, 460, undefined, 380);
   assert.notEqual(p.tail.side, 'bottom');
   assert.equal(p.h, 460, 'beside, it gets all the room it asked for');
+});
+
+test('resizing by an edge or corner moves only that edge, within its least size and the screen', () => {
+  const box = { x: 400, y: 200, w: 600, h: 500 };
+  const min = { w: 440, h: 360 };
+  assert.deepEqual(resizeTalk(box, 'se', 50, 40, area, min), { x: 400, y: 200, w: 650, h: 540 });
+  assert.deepEqual(resizeTalk(box, 'nw', -30, -20, area, min), { x: 370, y: 180, w: 630, h: 520 });
+  assert.deepEqual(resizeTalk(box, 'w', 400, 0, area, min), { x: 560, y: 200, w: 440, h: 500 }, 'no smaller than its least size, the right edge staying');
+  assert.deepEqual(resizeTalk(box, 'n', 0, -900, area, min), { x: 400, y: area.y, w: 600, h: 670 }, 'not above the screen');
+  assert.equal(resizeTalk(box, 'e', 2000, 0, area, min).w, area.width - 400, 'not off its right edge');
+  assert.equal(resizeTalk(box, 's', 0, 2000, area, min).h, area.y + area.height + PAD - 200, 'its clear margin may hang off the bottom');
 });

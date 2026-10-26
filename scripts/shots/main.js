@@ -641,6 +641,20 @@ const SCENES = {
 		say: [{ id: 'sd', text: 'All done! Want me to push it?', seconds: 8 }],
 	},
 };
+// The box where it opened, its slime carried round it (talk.box: the box's
+// window; talk.hold: where the slime is held): the tail leaves from the
+// edge facing it, all the way round. The last one is a box resized smaller.
+const aroundTalk = (hold, box = { x: 300, y: 170, w: 600, h: 440 }) => ({ sessions: [session('ar', 'blaube', 'idle')], wait: 2500, size: [1200, 820], talk: { key: 'ar', box, hold, inbox: 'ready', log: [{ who: 'you', text: 'is it green?' }, { who: 'claude', text: 'All 66 tests pass.' }] } });
+SCENES.talkAroundBelow = aroundTalk([600, 720]);
+SCENES.talkAroundBelowRight = aroundTalk([1010, 700]);
+SCENES.talkAroundLeft = aroundTalk([170, 400]);
+SCENES.talkAroundRight = aroundTalk([1040, 330]);
+SCENES.talkAroundAboveLeft = aroundTalk([200, 95]);
+SCENES.talkAroundAbove = aroundTalk([560, 62]);
+SCENES.talkAroundUnder = aroundTalk([600, 560]);
+SCENES.talkResized = aroundTalk([860, 690], { x: 360, y: 200, w: 460, h: 380 });
+SCENES.talkResizedBig = aroundTalk([140, 700], { x: 300, y: 40, w: 860, h: 640 });
+
 // The overview: the talk box with every session at a glance.
 // Find (⌘F) in a conversation with steps.
 SCENES.talkFind = Object.assign({}, SCENES.talkSteps, { talkJs: `setTimeout(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', metaKey: true })); const f = document.getElementById('find'); f.value = 'test'; f.dispatchEvent(new Event('input')); }, 400)` });
@@ -722,8 +736,8 @@ async function addTalk(win, scene, name) {
 	win.webContents.send('fire', 'talking', t.key);
 	await sleep(100);
 	const area = { x: 0, y: 0, width: w, height: h - 44 };
-	const TW = Math.min(TALK_W, w);
-	let place = placeTalk(at, area, TW, 400, undefined, TALK_MIN_ABOVE);
+	const TW = t.box ? t.box.w : Math.min(TALK_W, w);
+	let place = t.box ? { x: t.box.x, y: t.box.y, h: t.box.h, tail: { side: 'bottom', at: t.box.w / 2 } } : placeTalk(at, area, TW, 400, undefined, TALK_MIN_ABOVE);
 	const tw = new BrowserWindow({ width: TW, height: 400, show: false, frame: false, transparent: true, webPreferences: { preload: path.join(ROOT, 'src', 'main', 'talkPreload.js'), contextIsolation: true, sandbox: true } });
 	let wantH = 400;
 	const onHeight = (e, _id, v) => { if (e.sender === tw.webContents) wantH = v; };
@@ -743,12 +757,12 @@ async function addTalk(win, scene, name) {
 	if (scene.talkJs) { await tw.webContents.executeJavaScript(scene.talkJs); await sleep(900); }
 	// The box hugs its content, like in the app (170-440 px, plus its tail).
 	const th = Math.round(Math.max(TALK_MIN_H, Math.min(t.ask ? 900 : TALK_MAX_H, wantH)));
-	place = placeTalk(at, area, TW, th, undefined, TALK_MIN_ABOVE);
+	if (!t.box) place = placeTalk(at, area, TW, th, undefined, TALK_MIN_ABOVE);
 	tw.setContentSize(TW, place.h);
 	tw.webContents.send('talk-tail', place.tail);
 	await sleep(400);
 	// It measures again for the side it ended up on (as in the app).
-	place = placeTalk(at, area, TW, Math.round(Math.max(TALK_MIN_H, Math.min(t.ask ? 900 : TALK_MAX_H, wantH))), place.tail.side, TALK_MIN_ABOVE);
+	if (!t.box) place = placeTalk(at, area, TW, Math.round(Math.max(TALK_MIN_H, Math.min(t.ask ? 900 : TALK_MAX_H, wantH))), place.tail.side, TALK_MIN_ABOVE);
 	tw.setContentSize(TW, place.h);
 	await sleep(400);
 	ipcMain.removeListener('talk-height', onHeight);
@@ -757,8 +771,21 @@ async function addTalk(win, scene, name) {
 	fs.writeFileSync(path.join(OUT, `${name}-box.png`), fgImage.toPNG()); // (the box by itself, too)
 	tw.destroy();
 	// The slime's layer draws the tail from under the bubble to its head.
-	win.webContents.send('fire', 'talk-rect', { id: t.key, x: place.x, y: place.y, w: TW, h: place.h, side: place.tail.side });
+	win.webContents.send('fire', 'talk-rect', { id: t.key, x: place.x, y: place.y, w: TW, h: place.h });
 	await sleep(500); // (the tail grows out first)
+	if (t.hold) {
+		// Picks the slime up and carries it there (the page's own mouse handlers).
+		await win.webContents.executeJavaScript(`(async () => {
+			const B = __blaube, b = B.buddies.get(${JSON.stringify(t.key)}), raf = () => new Promise((r) => requestAnimationFrame(r));
+			B.ownMouse = true;
+			const c = b.body.centroid();
+			B.input.down({ button: 0, clientX: c.x, clientY: c.y });
+			for (let i = 1; i <= 40; i++) { B.input.move({ clientX: c.x + (${t.hold[0]} - c.x) * i / 40, clientY: c.y + (${t.hold[1]} - c.y) * i / 40 }); await raf(); }
+			for (let i = 0; i < 50; i++) { B.input.move({ clientX: ${t.hold[0]}, clientY: ${t.hold[1]} }); await raf(); }
+		})()`);
+		const tail = await win.webContents.executeJavaScript('__blaube.talkTail()');
+		console.log(`tail ${name}: ${tail ? `leaves at (${Math.round(tail.edge.x)}, ${Math.round(tail.edge.y)}), normal (${tail.nx.toFixed(2)}, ${tail.ny.toFixed(2)}), ${Math.round(tail.len)} px long` : 'none'}`);
+	}
 	// The renderer's CSP blocks data: images, so compose in a blank window.
 	const bg = (await win.webContents.capturePage()).toDataURL();
 	const cw = new BrowserWindow({ width: w, height: h, show: false });

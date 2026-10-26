@@ -39,4 +39,19 @@ function placeTalk(at, area, w, content, prev, minAbove = MIN_ABOVE) {
   return { x, y, h: Math.round(h), tail };
 }
 
-module.exports = { placeTalk, GAP, PAD };
+// Resizing the box by one of its edges or corners (`edge`: some of n, s, e,
+// w), dragged (dx, dy) from where it was (`box`: { x, y, w, h }). The other
+// edges stay put; it keeps to at least `min` ({ w, h }) and to the screen
+// (its clear margin may hang off the bottom, as placeTalk lets it).
+function resizeTalk(box, edge, dx, dy, area, min) {
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  let { x, y, w, h } = box;
+  const right = x + w, bottom = y + h;
+  if (edge.includes('e')) w = clamp(w + dx, min.w, area.x + area.width - x);
+  if (edge.includes('w')) { x = clamp(x + dx, Math.min(area.x, right - min.w), right - min.w); w = right - x; }
+  if (edge.includes('s')) h = clamp(h + dy, min.h, area.y + area.height + PAD - y);
+  if (edge.includes('n')) { y = clamp(y + dy, Math.min(area.y, bottom - min.h), bottom - min.h); h = bottom - y; }
+  return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+}
+
+module.exports = { placeTalk, resizeTalk, GAP, PAD };

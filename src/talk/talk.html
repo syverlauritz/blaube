@@ -5,11 +5,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:">
 <title>Talk</title>
 <style>
-  @font-face { font-family: "Coiny"; src: url(../renderer/fonts/Coiny.woff2) format("woff2"); font-weight: 400; }
-  @font-face { font-family: "Concert One"; src: url(../renderer/fonts/ConcertOne.woff2) format("woff2"); font-weight: 400; }
-  @font-face { font-family: "DynaPuff"; src: url(../renderer/fonts/DynaPuff.woff2) format("woff2"); font-weight: 400 700; }
   @font-face { font-family: "Nunito"; src: url(../renderer/fonts/Nunito.woff2) format("woff2"); font-weight: 200 1000; }
-  @font-face { font-family: "Rubik Spray Paint"; src: url(../renderer/fonts/RubikSprayPaint.woff2) format("woff2"); font-weight: 400; }
   /* A chat with a session, laid out like a proper chat: who it is and how
      it is at the top (with its project's git, to-do list and background
      tasks in a quiet panel under that), the conversation in the middle at
@@ -18,11 +14,11 @@
      #1b2440, soft greys for things you can touch, and the slime's own
      colour only on the one thing to press. No outlines, no shadows. Its
      tail is drawn by the slime's layer (from under the bubble to the
-     slime), since the bubble drifts after the slime in its own window. */
+     slime, wherever it is), since the bubble stays put in its own window. */
   :root {
     --ink: #1b2440; --body: #2a3247; --dim: #5b6270; --faint: #8d94a1; --soft: #f1f2f6; --softer: #f7f8fa; --hover: #e7e9ef; --on: #fff;
     --red: #c0392b;
-    --color: #d97757; --name: "Nunito", system-ui, sans-serif;
+    --color: #d97757;
     /* Rounded letters, like everything else about a slime (Nunito, bundled). */
     --ui: "Nunito", system-ui, sans-serif;
     --mono: ui-monospace, Menlo, Consolas, monospace;
@@ -44,6 +40,21 @@
   /* 12 px clear round the bubble, so its pop and wobble never get cut off. */
   .bubble { position: absolute; inset: 12px; display: flex; flex-direction: column; background: #fff; border-radius: 30px; overflow: hidden; }
   .bubble > * { flex: none; }
+  /* Its edges and corners resize it: invisible strips over the clear margin
+     and the bubble's very edge, the bottom right corner with a few faint
+     dots to say so. */
+  .grips i { position: fixed; z-index: 60; }
+  .grips [data-edge="n"] { top: 0; left: 28px; right: 28px; height: 17px; cursor: ns-resize; }
+  .grips [data-edge="s"] { bottom: 0; left: 28px; right: 28px; height: 17px; cursor: ns-resize; }
+  .grips [data-edge="e"] { right: 0; top: 28px; bottom: 28px; width: 17px; cursor: ew-resize; }
+  .grips [data-edge="w"] { left: 0; top: 28px; bottom: 28px; width: 17px; cursor: ew-resize; }
+  .grips [data-edge="nw"], .grips [data-edge="ne"], .grips [data-edge="sw"], .grips [data-edge="se"] { width: 28px; height: 28px; }
+  .grips [data-edge="nw"] { top: 0; left: 0; cursor: nwse-resize; }
+  .grips [data-edge="se"] { bottom: 0; right: 0; cursor: nwse-resize; }
+  .grips [data-edge="ne"] { top: 0; right: 0; cursor: nesw-resize; }
+  .grips [data-edge="sw"] { bottom: 0; left: 0; cursor: nesw-resize; }
+  .grips svg { position: absolute; right: 21px; bottom: 21px; width: 9px; height: 9px; fill: #c9cdd6; opacity: .7; transition: opacity .15s; }
+  .grips [data-edge="se"]:hover svg, body.resizing .grips svg { opacity: 1; fill: var(--faint); }
   [hidden] { display: none !important; }
 
   /* ---- Top: who it is, how it is, and the way to the others ---- */
@@ -52,8 +63,8 @@
   .statusbar { margin-top: 6px; gap: 10px; }
   .spacer { flex: 1; min-width: 8px; }
   /* Display fonts that come in one weight are drawn at it (a faked bold smudges). */
-  .name.plain { font-family: var(--ui); --nameWeight: 800; }
-  .name { font: var(--nameWeight, 700) 21px/1.25 var(--name); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+  /* The talk box is for reading: its name is in the same Nunito as the rest, just heavier. */
+  .name { font: 800 21px/1.25 var(--ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
   /* Its name, if it has one (Claude's title or yours, from /rename). */
   .subname { font: 600 14px/1.3 var(--ui); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; cursor: text; }
   /* How it is right now, in words: Working, Needs you, Done, Idle, Ended. */
@@ -516,6 +527,7 @@
 </style>
 </head>
 <body>
+<div class="grips" aria-hidden="true"><i data-edge="n"></i><i data-edge="s"></i><i data-edge="e"></i><i data-edge="w"></i><i data-edge="nw"></i><i data-edge="ne"></i><i data-edge="sw"></i><i data-edge="se"><svg viewBox="0 0 12 12"><circle cx="10" cy="3" r="1.4"/><circle cx="10" cy="10" r="1.4"/><circle cx="3" cy="10" r="1.4"/><circle cx="6.5" cy="6.5" r="1.4"/></svg></i></div>
 <div class="wrap" id="wrap">
   <div class="bubble">
     <header>

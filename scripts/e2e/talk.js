@@ -319,6 +319,74 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await box(`document.querySelector('.more').click()`);
 	check(await until(() => box(`!document.querySelector('.msg.folded')`)), 'Show more opens it');
 
+	// Carried round the box, the slime takes its tail with it: the tail
+	// leaves from the point of the bubble's outline facing it (below, beside,
+	// above, round a corner) and points at it. The box itself never moves.
+	// (Opened low in the middle of the screen, so there's room all round it.)
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
+	await until(() => !talk().isVisible());
+	await sleep(500);
+	const ob = win.getBounds();
+	console.log(`     (the slimes' window: ${JSON.stringify(ob)})`);
+	await page(`window.blaube.talk(${JSON.stringify(ID)}, { x: ${Math.round(ob.width / 2)}, y: ${Math.round(ob.height - 260)}, r: 60 })`);
+	check(await until(() => talk().isVisible()), 'it opens again, low in the middle');
+	await sleep(500);
+	const still = talk().getBounds();
+	const around = await page(`(async () => {
+		const B = __blaube, b = B.buddies.get(${JSON.stringify(ID)}), raf = () => new Promise((r) => requestAnimationFrame(r));
+		const wb = ${JSON.stringify(win.getBounds())}, tb = ${JSON.stringify(still)};
+		const box = { x: tb.x - wb.x + 12, y: tb.y - wb.y + 12, w: tb.width - 24, h: tb.height - 24 };
+		const clampX = (x) => Math.max(90, Math.min(wb.width - 90, x)), clampY = (y) => Math.max(90, Math.min(wb.height - 90, y));
+		const spots = {
+			below: [box.x + box.w * 0.4, box.y + box.h + 130],
+			left: [box.x - 130, box.y + box.h * 0.5],
+			right: [box.x + box.w + 130, box.y + box.h * 0.4],
+			aboveLeft: [box.x - 100, box.y - 100],
+			above: [box.x + box.w * 0.6, box.y - 120],
+		};
+		B.ownMouse = true;
+		let c = b.body.centroid();
+		const out = {};
+		B.input.down({ button: 0, clientX: c.x, clientY: c.y });
+		for (const [name, [x, y]] of Object.entries(spots)) {
+			const to = { x: clampX(x), y: clampY(y) }, from = { x: c.x, y: c.y };
+			for (let i = 1; i <= 30; i++) { c = { x: from.x + (to.x - from.x) * i / 30, y: from.y + (to.y - from.y) * i / 30 }; B.input.move({ clientX: c.x, clientY: c.y }); await raf(); }
+			for (let i = 0; i < 30; i++) { B.input.move({ clientX: to.x, clientY: to.y }); await raf(); }
+			const t = B.talkTail(), at = b.body.centroid();
+			// How far the tail's start is from the rounded outline (30 px corners).
+			let off = null;
+			if (t) {
+				const R = 30, qx = Math.max(box.x + R, Math.min(box.x + box.w - R, t.edge.x)), qy = Math.max(box.y + R, Math.min(box.y + box.h - R, t.edge.y));
+				off = Math.abs(Math.hypot(t.edge.x - qx, t.edge.y - qy) - R);
+			}
+			const ax = at.x - (t ? t.edge.x : 0), ay = at.y - (t ? t.edge.y : 0), al = Math.hypot(ax, ay) || 1;
+			out[name] = t && { off, facing: (t.nx * ax + t.ny * ay) / al, nx: t.nx, ny: t.ny, len: t.len, clamped: to.x !== x || to.y !== y };
+		}
+		B.input.up({ button: 0, clientX: c.x, clientY: c.y });
+		B.ownMouse = false;
+		return out;
+	})()`);
+	const want = { below: [0, 1], left: [-1, 0], right: [1, 0], aboveLeft: [-1, -1], above: [0, -1] };
+	for (const [name, t] of Object.entries(around)) {
+		check(t && t.off < 1.5 && t.facing > 0.97 && t.len > 0, `carried ${name}, the tail leaves from the bubble’s edge and points at it (${t ? `${t.off.toFixed(1)} px off the edge, facing ${t.facing.toFixed(2)}` : 'no tail'})`);
+		const [wx, wy] = want[name];
+		if (t && !t.clamped) check(Math.sign(Math.round(t.nx * 3)) === wx && Math.sign(Math.round(t.ny * 3)) === wy, `  from the ${name === 'aboveLeft' ? 'top left corner' : name === 'below' ? 'bottom' : name === 'above' ? 'top' : name + ' side'} (${t.nx.toFixed(2)}, ${t.ny.toFixed(2)})`);
+	}
+	await sleep(600);
+	const after = talk().getBounds();
+	check(talk().isVisible() && after.x === still.x && after.y === still.y && after.width === still.width && after.height === still.height, `the box stays exactly where it opened while its slime is carried about (${JSON.stringify(still)} → ${JSON.stringify(after)})`);
+	await shot('carried');
+	// Resizing it by a corner: it grows from there, the other edges stay, and
+	// what's in it flows to fit; the next box opens at that size.
+	await box(`(() => { blaubeTalk.resize('start', 'nw', 1000, 1000); blaubeTalk.resize('move', 'nw', 970, 980); blaubeTalk.resize('end', 'nw', 940, 960); })()`);
+	check(await until(() => { const b = talk().getBounds(); return b.x === still.x - 60 && b.y === still.y - 40 && b.width === still.width + 60 && b.height === still.height + 40; }, 1500), `dragging its top left corner resizes it from there (${JSON.stringify(talk().getBounds())})`);
+	await sleep(200);
+	check(await box(`(() => { const b = document.querySelector('.bubble').getBoundingClientRect(), f = document.getElementById('form').getBoundingClientRect(); return Math.round(b.width) === innerWidth - 24 && f.bottom <= b.bottom && f.right <= b.right; })()`), 'and what’s in it flows to the new size');
+	await box(`(() => { blaubeTalk.resize('start', 'se', 500, 500); blaubeTalk.resize('end', 'se', -500, -500); })()`);
+	await sleep(200);
+	const least = talk().getBounds();
+	check(least.width === 440 && least.height === 360, `no smaller than its least size (${least.width}×${least.height})`);
+
 	// Esc closes it (after its little shrink); clicking the slime again opens and closes it.
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
 	check(await until(() => !talk().isVisible()), 'Esc closes it');
@@ -328,6 +396,8 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	check(reopened, 'clicking the slime opens it again');
 	if (!reopened) console.log('     last page logs:\n       ' + consoleLines.slice(-8).join('\n       '), '\n     talkId', talkId(), 'last', JSON.stringify(last));
 	await sleep(500);
+	const sized = talk().getBounds();
+	check(sized.width === 440 && sized.height === 360, `it opens again at the size you gave it (${sized.width}×${sized.height})`);
 	await clickSlime();
 	const closedAgain = await until(() => !talk().isVisible());
 	check(closedAgain, 'clicking it again closes it');

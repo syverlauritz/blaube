@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld('blaube', {
   showSessionMenu: (id) => ipcRenderer.send('session-menu', id),
   openSession: (id) => ipcRenderer.send('open-session', id),
   talk: (id, at) => ipcRenderer.send('talk', id, at),
-  talkAt: (id, at) => ipcRenderer.send('talk-at', id, at),
+  talkAt: (id, at) => ipcRenderer.send('talk-at', id, at), // where the tail leaves the box
   openTuning: () => ipcRenderer.send('open-tuning'),
   ready: () => ipcRenderer.send('ready'),
   onState: (cb) => ipcRenderer.on('state', (_e, s) => cb(s)),

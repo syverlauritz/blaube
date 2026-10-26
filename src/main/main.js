@@ -6,7 +6,7 @@ const { SessionTracker } = require('./sessions');
 const { Inbox, STYLE } = require('./inbox');
 const { classify } = require('../shared/actions');
 const { SONGS } = require('../shared/songs');
-const { placeTalk } = require('./talkPlace');
+const { placeTalk, resizeTalk } = require('./talkPlace');
 const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
 const { toneOf } = require('./tone');
@@ -292,72 +292,49 @@ const TALK_W = 600, TALK_MIN_H = 420, TALK_MAX_H = 820;
 const TALK_MIN_ABOVE = 460; // less room than this above its slime: it goes beside, where it has the screen's height
 const talkH = () => talkHeights.get(talkId) || 280;
 
-// Puts the box where it belongs for its slime and its current height.
-// The box doesn't hang off its slime rigidly: it drifts after it on a slow,
-// soft spring (easy to read while the slime hops about), and the slime's
-// layer draws the tail from the bubble to its head, so they stay joined.
-let talkGoal = null, talkAt = null, talkVel = { x: 0, y: 0 }, talkGlide = null;
-function placeTalkWin(jump = false) {
+// You can make it any size you like (dragging its edges or corners): that
+// size is kept for the screen it's on, for every box after it.
+const TALK_RESIZE_MIN = { w: 440, h: 360 };
+const talkSizeKey = (area) => `${area.width}x${area.height}`;
+function talkSizeFor(area) {
+  const s = prefs.talkSizes && prefs.talkSizes[talkSizeKey(area)];
+  if (!s || !(s.w > 0) || !(s.h > 0)) return null;
+  return { w: Math.round(Math.min(area.width, Math.max(TALK_RESIZE_MIN.w, s.w))), h: Math.round(Math.min(area.height, Math.max(TALK_RESIZE_MIN.h, s.h))) };
+}
+
+// Puts the box where it belongs for its slime, once, as it opens: it never
+// moves after that (not when its slime hops or is carried off, not when
+// what's in it grows: that scrolls inside it). Its size is the one you
+// gave it, or else what it has in it. The slime's layer draws the tail
+// from the box's edge to the slime, wherever the slime goes.
+let talkBox = null; // { x, y, w, h } on screen, while it's open
+let talkResizing = null;
+function placeTalkWin() {
   if (!talkWin || !talkSpot) return;
   const area = screen.getDisplayNearestPoint(talkSpot).workArea;
-  const w = Math.min(TALK_W, area.width);
-  const place = placeTalk(talkSpot, area, w, talkH(), talkTail && talkTail.side, TALK_MIN_ABOVE);
-  place.w = w;
-  const moved = !talkTail || place.tail.side !== talkTail.side || Math.abs(place.tail.at - talkTail.at) > 0.5;
-  // Switching sides isn't a drift: it goes straight there.
-  if (talkTail && place.tail.side !== talkTail.side) jump = true;
-  // Short of room above its slime, its height follows the slime's position:
-  // small moves don't re-size it (that read as stretching while you read).
-  if (!jump && talkGoal && talkWin.isVisible() && place.tail.side === talkGoal.tail.side && place.h !== talkGoal.h && place.h < talkH() && Math.abs(place.h - talkGoal.h) < 40) {
-    if (place.tail.side === 'bottom') place.y += place.h - talkGoal.h;
-    place.h = talkGoal.h;
-  }
-  // Growing or shrinking keeps the edge its tail leaves from where it is
-  // (a taller box grows up, away from the slime, never down over it).
-  if (!jump && talkAt && talkGoal && place.h !== talkGoal.h) {
-    if (place.tail.side === 'bottom') talkAt.y -= place.h - talkGoal.h;
-    else talkAt.y -= (place.h - talkGoal.h) / 2;
-  }
-  talkTail = place.tail;
-  talkGoal = place;
-  if (jump || !talkAt || !talkWin.isVisible()) { talkAt = { x: place.x, y: place.y }; talkVel = { x: 0, y: 0 }; }
+  const size = talkSizeFor(area);
+  const w = size ? size.w : Math.min(TALK_W, area.width);
+  // (A size you picked goes beside sooner rather than being squashed above.)
+  const place = placeTalk(talkSpot, area, w, size ? size.h : talkH(), undefined, size ? size.h : TALK_MIN_ABOVE);
+  talkBox = { x: place.x, y: place.y, w, h: place.h };
+  // Where the tail leaves from, in the box's own coordinates (it pops open from there).
+  const t = place.tail;
+  talkTail = t.side === 'bottom' ? { x: t.at, y: place.h } : { x: t.side === 'left' ? 0 : w, y: t.at };
   applyTalkBounds();
-  if (moved && talkId) talkWin.webContents.send('talk-tail', talkTail);
-  if (!talkGlide) talkGlide = setInterval(glideTalk, 16);
+  if (talkId) talkWin.webContents.send('talk-tail', talkTail);
 }
 
 function applyTalkBounds() {
-  talkWin.setBounds({ x: Math.round(talkAt.x), y: Math.round(talkAt.y), width: talkGoal.w, height: talkGoal.h });
+  talkWin.setBounds({ x: talkBox.x, y: talkBox.y, width: talkBox.w, height: talkBox.h });
   sendTalkRect();
 }
 
 // Where the bubble is, for the slime's layer to draw the tail to.
 function sendTalkRect() {
-  if (!win || !talkAt || !talkGoal) return;
+  if (!win || !talkBox) return;
   const wb = win.getBounds();
   const visible = talkWin && talkWin.isVisible();
-  win.webContents.send('talk-rect', visible ? { id: talkId, x: talkAt.x - wb.x, y: talkAt.y - wb.y, w: talkGoal.w, h: talkGoal.h, side: talkTail.side, vx: talkVel.x } : null);
-}
-
-// A soft spring (like the balloons' settle in face.js, softer): it follows
-// with a little overshoot and rests within about a second. On a leash: it
-// never trails more than 120 px behind.
-function glideTalk() {
-  if (!talkWin || !talkWin.isVisible() || !talkGoal) { clearInterval(talkGlide); talkGlide = null; return; }
-  const dt = 0.016;
-  let dx = talkGoal.x - talkAt.x, dy = talkGoal.y - talkAt.y;
-  if (Math.hypot(dx, dy) < 0.75 && Math.hypot(talkVel.x, talkVel.y) < 5) {
-    if (dx || dy) { talkAt = { x: talkGoal.x, y: talkGoal.y }; talkVel = { x: 0, y: 0 }; applyTalkBounds(); }
-    clearInterval(talkGlide); talkGlide = null; // at rest: no timer ticking
-    return;
-  }
-  talkVel.x += (40 * dx - 11 * talkVel.x) * dt;
-  talkVel.y += (40 * dy - 11 * talkVel.y) * dt;
-  talkAt = { x: talkAt.x + talkVel.x * dt, y: talkAt.y + talkVel.y * dt };
-  dx = talkGoal.x - talkAt.x; dy = talkGoal.y - talkAt.y;
-  const far = Math.hypot(dx, dy);
-  if (far > 120) talkAt = { x: talkGoal.x - dx * 120 / far, y: talkGoal.y - dy * 120 / far };
-  applyTalkBounds();
+  win.webContents.send('talk-rect', visible ? { id: talkId, x: talkBox.x - wb.x, y: talkBox.y - wb.y, w: talkBox.w, h: talkBox.h } : null);
 }
 
 // Opens the talk box for a session, next to its slime (`at`: the top of the
@@ -419,7 +396,7 @@ function openTalkFor(id, at) {
   // itself, so it never flashes the last slime's conversation or jumps.
   const show = () => {
     if (talkId !== id) return;
-    placeTalkWin(true);
+    placeTalkWin();
     if (TEST) talkWin.showInactive(); // never takes your focus
     else { talkWin.show(); talkWin.focus(); } // already filled in while hidden
     sendTalkRect();
@@ -458,6 +435,7 @@ function activateApp(pid) {
 // already there.
 function hideTalk(switching = false) {
   if (!talkWin || !talkWin.isVisible()) return;
+  talkResizing = null;
   if (talkId) looked.set(talkId, Date.now()); // you've read it up to now
   const onPurpose = talkWin.isFocused();
   talkWin.hide();
@@ -3405,12 +3383,28 @@ app.whenReady().then(async () => {
   ipcMain.on('talk-close', () => hideTalk());
   // It's shrinking shut: the tail goes first.
   ipcMain.on('talk-closing', () => { if (win) win.webContents.send('talk-rect', null); });
-  // The slime moved: the box follows it.
+  // Where the tail leaves the box now (its slime moved): the box stays put,
+  // but it shrinks shut into its tail, wherever that is.
   ipcMain.on('talk-at', (_e, id, at) => {
-    if (id !== talkId || !talkWin || !talkWin.isVisible() || !at) return;
+    if (id !== talkId || !talkWin || !talkWin.isVisible() || !talkBox || !at || !Number.isFinite(at.x) || !Number.isFinite(at.y)) return;
     const wb = win.getBounds();
-    talkSpot = { x: wb.x + at.x, y: wb.y + at.y, r: at.r };
-    placeTalkWin();
+    talkTail = { x: Math.round(wb.x + at.x - talkBox.x), y: Math.round(wb.y + at.y - talkBox.y) };
+    talkWin.webContents.send('talk-tail', talkTail);
+  });
+  // Dragging one of its edges or corners (in screen coordinates): it
+  // resizes from there, and the size is kept for next time.
+  ipcMain.on('talk-resize', (_e, phase, edge, sx, sy) => {
+    if (!talkWin || !talkWin.isVisible() || !talkBox || !Number.isFinite(sx) || !Number.isFinite(sy) || !/^(n|s|e|w|ne|nw|se|sw)$/.test(edge)) return;
+    if (phase === 'start') { talkResizing = { edge, x: sx, y: sy, box: Object.assign({}, talkBox) }; return; }
+    if (!talkResizing) return;
+    const r = talkResizing;
+    const area = screen.getDisplayMatching({ x: r.box.x, y: r.box.y, width: r.box.w, height: r.box.h }).workArea;
+    talkBox = resizeTalk(r.box, r.edge, sx - r.x, sy - r.y, area, TALK_RESIZE_MIN);
+    applyTalkBounds();
+    if (phase !== 'end') return;
+    talkResizing = null;
+    prefs.talkSizes = Object.assign({}, prefs.talkSizes, { [talkSizeKey(area)]: { w: talkBox.w, h: talkBox.h } });
+    savePrefs();
   });
   // The box grew or shrank to fit what's in it (its first measurement is
   // what it opens at).
@@ -3419,10 +3413,10 @@ app.whenReady().then(async () => {
     // A question or plan may need more room than a chat; the screen decides.
     const max = inbox.asks.has(id) ? 900 : TALK_MAX_H;
     const next = Math.round(Math.max(TALK_MIN_H, Math.min(max, Number(h) || talkH())));
-    const changed = next !== talkHeights.get(id);
     talkHeights.set(id, next);
-    if (talkReady) { const show = talkReady; talkReady = null; show(); return; }
-    if (changed && talkWin && talkWin.isVisible()) placeTalkWin();
+    // Open, it keeps its size and place (what's in it scrolls): this is
+    // how tall it opens, now or next time.
+    if (talkReady) { const show = talkReady; talkReady = null; show(); }
   });
   // If it wasn't decided (gone already, another session), the box is told
   // again what's really waiting.
