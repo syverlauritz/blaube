@@ -171,7 +171,8 @@ function show(cwd, hash, cb) {
 }
 
 // What its branch changed since it left its base (origin's default branch,
-// or main or master): cb({ base, files: [{ path, how }], stat }) or null
+// or main or master): cb({ base, files: [{ path, how }], stat, behind }) or null
+// (behind: commits on its base it doesn't have yet)
 // (on the base itself, or no base found).
 function baseOf(cwd, cb) {
   execFile('git', ['rev-parse', '--abbrev-ref', 'origin/HEAD'], { cwd, timeout: 3000, windowsHide: true }, (err, out) => {
@@ -197,7 +198,10 @@ function branchChanges(cwd, branch, cb) {
     execFile('git', ['diff', '--name-status', '--no-color', `${base}...HEAD`], { cwd, timeout: 5000, maxBuffer: 4e6, windowsHide: true }, (err, out) => {
       if (err) return cb(null);
       const files = parseNameStatus(out);
-      execFile('git', ['diff', '--shortstat', `${base}...HEAD`], { cwd, timeout: 5000, windowsHide: true }, (e3, stat) => cb({ base, files, stat: e3 ? '' : String(stat).trim() }));
+      execFile('git', ['diff', '--shortstat', `${base}...HEAD`], { cwd, timeout: 5000, windowsHide: true }, (e3, stat) => {
+        // (And how far its base has moved on since: commits it doesn't have.)
+        execFile('git', ['rev-list', '--count', `HEAD..${base}`], { cwd, timeout: 5000, windowsHide: true }, (e4, n) => cb({ base, files, stat: e3 ? '' : String(stat).trim(), behind: e4 ? 0 : Number(String(n).trim()) || 0 }));
+      });
     });
   });
 }

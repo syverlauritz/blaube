@@ -447,6 +447,12 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await until(() => box(`[...document.querySelectorAll('#branches .branchfiles li > button')].some((b) => b.firstChild.textContent === 'src/tax.js')`));
 	await box(`[...document.querySelectorAll('#branches .branchfiles li > button')].find((b) => b.firstChild.textContent === 'src/tax.js').click()`);
 	check(await until(() => box(`[...document.querySelectorAll('#branches .branchfiles .diff')].some((p) => !p.hidden && /\\+x/.test(p.textContent))`)), 'and a tap on a file shows its change on the branch');
+	// Main moved on since: Bring them in.
+	const onMain = execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit-tree', 'main^{tree}', '-p', 'main', '-m', 'meanwhile on main'], { cwd: repo }).toString().trim();
+	execFileSync('git', ['update-ref', 'refs/heads/main', onMain], { cwd: repo });
+	await box(`document.getElementById('git').click(); document.getElementById('git').click()`);
+	check(await until(() => box(`(() => { const r = document.querySelector('#branches .behindrow'); return !!r && r.firstChild.textContent === 'main has 1 newer commit' && r.querySelector('button').textContent === 'Bring them in' && /merge main into this branch/.test(r.querySelector('button').title); })()`), 10000), 'when main has moved on, it says so, with Bring them in');
+	execFileSync('git', ['update-ref', 'refs/heads/main', 'main~1'], { cwd: repo });
 	execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'more'], { cwd: repo });
 	execFileSync('git', ['remote', 'set-url', 'origin', bare + '-gone'], { cwd: repo });
 	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Push' && /git push/.test(b.title))`), 10000), 'one more commit: Push again');

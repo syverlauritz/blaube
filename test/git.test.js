@@ -234,6 +234,7 @@ test('what a branch changed since it left main, file by file', async () => {
     assert.equal(ch.base, 'main');
     assert.deepEqual(ch.files, [{ path: 'a.txt', how: 'changed' }, { path: 'b.txt', how: 'new' }], 'only its own, not main’s since');
     assert.match(ch.stat, /2 files changed/);
+    assert.equal(ch.behind, 1, 'main has a commit it hasn’t');
     assert.equal(await new Promise((r) => branchDiff(dir, 'main', 'a.txt', r)), '@@ -1 +1 @@\n-one\n+two');
     assert.equal(await new Promise((r) => branchDiff(dir, '--output=/tmp/x', 'a.txt', r)), '');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }

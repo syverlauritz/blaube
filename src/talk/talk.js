@@ -1365,11 +1365,29 @@
     }).then(() => (api.branchChanges && box.dataset.key === key ? api.branchChanges(s.id) : null)).then((ch) => {
       // And all its branch changed since it left main: a tap for the
       // files, a tap on one for its change (to look over before a PR).
-      if (!ch || !ch.files.length || box.dataset.key !== key) return;
+      if (!ch || box.dataset.key !== key) return;
+      // Main moved on since it branched off: Bring them in (Claude merges
+      // them, sorting out any conflicts).
+      const base = ch.base.replace(/^origin\//, '');
+      if (ch.behind > 0) {
+        const row = document.createElement('div');
+        row.className = 'behindrow';
+        const said = document.createElement('span');
+        said.textContent = `${base} has ${ch.behind} newer commit${ch.behind === 1 ? '' : 's'}`;
+        const go = document.createElement('button');
+        go.type = 'button';
+        go.textContent = 'Bring them in';
+        go.disabled = busy;
+        go.title = busy ? 'Once it’s done' : `Asks Claude to merge ${ch.base} into this branch`;
+        go.onclick = () => api.send(s.id, `Merge the latest ${ch.base} into this branch${/^origin\//.test(ch.base) ? ` (fetch it first)` : ''}. If anything conflicts, resolve it keeping both sides’ intent. Then run the tests and tell me what came in and anything you had to choose.`);
+        row.append(said, go);
+        box.append(row);
+      }
+      if (!ch.files.length) { requestAnimationFrame(fitWindow); return; }
       const head = document.createElement('button');
       head.type = 'button';
       head.className = 'onbranch';
-      head.textContent = `On this branch since ${ch.base.replace(/^origin\//, '')}: ${ch.stat || `${ch.files.length} files`}`;
+      head.textContent = `On this branch since ${base}: ${ch.stat || `${ch.files.length} files`}`;
       head.setAttribute('aria-expanded', 'false');
       const ul = document.createElement('ul');
       ul.className = 'gitfiles commits branchfiles';
