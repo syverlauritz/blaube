@@ -1312,7 +1312,9 @@
           const c = body.centroid(), mc = m.body.centroid();
           const dx = mc.x - c.x, dy = mc.y - c.y;
           const close = Math.hypot(dx, dy) < m.body.o.radius + r * 0.4;
-          if (close || time - b.merging.since > 8) {
+          // (Given up on getting to her: after its sad moment it fades back
+          // into her from where it is.)
+          if (close || (b.gaveUp ? time > b.gaveUp.until : time - b.merging.since > 8)) {
             b.dying = time;
             b.targetR = 2;
             m.happyUntil = time + 1.2;
@@ -1323,8 +1325,9 @@
               m.gulpAt = time;
               if (Math.random() < 0.3 * CFG.burps) m.burpAt = time + 0.9 + Math.random() * 0.6;
             }
-          } else if (body.onFloor() && !body.grab && time - (b.merging.lastHop || 0) > 0.6) {
+          } else if (body.onFloor() && !body.grab && !b.gaveUp && time - (b.merging.lastHop || 0) > 0.6) {
             b.merging.lastHop = time;
+            if (b.reach) b.reach.hops++;
             b.hop(Math.sign(dx) * Math.min(700, Math.abs(dx) * 2.2 + 120), -520 - Math.max(0, -dy) * 1.5);
           }
         }
@@ -4864,6 +4867,59 @@
     return pair(a, b) || pair(b, a) || a.dying || b.dying;
   }
 
+  // A helper that can't get to its mum (she's up a window too high, it
+  // won't jump off the window it's on, she's being carried off) gives up
+  // after a while of getting no closer (about 7 s and a few hops; 4 s on
+  // its way home, its hops being quicker): a sigh, a heart breaking above
+  // it, a slump. Then it rests for minutes (4 to 8, twice that each time it
+  // has to give up again, 20 at most) before it tries again, unless she
+  // comes near by herself: then it's glad and goes to her. A finished one
+  // fades back into her after its sad moment.
+  function mumOutOfReach(b) {
+    const m = b.mother, c = b.body.centroid(), mc = m.body.centroid(), r = b.body.o.radius;
+    if (b.merging) return Math.hypot(mc.x - c.x, mc.y - c.y) >= m.body.o.radius + r * 0.4;
+    const far = m.body.o.radius * 2 + r * 6, rise = b.body.bbox().maxY - m.body.bbox().maxY;
+    return Math.abs(mc.x - c.x) > far || (rise > r && !!m.body.onLedge);
+  }
+  function missMum(b) {
+    if (b.kind !== 'child' || b.dying) return;
+    const m = b.mother;
+    if (!m || m.dying || m.removed) { b.reach = b.gaveUp = null; return; }
+    const g = b.gaveUp;
+    if (g) {
+      // The sigh comes as the heart's halves fall away (its bubble would
+      // hide the heart). It shows; it's heard only when there's room for a
+      // line (mayTalk).
+      if (!g.sighed && time > g.at + 1.1) {
+        g.sighed = true;
+        if (!b.dying) b.say([{ text: 'haah…' }], 2.4, false, mayTalk('flavour') ? { softer: 0.6, pace: 1.6 } : false);
+      }
+      if (b.merging && !g.merging) { b.gaveUp = null; return; } // (done now: it tries again, to get home)
+      if (!mumOutOfReach(b) && !b.merging) {
+        // She came: all better.
+        b.gaveUp = b.reach = null;
+        b.gaveUps = 0;
+        b.happyUntil = time + 1.5;
+        spawnHeart({ x: b.body.centroid().x, y: b.body.bbox().minY - 10, vx: 0, born: time, size: 10 });
+        b.nextHop = Math.min(b.nextHop, time + 0.3);
+      } else if (time > g.until) b.gaveUp = b.reach = null;
+      return;
+    }
+    if (b.body.grab || b.splitting || (b.merging && time - b.merging.since < 0.9) || !mumOutOfReach(b)) { b.reach = null; return; }
+    const c = b.body.centroid(), mc = m.body.centroid(), d = Math.hypot(mc.x - c.x, mc.y - c.y), r = b.body.o.radius;
+    const k = b.reach;
+    if (!k || d < k.best - r * 1.5) { b.reach = { best: d, since: time, hops: 0 }; return; }
+    if (k.hops < 4 || time - k.since < (b.merging ? 4 : 7)) return;
+    // No use.
+    b.gaveUps = (b.gaveUps || 0) + 1;
+    const rest = b.merging ? 2.8 : Math.min(20 * 60, (240 + Math.random() * 240) * 2 ** (b.gaveUps - 1));
+    b.gaveUp = { at: time, until: time + rest, merging: !!b.merging };
+    b.reach = null;
+    b.droopUntil = time + 2.5;
+    if (b.body.onFloor()) b.body.squashTop(r * 2, DT);
+    spawnHeart({ x: c.x, y: Math.min(b.body.bbox().minY, b.body.lookTop ?? Infinity) - 22, vx: 0, born: time, size: Math.max(10, r * 0.22), broken: true });
+  }
+
   function behave(b) {
     // Blinking (shut in about 70 ms, open again in 80, so a blink still
     // shows when frames are drawn only 30 times a second).
@@ -4964,12 +5020,14 @@
     }
     // A working slime rocks a little now and then while it thinks: a small
     // shuffle every 8-20 s (every 2-5 s was a slime that couldn't sit still).
-    if (b.kind !== 'home' && b.state === 'working' && !b.merging && !b.body.grab && b.body.onFloor() && time > (b.nextFidget || 0)) {
+    missMum(b);
+    if (b.kind !== 'home' && b.state === 'working' && !b.merging && !b.gaveUp && !b.body.grab && b.body.onFloor() && time > (b.nextFidget || 0)) {
       if (b.nextFidget) b.hop((Math.random() < 0.5 ? -1 : 1) * (40 + Math.random() * 40), (-110 - Math.random() * 60) * trait(b, 'bouncy'));
       b.nextFidget = time + (8 + Math.random() * 12) / trait(b, 'fidgety');
     }
     if (b.body.grab || !b.body.onFloor() || b.merging || time < b.nextHop) return;
-    if (b.kind === 'child' && b.mother && !b.mother.dying) {
+    if (b.kind === 'child' && b.mother && !b.mother.dying && !b.gaveUp) {
+      if (b.reach) b.reach.hops++; // (each try counts; see missMum)
       const c = b.body.centroid(), mc = b.mother.body.centroid();
       const dx = mc.x - c.x, far = b.mother.body.o.radius * 2 + b.body.o.radius * 6;
       // Mum up on a window: jump high enough to get up there too.
@@ -5105,6 +5163,7 @@
     else if (time < (b.squirmUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
     else if (time < (b.wantsPetsUntil || 0) && time > (b.pettedUntil || 0)) { expression = 'normal'; mouth = 'smile'; }
     else if (time - (b.sneezedAt ?? -9) < 0.5) { expression = 'happy'; mouth = 'flat'; }
+    else if (b.gaveUp && time - b.gaveUp.at < 10) { expression = 'worried'; mouth = 'worried'; } // (couldn't get to mum)
     else if (b.merging && b.kind === 'child') { expression = 'happy'; mouth = 'smile'; }
     else if (nodding(b)) { expression = 'happy'; mouth = 'smile'; }
     else if (time < (b.pettedUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
@@ -5461,14 +5520,14 @@
       if (sweat > 0) D.drawSweat(ctx, b.body, time, sweat);
       drawBeads(b);
       drawGhost(b); // (over all of it: nothing pokes through the sheet)
-      if (b.merging && b.kind === 'child' && !b.dying) {
+      if (b.merging && b.kind === 'child' && !b.dying && !b.gaveUp) {
         const box = b.body.bbox();
         D.drawHeart(ctx, b.body.centroid().x, Math.min(box.minY, b.body.lookTop ?? Infinity) - 14, Math.max(9, b.body.o.radius * 0.18), (time - b.merging.since) % 1.8);
       }
       if (b.kind === 'home' || b.dying) continue;
       if (b === hovered || b.bubble) continue; // the bubble sits where these go
       if (b === buddies.get(talkingTo)) continue; // its talk box is there instead
-      if (b.state === 'working' && !nodding(b) && !b.merging && !b.singing) D.drawThinking(ctx, b.body, time, activityOf(b), W);
+      if (b.state === 'working' && !nodding(b) && !b.merging && !b.singing && !(b.gaveUp && time - b.gaveUp.at < 4)) D.drawThinking(ctx, b.body, time, activityOf(b), W);
       if (b.state === 'working' && nodding(b) && b.nodQuiet && !b.merging) D.drawThinking(ctx, b.body, time, activityOf(b), W); // a commit's nod keeps its sign
       if (b.state === 'waiting') D.drawExclaim(ctx, b.body, time, W, '?');
       else if (b.state === 'done' && unseen(b)) D.drawExclaim(ctx, b.body, time, W);
@@ -5596,7 +5655,8 @@
         h.from = null;
       }
       const hx = h.x + h.vx * age + Math.sin(age * 5 + h.born) * 4, hy = h.y - age * (h.rise || 45);
-      if (h.puff) {
+      if (h.broken) D.drawBrokenHeart(ctx, h.x, h.y, h.size, age); // (it stays where it broke; its halves fall)
+      else if (h.puff) {
         // A puff of steam: a soft grey blob that swells and fades.
         if (age > 1.1) { hearts.splice(i, 1); continue; }
         ctx.save();
