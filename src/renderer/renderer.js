@@ -1202,6 +1202,7 @@
     stepSeason();
     stepFlutters();
     stepFireworks();
+    stepSnowballs();
   }
 
   // --- Effort ---------------------------------------------------------------
@@ -2660,7 +2661,7 @@
   // its last one falls a little short, and the first one says "copycat!".
   function trick(b) {
     if (CFG.tricks <= 0 || b.kind === 'child') return;
-    const ok = b.state === 'idle' && !b.body.grab && !b.merging && !b.prank && !b.tag && (b.sleep || 0) < 0.1 && idleFor() < 30 && b !== buddies.get(talkingTo);
+    const ok = b.state === 'idle' && !b.body.grab && !b.merging && !b.prank && !b.tag && !b.snow && (b.sleep || 0) < 0.1 && idleFor() < 30 && b !== buddies.get(talkingTo);
     const c = b.copy;
     if (c) {
       if (!ok || c.lead.dying || time - c.start > 12) { b.copy = null; return; }
@@ -2711,7 +2712,7 @@
   // rounds, then they're done.
   function tag(b) {
     if (CFG.play <= 0 || b.kind === 'child') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.snow && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.tag;
     if (g) {
       if (g.p !== b) return; // (one of the pair runs the game)
@@ -2759,6 +2760,92 @@
     o.glanceAt = b; o.glanceUntil = time + 1;
     quip(b, Math.random() < 0.5 ? 'tag?' : 'catch!', 1);
   }
+  // In snowy weather two bored slimes now and then have a snowball fight:
+  // each crouches, scoops, and lobs one at the other in turn. A hit splats
+  // white and knocks the skin in where it lands ("hey!").
+  const snowballs = [];
+  function snowFight(b) {
+    if (CFG.snowballs <= 0 || CFG.seasons <= 0 || b.kind === 'child') return;
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const g = b.snow;
+    if (g) {
+      if (g.p !== b) return; // (one of the pair runs the fight)
+      if (!free(g.p) || !free(g.q) || drag || season() !== 'snow' || time - g.start > 40) { endSnow(g); return; }
+      g.p.nextHop = g.q.nextHop = time + 1;
+      const a = g.turn, o = a === g.p ? g.q : g.p;
+      a.glanceAt = o; a.glanceUntil = time + 0.3;
+      o.glanceAt = a; o.glanceUntil = time + 0.3;
+      if (g.flying || time < g.next || !a.body.onFloor() || a.pendingHop) return;
+      if (g.n >= g.rounds) { endSnow(g); return; }
+      if (!g.scoop) { g.scoop = time; return; }
+      const ab = a.body, r = ab.o.radius;
+      if (time - g.scoop < 0.35) { ab.squashTop(260, DT); return; } // (scooping)
+      // Throw: up onto its toes, and a lob that lands on the other's head.
+      g.scoop = 0;
+      g.n++;
+      ab.squashTop(-500, DT);
+      const box = ab.bbox(), ob = o.body.bbox(), dir = Math.sign((ob.minX + ob.maxX) / 2 - (box.minX + box.maxX) / 2) || 1;
+      const x0 = dir > 0 ? box.maxX - r * 0.3 : box.minX + r * 0.3, y0 = box.minY + r * 0.4;
+      const tx = (ob.minX + ob.maxX) / 2 + (Math.random() - 0.5) * r * 0.8, ty = ob.minY + r * 0.3;
+      const grav = CFG.gravity * 0.5, T = Math.max(0.45, Math.min(1.1, Math.abs(tx - x0) / 520));
+      snowballs.push({ x: x0, y: y0, vx: (tx - x0) / T, vy: (ty - y0 - 0.5 * grav * T * T) / T, grav, from: a, game: g, born: time });
+      g.flying = true;
+      return;
+    }
+    if (season() !== 'snow' || !free(b) || !b.body.onFloor() || idleFor() > 60 || time < (b.nextSnow ?? (b.nextSnow = time + (120 + Math.random() * 240) / CFG.snowballs))) return;
+    b.nextSnow = time + (240 + Math.random() * 480) / CFG.snowballs;
+    const c = b.body.centroid(), r = b.body.o.radius;
+    const others = [...buddies.values()].filter((o) => o !== b && o.kind !== 'child' && !o.snow && free(o) && o.body.onFloor() && Math.abs(o.body.centroid().x - c.x) > r * 2.5 && Math.abs(o.body.centroid().x - c.x) < r * 12);
+    if (!others.length) return;
+    const o = others[Math.floor(Math.random() * others.length)];
+    b.snow = o.snow = { p: b, q: o, turn: b, start: time, next: time + 0.5, n: 0, rounds: 6 + Math.floor(Math.random() * 4) };
+    o.glanceAt = b; o.glanceUntil = time + 1;
+  }
+  function endSnow(g) {
+    for (const o of [g.p, g.q]) {
+      o.snow = null;
+      o.nextSnow = time + (240 + Math.random() * 480) / Math.max(0.05, CFG.snowballs);
+      if (!o.dying && !o.body.grab) o.happyUntil = time + 1.5;
+    }
+  }
+  function stepSnowballs() {
+    for (let i = snowballs.length - 1; i >= 0; i--) {
+      const s = snowballs[i], g = s.game;
+      s.vy += s.grav * DT;
+      s.x += s.vx * DT;
+      s.y += s.vy * DT;
+      let hit = null;
+      for (const o of buddies.values()) if (o !== s.from && !o.dying && o.body.contains(s.x, s.y)) { hit = o; break; }
+      const ground = s.y >= floorAt(s.x, s.y) - 3 || s.x < 0 || s.x > W || time - s.born > 3;
+      if (!hit && !ground) continue;
+      snowballs.splice(i, 1);
+      pops.push({ x: s.x, y: s.y, r: 7, born: time, color: '#dfe7f2', life: 0.45 });
+      if (hit) {
+        const r = hit.body.o.radius;
+        hit.body.pushAt(s.x, s.y, s.vx * 0.5 * Math.min(1.5, CFG.snowballs), s.vy * 0.3, r * 0.7, DT);
+        hit.startleUntil = time + 0.35;
+        hit.blink = 1;
+        if (Math.random() < 0.5) quip(hit, Math.random() < 0.5 ? 'hey!' : 'brr!', 0.9);
+        s.from.happyUntil = time + 1;
+      }
+      if (g && g.p.snow === g) {
+        g.flying = false;
+        g.turn = g.turn === g.p ? g.q : g.p; // (your turn)
+        g.next = time + 0.5 + Math.random() * 0.4;
+      }
+    }
+  }
+  function drawSnowballs() {
+    for (const s of snowballs) {
+      ctx.save();
+      ctx.fillStyle = '#fbfdff';
+      ctx.strokeStyle = '#c9d3e0';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(s.x, s.y, 6.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   function endTag(g) {
     for (const o of [g.p, g.q]) {
       o.tag = null;
@@ -3198,6 +3285,7 @@
     tagAlong(b);
     trick(b);
     tag(b);
+    snowFight(b);
     blow(b);
     welcome(b);
     nibble(b);
@@ -3603,6 +3691,7 @@
     drawClouds();
     drawFlutters();
     drawRockets();
+    drawSnowballs();
     drawPets();
     drawBubbles();
     drawHearts();
