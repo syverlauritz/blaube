@@ -103,6 +103,8 @@
     ['windowLedges', 'On', ['On', 'Off'], 0, 0, 'Land on top of other windows'],
     ['onTop', 'On', ['On', 'Off'], 0, 0, 'Stay in front of other windows'],
     ['notify', 'Behind windows', ['Behind windows', 'Always', 'Off'], 0, 0, 'Notifications when a session needs you or finishes'],
+    // (Ctrl+Alt is AltGr on many Windows keyboards: Ctrl+Alt+B can be a letter there.)
+    ['talkKey', 'Ctrl/⌘+Alt+B', ['Ctrl/⌘+Alt+B', 'Alt+Shift+B', 'Off'], 0, 0, 'Talk shortcut (from any app)'],
     ['voice', 'On', ['On', 'Off'], 0, 0, 'Babble out loud when they talk'],
     ['voiceVolume', 0.5, 0, 1, 0.05, 'Babble volume'],
     ['voiceWah', 0.8, 0, 1, 0.05, 'Wah at the start of each note'],

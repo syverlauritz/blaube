@@ -41,7 +41,9 @@ for (const k of Object.keys(process.env)) {
 const ASSETS = path.join(__dirname, '..', '..', 'build');
 
 const TUNING_SHORTCUT = 'CommandOrControl+Alt+Shift+B';
-const TALK_SHORTCUT = 'CommandOrControl+Alt+B';
+// The talk shortcut, as picked in Settings.
+const TALK_KEYS = { 'Ctrl/⌘+Alt+B': 'CommandOrControl+Alt+B', 'Alt+Shift+B': 'Alt+Shift+B' };
+let talkKey = ''; // (the one registered now)
 
 let win = null;
 let tray = null;
@@ -131,10 +133,21 @@ function applyOnTop() {
   if (!front) win.blur();
 }
 
+function applyTalkKey() {
+  const want = TALK_KEYS[prefs.config.talkKey] || '';
+  if (want === talkKey || !app.isReady()) return;
+  if (talkKey) globalShortcut.unregister(talkKey);
+  talkKey = '';
+  if (!want) return;
+  if (globalShortcut.register(want, talkShortcut)) talkKey = want;
+  else log(`${want} is taken by another app: no talk shortcut`);
+}
+
 function setConfig(next) {
   prefs.config = BlaubeConfig.sanitize(next);
   savePrefs();
   applyOnTop();
+  applyTalkKey();
   if (win) win.webContents.send('config', prefs.config);
   updateWorld();
 }
@@ -1404,7 +1417,7 @@ app.whenReady().then(async () => {
     clipboard.writeText(JSON.stringify({ blaube: prefs.config, changed }, null, 2));
   });
   globalShortcut.register(TUNING_SHORTCUT, openTuning);
-  if (!globalShortcut.register(TALK_SHORTCUT, talkShortcut)) log(`${TALK_SHORTCUT} is taken by another app: no talk shortcut`);
+  applyTalkKey();
   // Pasted images from more than a week ago go.
   fs.readdir(path.join(app.getPath('temp'), 'blaube-pastes'), (err, names) => {
     if (err) return;
