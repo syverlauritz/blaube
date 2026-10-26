@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   onTail: (cb) => ipcRenderer.on('talk-tail', (_e, t) => cb(t)),
   setHeight: (id, h) => ipcRenderer.send('talk-height', id, h),
   resize: (phase, edge, x, y) => ipcRenderer.send('talk-resize', phase, edge, x, y),
+  pin: (on) => ipcRenderer.send('talk-pin', on),
   send: (id, text) => ipcRenderer.send('talk-send', id, text),
   paste: (id, bytes, type) => ipcRenderer.invoke('talk-paste', id, bytes, type),
   pathOf: (file) => { try { return webUtils.getPathForFile(file); } catch { return ''; } },

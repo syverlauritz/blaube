@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { edgeToward } = require('../src/shared/talkTail.js');
+const { edgeToward, tailShown } = require('../src/shared/talkTail.js');
 
 const box = { x: 100, y: 100, w: 400, h: 300 }, R = 30;
 const near = (a, b, what) => assert.ok(Math.abs(a - b) < 1e-6, `${what}: ${a} vs ${b}`);
@@ -37,4 +37,19 @@ test('it slides smoothly round a corner as the slime goes round it', () => {
 test('under the box, the slime is inside it', () => {
   assert.ok(edgeToward(box, { x: 300, y: 250 }, R).out < 0);
   assert.ok(edgeToward(box, { x: 300, y: 395 }, R).out < 0);
+});
+
+test('the tail shows near its slime and fades out smoothly as they part', () => {
+  const r = 80;
+  assert.equal(tailShown(0, r), 1);
+  assert.equal(tailShown(2 * r, r), 1, 'all of it up to two radii away');
+  assert.equal(tailShown(3 * r, r), 0, 'none of it from three');
+  assert.equal(tailShown(900, r), 0);
+  near(tailShown(2.5 * r, r), 0.5, 'half way');
+  let prev = 1;
+  for (let g = 2 * r; g <= 3 * r; g += 4) {
+    const k = tailShown(g, r);
+    assert.ok(k <= prev && prev - k < 0.08, 'smoothly');
+    prev = k;
+  }
 });

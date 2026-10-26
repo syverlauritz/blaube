@@ -680,6 +680,13 @@ SCENES.talkAroundAbove = aroundTalk([560, 62]);
 SCENES.talkAroundUnder = aroundTalk([600, 560]);
 SCENES.talkResized = aroundTalk([860, 690], { x: 360, y: 200, w: 460, h: 380 });
 SCENES.talkResizedBig = aroundTalk([140, 700], { x: 300, y: 40, w: 860, h: 640 });
+// Two pinned boxes: one moved off to the top left, far from its slime (no
+// tail), one still near its own (its tail points at it).
+SCENES.talkPinnedTwo = {
+	sessions: [session('pa', 'blaube', 'idle'), session('pb', 'kalkis', 'idle', { color: '#5B8DEF' })], wait: 2500, size: [1400, 860],
+	talk: { key: 'pa', x: 1300, box: { x: 40, y: 30, w: 520, h: 420 }, pinned: true, inbox: 'ready', log: [{ who: 'you', text: 'is it green?' }, { who: 'claude', text: 'All 66 tests pass.' }],
+		also: [{ key: 'pb', stand: [900, 700], box: { x: 640, y: 150, w: 520, h: 400 }, inbox: 'ready', log: [{ who: 'claude', text: 'Deployed to production.' }] }] },
+};
 
 // The overview: the talk box with every session at a glance.
 // Find (⌘F) in a conversation with steps.
@@ -759,6 +766,8 @@ async function addTalk(win, scene, name) {
 		const c = b.body.centroid(), r = b.body.o.radius;
 		return { x: c.x, y: Math.min(b.body.lookTop ?? Infinity, c.y - r), r };
 	})()`);
+	for (const o of t.also || []) if (o.stand) { await win.webContents.executeJavaScript(`__blaube.buddies.get(${JSON.stringify(o.key)}).body.teleport(${o.stand[0]}, ${o.stand[1]})`); }
+	if (t.also) await sleep(2500);
 	win.webContents.send('fire', 'talking', t.key);
 	await sleep(100);
 	const area = { x: 0, y: 0, width: w, height: h - 44 };
@@ -796,8 +805,20 @@ async function addTalk(win, scene, name) {
 	const fg = fgImage.toDataURL();
 	fs.writeFileSync(path.join(OUT, `${name}-box.png`), fgImage.toPNG()); // (the box by itself, too)
 	tw.destroy();
-	// The slime's layer draws the tail from under the bubble to its head.
-	win.webContents.send('fire', 'talk-rect', { id: t.key, x: place.x, y: place.y, w: TW, h: place.h });
+	// More boxes open at once (talk.also: pinned ones, each at its box).
+	const boxes = [{ id: t.key, x: place.x, y: place.y, w: TW, h: place.h, fg }];
+	for (const o of t.also || []) {
+		const os = scene.sessions.find((x) => x.id === o.key);
+		const ow = new BrowserWindow({ width: o.box.w, height: o.box.h, show: false, frame: false, transparent: true, webPreferences: { preload: path.join(ROOT, 'src', 'main', 'talkPreload.js'), contextIsolation: true, sandbox: true } });
+		ow.setContentSize(o.box.w, o.box.h);
+		await ow.loadFile(path.join(ROOT, 'src', 'talk', 'talk.html'));
+		ow.webContents.send('talk-state', Object.assign({ id: os.id, project: os.project, state: os.state, color: os.color || '#5B8DEF', font: 'Coiny', connected: true, queued: 0, ask: null, asks: 0, tail: { x: o.box.w / 2, y: o.box.h }, pinned: true }, o));
+		await sleep(900);
+		boxes.push({ id: o.key, x: o.box.x, y: o.box.y, w: o.box.w, h: o.box.h, fg: (await ow.webContents.capturePage()).toDataURL() });
+		ow.destroy();
+	}
+	// The slime's layer draws each tail from under its bubble to its head.
+	win.webContents.send('fire', 'talk-rect', boxes.map(({ id, x, y, w: bw, h: bh }) => ({ id, x, y, w: bw, h: bh })));
 	await sleep(500); // (the tail grows out first)
 	if (t.hold) {
 		// Picks the slime up and carries it there (the page's own mouse handlers).
@@ -818,12 +839,12 @@ async function addTalk(win, scene, name) {
 	await cw.loadURL('about:blank');
 	const png = await cw.webContents.executeJavaScript(`(async () => {
 		const load = (src) => new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.src = src; });
-		const [b, f] = await Promise.all([load(${JSON.stringify(bg)}), load(${JSON.stringify(fg)})]);
+		const b = await load(${JSON.stringify(bg)});
 		const k = b.width / ${w}, c = document.createElement('canvas');
 		c.width = b.width; c.height = b.height;
 		const g = c.getContext('2d');
 		g.drawImage(b, 0, 0);
-		g.drawImage(f, ${place.x} * k, ${place.y} * k, ${TW} * k, ${place.h} * k);
+		for (const x of ${JSON.stringify(boxes)}) g.drawImage(await load(x.fg), x.x * k, x.y * k, x.w * k, x.h * k);
 		return c.toDataURL('image/png');
 	})()`);
 	cw.destroy();

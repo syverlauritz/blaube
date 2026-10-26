@@ -5539,18 +5539,34 @@
   // it wears on its head), it grows out when the box opens, it bends a
   // little away from how the slime is moving, and it shrinks away as the
   // slime comes up against the bubble (under it, it's gone).
-  let talkRect = null, talkTailAt = 0, tailNow = null, tailBend = 0, tailFrame = 0;
-  if (api.onTalkRect) api.onTalkRect((r) => {
-    if (r && (!talkRect || talkRect.id !== r.id)) talkTailAt = time;
-    talkRect = r;
+  // Every open box (a pinned one each, and the one that comes and goes),
+  // each with its own tail to its own slime. The tail only shows while the
+  // box is near its slime (BlaubeTalkTail.tailShown): moved away, or with
+  // the slime carried off, it shrinks out, and grows back as they meet.
+  const tails = new Map(); // session id -> { rect, at, bend, frame, now, sent }
+  let talkRect = null; // (the box of the slime you're talking to, for its glances)
+  if (api.onTalkRect) api.onTalkRect((list) => {
+    list = Array.isArray(list) ? list : list ? [list] : [];
+    const seen = new Set();
+    for (const r of list) {
+      seen.add(r.id);
+      const t = tails.get(r.id);
+      if (t) t.rect = r;
+      else tails.set(r.id, { rect: r, at: time, bend: 0, frame: time, now: null, sent: null });
+    }
+    for (const id of [...tails.keys()]) if (!seen.has(id)) tails.delete(id);
+    talkRect = list.find((r) => r.id === talkingTo) || list[0] || null;
   });
-  if (globalThis.__blaube) globalThis.__blaube.talkTail = () => tailNow;
+  if (globalThis.__blaube) globalThis.__blaube.talkTail = (id) => { const t = tails.get(id ?? talkingTo) || [...tails.values()][0]; return t ? t.now : null; };
   function drawTalkTail() {
-    tailNow = null;
-    const b = talkRect && buddies.get(talkRect.id);
-    if (!b || talkRect.id !== talkingTo) return;
+    for (const [id, t] of tails) drawTailFor(id, t);
+  }
+  function drawTailFor(id, t) {
+    t.now = null;
+    const b = buddies.get(id), rect = t.rect;
+    if (!b || b.dying) return;
     const body = b.body, c = body.centroid(), PAD = 12, RADIUS = 30, GAP = 8, W = 20, INSET = 10;
-    const box = { x: talkRect.x + PAD, y: talkRect.y + PAD, w: talkRect.w - PAD * 2, h: talkRect.h - PAD * 2 };
+    const box = { x: rect.x + PAD, y: rect.y + PAD, w: rect.w - PAD * 2, h: rect.h - PAD * 2 };
     const e = BlaubeTalkTail.edgeToward(box, c, RADIUS);
     // How far the slime reaches towards the bubble from its middle: its skin
     // that way, and, from below, what it wears on its head too.
@@ -5561,31 +5577,33 @@
       for (let i = 0; i < body.n; i++) top = Math.min(top, body.py[i]);
       reach += Math.max(0, top - (body.lookTop ?? top)) * e.ny;
     }
-    const len = e.out - reach - GAP;
-    tailNow = { edge: { x: e.x, y: e.y }, nx: e.nx, ny: e.ny, len: Math.max(0, len), aim: { x: c.x, y: c.y } };
-    if (len <= 0) return; // up against the bubble, or under it
+    const gap = e.out - reach, len = gap - GAP;
+    // Near its slime it shows; farther off it shrinks out.
+    const shown = BlaubeTalkTail.tailShown(gap, body.o.radius);
+    t.now = { edge: { x: e.x, y: e.y }, nx: e.nx, ny: e.ny, len: Math.max(0, len), aim: { x: c.x, y: c.y }, shown };
+    if (len <= 0 || shown <= 0) return; // up against the bubble, under it, or far from it
     // Close to the bubble it gets shorter and thinner, down to nothing.
-    const thin = Math.min(1, len / 30);
+    const thin = Math.min(1, len / 30) * shown;
     // Leaves from just inside the bubble (same white, so there's no seam).
     const base = { x: e.x - e.nx * INSET, y: e.y - e.ny * INSET };
-    let tip = { x: e.x + e.nx * len, y: e.y + e.ny * len };
+    let tip = { x: e.x + e.nx * len * shown, y: e.y + e.ny * len * shown };
     const across = { x: -e.ny, y: e.nx }; // which way its base runs (along the outline)
     // Grows out from the bubble when it opens (with the bubble's own pop).
-    const grow = Math.min(1, (time - talkTailAt) / 0.26), ease = 1 - Math.pow(1 - grow, 3) * (1 - 1.6 * grow);
+    const grow = Math.min(1, (time - t.at) / 0.26), ease = 1 - Math.pow(1 - grow, 3) * (1 - 1.6 * grow);
     tip = { x: base.x + (tip.x - base.x) * ease, y: base.y + (tip.y - base.y) * ease };
-    tailNow.tip = tip;
+    t.now.tip = tip;
     // A speech tail: a wedge, wide where it joins the bubble, narrowing to a
     // sharp point (just softened by a hair) at the slime. Both sides curve
     // the same way, and the whole trails a little behind the slime's moves.
-    const v = body.velocity(DT), dt = Math.min(0.1, Math.max(0, time - tailFrame));
-    tailFrame = time;
+    const v = body.velocity(DT), dt = Math.min(0.1, Math.max(0, time - t.frame));
+    t.frame = time;
     const want = Math.max(-14, Math.min(14, -(v.x * across.x + v.y * across.y) * 0.02)) * thin;
-    tailBend += (want - tailBend) * Math.min(1, dt * 10);
+    t.bend += (want - t.bend) * Math.min(1, dt * 10);
     const w = W * thin;
     const dx = tip.x - base.x, dy = tip.y - base.y, l = Math.hypot(dx, dy) || 1;
     const flip = -dy * across.x + dx * across.y < 0 ? -1 : 1; // (same way as the base runs)
     const nx = -dy / l * flip, ny = dx / l * flip; // across the wedge's own axis
-    const mx = base.x + dx * 0.5 + tailBend * across.x, my = base.y + dy * 0.5 + tailBend * across.y;
+    const mx = base.x + dx * 0.5 + t.bend * across.x, my = base.y + dy * 0.5 + t.bend * across.y;
     // Control points pinch the wedge in towards the tip, so it reads as a swoosh.
     const k = w * 0.42;
     ctx.save();
@@ -5602,15 +5620,17 @@
     ctx.restore();
   }
 
-  // While its talk box is open, tells the app where the tail leaves the
-  // box, so the box shrinks shut into it (the box itself never moves).
-  let talkSent = null;
+  // While a talk box is open, tells the app where its tail leaves the box,
+  // so the box shrinks shut into it (the box itself never moves by itself).
   function followTalk() {
-    if (!talkingTo || !api.talkAt || !tailNow || !tailNow.len) { if (!talkingTo) talkSent = null; return; }
-    const at = tailNow.edge;
-    if (talkSent && Math.hypot(at.x - talkSent.x, at.y - talkSent.y) < 6) return;
-    talkSent = { x: at.x, y: at.y };
-    api.talkAt(talkingTo, talkSent);
+    if (!api.talkAt) return;
+    for (const [id, t] of tails) {
+      if (!t.now || !t.now.len || !t.now.shown) continue;
+      const at = t.now.edge;
+      if (t.sent && Math.hypot(at.x - t.sent.x, at.y - t.sent.y) < 6) continue;
+      t.sent = { x: at.x, y: at.y };
+      api.talkAt(id, t.sent);
+    }
   }
 
   // Where a talk box goes for a slime: over its middle, clear of its head

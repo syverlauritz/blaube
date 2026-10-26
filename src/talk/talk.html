@@ -59,6 +59,12 @@
 
   /* ---- Top: who it is, how it is, and the way to the others ---- */
   header { padding: 16px 16px 10px var(--side); }
+  /* Its header moves it (drag it anywhere); what's in it still takes clicks. */
+  header { cursor: grab; }
+  body.moving, body.moving header { cursor: grabbing; }
+  /* Pinned, it stays open: the pin is lit. */
+  .round#pin svg { width: 15px; height: 15px; }
+  .round#pin.on { background: var(--ink); color: #fff; }
   .titlebar, .statusbar { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .statusbar { margin-top: 6px; gap: 10px; }
   .spacer { flex: 1; min-width: 8px; }
@@ -538,6 +544,7 @@
         <span class="name" id="name"></span>
         <span class="spacer"></span>
         <button class="tbtn" id="terminal" type="button" title="Go to its terminal (or Alt-click the blob)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7l5 5-5 5M12 17h7"/></svg>Terminal</button>
+        <button class="round" id="pin" type="button" title="Keep it open" aria-label="Keep it open" aria-pressed="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8.5 3h7l-1.2 6.2 3.2 3.3V15h-11v-2.5l3.2-3.3z"/><path d="M11 15h2v5.5l-1 1.5-1-1.5z"/></svg></button>
         <button class="round" id="close" type="button" title="Close (Esc)" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
       </div>
       <div class="statusbar">

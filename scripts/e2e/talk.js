@@ -26,7 +26,7 @@ const sh = (args, opts) => {
 	return p;
 };
 
-module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
+module.exports = async function run({ win, inbox, PORT, talk, talkId, pinned }) {
 	let failed = 0;
 	const check = (ok, what) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) failed++; };
 	const until = async (fn, ms = 4000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return true; await sleep(50); } return false; };
@@ -432,6 +432,74 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await shot('ended');
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
 	check(await until(() => !talk().isVisible()), 'Esc closes it');
+
+	// Pinned boxes stay open (clicking away and Esc leave them be), move by
+	// their header and stay where they're put, and several can be open at
+	// once; each one's tail shows only while its slime is near it.
+	const PA = ID + '-pa', PB = ID + '-pb';
+	await hook({ session_id: PA, hook_event_name: 'SessionStart', cwd: '/tmp/alpha' });
+	await hook({ session_id: PB, hook_event_name: 'SessionStart', cwd: '/tmp/beta' });
+	await until(async () => !!(await page(`__blaube.buddies.get(${JSON.stringify(PA)}) && __blaube.buddies.get(${JSON.stringify(PB)}) && true`)), 6000);
+	await sleep(1500);
+	const sw = win.getBounds();
+	const boxOf = (id) => pinned().get(id) && pinned().get(id).win;
+	const inBox = (id, js) => boxOf(id).webContents.executeJavaScript(js);
+	await page(`window.blaube.talk(${JSON.stringify(PA)}, { x: ${Math.round(sw.width * 0.3)}, y: ${Math.round(sw.height - 330)}, r: 60 })`);
+	check(await until(() => talkId() === PA && talk().isVisible()), 'a box opens for another slime');
+	await sleep(400);
+	await box(`document.getElementById('pin').click()`);
+	check(await until(() => !!boxOf(PA)), 'its pin pins it');
+	check(boxOf(PA) && boxOf(PA).isVisible() && await inBox(PA, `document.getElementById('pin').classList.contains('on')`), 'and the pin shows it');
+	boxOf(PA).emit('blur'); // (clicking away)
+	await inBox(PA, `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
+	await sleep(500);
+	check(boxOf(PA) && boxOf(PA).isVisible(), 'pinned, clicking away and Esc leave it open');
+	const before = boxOf(PA).getBounds();
+	await inBox(PA, `(() => { blaubeTalk.resize('start', 'move', 600, 600); blaubeTalk.resize('move', 'move', 560, 580); blaubeTalk.resize('end', 'move', 480, 540); })()`);
+	await sleep(600);
+	const moved = boxOf(PA).getBounds();
+	check(moved.x === before.x - 120 && moved.y === before.y - 60 && moved.width === before.width && moved.height === before.height, `dragging its header moves it, and it stays there (${JSON.stringify(before)} → ${JSON.stringify(moved)})`);
+	check(!!boxOf(PA), 'still pinned after moving');
+	await page(`window.blaube.talk(${JSON.stringify(PB)}, { x: ${Math.round(sw.width * 0.7)}, y: ${Math.round(sw.height - 330)}, r: 60 })`);
+	check(await until(() => talkId() === PB && talk().isVisible()), 'another slime’s box opens');
+	check(boxOf(PA) && boxOf(PA).isVisible(), 'and the pinned one stays open beside it');
+	await sleep(400);
+	await box(`document.getElementById('pin').click()`);
+	check(await until(() => !!boxOf(PB)), 'pinning that one too');
+	check(boxOf(PA).isVisible() && boxOf(PB).isVisible() && boxOf(PA) !== boxOf(PB), 'two pinned boxes, both open');
+	const pinB = boxOf(PB);
+	await page(`window.blaube.talk(${JSON.stringify(PB)}, { x: 10, y: 10, r: 60 })`);
+	await sleep(300);
+	check(boxOf(PB) === pinB && pinB.isVisible() && pinB.getBounds().x === boxOf(PB).getBounds().x, 'opening a pinned one again just brings it to the front');
+	// Its slime carried near its box: a tail; far off: none.
+	const tailAt = (id, where) => page(`(async () => {
+		const B = __blaube, b = B.buddies.get(${JSON.stringify(id)}), raf = () => new Promise((r) => requestAnimationFrame(r));
+		B.ownMouse = true;
+		let c = b.body.centroid();
+		const to = ${JSON.stringify(where)};
+		B.input.down({ button: 0, clientX: c.x, clientY: c.y });
+		for (let i = 1; i <= 30; i++) { B.input.move({ clientX: c.x + (to.x - c.x) * i / 30, clientY: c.y + (to.y - c.y) * i / 30 }); await raf(); }
+		for (let i = 0; i < 300; i++) { B.input.move({ clientX: to.x, clientY: to.y }); await raf(); const p = b.body.centroid(); if (i > 30 && Math.hypot(p.x - to.x, p.y - to.y) < 50) break; }
+		for (let i = 0; i < 10; i++) await raf();
+		const t = B.talkTail(${JSON.stringify(id)});
+		B.input.up({ button: 0, clientX: to.x, clientY: to.y });
+		B.ownMouse = false;
+		return t && { shown: t.shown, len: t.len };
+	})()`);
+	const pb = boxOf(PA).getBounds();
+	const near = await tailAt(PA, { x: pb.x - sw.x + pb.width / 2, y: pb.y - sw.y + pb.height + 130 });
+	check(near && near.shown === 1 && near.len > 10, `near its box, its tail shows (${JSON.stringify(near)})`);
+	const far = await tailAt(PA, { x: pb.x - sw.x + pb.width / 2, y: Math.min(sw.height - 100, pb.y - sw.y + pb.height + 520) });
+	check(far && far.shown === 0, `far from it, no tail (${JSON.stringify(far)})`);
+	await shot('pinned');
+	// ✕ closes a pinned box.
+	await inBox(PA, `document.getElementById('close').click()`);
+	check(await until(() => !boxOf(PA)), 'its ✕ closes a pinned box');
+	check(boxOf(PB) && boxOf(PB).isVisible(), 'and only that one');
+	await inBox(PB, `document.getElementById('close').click()`);
+	await until(() => !boxOf(PB));
+	await hook({ session_id: PA, hook_event_name: 'SessionEnd' });
+	await hook({ session_id: PB, hook_event_name: 'SessionEnd' });
 
 	// From the menu bar: a question's answers, and a plan's Go ahead.
 	const trayItem = (label) => { for (const r of global.__blaubeTrayMenu().items) { const i = r.submenu && r.submenu.items.find((x) => x.label === label); if (i) return i; } return null; };

@@ -24,7 +24,20 @@
 		return { x: qx + nx * R, y: qy + ny * R, nx, ny, out: d - R };
 	}
 
-	const api = { edgeToward };
+	// How much of the tail shows (0 to 1), for a gap of `gap` between the
+	// box's outline and its slime (of radius r): all of it up to two radii
+	// away, fading out smoothly by three, so a box
+	// moved away from its slime (or a slime carried off) loses its tail, and
+	// gets it back as they come close again.
+	const NEAR = 2, FAR = 3;
+	function tailShown(gap, r) {
+		const k = (gap - NEAR * r) / ((FAR - NEAR) * r);
+		if (!(k > 0)) return 1;
+		if (k >= 1) return 0;
+		return 1 - k * k * (3 - 2 * k);
+	}
+
+	const api = { edgeToward, tailShown, NEAR, FAR };
 	if (typeof module !== 'undefined' && module.exports) module.exports = api;
 	else root.BlaubeTalkTail = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

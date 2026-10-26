@@ -6,7 +6,7 @@ const { SessionTracker } = require('./sessions');
 const { Inbox, STYLE } = require('./inbox');
 const { classify } = require('../shared/actions');
 const { SONGS } = require('../shared/songs');
-const { placeTalk, resizeTalk } = require('./talkPlace');
+const { placeTalk, resizeTalk, moveTalk } = require('./talkPlace');
 const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
 const { toneOf } = require('./tone');
@@ -309,9 +309,18 @@ function talkSizeFor(area) {
 // gave it, or else what it has in it. The slime's layer draws the tail
 // from the box's edge to the slime, wherever the slime goes.
 let talkBox = null; // { x, y, w, h } on screen, while it's open
-let talkResizing = null;
+let talkMoving = null; // (a box being moved or resized: { rec, edge, x, y, box })
 function placeTalkWin() {
   if (!talkWin || !talkSpot) return;
+  // (A box you'd pinned and closed opens again where you had it.)
+  const kept = pinnedSpots.get(talkId);
+  if (kept) {
+    talkBox = Object.assign({}, kept);
+    talkTail = { x: kept.w / 2, y: kept.h };
+    applyTalkBounds();
+    if (talkId) talkWin.webContents.send('talk-tail', talkTail);
+    return;
+  }
   const area = screen.getDisplayNearestPoint(talkSpot).workArea;
   const size = talkSizeFor(area);
   const w = size ? size.w : Math.min(TALK_W, area.width);
@@ -325,17 +334,80 @@ function placeTalkWin() {
   if (talkId) talkWin.webContents.send('talk-tail', talkTail);
 }
 
-function applyTalkBounds() {
-  talkWin.setBounds({ x: talkBox.x, y: talkBox.y, width: talkBox.w, height: talkBox.h });
+function applyTalkBounds() { applyBounds(transientTalk); }
+function applyBounds(rec) {
+  rec.win.setBounds({ x: rec.box.x, y: rec.box.y, width: rec.box.w, height: rec.box.h });
   sendTalkRect();
 }
 
-// Where the bubble is, for the slime's layer to draw the tail to.
+// Boxes you've pinned stay open (clicking away, Esc and opening another
+// slime's box don't close them; only their ✕ or unpinning does), one per
+// session, each where you put it. The one box that isn't pinned comes and
+// goes as before; `transientTalk` is it, seen as one of these.
+const pinnedTalks = new Map(); // session id -> { id, win, box, tail, pinned: true }
+const pinnedSpots = new Map(); // session id -> where its pinned box was when you closed it (for this run)
+const transientTalk = {
+  pinned: false,
+  get id() { return talkId; },
+  get win() { return talkWin; },
+  get box() { return talkBox; },
+  set box(v) { talkBox = v; },
+  get tail() { return talkTail; },
+  set tail(v) { talkTail = v; },
+};
+const isOpen = (id) => !!id && (pinnedTalks.has(id) || (!!talkWin && !talkWin.isDestroyed() && talkWin.isVisible() && talkId === id));
+function talkOf(id) {
+  if (pinnedTalks.has(id)) return pinnedTalks.get(id);
+  return talkWin && !talkWin.isDestroyed() && talkId === id ? transientTalk : null;
+}
+function talkFrom(sender) {
+  if (talkWin && !talkWin.isDestroyed() && sender === talkWin.webContents) return transientTalk;
+  for (const r of pinnedTalks.values()) if (!r.win.isDestroyed() && r.win.webContents === sender) return r;
+  return null;
+}
+// Every open box's session, for things that refresh them all.
+const openTalks = () => [...pinnedTalks.keys()].concat(isOpen(talkId) && !pinnedTalks.has(talkId) ? [talkId] : []);
+function pushTalks() { for (const id of openTalks()) pushTalk(id); }
+
+// Where the bubbles are, for the slime's layer to draw their tails to.
 function sendTalkRect() {
-  if (!win || !talkBox) return;
+  if (!win) return;
   const wb = win.getBounds();
-  const visible = talkWin && talkWin.isVisible();
-  win.webContents.send('talk-rect', visible ? { id: talkId, x: talkBox.x - wb.x, y: talkBox.y - wb.y, w: talkBox.w, h: talkBox.h } : null);
+  const recs = [...pinnedTalks.values()];
+  if (talkWin && !talkWin.isDestroyed() && talkWin.isVisible() && talkBox) recs.push(transientTalk);
+  win.webContents.send('talk-rect', recs.filter((r) => r.box && !r.closing && !r.win.isDestroyed() && r.win.isVisible())
+    .map((r) => ({ id: r.id, x: r.box.x - wb.x, y: r.box.y - wb.y, w: r.box.w, h: r.box.h, pinned: !!r.pinned })));
+}
+
+// Pins the box (it becomes one of the boxes that stay) or unpins it (it
+// becomes the one that closes when you click away, in place of any other).
+function pinTalk(rec, on) {
+  if (!rec) return;
+  if (on && !rec.pinned) {
+    const id = talkId;
+    pinnedTalks.set(id, { id, win: talkWin, box: talkBox, tail: talkTail, pinned: true });
+    talkWin = null; talkId = null; talkBox = null; talkTail = null;
+    if (win) win.webContents.send('talking', null); // (its slime is free to wander off)
+    setTimeout(makeTalkWin, 300); // (the next box, ready ahead of time)
+    pushTalk(id);
+  } else if (!on && rec.pinned) {
+    if (talkWin && talkWin.isVisible()) hideTalk(true);
+    if (talkWin && !talkWin.isDestroyed()) { const spare = talkWin; talkWin = null; spare.destroy(); }
+    pinnedTalks.delete(rec.id);
+    talkWin = rec.win; talkId = rec.id; talkBox = rec.box; talkTail = rec.tail;
+    if (win) win.webContents.send('talking', talkId);
+    pushTalks();
+  }
+  sendTalkRect();
+}
+
+// Closes a pinned box (its ✕); it opens there again next time, this run.
+function closePinned(rec) {
+  pinnedTalks.delete(rec.id);
+  pinnedSpots.set(rec.id, Object.assign({}, rec.box));
+  looked.set(rec.id, Date.now());
+  if (!rec.win.isDestroyed()) rec.win.destroy();
+  sendTalkRect();
 }
 
 // Opens the talk box for a session, next to its slime (`at`: the top of the
@@ -345,6 +417,9 @@ function openTalk(id, at) {
   if (!tracker.sessions.get(id)) return;
   // Clicking its slime took focus and hid it: that click meant "close".
   if (talkHiddenId === id && Date.now() - talkHiddenAt < 350) { if (!TEST) activateApp(talkBefore); return; }
+  // Pinned: it's open already; to the front with it.
+  const kept = pinnedTalks.get(id);
+  if (kept) { kept.win.show(); if (!TEST) kept.win.focus(); return; }
   makeTalkWin();
   if (talkWin.isVisible() && talkId === id) { hideTalk(); return; }
   if (talkWin.isVisible()) hideTalk(true); // another slime's: it switches over
@@ -358,7 +433,7 @@ function openTalk(id, at) {
 // opens it as quickly as the rest), and kept.
 function makeTalkWin() {
   if (talkWin) return;
-  talkWin = new BrowserWindow({
+  const w = talkWin = new BrowserWindow({
     width: TALK_W,
     height: 300,
     backgroundThrottling: false,
@@ -381,13 +456,17 @@ function makeTalkWin() {
   if (TEST) talkWin.setOpacity(0);
   // Tests print the talk box's own errors, so a broken handler can't hide.
   if (TEST) talkWin.webContents.on('console-message', (e) => { if (e.level === 'error') console.log('[talk error]', e.message, e.sourceId ? `${path.basename(e.sourceId)}:${e.lineNumber}` : ''); });
-  talkWin.on('blur', () => {
-    if (!talkWin || !talkWin.isVisible() || talkWin.webContents.isDevToolsFocused() || talkPicking) return;
+  // (Pinned, it's not this one any more: it stays.)
+  w.on('blur', () => {
+    if (w !== talkWin || !talkWin.isVisible() || talkWin.webContents.isDevToolsFocused() || talkPicking) return;
     hideTalk();
     talkHiddenAt = Date.now(); // a click on its slime right now means "close"
     talkHiddenId = talkId;
   });
-  talkWin.on('closed', () => { talkWin = null; talkId = null; });
+  w.on('closed', () => {
+    if (w === talkWin) { talkWin = null; talkId = null; return; }
+    for (const r of pinnedTalks.values()) if (r.win === w) { pinnedTalks.delete(r.id); sendTalkRect(); }
+  });
 }
 
 function openTalkFor(id, at) {
@@ -436,31 +515,35 @@ function activateApp(pid) {
 // already there.
 function hideTalk(switching = false) {
   if (!talkWin || !talkWin.isVisible()) return;
-  talkResizing = null;
   if (talkId) looked.set(talkId, Date.now()); // you've read it up to now
   const onPurpose = talkWin.isFocused();
   talkWin.hide();
-  if (win) win.webContents.send('talk-rect', null);
+  talkMoving = null;
+  sendTalkRect();
   if (win && !switching) win.webContents.send('talking', null);
   if (onPurpose && !switching && process.platform === 'darwin' && !TEST) activateApp(talkBefore);
 }
 
 let hooksOk = null; // whether Claude Code is connected, checked when the box opens
-let talkLast = null; // the session the box last showed, for when it ends
+const talkLasts = new Map(); // session id -> what its box last showed of it, for when it ends
+const lastOf = (id) => talkLasts.get(id) || null;
 function pushTalk(id, focusField = false) {
-  if (!talkWin || talkWin.isDestroyed() || id !== talkId) return;
-  if (!talkWin.isVisible() && !talkReady) return; // it catches up when it opens
+  const rec = talkOf(id);
+  if (!rec || rec.win.isDestroyed()) return;
+  if (!rec.pinned && !rec.win.isVisible() && !talkReady) return; // it catches up when it opens
+  const talkWin = rec.win, talkTail = rec.tail; // (this session's box)
   if (hooksOk === null || talkReady) hooksOk = claudeHooks.isInstalled(undefined, PORT);
   const s = tracker.sessions.get(id);
   // It ended while you were talking to it: say so, keep what you'd typed.
   if (!s) {
-    if (!talkLast || talkLast.id !== id) { hideTalk(); return; }
-    talkWin.webContents.send('talk-state', Object.assign({}, talkLast, inbox.view(id), { ended: true, state: 'ended', ask: null, asks: 0, tail: talkTail, focus: false }));
+    const talkLast = lastOf(id);
+    if (!talkLast) { if (rec.pinned) closePinned(rec); else hideTalk(); return; }
+    talkWin.webContents.send('talk-state', Object.assign({}, talkLast, inbox.view(id), { ended: true, state: 'ended', ask: null, asks: 0, tail: talkTail, focus: false, pinned: rec.pinned }));
     return;
   }
-  talkLast = {
+  talkLasts.set(id, {
     id, project: s.project, cwd: s.cwd, color: colorOf(s) || prefs.config.color || '#D97757', font: prefs.config.font, demo: id.startsWith('demo-'), connected: true,
-  };
+  });
   talkWin.webContents.send('talk-state', Object.assign({
     id,
     project: s.project,
@@ -470,6 +553,7 @@ function pushTalk(id, focusField = false) {
     color: colorOf(s) || prefs.config.color || '#D97757',
     font: prefs.config.font,
     tail: talkTail,
+    pinned: rec.pinned,
     asks: inbox.asks.has(id) ? inbox.asks.get(id).length : 0,
     // No inbox hook, but Blaube can type into its terminal for it.
     typeable: process.platform === 'darwin' && !!s.pid && (s.term === 'Apple_Terminal' || s.term === 'iTerm.app'),
@@ -551,8 +635,8 @@ function fetchFor(id, asked) {
       const line = gitLine(id);
       gitStates.set(id, now);
       if (gitLine(id) !== line) pushState();
-      if (id === talkId) pushTalk(id);
-      if (asked || !(now.behind > st.behind) || now.branch !== st.branch || !win || (talkWin && talkWin.isVisible() && talkId === id)) return;
+      if (isOpen(id)) pushTalk(id);
+      if (asked || !(now.behind > st.behind) || now.branch !== st.branch || !win || isOpen(id)) return;
       const text = `${now.behind} new commit${now.behind === 1 ? '' : 's'} on ${now.branch} to pull`;
       win.webContents.send('say', { id, text, seconds: 5, status: true });
       if (TEST) global.__blaubeFetchNews = { id, text };
@@ -578,7 +662,7 @@ function glanceNow(o) {
   const tk = tokens.get(o.id);
   const todo = inbox.todos.get(o.id) || [];
   const last = [...inbox.log(o.id)].reverse().find((e) => e.who === 'claude');
-  if (o.cwd && !o.id.startsWith('demo-') && o.id !== talkId) git.status(o.cwd, (st) => { const was = JSON.stringify(gitStates.get(o.id) || null); gitStates.set(o.id, st); if (JSON.stringify(st) !== was) pushTalk(talkId); });
+  if (o.cwd && !o.id.startsWith('demo-') && !isOpen(o.id)) git.status(o.cwd, (st) => { const was = JSON.stringify(gitStates.get(o.id) || null); gitStates.set(o.id, st); if (JSON.stringify(st) !== was) pushTalks(); });
   return attention.glance({
     state: o.state, doing: doing.get(o.id) || '', message: o.message,
     lastReply: last ? last.text : (o.id.startsWith('demo-') ? '' : usage.lastText(transcriptPath(o))),
@@ -589,7 +673,7 @@ function glanceNow(o) {
     turnStart: o.turnStart,
     waitingSince: o.state === 'waiting' ? o.updatedAt : 0,
     // Replies since its talk box was last open (never opened: since Blaube started).
-    unread: o.id === talkId ? 0 : inbox.log(o.id).filter((e) => e.who === 'claude' && e.at > (looked.get(o.id) || 0)).length,
+    unread: isOpen(o.id) ? 0 : inbox.log(o.id).filter((e) => e.who === 'claude' && e.at > (looked.get(o.id) || 0)).length,
   });
 }
 
@@ -678,7 +762,7 @@ function gitFiles(id) {
 let sweepTimer = null;
 function sweepSoon() { if (!sweepTimer) sweepTimer = setTimeout(() => { sweepTimer = null; sweep(); }, 2000); }
 function sweep() {
-  const live = (id) => tracker.sessions.has(id) || owned.has(id) || (id === talkId && !!talkWin && !talkWin.isDestroyed() && talkWin.isVisible());
+  const live = (id) => tracker.sessions.has(id) || owned.has(id) || isOpen(id);
   for (const id of [...inbox.logs.keys(), ...inbox.todos.keys(), ...inbox.steerable, ...inbox.typed.keys()]) if (!live(id)) inbox.forget(id);
   const maps = { gitStates, prStates, discarded, nudged, reminded, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan, carryLater, mcpStates, rewound, foreground };
   for (const id of [...muted]) if (!live(id)) muted.delete(id);
@@ -1117,9 +1201,9 @@ function statusBubble({ session: s, agentId, payload: p }) {
     if (p.hook_event_name === 'PreToolUse' && p.tool_name === 'Bash' && !(p.tool_input || {}).run_in_background && owned.has(s.id)) {
       const fg = { tool: String(p.tool_use_id || ''), at: Date.now(), what: shorten(String(p.tool_input.description || p.tool_input.command || 'that command'), 60) };
       foreground.set(s.id, fg);
-      setTimeout(() => { if (foreground.get(s.id) === fg && talkId === s.id) pushTalk(s.id); }, 3100);
+      setTimeout(() => { if (foreground.get(s.id) === fg && isOpen(s.id)) pushTalk(s.id); }, 3100);
     }
-    if (talkId === s.id) pushTalk(s.id);
+    if (isOpen(s.id)) pushTalk(s.id);
   }
   if (!win) return;
   const key = agentId ? `${s.id}/${agentId}` : s.id;
@@ -1157,7 +1241,7 @@ function notify(s, event, text, secs = 0) {
   if (TEST || !Notification.isSupported() || s.id.startsWith('demo-')) return;
   if (muted.has(s.id)) return;
   const mode = prefs.config.notify || 'Behind windows';
-  const seen = (talkWin && talkWin.isVisible() && talkId === s.id) || (mode !== 'Always' && prefs.config.onTop !== 'Off' && win && win.isVisible());
+  const seen = isOpen(s.id) || (mode !== 'Always' && prefs.config.onTop !== 'Off' && win && win.isVisible());
   // (Asking permission: Allow and Deny right in it, on macOS.)
   const ask = event === 'waiting' ? (inbox.asks.get(s.id) || []).slice(-1)[0] : null;
   // (Finished: what its turn came to, whether or not its reply is in yet.)
@@ -1209,12 +1293,12 @@ function handOver(s, cmd) {
 // (no dialog: it would take focus and close the talk box). Never over
 // another file. Returns where it went, or ''.
 function conversationMarkdown(id) {
-  const s = tracker.sessions.get(id) || (talkLast && talkLast.id === id ? talkLast : null);
+  const s = tracker.sessions.get(id) || lastOf(id);
   return markdown.toMarkdown({ project: s ? s.project : '', cwd: s ? s.cwd : '', log: inbox.log(id) });
 }
 function saveConversation(id) {
   if (!inbox.log(id).length) return '';
-  const s = tracker.sessions.get(id) || (talkLast && talkLast.id === id ? talkLast : {});
+  const s = tracker.sessions.get(id) || (lastOf(id) || {});
   try {
     const dir = app.getPath('downloads');
     const name = markdown.fileName(s.project);
@@ -1748,7 +1832,7 @@ app.whenReady().then(async () => {
     const tone = toneOf(text);
     if (tone) win.webContents.send('react', { id: s.id, kind: tone });
   });
-  tracker.on('change', () => pushTalk(talkId));
+  tracker.on('change', () => pushTalks());
   // A turn ended: anything waiting for a session without an inbox hook can be typed now.
   const typeSoon = new Map();
   tracker.on('change', (c) => {
@@ -1772,16 +1856,16 @@ app.whenReady().then(async () => {
   const askCounts = new Map();
   inbox.on('change', (id) => {
     const n = (inbox.asks.get(id) || []).length;
-    if (id === talkId || n === (askCounts.get(id) || 0)) return;
+    if (isOpen(id) || n === (askCounts.get(id) || 0)) return;
     if (n) askCounts.set(id, n); else askCounts.delete(id);
-    pushTalk(talkId);
+    pushTalks();
   });
   // What each helper is on, for its mother's talk box.
   tracker.on('activity', ({ session: s, agentId, payload: p }) => {
     if (!agentId || p.hook_event_name !== 'PreToolUse') return;
     helperDoing.set(`${s.id}/${agentId}`, describeTool(p.tool_name, p.tool_input || {}));
     if (helperDoing.size > 200) helperDoing.delete(helperDoing.keys().next().value);
-    if (talkId === s.id) pushTalk(s.id);
+    if (isOpen(s.id)) pushTalk(s.id);
   });
   tracker.on('change', sweepSoon);
   // A message from the slime went in: its turn starts, as if typed.
@@ -1800,7 +1884,7 @@ app.whenReady().then(async () => {
     const log = inbox.log(id), text = entry.text;
     let asked = null;
     for (let i = log.indexOf(entry) - 1; i >= 0 && !asked; i--) if (log[i].who !== 'note' && log[i].who !== 'step') asked = log[i];
-    const open = talkWin && talkId === id && talkWin.isVisible();
+    const open = isOpen(id);
     if (win && !open && asked && asked.who === 'you' && asked.via === 'blaube') win.webContents.send('say', { id, text: snippet(text), seconds: 7 });
     // Open, the box shows it; the slime still says it out loud.
     else if (win && open) win.webContents.send('say', { id, text: snippet(text), voiceOnly: true });
@@ -1813,7 +1897,7 @@ app.whenReady().then(async () => {
     const react = failed ? (kind === 'test' ? 'testfail' : '') : { push: 'push', test: 'cheer', commit: 'commit' }[kind];
     if (win && react) win.webContents.send('react', { id: agentId ? `${s.id}/${agentId}` : s.id, kind: react });
     // Tests that fail: its slime says how many (when the box is closed).
-    if (win && failed && kind === 'test' && !agentId && !(talkWin && talkId === s.id && talkWin.isVisible())) {
+    if (win && failed && kind === 'test' && !agentId && !isOpen(s.id)) {
       const c = require('./testCounts').testCounts(require('./inbox').stepDetail(Object.assign({}, p, { hook_event_name: 'PostToolUseFailure' })));
       if (c && c.fail) win.webContents.send('say', { id: s.id, text: `${c.fail} test${c.fail === 1 ? '' : 's'} failing`, seconds: 4, status: true });
     }
@@ -1833,6 +1917,8 @@ app.whenReady().then(async () => {
     if (doing.has(id)) { doing.set(to, doing.get(id)); doing.delete(id); }
     if (readySessions.has(id)) { readySessions.delete(id); readySessions.add(to); }
     if (talkId === id) talkId = to;
+    if (pinnedTalks.has(id)) { const r = pinnedTalks.get(id); pinnedTalks.delete(id); r.id = to; pinnedTalks.set(to, r); }
+    if (talkLasts.has(id)) { talkLasts.set(to, talkLasts.get(id)); talkLasts.delete(id); }
     pushState();
   });
   owned.on('mode', (id, mode) => tracker.setMode(id, mode));
@@ -1850,7 +1936,7 @@ app.whenReady().then(async () => {
     }
     const before = JSON.stringify(usageLimits);
     usageLimits = l;
-    if (JSON.stringify(usageLimits) !== before && talkId) pushTalk(talkId);
+    if (JSON.stringify(usageLimits) !== before ) pushTalks();
   };
   owned.on('limits', (info) => setLimits(limits.read(info)));
   // (And asked for now and then: get_usage, which calls no model.)
@@ -1881,7 +1967,7 @@ app.whenReady().then(async () => {
     const bin = owned.findClaude() || owned.shellPath();
     if (!bin || signingIn || (!force && Date.now() - lastAuth < 5 * 60e3)) return;
     lastAuth = Date.now();
-    auth.status(bin, (ok) => { if (ok === null || ok === !signedOutNow) return; signedOutNow = !ok; if (talkId) pushTalk(talkId); });
+    auth.status(bin, (ok) => { if (ok === null || ok === !signedOutNow) return; signedOutNow = !ok; pushTalks(); });
   };
   ipcMain.on('talk-sign-in', (_e, id) => signIn(id));
   // Just installed: signed in yet? If not, sign in (your browser opens).
@@ -1897,7 +1983,7 @@ app.whenReady().then(async () => {
     const bin = owned.findClaude() || owned.shellPath();
     if (signingIn || !bin) return;
     signingIn = true;
-    const say = (text, error) => { if (id && tracker.sessions.has(id)) inbox.add(id, Object.assign({ who: 'note', text }, error ? { error: true } : {})); if (talkId) pushTalk(talkId); };
+    const say = (text, error) => { if (id && tracker.sessions.has(id)) inbox.add(id, Object.assign({ who: 'note', text }, error ? { error: true } : {})); pushTalks(); };
     say('Signing Claude Code in: finish in your browser');
     auth.login(bin, (ok, why) => {
       signingIn = false;
@@ -1925,11 +2011,11 @@ app.whenReady().then(async () => {
   };
   setInterval(() => checkAway(), 30e3).unref();
   // (The box's "4m" and "waiting 5m" keep up even when nothing else happens.)
-  setInterval(() => { if (talkWin && talkWin.isVisible() && talkId && tracker.list().some((o) => o.state === 'waiting' || o.state === 'working')) pushTalk(talkId); }, 30e3).unref();
+  setInterval(() => { if (openTalks().length && tracker.list().some((o) => o.state === 'waiting' || o.state === 'working')) pushTalks(); }, 30e3).unref();
   // Its scripts Blaube runs: its slime says where one is up, and one that
   // stops by itself says so, with its last line.
   runs.events.on('url', (r) => {
-    if (talkId === r.session) pushTalk(r.session);
+    if (isOpen(r.session)) pushTalk(r.session);
     if (win) win.webContents.send('say', { id: r.session, text: `Up on ${r.url.replace(/^https?:\/\//, '').replace(/\/$/, '')}`, seconds: 5, status: true });
   });
   runs.events.on('exit', (r) => {
@@ -1939,7 +2025,7 @@ app.whenReady().then(async () => {
       inbox.add(r.session, Object.assign({ who: 'note', text: `${r.command} stopped${r.code ? ` (code ${r.code})` : ''}${last ? `: ${last.slice(0, 200)}` : ''}`, error: !!r.code }, r.code ? { runFailed: { command: r.command, tail: tail.text.split('\n').slice(-30).join('\n').slice(-3000) } } : {}));
       if (r.code && win) win.webContents.send('say', { id: r.session, text: `${r.name} stopped`, seconds: 5, status: true });
     }
-    if (talkId === r.session) pushTalk(r.session);
+    if (isOpen(r.session)) pushTalk(r.session);
   });
   // Each session's pull request (its branch's, from gh): how it stands on
   // its git line, and its slime says when its checks finish, or it's
@@ -1956,7 +2042,7 @@ app.whenReady().then(async () => {
       const told = r && r.since === o.updatedAt ? r.told : 0;
       const ask = (inbox.asks.get(o.id) || [])[0];
       const still = attention.stillWaiting({ state: o.state, since: o.updatedAt, now: Date.now() + (TEST ? global.__blaubeWaitAhead || 0 : 0), told, what: ask && ask.kind === 'tool' ? `${ask.tool || 'a tool'}${ask.detail ? ` ${String(ask.detail).slice(0, 40)}` : ''}?` : '' });
-      if (still && win && !(talkWin && talkWin.isVisible() && talkId === o.id)) {
+      if (still && win && !isOpen(o.id)) {
         reminded.set(o.id, { since: o.updatedAt, told: still.told });
         win.webContents.send('say', { id: o.id, text: still.text, seconds: 6, status: true });
         if (TEST) global.__blaubeReminded = { id: o.id, text: still.text };
@@ -1965,10 +2051,10 @@ app.whenReady().then(async () => {
         if (!st) return;
         const line = gitLine(o.id);
         gitStates.set(o.id, st);
-        if (gitLine(o.id) !== line) { pushState(); if (o.id === talkId) pushTalk(o.id); }
+        if (gitLine(o.id) !== line) { pushState(); if (isOpen(o.id)) pushTalk(o.id); }
         // (Finished a while ago with its changes uncommitted: its slime says so, once.)
         const left = attention.leftUncommitted({ state: o.state, git: st, idleFor: Date.now() - (o.updatedAt || Date.now()) }, TEST && global.__blaubeNudgeAfter != null ? global.__blaubeNudgeAfter : 20 * 60e3);
-        if (left && nudged.get(o.id) !== left.key && win && !(talkWin && talkWin.isVisible() && talkId === o.id)) {
+        if (left && nudged.get(o.id) !== left.key && win && !isOpen(o.id)) {
           nudged.set(o.id, left.key);
           win.webContents.send('say', { id: o.id, text: left.text, seconds: 5, status: true });
           if (TEST) global.__blaubeNudged = { id: o.id, text: left.text };
@@ -1987,7 +2073,7 @@ app.whenReady().then(async () => {
             if (win) { if (/failed|changes requested/.test(said)) win.webContents.send('react', { id: o.id, kind: 'oops', count: 1 }); else win.webContents.send('nod', o.id); }
             notify(o, 'pr', said); // (only if you can't see its slime)
           }
-          if (o.id === talkId) pushTalk(o.id);
+          if (isOpen(o.id)) pushTalk(o.id);
           pushState();
         }, { bin, fresh: TEST ? 500 : 60e3 });
       });
@@ -1996,10 +2082,11 @@ app.whenReady().then(async () => {
   // Its git line keeps up while the box is open (a commit made elsewhere,
   // a push): git status every few seconds, the box only told of a change.
   setInterval(() => {
-    const s = talkWin && talkWin.isVisible() && talkId && !talkId.startsWith('demo-') && tracker.sessions.get(talkId);
-    if (!s || !s.cwd) return;
-    const id = talkId;
-    git.status(s.cwd, (st) => { if (JSON.stringify(st) === JSON.stringify(gitStates.get(id) || null)) return; gitStates.set(id, st); pushTalk(id); });
+    for (const id of openTalks()) {
+      const s = !id.startsWith('demo-') && tracker.sessions.get(id);
+      if (!s || !s.cwd) continue;
+      git.status(s.cwd, (st) => { if (JSON.stringify(st) === JSON.stringify(gitStates.get(id) || null)) return; gitStates.set(id, st); pushTalk(id); });
+    }
   }, 5e3).unref();
   if (TEST) global.__blaubeCheckAway = checkAway;
   setTimeout(probeUsage, 20e3).unref();
@@ -2019,7 +2106,7 @@ app.whenReady().then(async () => {
   // back as they were before that turn by Claude Code itself (rewind_files),
   // no asking Claude. false: the box asks Claude instead.
   ipcMain.handle('talk-rewind', (_e, id, uuid) => new Promise((done) => {
-    if (!id || id !== talkId || !owned.has(id) || typeof uuid !== 'string' || !inbox.log(id).some((e) => e.uuid === uuid)) return done(false);
+    if (!id || !isOpen(id) || !owned.has(id) || typeof uuid !== 'string' || !inbox.log(id).some((e) => e.uuid === uuid)) return done(false);
     owned.control(id, { subtype: 'rewind_files', user_message_id: uuid, dry_run: true }, (ok, r) => {
       if (!ok || !r || !r.canRewind) { log(`rewind ${id}: ${ok ? (r && r.error) || 'no' : r}`); return done(false); }
       owned.control(id, { subtype: 'rewind_files', user_message_id: uuid }, (ok2, r2) => {
@@ -2035,7 +2122,7 @@ app.whenReady().then(async () => {
   // "Run in background" (Ctrl+B in the terminal): the command it's waiting
   // on carries on in the background and it gets on with the rest.
   ipcMain.on('talk-background', (_e, id) => {
-    const fg = id === talkId && owned.has(id) && foreground.get(id);
+    const fg = isOpen(id) && owned.has(id) && foreground.get(id);
     if (!fg) return;
     owned.control(id, Object.assign({ subtype: 'background_tasks' }, fg.tool ? { tool_use_id: fg.tool } : {}), (ok, r) => {
       if (ok) foreground.delete(id);
@@ -2045,7 +2132,7 @@ app.whenReady().then(async () => {
     });
   });
   ipcMain.handle('talk-mcp-reconnect', (_e, id, name) => new Promise((done) => {
-    if (!id || id !== talkId || !owned.has(id) || !(mcpStates.get(id) || []).some((m) => m.name === name)) return done(false);
+    if (!id || !isOpen(id) || !owned.has(id) || !(mcpStates.get(id) || []).some((m) => m.name === name)) return done(false);
     owned.control(id, { subtype: 'mcp_reconnect', serverName: name }, (ok, r) => {
       inbox.add(id, { who: 'note', text: ok ? `Reconnected ${name}` : `Couldn’t reconnect ${name}: ${r}`, error: !ok });
       askMcp(id);
@@ -2055,7 +2142,7 @@ app.whenReady().then(async () => {
   // An MCP server that needs you to sign in: Claude Code gives the address
   // (mcp_authenticate) and waits for the browser to come back to it.
   ipcMain.handle('talk-mcp-sign-in', (_e, id, name) => new Promise((done) => {
-    if (!id || id !== talkId || !owned.has(id) || !(mcpStates.get(id) || []).some((m) => m.name === name)) return done(false);
+    if (!id || !isOpen(id) || !owned.has(id) || !(mcpStates.get(id) || []).some((m) => m.name === name)) return done(false);
     owned.control(id, { subtype: 'mcp_authenticate', serverName: name }, (ok, r) => {
       if (!ok) { inbox.add(id, { who: 'note', text: `Couldn’t sign in to ${name}: ${r}`, error: true }); return done(false); }
       if (r && r.authUrl && /^https?:\/\//.test(r.authUrl)) {
@@ -2082,10 +2169,10 @@ app.whenReady().then(async () => {
     const said = `Claude’s servers are ${why}: trying again${secs >= 2 ? ` in ${secs}s` : ''}${r.attempt && r.max ? ` (${r.attempt} of ${r.max})` : ''}`;
     doing.set(id, said);
     // (And its slime says so, once a retry, when you can't see its box.)
-    if (win && !(talkWin && talkWin.isVisible() && talkId === id)) win.webContents.send('say', { id, text: `Claude’s busy: trying again${secs >= 2 ? ` in ${secs}s` : ''}…`, seconds: Math.min(6, Math.max(2.5, secs)), status: true });
-    setTimeout(() => { if (doing.get(id) === said) { doing.delete(id); if (talkId === id) pushTalk(id); } }, r.delay + 5000).unref(); // (it went through)
+    if (win && !isOpen(id)) win.webContents.send('say', { id, text: `Claude’s busy: trying again${secs >= 2 ? ` in ${secs}s` : ''}…`, seconds: Math.min(6, Math.max(2.5, secs)), status: true });
+    setTimeout(() => { if (doing.get(id) === said) { doing.delete(id); if (isOpen(id)) pushTalk(id); } }, r.delay + 5000).unref(); // (it went through)
     pushState();
-    if (talkId === id) pushTalk(id);
+    if (isOpen(id)) pushTalk(id);
   });
   // Something it saved to its memory, as the terminal shows it.
   owned.on('remembered', (id, files) => (win && win.webContents.send('nod', id), inbox.add(id, { who: 'note', text: `Remembered in ${files.slice(0, 3).map((f) => path.basename(f)).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more` : ''}` })));
@@ -2272,7 +2359,7 @@ app.whenReady().then(async () => {
           if (u) {
             taskUrls.set(key, u);
             if (taskUrls.size > 200) taskUrls.delete(taskUrls.keys().next().value);
-            if (talkId === s.id) pushTalk(s.id);
+            if (isOpen(s.id)) pushTalk(s.id);
             // (And its slime says it's up.)
             else if (win && readySessions.has(s.id)) win.webContents.send('say', { id: s.id, text: `Up on ${u.replace(/^https?:\/\//, '').replace(/\/$/, '')}`, seconds: 5, status: true });
           }
@@ -2291,22 +2378,22 @@ app.whenReady().then(async () => {
           if (readySessions.has(s.id)) notify(s, 'task', name);
         }
         pushState();
-        if (talkId === s.id) pushTalk(s.id);
+        if (isOpen(s.id)) pushTalk(s.id);
       }
     }
   };
   setInterval(checkTasks, 4000).unref();
   if (TEST) global.__blaubeCheckTasks = checkTasks;
   ipcMain.handle('talk-task-output', (_e, id, taskId) => {
-    if (String(taskId).startsWith('run:')) return id === talkId && runs.list(id).some((r) => r.id === taskId) ? runs.output(taskId) : null;
-    const s = id === talkId && tracker.sessions.get(id);
+    if (String(taskId).startsWith('run:')) return isOpen(id) && runs.list(id).some((r) => r.id === taskId) ? runs.output(taskId) : null;
+    const s = isOpen(id) && tracker.sessions.get(id);
     if (!s || !(s.tasks || []).some((t) => t.id === taskId)) return null;
     const file = taskOutput.find(id, taskId);
     return file ? taskOutput.tail(file) : null;
   });
   // "Carry on at 3pm" (at: when) after a usage limit, or not (at: 0).
   ipcMain.on('talk-later', (_e, id, at) => {
-    if (!id || id !== talkId || !tracker.sessions.has(id) || id.startsWith('demo-')) return;
+    if (!id || !isOpen(id) || !tracker.sessions.has(id) || id.startsWith('demo-')) return;
     const was = carryLater.delete(id);
     const lifts = carryFor(id);
     if (at && lifts && Math.abs(lifts.at - at) < 60e3) {
@@ -2333,7 +2420,7 @@ app.whenReady().then(async () => {
   if (TEST) global.__blaubeTrayMenu = trayMenu;
   // A reply passed on to another session, as if pasted into its terminal.
   ipcMain.on('talk-forward', (_e, from, to, text) => {
-    const a = from === talkId && tracker.sessions.get(from);
+    const a = isOpen(from) && tracker.sessions.get(from);
     const b = tracker.sessions.get(to);
     if (!a || !b || from === to || to.startsWith('demo-') || !isReady(b) || typeof text !== 'string' || !text.trim() || text.length > 50000) return;
     sendMessage(to, `(This is from ${shownOf(a).full}, another Claude Code session working in ${a.cwd || 'another folder'}; I'm passing it on:)\n\n${text}`);
@@ -2341,7 +2428,7 @@ app.whenReady().then(async () => {
     if (win) win.webContents.send('nod', to);
   });
   ipcMain.on('talk-send', (_e, id, text) => {
-    if (!id || id !== talkId || !tracker.sessions.has(id) || id.startsWith('demo-')) return;
+    if (!id || !isOpen(id) || !tracker.sessions.has(id) || id.startsWith('demo-')) return;
     sendMessage(id, text);
   });
   // Editing something you said, in a session Blaube started (Esc Esc in the
@@ -2351,7 +2438,7 @@ app.whenReady().then(async () => {
     const sess = tracker.sessions.get(id);
     const log = inbox.log(id);
     const idx = typeof uuid === 'string' ? log.findIndex((e) => e.who === 'you' && e.uuid === uuid) : -1;
-    if (!sess || id !== talkId || !owned.has(id) || idx < 0 || typeof text !== 'string' || !text.trim()) return done(false);
+    if (!sess || !isOpen(id) || !owned.has(id) || idx < 0 || typeof text !== 'string' || !text.trim()) return done(false);
     const at = branch.before(transcriptPath(sess), uuid);
     if (at === undefined) { inbox.add(id, { who: 'note', text: 'Couldn’t go back there: Claude Code hasn’t saved that message yet', error: true }); return done(false); }
     owned.control(id, { subtype: 'rewind_files', user_message_id: uuid }, (ok, r) => {
@@ -2835,7 +2922,7 @@ app.whenReady().then(async () => {
   replyTo = sendMessage;
   // Push and Pull from its quick actions: git itself, right there (a step
   // with what it printed; no model call). It never waits on a password.
-  ipcMain.on('talk-git-run', (_e, id, run) => { if (id === talkId) gitRunFor(id, run); });
+  ipcMain.on('talk-git-run', (_e, id, run) => { if (isOpen(id)) gitRunFor(id, run); });
   function gitRunFor(id, run) {
     const s = tracker.sessions.get(id);
     const st = gitStates.get(id);
@@ -2860,7 +2947,7 @@ app.whenReady().then(async () => {
   }
   // Install packages, from its quick actions: npm install (or pnpm, yarn,
   // bun, as its lockfile says) right there, a step, up to ten minutes.
-  ipcMain.on('talk-install', (_e, id) => { if (id === talkId) installFor(id); });
+  ipcMain.on('talk-install', (_e, id) => { if (isOpen(id)) installFor(id); });
   function installFor(id) {
     const s = tracker.sessions.get(id);
     const cmd = s && s.cwd && s.state !== 'working' && s.state !== 'waiting' && !installingPackages.has(id) && runs.needsInstall(s.cwd);
@@ -2875,7 +2962,7 @@ app.whenReady().then(async () => {
   }
   // Make .env, from its quick actions: its template copied (never over a
   // .env that's there), and opened in your editor to fill in.
-  ipcMain.on('talk-make-env', (_e, id) => { if (id === talkId) envFor(id); });
+  ipcMain.on('talk-make-env', (_e, id) => { if (isOpen(id)) envFor(id); });
   function envFor(id) {
     const s = tracker.sessions.get(id);
     const from = s && s.cwd && runs.needsEnv(s.cwd);
@@ -2895,8 +2982,8 @@ app.whenReady().then(async () => {
   // output (its own, under its claude process). false: the box asks Claude.
   ipcMain.handle('talk-stop-task', (_e, id, taskId) => new Promise((done) => {
     // (One of its scripts Blaube runs: Blaube stops it.)
-    if (String(taskId).startsWith('run:')) return done(id === talkId && runs.list(id).some((r) => r.id === taskId) && runs.stop(taskId));
-    const s = id === talkId && tracker.sessions.get(id);
+    if (String(taskId).startsWith('run:')) return done(isOpen(id) && runs.list(id).some((r) => r.id === taskId) && runs.stop(taskId));
+    const s = isOpen(id) && tracker.sessions.get(id);
     const t = s && (s.tasks || []).find((x) => x.id === taskId);
     if (!t) return done(false);
     if (!owned.has(id)) {
@@ -2923,7 +3010,7 @@ app.whenReady().then(async () => {
     });
   }));
   ipcMain.on('talk-stop', (_e, id) => {
-    if (!id || id !== talkId || !tracker.sessions.has(id)) return;
+    if (!id || !isOpen(id) || !tracker.sessions.has(id)) return;
     const asked = inbox.stop(id);
     // One Blaube started stops right away, even mid-sentence.
     if (owned.has(id)) {
@@ -2936,7 +3023,7 @@ app.whenReady().then(async () => {
   // An image pasted into the talk box: saved where Claude can open it.
   ipcMain.handle('talk-paste', (_e, id, bytes, type) => {
     const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }[type];
-    if (!id || id !== talkId || !ext || !(bytes instanceof Uint8Array) || bytes.length > 20e6) return '';
+    if (!id || !isOpen(id) || !ext || !(bytes instanceof Uint8Array) || bytes.length > 20e6) return '';
     try {
       const dir = path.join(app.getPath('temp'), 'blaube-pastes');
       fs.mkdirSync(dir, { recursive: true });
@@ -3054,7 +3141,7 @@ app.whenReady().then(async () => {
   // 📎 in the box: files to go with the next message (the box stays open
   // while you pick).
   ipcMain.handle('talk-attach', async (_e, id) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     if (!s || TEST) return [];
     talkPicking = true;
     try {
@@ -3062,12 +3149,13 @@ app.whenReady().then(async () => {
       return canceled ? [] : filePaths.slice(0, 20);
     } finally {
       talkPicking = false;
-      if (talkWin && talkWin.isVisible()) talkWin.focus();
+      const rec = talkOf(id);
+      if (rec && rec.win.isVisible()) rec.win.focus();
     }
   });
   // What was said before the box's own log, from its transcript.
   ipcMain.handle('talk-earlier', (_e, id) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     const file = s && !id.startsWith('demo-') && transcriptPath(s);
     if (!file) return [];
     const first = inbox.log(id).find((e) => e.at);
@@ -3076,14 +3164,14 @@ app.whenReady().then(async () => {
   // One changed file's diff, for the git line's file list.
   ipcMain.handle('talk-diff', (_e, id, file) => new Promise((done) => {
     const st = gitStates.get(id);
-    const f = id === talkId && st && st.root && st.files.find((x) => path.join(st.root, x.path) === file);
+    const f = isOpen(id) && st && st.root && st.files.find((x) => path.join(st.root, x.path) === file);
     if (!f || f.how === 'deleted') return done('');
     git.diff(st.root, f.path, f.how, done);
   }));
   // Discard: a file's changes go (into git's stash, so Put back can bring
   // them back), not while it's working (it may be changing it).
   ipcMain.handle('talk-discard', (_e, id, file) => new Promise((done) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     const st = gitStates.get(id);
     const f = s && st && st.root && st.files.find((x) => path.join(st.root, x.path) === file);
     if (!f) return done('Can’t discard that one');
@@ -3099,7 +3187,7 @@ app.whenReady().then(async () => {
   }));
   // A file in conflict, settled from its box: your version or theirs.
   ipcMain.handle('talk-settle', (_e, id, file, side) => new Promise((done) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     const st = gitStates.get(id);
     const f = s && st && st.root && st.files.find((x) => x.how === 'conflict' && path.join(st.root, x.path) === file);
     if (!f) return done('Can’t settle that one');
@@ -3116,7 +3204,7 @@ app.whenReady().then(async () => {
     });
   }));
   ipcMain.handle('talk-put-back', (_e, id) => new Promise((done) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     const d = discarded.get(id);
     if (!s || !d) return done('Nothing to put back');
     git.putBack(d.root, d.rel, (err) => {
@@ -3130,24 +3218,24 @@ app.whenReady().then(async () => {
   // The git line's branches: which there are, and switching (or making a
   // new one) while it isn't busy and nothing tracked is changed.
   ipcMain.handle('talk-branches', (_e, id) => new Promise((done) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     if (!s || !s.cwd || id.startsWith('demo-')) return done([]);
     git.branches(s.cwd, done);
   }));
   // Its branch (or repository) on GitHub, or GitHub's page to open a PR.
   ipcMain.handle('talk-web', (_e, id) => new Promise((done) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     if (!s || !s.cwd || id.startsWith('demo-')) return done(null);
     git.github(s.cwd, (repo) => done(git.webLink(repo, gitStates.get(id), prStates.get(id))));
   }));
   // Changes you set aside yourself (git stash), and bringing them back.
   ipcMain.handle('talk-stashes', (_e, id) => new Promise((done) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     if (!s || !s.cwd || id.startsWith('demo-')) return done([]);
     git.stashes(s.cwd, (list) => done(list.map((x) => Object.assign(x, { when: history.ago(x.at) }))));
   }));
   ipcMain.handle('talk-bring-back', (_e, id, ref, at) => new Promise((done) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     const st = gitStates.get(id);
     if (!s || !s.cwd || !st || typeof ref !== 'string') return done('Can’t bring those back');
     if (s.state === 'working' || s.state === 'waiting') return done('Not while it’s working: wait for it to finish');
@@ -3160,12 +3248,12 @@ app.whenReady().then(async () => {
   }));
   // Branches already merged into its base, and tidying them away.
   ipcMain.handle('talk-merged', (_e, id) => new Promise((done) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     if (!s || !s.cwd || id.startsWith('demo-')) return done({ base: '', names: [] });
     git.merged(s.cwd, done);
   }));
   ipcMain.handle('talk-delete-merged', (_e, id, names) => new Promise((done) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     if (!s || !s.cwd || id.startsWith('demo-') || !Array.isArray(names)) return done([]);
     git.deleteMerged(s.cwd, names.filter((n) => typeof n === 'string'), (gone) => {
       if (gone.length) inbox.add(id, { who: 'note', text: `Deleted ${gone.length} merged branch${gone.length === 1 ? '' : 'es'}: ${gone.join(', ')}` });
@@ -3175,7 +3263,7 @@ app.whenReady().then(async () => {
   }));
   // The branches with changes set aside on them (see talk-switch-branch).
   ipcMain.handle('talk-parked', (_e, id) => new Promise((done) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     if (!s || !s.cwd || id.startsWith('demo-')) return done([]);
     git.parked(s.cwd, done);
   }));
@@ -3183,13 +3271,13 @@ app.whenReady().then(async () => {
   // before a pull request), and one file's change.
   const branchSeen = new Map(); // id -> its last branchChanges
   ipcMain.handle('talk-branch-changes', (_e, id) => new Promise((done) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     const st = gitStates.get(id);
     if (!s || !s.cwd || !st || !st.branch) return done(null);
     git.branchChanges(s.cwd, st.branch, (ch) => { if (ch) branchSeen.set(id, ch); else branchSeen.delete(id); while (branchSeen.size > 20) branchSeen.delete(branchSeen.keys().next().value); done(ch); });
   }));
   ipcMain.handle('talk-branch-diff', (_e, id, rel) => new Promise((done) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     const ch = branchSeen.get(id);
     const f = s && ch && ch.files.find((x) => x.path === rel);
     if (!f || f.how === 'deleted') return done('');
@@ -3197,7 +3285,7 @@ app.whenReady().then(async () => {
   }));
   // Its latest commits (which aren't pushed yet), and what one changed.
   ipcMain.handle('talk-commits', (_e, id) => new Promise((done) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     if (!s || !s.cwd || id.startsWith('demo-')) return done([]);
     const st = gitStates.get(id);
     git.commits(s.cwd, (list) => {
@@ -3211,7 +3299,7 @@ app.whenReady().then(async () => {
   }));
   // Undo on its newest commit: taken back, its changes kept, uncommitted.
   ipcMain.handle('talk-undo-commit', (_e, id, hash) => new Promise((done) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     if (!s || !s.cwd) return done('Can’t undo that one');
     if (s.state === 'working' || s.state === 'waiting') return done('Not while it’s working: wait for it to finish');
     git.commits(s.cwd, (list) => {
@@ -3225,7 +3313,7 @@ app.whenReady().then(async () => {
     }, 1);
   }));
   ipcMain.handle('talk-revert', (_e, id, hash) => new Promise((done) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     const st = gitStates.get(id);
     if (!s || !s.cwd || !st) return done('Can’t revert that one');
     if (s.state === 'working' || s.state === 'waiting') return done('Not while it’s working: wait for it to finish');
@@ -3242,14 +3330,14 @@ app.whenReady().then(async () => {
     });
   }));
   ipcMain.handle('talk-commit', (_e, id, hash) => new Promise((done) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     if (!s || !s.cwd) return done('');
     git.show(s.cwd, hash, done);
   }));
   // (A new branch takes its changes along; switching to another sets them
   // aside on this one, to come back when you switch back: git's stash.)
   ipcMain.handle('talk-switch-branch', (_e, id, name, create) => new Promise((done) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     const st = gitStates.get(id);
     if (!s || !s.cwd || !st) return done('It isn’t in a git repository');
     if (s.state === 'working' || s.state === 'waiting') return done('Not while it’s working: wait for it to finish');
@@ -3280,13 +3368,13 @@ app.whenReady().then(async () => {
   // Files named in its replies: which are real (they become tappable), and
   // one's start, to read right in the box.
   ipcMain.handle('talk-files-exist', (_e, id, paths) => {
-    if (!id || id !== talkId || !Array.isArray(paths)) return [];
+    if (!id || !isOpen(id) || !Array.isArray(paths)) return [];
     return paths.slice(0, 40).filter((p) => sessionFile(id, p));
   });
   const PEEK = 64 << 10;
-  ipcMain.on('talk-open-editor', (_e, id, rel, line) => { if (id === talkId && typeof rel === 'string') openInEditor(id, rel, line); });
+  ipcMain.on('talk-open-editor', (_e, id, rel, line) => { if (isOpen(id) && typeof rel === 'string') openInEditor(id, rel, line); });
   ipcMain.handle('talk-peek', (_e, id, rel) => {
-    const file = id === talkId ? sessionFile(id, rel) : '';
+    const file = isOpen(id) ? sessionFile(id, rel) : '';
     if (!file) return null;
     let fd;
     try {
@@ -3301,7 +3389,7 @@ app.whenReady().then(async () => {
   // How a session Blaube started asks before it acts (⇧⇥ in its box).
   const MODES = new Set(['default', 'acceptEdits', 'plan']);
   ipcMain.on('talk-mode', (_e, id, mode) => {
-    if (!id || id !== talkId || !owned.has(id) || !MODES.has(mode)) return;
+    if (!id || !isOpen(id) || !owned.has(id) || !MODES.has(mode)) return;
     owned.control(id, { subtype: 'set_permission_mode', mode }, (ok, r) => {
       if (!ok) { inbox.add(id, { who: 'note', text: `Couldn’t change how it asks: ${r}` }); return; }
       tracker.setMode(id, r.mode || mode); // (shown under its field)
@@ -3325,7 +3413,7 @@ app.whenReady().then(async () => {
   }
   owned.on('exit', (id) => modelLists.delete(id));
   ipcMain.handle('talk-complete', (_e, id, kind, q) => new Promise((resolve) => {
-    const s = id === talkId && tracker.sessions.get(id);
+    const s = isOpen(id) && tracker.sessions.get(id);
     q = typeof q === 'string' ? q.slice(0, 200) : '';
     if (!s || !s.cwd || id.startsWith('demo-')) return resolve([]);
     if (kind === 'command') return resolve(commandNames(q, s.cwd).slice(0, 8).map((c) => ({ insert: '/' + c.name + ' ', label: '/' + c.name, about: c.about || '' })));
@@ -3342,12 +3430,12 @@ app.whenReady().then(async () => {
   ipcMain.handle('talk-search', (_e, q) => attention.search(tracker.list().filter(isReady).filter((o) => !o.id.startsWith('demo-')).map((o) => ({ id: o.id, project: o.project, log: inbox.log(o.id) })), typeof q === 'string' ? q.slice(0, 200) : '').slice(0, 10));
   // A session that ended while its box was open, picked up right there.
   ipcMain.on('talk-continue', (_e, id) => {
-    const last = talkLast && talkLast.id === id ? talkLast : null;
-    if (!last || id !== talkId || tracker.sessions.has(id) || owned.has(id) || !last.cwd || last.demo) return;
+    const last = lastOf(id);
+    if (!last || !isOpen(id) || tracker.sessions.has(id) || owned.has(id) || !last.cwd || last.demo) return;
     hideTalk();
     pickUp({ id, cwd: last.cwd, at: 0, title: last.project, file: null });
   });
-  ipcMain.on('talk-bring', (_e, id) => { const s = id === talkId && tracker.sessions.get(id); if (canBringIn(s)) bringIn(s); });
+  ipcMain.on('talk-bring', (_e, id) => { const s = isOpen(id) && tracker.sessions.get(id); if (canBringIn(s)) bringIn(s); });
   ipcMain.on('talk-pickup', (_e, id) => { const p = hubPast.find((x) => x.id === id) || pastHits.find((x) => x.id === id); if (p) { hubCache = null; hideTalk(); pickUp(p); } });
   // ⌘F in the overview also looks through past sessions, to pick one up.
   let pastHits = [];
@@ -3365,20 +3453,20 @@ app.whenReady().then(async () => {
     if (TEST) global.__blaubeOpened = u.href;
   });
   ipcMain.on('talk-copy', (_e, text) => { if (typeof text === 'string' && text.length < 1e6) clipboard.writeText(text); });
-  ipcMain.handle('talk-save', (_e, id) => (id && id === talkId ? saveConversation(id) : ''));
-  ipcMain.on('talk-copy-all', (_e, id) => { if (id && id === talkId) clipboard.writeText(conversationMarkdown(id)); });
+  ipcMain.handle('talk-save', (_e, id) => (id && isOpen(id) ? saveConversation(id) : ''));
+  ipcMain.on('talk-copy-all', (_e, id) => { if (id && isOpen(id)) clipboard.writeText(conversationMarkdown(id)); });
   ipcMain.on('talk-show-file', (_e, file) => { if (typeof file === 'string' && path.dirname(file) === app.getPath('downloads') && /\.md$/.test(file)) shell.showItemInFolder(file); });
   // A changed file dragged out of the box, into another app (only files its
   // steps named, as for revealing them).
   ipcMain.on('talk-drag', (e, id, file) => {
-    if (!id || id !== talkId || typeof file !== 'string' || !path.isAbsolute(file)) return;
+    if (!id || !isOpen(id) || typeof file !== 'string' || !path.isAbsolute(file)) return;
     if (!inbox.log(id).some((x) => x.who === 'step' && x.file === file)) return;
     try { if (!fs.statSync(file).isFile()) return; } catch { return; }
     e.sender.startDrag({ file, icon: nativeImage.createFromPath(path.join(ASSETS, 'icon.png')).resize({ width: 32, height: 32 }) });
   });
   // An image a step looked at, shown in its box (only images its steps named).
   ipcMain.handle('talk-image', (_e, id, file) => {
-    if (!id || id !== talkId || typeof file !== 'string' || !path.isAbsolute(file) || !/\.(png|jpe?g|gif|webp)$/i.test(file)) return null;
+    if (!id || !isOpen(id) || typeof file !== 'string' || !path.isAbsolute(file) || !/\.(png|jpe?g|gif|webp)$/i.test(file)) return null;
     if (!inbox.log(id).some((x) => x.who === 'step' && x.file === file)) return null;
     let size = 0;
     try { size = fs.statSync(file).size; } catch { return null; }
@@ -3394,68 +3482,88 @@ app.whenReady().then(async () => {
   });
   // A file a turn changed, shown in Finder (never opened: it could be a program).
   ipcMain.on('talk-reveal', (_e, id, file) => {
-    if (!id || id !== talkId || typeof file !== 'string' || !path.isAbsolute(file)) return;
+    if (!id || !isOpen(id) || typeof file !== 'string' || !path.isAbsolute(file)) return;
     // (Only files its steps named, git says are changed, or in its folder.)
     if (!inbox.log(id).some((e) => e.who === 'step' && e.file === file) && !gitFiles(id).some((f) => f.path === file) && sessionFile(id, file) !== file) return;
     try { if (fs.statSync(file).isFile()) shell.showItemInFolder(file); } catch { /* gone */ }
   });
   // Another slime picked in the box (its dot, or a shortcut).
   ipcMain.on('talk-switch', (_e, id) => { if (id && id !== talkId && tracker.sessions.has(id) && win) win.webContents.send('open-talk', id); });
-  ipcMain.on('talk-unsend', (_e, id, n) => { if (id && id === talkId) inbox.unsend(id, n); });
-  ipcMain.on('talk-typing', (_e, id) => { if (win && id === talkId) win.webContents.send('typing', id); });
-  ipcMain.on('talk-close', () => hideTalk());
+  ipcMain.on('talk-unsend', (_e, id, n) => { if (id && isOpen(id)) inbox.unsend(id, n); });
+  ipcMain.on('talk-typing', (_e, id) => { if (win && isOpen(id)) win.webContents.send('typing', id); });
+  // ✕ (or Esc, unpinned): a pinned box closes for good, the other one hides.
+  ipcMain.on('talk-close', (e) => {
+    const rec = talkFrom(e.sender);
+    if (rec && rec.pinned) closePinned(rec);
+    else if (rec) hideTalk();
+  });
   // It's shrinking shut: the tail goes first.
-  ipcMain.on('talk-closing', () => { if (win) win.webContents.send('talk-rect', null); });
+  ipcMain.on('talk-closing', (e) => {
+    const rec = talkFrom(e.sender);
+    if (!rec) return;
+    rec.closing = true;
+    sendTalkRect();
+    rec.closing = false;
+  });
+  // The pin in its header.
+  ipcMain.on('talk-pin', (e, on) => pinTalk(talkFrom(e.sender), !!on));
   // Where the tail leaves the box now (its slime moved): the box stays put,
   // but it shrinks shut into its tail, wherever that is.
   ipcMain.on('talk-at', (_e, id, at) => {
-    if (id !== talkId || !talkWin || !talkWin.isVisible() || !talkBox || !at || !Number.isFinite(at.x) || !Number.isFinite(at.y)) return;
+    const rec = talkOf(id);
+    if (!rec || !rec.win.isVisible() || !rec.box || !at || !Number.isFinite(at.x) || !Number.isFinite(at.y)) return;
     const wb = win.getBounds();
-    talkTail = { x: Math.round(wb.x + at.x - talkBox.x), y: Math.round(wb.y + at.y - talkBox.y) };
-    talkWin.webContents.send('talk-tail', talkTail);
+    rec.tail = { x: Math.round(wb.x + at.x - rec.box.x), y: Math.round(wb.y + at.y - rec.box.y) };
+    rec.win.webContents.send('talk-tail', rec.tail);
   });
-  // Dragging one of its edges or corners (in screen coordinates): it
-  // resizes from there, and the size is kept for next time.
-  ipcMain.on('talk-resize', (_e, phase, edge, sx, sy) => {
-    if (!talkWin || !talkWin.isVisible() || !talkBox || !Number.isFinite(sx) || !Number.isFinite(sy) || !/^(n|s|e|w|ne|nw|se|sw)$/.test(edge)) return;
-    if (phase === 'start') { talkResizing = { edge, x: sx, y: sy, box: Object.assign({}, talkBox) }; return; }
-    if (!talkResizing) return;
-    const r = talkResizing;
-    const area = screen.getDisplayMatching({ x: r.box.x, y: r.box.y, width: r.box.w, height: r.box.h }).workArea;
-    talkBox = resizeTalk(r.box, r.edge, sx - r.x, sy - r.y, area, TALK_RESIZE_MIN);
-    applyTalkBounds();
-    if (phase !== 'end') return;
-    talkResizing = null;
-    prefs.talkSizes = Object.assign({}, prefs.talkSizes, { [talkSizeKey(area)]: { w: talkBox.w, h: talkBox.h } });
-    savePrefs();
+  // Dragging one of its edges or corners resizes it from there (the size
+  // is kept for next time); dragging its header ('move') moves it, and it
+  // stays where you put it. In screen coordinates.
+  ipcMain.on('talk-resize', (e, phase, edge, sx, sy) => {
+    const rec = talkFrom(e.sender);
+    if (!rec || !rec.win.isVisible() || !rec.box || !Number.isFinite(sx) || !Number.isFinite(sy) || !/^(n|s|e|w|ne|nw|se|sw|move)$/.test(edge)) return;
+    if (phase === 'start') { talkMoving = { rec, edge, x: sx, y: sy, box: Object.assign({}, rec.box) }; return; }
+    const m = talkMoving;
+    if (!m || m.rec.win !== rec.win) return;
+    if (m.edge === 'move') {
+      const area = screen.getDisplayNearestPoint({ x: Math.round(sx), y: Math.round(sy) }).workArea;
+      rec.box = moveTalk(m.box, sx - m.x, sy - m.y, area);
+    } else {
+      const area = screen.getDisplayMatching({ x: m.box.x, y: m.box.y, width: m.box.w, height: m.box.h }).workArea;
+      rec.box = resizeTalk(m.box, m.edge, sx - m.x, sy - m.y, area, TALK_RESIZE_MIN);
+      if (phase === 'end') { prefs.talkSizes = Object.assign({}, prefs.talkSizes, { [talkSizeKey(area)]: { w: rec.box.w, h: rec.box.h } }); savePrefs(); }
+    }
+    applyBounds(rec);
+    if (phase === 'end') talkMoving = null;
   });
   // The box grew or shrank to fit what's in it (its first measurement is
   // what it opens at).
   ipcMain.on('talk-height', (_e, id, h) => {
-    if (!id || id !== talkId) return;
+    if (!id || (id !== talkId && !pinnedTalks.has(id))) return;
     // A question or plan may need more room than a chat; the screen decides.
     const max = inbox.asks.has(id) ? 900 : TALK_MAX_H;
     const next = Math.round(Math.max(TALK_MIN_H, Math.min(max, Number(h) || talkH())));
     talkHeights.set(id, next);
     // Open, it keeps its size and place (what's in it scrolls): this is
     // how tall it opens, now or next time.
-    if (talkReady) { const show = talkReady; talkReady = null; show(); }
+    if (talkReady && id === talkId) { const show = talkReady; talkReady = null; show(); }
   });
   // If it wasn't decided (gone already, another session), the box is told
   // again what's really waiting.
   // Allow or Deny from the overview, for any session.
   ipcMain.on('talk-answer', (_e, id, key, choice) => {
     if (typeof id !== 'string' || !tracker.sessions.has(id) || (choice !== 'allow' && choice !== 'deny')) return;
-    if (!inbox.decide(id, key, choice)) pushTalk(talkId);
+    if (!inbox.decide(id, key, choice)) pushTalks();
   });
-  ipcMain.on('talk-permission', (_e, id, key, choice, answers) => {
-    if (id && id === talkId && inbox.decide(id, key, choice, answers)) return;
-    if (talkWin) talkWin.webContents.send('talk-refused', key);
-    pushTalk(talkId);
+  ipcMain.on('talk-permission', (e, id, key, choice, answers) => {
+    if (id && isOpen(id) && inbox.decide(id, key, choice, answers)) return;
+    e.sender.send('talk-refused', key);
+    pushTalks();
   });
-  ipcMain.on('talk-terminal', () => {
-    const s = talkId && tracker.sessions.get(talkId);
-    hideTalk();
+  ipcMain.on('talk-terminal', (e) => {
+    const rec = talkFrom(e.sender);
+    const s = rec && tracker.sessions.get(rec.id);
+    if (rec && !rec.pinned) hideTalk(); // (a pinned one stays)
     if (s && !s.id.startsWith('demo-')) goToSession(s);
   });
   ipcMain.on('app-menu', () => appMenu().popup({ window: win }));
@@ -3467,7 +3575,7 @@ app.whenReady().then(async () => {
   if (process.env.BLAUBE_DEMO) runDemo();
   if (TEST) {
     const run = require(path.resolve(TEST));
-    Promise.resolve(run({ app, win, tracker, inbox, owned, startSession, PORT, talk: () => talkWin, talkId: () => talkId, log }))
+    Promise.resolve(run({ app, win, tracker, inbox, owned, startSession, PORT, talk: () => talkWin, talkId: () => talkId, pinned: () => pinnedTalks, log }))
       .then((code) => app.exit(code || 0), (e) => { console.error(e); app.exit(1); });
   }
 });

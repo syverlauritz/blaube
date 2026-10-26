@@ -54,4 +54,12 @@ function resizeTalk(box, edge, dx, dy, area, min) {
   return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
 }
 
-module.exports = { placeTalk, resizeTalk, GAP, PAD };
+// Moving the box (dragged by its header) by (dx, dy): anywhere on the
+// screen `area`, all of it on it (its clear margin may hang off the bottom).
+function moveTalk(box, dx, dy, area) {
+  const x = Math.max(area.x, Math.min(area.x + area.width - box.w, box.x + dx));
+  const y = Math.max(area.y, Math.min(area.y + area.height + PAD - box.h, box.y + dy));
+  return { x: Math.round(x), y: Math.round(y), w: box.w, h: box.h };
+}
+
+module.exports = { placeTalk, resizeTalk, moveTalk, GAP, PAD };

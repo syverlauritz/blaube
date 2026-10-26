@@ -78,7 +78,10 @@ ships that breaks a "must".
   resize it by its edges and corners (the size is kept per screen), and its
   tail slides round the box's whole outline to the edge facing its blob,
   wherever the blob is carried; up against or under the box, the tail
-  shrinks away.
+  shrinks away. A pin in its header keeps it open (several pinned boxes at
+  once, one per session); dragging its header moves it, and it stays where
+  you put it. The tail shows only while the box is near its blob (within
+  two of the blob's radii, fading out by three).
 - Blobs talk out loud in a made-up babble through a talkbox: a buzzy
   synth note shaped by a sweeping vowel filter, with a wah on the attack of
   each syllable only (it opens and stays open; no wah-wah on held notes).

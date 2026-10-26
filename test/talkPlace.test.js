@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { placeTalk, resizeTalk, GAP, PAD } = require('../src/main/talkPlace.js');
+const { placeTalk, resizeTalk, moveTalk, GAP, PAD } = require('../src/main/talkPlace.js');
 
 const area = { x: 0, y: 30, width: 1500, height: 900 };
 
@@ -57,4 +57,12 @@ test('resizing by an edge or corner moves only that edge, within its least size 
   assert.deepEqual(resizeTalk(box, 'n', 0, -900, area, min), { x: 400, y: area.y, w: 600, h: 670 }, 'not above the screen');
   assert.equal(resizeTalk(box, 'e', 2000, 0, area, min).w, area.width - 400, 'not off its right edge');
   assert.equal(resizeTalk(box, 's', 0, 2000, area, min).h, area.y + area.height + PAD - 200, 'its clear margin may hang off the bottom');
+});
+
+test('moved by its header it goes where you drag it, all of it on the screen', () => {
+  const box = { x: 400, y: 200, w: 600, h: 500 };
+  assert.deepEqual(moveTalk(box, 120, -50, area), { x: 520, y: 150, w: 600, h: 500 });
+  assert.deepEqual(moveTalk(box, -900, -900, area), { x: area.x, y: area.y, w: 600, h: 500 });
+  assert.equal(moveTalk(box, 2000, 0, area).x, area.x + area.width - 600);
+  assert.equal(moveTalk(box, 0, 2000, area).y, area.y + area.height + PAD - 500);
 });

@@ -672,6 +672,10 @@
     // White on the slime's colour only where it reads; ink otherwise.
     root.setProperty('--on', contrast(color, '#ffffff') >= 4.5 ? '#fff' : '#1b2440');
     if (s.tail) placeTail(s.tail);
+    kept = !!s.pinned;
+    $('pin').classList.toggle('on', kept);
+    $('pin').setAttribute('aria-pressed', String(kept));
+    $('pin').title = kept ? 'Pinned: it stays open. Click to let it close when you click away' : 'Keep it open (pin it), and move it by its top';
     $('terminal').style.display = s.demo || s.ended || s.owned ? 'none' : '';
     const stop = $('stop');
     stop.hidden = !(s.stoppable && s.state === 'working' && !s.ended);
@@ -2396,7 +2400,7 @@
   });
 
   // Closing shrinks it back into its tail, then hides it.
-  let closing = false;
+  let closing = false, kept = false; // (kept: pinned, it stays open)
   function close() {
     if (closing) return;
     closing = true;
@@ -2409,9 +2413,35 @@
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || e.isComposing) return;
     if (document.body.classList.contains('overview')) return showOverview(false); // back to the chat first
+    if (kept) return; // (pinned, only its ✕ closes it)
     close();
   });
   $('close').addEventListener('click', close);
+  // The pin: pinned, it stays open (clicking away, Esc and other slimes'
+  // boxes leave it be), and several can be open at once.
+  $('pin').addEventListener('click', () => { if (api.pin) api.pin(!kept); });
+  // Dragging its header moves it, anywhere (not from its buttons, fields,
+  // tabs or name).
+  document.querySelector('header').addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !api.resize || e.target.closest('button, input, textarea, select, a, nav, .subname')) return;
+    e.preventDefault();
+    const h = e.currentTarget;
+    h.setPointerCapture(e.pointerId);
+    let last = { x: e.screenX, y: e.screenY };
+    document.body.classList.add('moving');
+    api.resize('start', 'move', last.x, last.y);
+    const move = (m) => { last = { x: m.screenX, y: m.screenY }; api.resize('move', 'move', last.x, last.y); };
+    const up = () => {
+      h.removeEventListener('pointermove', move);
+      h.removeEventListener('pointerup', up);
+      h.removeEventListener('lostpointercapture', up);
+      document.body.classList.remove('moving');
+      api.resize('end', 'move', last.x, last.y);
+    };
+    h.addEventListener('pointermove', move);
+    h.addEventListener('pointerup', up);
+    h.addEventListener('lostpointercapture', up);
+  });
   $('terminal').addEventListener('click', () => api.terminal());
   $('stop').addEventListener('click', () => { if (current && api.stop) { $('stop').disabled = true; api.stop(current.id); } });
   // ⌘. (Ctrl+. elsewhere) stops it too, as cancelling does on a Mac.
