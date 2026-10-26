@@ -489,7 +489,7 @@ function openTalk(id, at) {
   if (talkHiddenId === id && Date.now() - talkHiddenAt < 350) { if (!TEST) activateApp(talkBefore); return; }
   // Pinned: it's open already; to the front with it.
   const kept = pinnedTalks.get(id);
-  if (kept) { kept.win.show(); if (!TEST) kept.win.focus(); raiseStage(); return; }
+  if (kept) { if (TEST) kept.win.showInactive(); else { kept.win.show(); kept.win.focus(); } raiseStage(); return; } // (tests never take your focus)
   makeTalkWin();
   if (talkWin.isVisible() && talkId === id) { hideTalk(); return; }
   if (talkWin.isVisible()) hideTalk(true); // another slime's: it switches over

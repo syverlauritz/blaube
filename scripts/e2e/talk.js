@@ -373,6 +373,12 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, pinned }) 
 			const ax = at.x - (t ? t.edge.x : 0), ay = at.y - (t ? t.edge.y : 0), al = Math.hypot(ax, ay) || 1;
 			out[name] = t && { held, tookS, grab: b.body.grab ? [Math.round(b.body.grab.x), Math.round(b.body.grab.y)] : null, at: [Math.round(at.x), Math.round(at.y)], to: [Math.round(to.x), Math.round(to.y)], box, off, facing: (t.nx * ax + t.ny * ay) / al, nx: t.nx, ny: t.ny, len: t.len, clamped: to.x !== x || to.y !== y };
 		}
+		// Set down beside the box, not on it (dropped from above, it would
+		// sit on the box's top, a ledge, and fall when the box closes).
+		const down = { x: clampX(box.x - 160), y: wb.height - 120 };
+		for (let i = 1; i <= 30; i++) { B.input.move({ clientX: c.x + (down.x - c.x) * i / 30, clientY: c.y + (down.y - c.y) * i / 30 }); await raf(); }
+		c = down;
+		for (let i = 0; i < 40; i++) { B.input.move({ clientX: c.x, clientY: c.y }); await raf(); }
 		B.input.up({ button: 0, clientX: c.x, clientY: c.y });
 		B.ownMouse = false;
 		return out;
