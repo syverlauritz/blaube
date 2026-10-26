@@ -2874,6 +2874,21 @@
   }
 
   // Once in a long while: a fit of hiccups. Each one jolts it up a little.
+  // Fast asleep, a slime now and then mumbles in its sleep, often about
+  // what it was last doing ("…fixed the… zz").
+  function sleepTalk(b) {
+    if (CFG.sleepTalk <= 0 || b.kind === 'child' || (b.sleep || 0) < 0.8) { b.nextMumble = 0; return; }
+    if (!b.nextMumble) { b.nextMumble = time + (25 + Math.random() * 40) / CFG.sleepTalk; return; }
+    if (time < b.nextMumble) return;
+    b.nextMumble = time + (40 + Math.random() * 80) / CFG.sleepTalk;
+    const st = b.status && b.status.text, words = st ? String(st).replace(/[.!?:]+$/, '').split(/\s+/).slice(0, 3).join(' ').toLowerCase() : '';
+    const said = ['mm…', 'five more minutes…', 'mmh… snacks…', '…zz…'];
+    if (words) said.push(`…${words}… zz`, `mm… ${words}…`, `…${words}…`);
+    quip(b, said[Math.floor(Math.random() * said.length)], 2.2);
+    b.mumbleUntil = time + 2.2;
+    b.body.squashTop(-60, DT); // (a little stir)
+  }
+
   function hiccup(b) {
     if (CFG.quirks <= 0 || b.kind === 'child' || b.dying) return;
     if (b.hics) {
@@ -3055,6 +3070,7 @@
     petWorry(b);
     leafPile(b);
     hiccup(b);
+    sleepTalk(b);
     // Hanging over the edge of a window: it clings and shuffles back on.
     const l = b.body.onLedge;
     if (l && !b.body.grab) {
@@ -3190,7 +3206,8 @@
     else if (st === 'idle' && idleFor() > dozeAfter()) { expression = 'sleepy'; mouth = 'flat'; }
     // Saying something by itself (a status bubble): eyes open to tell you.
     // Just hovering doesn't wake it from its work.
-    if (b.bubble && (expression === 'concentrate' || expression === 'sleepy')) { expression = 'normal'; mouth = 'smile'; }
+    if (expression === 'sleepy' && time < (b.mumbleUntil || 0)) mouth = b.mumbleUntil - time > 1.4 && Math.floor(time * 5) % 2 ? 'o' : 'flat'; // (talking in its sleep)
+    else if (b.bubble && (expression === 'concentrate' || expression === 'sleepy')) { expression = 'normal'; mouth = 'smile'; }
     const effort = b.effort;
     let drool = null;
     if (effort === 'low' && expression === 'concentrate') {
