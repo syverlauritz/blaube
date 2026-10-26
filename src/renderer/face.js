@@ -570,6 +570,37 @@
     ctx.restore();
   }
 
+  // Fast asleep, a dream: sheep jumping a fence, one after another, or
+  // what it was last working on.
+  function drawDream(ctx, b, t, W, what) {
+    if (what !== 'sheep') return drawThinking(ctx, b, t, what, W);
+    drawIconBalloon(ctx, b, t, W, true, (x, y, s0) => {
+      const s = s0 * 1.5;
+      y -= s0 * 0.3;
+      ctx.lineCap = ctx.lineJoin = 'round';
+      ctx.lineWidth = s * 0.1;
+      // The fence: two posts and a rail.
+      ctx.beginPath();
+      ctx.moveTo(x - 0.12 * s, y + 0.56 * s); ctx.lineTo(x - 0.12 * s, y + 0.22 * s);
+      ctx.moveTo(x + 0.12 * s, y + 0.56 * s); ctx.lineTo(x + 0.12 * s, y + 0.22 * s);
+      ctx.moveTo(x - 0.22 * s, y + 0.36 * s); ctx.lineTo(x + 0.22 * s, y + 0.36 * s);
+      ctx.stroke();
+      // A sheep going over in a hop, the next one already coming.
+      const k = (t / 1.7) % 1;
+      const sx = x + (k * 1.3 - 0.65) * s, sy = y + (0.38 - Math.sin(Math.min(1, Math.max(0, (k - 0.2) / 0.6)) * Math.PI) * 0.62) * s;
+      ctx.globalAlpha = Math.min(1, Math.min(k, 1 - k) * 6);
+      ctx.fillStyle = '#fff';
+      ctx.lineWidth = s * 0.08;
+      ctx.beginPath();
+      for (const [dx, dy, r] of [[-0.16, 0, 0.14], [0, -0.06, 0.16], [0.15, 0, 0.14], [0, 0.06, 0.14]]) { ctx.moveTo(sx + (dx + r) * s, sy + dy * s); ctx.arc(sx + dx * s, sy + dy * s, r * s, 0, Math.PI * 2); }
+      ctx.stroke(); ctx.fill();
+      ctx.fillStyle = INK;
+      ctx.beginPath(); ctx.ellipse(sx + 0.3 * s, sy - 0.04 * s, 0.09 * s, 0.07 * s, 0, 0, Math.PI * 2); ctx.fill(); // head
+      ctx.beginPath(); ctx.moveTo(sx - 0.12 * s, sy + 0.14 * s); ctx.lineTo(sx - 0.14 * s, sy + 0.26 * s); ctx.moveTo(sx + 0.12 * s, sy + 0.14 * s); ctx.lineTo(sx + 0.14 * s, sy + 0.26 * s); ctx.stroke(); // legs
+      ctx.globalAlpha = 1;
+    });
+  }
+
   // While Claude works: a thought balloon with what it's doing in it. A
   // spinning gear while it thinks; while a tool runs, a sign for what the
   // tool is about (shared/actions.js): a magnifier that scans, a pencil
@@ -987,5 +1018,5 @@
     ctx.closePath();
   }
 
-  root.BlaubeDraw = { setFont, setCrowd, drawHeart, drawNote, drawShadow, drawBody, vary, drawFace, drawGlasses, drawDots, drawThinking, drawZzz, drawFlush, drawSweat, drawPet, drawExclaim, drawLabel, drawBubble, STATE_COLORS };
+  root.BlaubeDraw = { setFont, setCrowd, drawHeart, drawNote, drawShadow, drawBody, vary, drawFace, drawGlasses, drawDots, drawThinking, drawDream, drawZzz, drawFlush, drawSweat, drawPet, drawExclaim, drawLabel, drawBubble, STATE_COLORS };
 })(globalThis);

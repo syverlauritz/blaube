@@ -2314,6 +2314,7 @@
     const v = body.velocity(DT);
     b.capSwing = (b.capSwing || 0) + (-v.x * 0.0015 - (b.capSwing || 0)) * 0.08;
     const w = r * 0.95 * k, ht = r * 0.75 * k, tipX = x + side * w * 0.55 + b.capSwing * r, tipY = y - ht * 0.75;
+    body.lookTop = Math.min(body.lookTop ?? Infinity, y - ht * 1.05); // balloons sit above the cap
     ctx.save();
     ctx.fillStyle = santa ? '#d8333f' : '#5f6fd6';
     ctx.beginPath();
@@ -3102,6 +3103,17 @@
   // Left waiting on you a long while (8 minutes by default), a little rain
   // cloud gathers over its head and it slumps, glum: the one you've kept
   // waiting longest is easy to spot. Point at it and the cloud puffs away.
+  // Fast asleep, now and then it dreams: of what it was last working on, or
+  // of sheep jumping a fence.
+  function dream(b) {
+    if (b.state === 'working' && b.kind === 'mother') { const a = activityOf(b); if (a !== 'thinking') b.lastWork = a; }
+    if (CFG.dreams <= 0 || (b.sleep || 0) < 0.9 || b.kind === 'home') { if ((b.sleep || 0) < 0.5) b.nextDream = undefined; return; }
+    if (b.nextDream === undefined) b.nextDream = time + (6 + Math.random() * 10) / CFG.dreams;
+    if (time < b.nextDream) return;
+    b.dream = { what: b.lastWork && Math.random() < 0.5 ? b.lastWork : 'sheep', until: time + 5 + Math.random() * 3 };
+    b.nextDream = time + (25 + Math.random() * 30) / CFG.dreams;
+  }
+
   // Run the cursor round and round a slime and its eyes follow it round,
   // until (a few laps in) it's seeing stars.
   function circled(b) {
@@ -3554,6 +3566,7 @@
       b.say([{ text: `Still waiting on you (${mins} min)` }, ...(what ? [{ text: what, size: 12 }] : [])], 6, false, false);
     }
     sulk(b);
+    dream(b);
     teeter(b);
     circled(b);
     twitch(b);
@@ -4000,6 +4013,7 @@
       b.faceTurn = { x: face.turnX || 0, y: face.turnY || 0 };
       if (face.expression === 'sleepy' && face.mouth !== 'yawn') D.drawZzz(ctx, b.body, time);
       nightcap(b);
+      if (b.dream && time < b.dream.until && !b.bubble && b !== hovered && (b.sleep || 0) > 0.8) D.drawDream(ctx, b.body, time, W, b.dream.what);
       const sweat = Math.max(ramp(b.fill || 0, CFG.sweatAt, 1), busySweat(b));
       if (sweat > 0) D.drawSweat(ctx, b.body, time, sweat);
       drawBeads(b);
