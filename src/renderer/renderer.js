@@ -2995,6 +2995,75 @@
     if (!others.length) return;
     prankNow(b, others[Math.floor(Math.random() * others.length)]);
   }
+  // Halloween week: a calm slime now and then hops over to another, "trick
+  // or treat!". Mostly it gets a sweet tossed over, catches it and chews
+  // ("nom"); sometimes there's none ("no sweets!"), and then it's a trick:
+  // it pops up tall, "boo!".
+  function trickTreat(b) {
+    if (CFG.trickTreat <= 0 || b.kind !== 'mother') return;
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.frog && !o.tower && !o.keepy && !o.measure && !o.roll && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const g = b.tot;
+    if (g) {
+      const o = g.o, end = () => { b.tot = null; o.totBy = null; };
+      if (!free(b) || !free(o) || drag || time - g.at > 8) { end(); return; }
+      b.nextHop = o.nextHop = time + 1;
+      if (g.stage === 'go') {
+        if (!b.body.onFloor() || b.pendingHop || time - g.at < 0.4) return;
+        const r = b.body.o.radius, c = b.body.centroid(), oc = o.body.centroid();
+        if (Math.abs(oc.x - c.x) > (r + o.body.o.radius) * 1.7) { end(); return; } // (didn't make it over)
+        g.stage = 'ask'; g.t = time;
+        quip(b, 'trick or treat!', 1.6);
+        b.body.squashTop(-r * 8, DT);
+        o.glanceAt = b; o.glanceUntil = time + 1.5;
+        return;
+      }
+      if (g.stage === 'ask' && time - g.t > 1.3) {
+        g.stage = 'answer'; g.t = time;
+        const ob = o.body, bb = b.body, r = ob.o.radius;
+        if (Math.random() < 0.72) {
+          // A sweet: a little lob onto its head.
+          ob.squashTop(-r * 6, DT);
+          const box = ob.bbox(), tb = bb.bbox(), dir = Math.sign((tb.minX + tb.maxX) / 2 - (box.minX + box.maxX) / 2) || 1;
+          const x0 = dir > 0 ? box.maxX - r * 0.3 : box.minX + r * 0.3, y0 = box.minY + r * 0.4;
+          const tx = (tb.minX + tb.maxX) / 2, ty = tb.minY + bb.o.radius * 0.3, grav = CFG.gravity * 0.5, T = 0.6;
+          snowballs.push({ x: x0, y: y0, vx: (tx - x0) / T, vy: (ty - y0 - 0.5 * grav * T * T) / T, grav, from: o, born: time, candy: ['#e8892f', '#8a5cd6', '#e0527a', '#4fb36b'][Math.floor(Math.random() * 4)], spin: (Math.random() - 0.5) * 16 });
+          o.happyUntil = time + 1.2;
+        } else {
+          quip(o, 'no sweets!', 1.2);
+          o.sheepishUntil = time + 1.2;
+          g.trick = true;
+        }
+        return;
+      }
+      if (g.stage === 'answer' && g.trick && time - g.t > 1.1) {
+        const r = b.body.o.radius, away = Math.sign(o.body.centroid().x - b.body.centroid().x) || 1;
+        b.body.squashTop(-r * 22 * Math.min(1.5, CFG.trickTreat), DT);
+        b.booUntil = time + 0.7;
+        quip(b, 'boo!', 1);
+        o.startleUntil = time + 0.6; o.surpriseUntil = time + 0.6;
+        o.body.lean(away * o.body.o.radius * 4, DT);
+        o.hop(away * 160, -340);
+        b.happyUntil = time + 1.8;
+        end();
+        return;
+      }
+      if (g.stage === 'answer' && !g.trick && time - g.t > 2.6) end();
+      return;
+    }
+    if (!spooky() || !free(b) || !b.body.onFloor() || idleFor() > 60 || time < (b.nextTot ?? (b.nextTot = time + (150 + Math.random() * 300) / CFG.trickTreat))) return;
+    b.nextTot = time + (300 + Math.random() * 500) / CFG.trickTreat;
+    const c = b.body.centroid(), r = b.body.o.radius;
+    const others = [...buddies.values()].filter((o) => o !== b && o.kind === 'mother' && !o.totBy && !o.tot && free(o) && o.body.onFloor() && Math.abs(o.body.centroid().y - c.y) < r && Math.abs(o.body.centroid().x - c.x) < r * 10);
+    if (others.length) totNow(b, others[Math.floor(Math.random() * others.length)]);
+  }
+  function totNow(b, o) {
+    const c = b.body.centroid(), r = b.body.o.radius, oc = o.body.centroid();
+    const side = Math.sign(c.x - oc.x) || 1, tx = oc.x + side * (o.body.o.radius + r * 1.1);
+    b.tot = { o, stage: 'go', at: time };
+    o.totBy = b;
+    if (Math.abs(tx - c.x) > r * 0.3) { const v = launch(tx - c.x, r * 0.6); b.body.impulse(-b.body.velocity(DT).x, 0, DT); b.hop(v.vx, v.vy); }
+  }
+
   function prankNow(b, o) {
     // Land just beside it, on the near side.
     const c = b.body.centroid(), r = b.body.o.radius, oc = o.body.centroid();
@@ -3454,6 +3523,11 @@
       const ground = s.y >= floorAt(s.x, s.y) - 3 || s.x < 0 || s.x > W || time - s.born > 3;
       if (!hit && !ground) continue;
       snowballs.splice(i, 1);
+      if (s.candy) {
+        // A sweet: caught, and chewed.
+        if (hit) { hit.nibbling = { f: { x: s.x, y: s.y, a: 0, kind: 'candy' }, at: time }; hit.happyUntil = time + 2; }
+        continue;
+      }
       pops.push({ x: s.x, y: s.y, r: 7, born: time, color: '#dfe7f2', life: 0.45 });
       if (hit) {
         const r = hit.body.o.radius;
@@ -3472,6 +3546,19 @@
   }
   function drawSnowballs() {
     for (const s of snowballs) {
+      if (s.candy) {
+        // A wrapped sweet, tumbling: a round middle and a twist each side.
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.rotate((time - s.born) * s.spin);
+        ctx.fillStyle = s.candy;
+        ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
+        for (const k of [-1, 1]) { ctx.beginPath(); ctx.moveTo(k * 5, 0); ctx.lineTo(k * 12, -5); ctx.lineTo(k * 12, 5); ctx.closePath(); ctx.fill(); }
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.beginPath(); ctx.arc(-2, -2, 2, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        continue;
+      }
       ctx.save();
       ctx.fillStyle = '#fbfdff';
       ctx.strokeStyle = '#c9d3e0';
@@ -3507,7 +3594,8 @@
         n.gone = true;
         const i = flakes.indexOf(n.f);
         if (i >= 0) flakes.splice(i, 1);
-        if (Math.random() < 0.6) quip(b, n.f.kind === 'snow' ? 'brr' : 'nom', 1);
+        if (n.f.kind === 'candy') quip(b, 'yum!', 1);
+        else if (Math.random() < 0.6) quip(b, n.f.kind === 'snow' ? 'brr' : 'nom', 1);
       } else if (body.onFloor() && Math.round(t / 0.18) % 2 === 0 && t < 1.6) body.squashTop(r * 0.5 * 60 * DT, DT); // (chewing)
       return;
     }
@@ -4307,6 +4395,7 @@
     leapfrog(b);
     tower(b);
     measure(b);
+    trickTreat(b);
     snowFight(b);
     parade(b);
     blow(b);
