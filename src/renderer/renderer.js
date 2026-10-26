@@ -2605,6 +2605,19 @@
     }
     while (flips.length && time - flips[0] > 1.5) flips.shift();
     if (CFG.shakeDizzy > 0 && flips.length >= CFG.shakeDizzy) { b.dizzyUntil = time + 1.8; flips.length = 0; feel(b, -0.35); }
+    // Swung gently from side to side, though, it loves it: "wheee!"
+    if (CFG.swing > 0 && Math.abs(g.vx) > 150 && Math.abs(g.vx) < 600) {
+      const dir = Math.sign(g.vx), sw = b.swings || (b.swings = []);
+      if (b.swingDir && b.swingDir !== dir && time - (sw[sw.length - 1] ?? -9) > 0.3) sw.push(time);
+      b.swingDir = dir;
+      while (sw.length && time - sw[0] > 4) sw.shift();
+      if (sw.length >= 3 && !flips.length && time > b.dizzyUntil) {
+        sw.length = 0;
+        b.wheeUntil = time + 1.6 * Math.min(1.5, CFG.swing);
+        feel(b, 0.05);
+        if (time > (b.nextWhee || 0)) { quip(b, 'wheee!', 1.2); b.nextWhee = time + 6; }
+      }
+    }
     b.stillFor = Math.hypot(g.vx, g.vy) < 90 ? (b.stillFor || 0) + DT : 0;
     // (Grumpy with you, it wants down much sooner.)
     const after = CFG.wriggleAfter * ((b.mood || 0) < -0.3 ? 0.3 : 1);
@@ -4036,6 +4049,7 @@
     else if (time < (b.cheerUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
     else if (time < (b.burpUntil || 0)) { expression = 'normal'; mouth = 'o'; } // (*burp*)
     else if (b.hug || (b.huggedBy && b.huggedBy.hug && b.huggedBy.hug.o === b)) { expression = 'happy'; mouth = 'smile'; } // (a hug)
+    else if (body.grab && time < (b.wheeUntil || 0)) { expression = 'happy'; mouth = 'grin'; } // (swung gently)
     else if (body.grab && b.wriggling) { expression = 'worried'; mouth = 'wobble'; }
     else if (body.grab || time < (b.surpriseUntil || 0)) { mouth = 'o'; }
     else if (time < (b.booUntil || 0)) { expression = 'normal'; mouth = 'o'; }
