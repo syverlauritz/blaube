@@ -376,6 +376,10 @@ const SCENES = {
 			{ who: 'claude', text: 'Committed as f3a91c2 “Fix flaky e2e timeout”.', turn: { took: 252e3, steps: 9, files: ['/w/test/e2e.js', '/w/src/main/inbox.js'] } },
 		] },
 	},
+	// The tail, with the slime straight below the box, to the left, to the right.
+	talkTailMid: { sessions: [session('tt', 'blaube', 'idle')], bg: '#f2f0ec', wait: 2500, size: [1000, 640], talk: { key: 'tt', x: 500, inbox: 'ready', log: [{ who: 'claude', text: 'All 66 tests pass.' }] } },
+	talkTailLeft: { sessions: [session('tt', 'blaube', 'idle')], bg: '#f2f0ec', wait: 2500, size: [1000, 640], talk: { key: 'tt', x: 130, inbox: 'ready', log: [{ who: 'claude', text: 'All 66 tests pass.' }] } },
+	talkTailRight: { sessions: [session('tt', 'blaube', 'idle')], bg: '#f2f0ec', wait: 2500, size: [1000, 640], talk: { key: 'tt', x: 870, inbox: 'ready', log: [{ who: 'claude', text: 'All 66 tests pass.' }] } },
 	// /context in a session Blaube started: what fills it, as a bar.
 	talkContext: {
 		sessions: [session('tx', 'blaube', 'done', { color: '#5B8DEF', look: 'antenna' })],
@@ -589,6 +593,8 @@ async function shoot(win, name, scene) {
 async function addTalk(win, scene, name) {
 	const [w, h] = scene.size || [W, H];
 	const t = scene.talk, sess = scene.sessions.find((x) => x.id === t.key) || scene.sessions[0];
+	// (talk.x: stand the slime there first, to see the tail from the side)
+	if (t.x) { await win.webContents.executeJavaScript(`(() => { const b = __blaube.buddies.get(${JSON.stringify(t.key)}); b.body.teleport(${t.x}, ${h - 44 - 90}); })()`); await sleep(1200); }
 	const at = await win.webContents.executeJavaScript(`(() => {
 		const b = __blaube.buddies.get(${JSON.stringify(t.key)}) || [...__blaube.buddies.values()][0];
 		const c = b.body.centroid(), r = b.body.o.radius;
@@ -626,7 +632,7 @@ async function addTalk(win, scene, name) {
 	tw.destroy();
 	// The slime's layer draws the tail from under the bubble to its head.
 	win.webContents.send('fire', 'talk-rect', { id: t.key, x: place.x, y: place.y, w: 384, h: place.h, side: place.tail.side });
-	await sleep(120);
+	await sleep(500); // (the tail grows out first)
 	// The renderer's CSP blocks data: images, so compose in a blank window.
 	const bg = (await win.webContents.capturePage()).toDataURL();
 	const cw = new BrowserWindow({ width: w, height: h, show: false });

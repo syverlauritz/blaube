@@ -56,7 +56,7 @@ ships that breaks a "must".
 - Pets get happy "^ ^" eyes and a heart when they reach their owner.
 - The talk box (a blob's chat) is rounder than the little bubbles: 30 px
   corners on the box, pill-shaped buttons, softly rounded rows and code
-  boxes, a chubby round-tipped tail. All tails are round-tipped and chubby.
+  boxes, a pointed wedge tail (the talk box's; the little bubbles' tails stay chubby and round-tipped).
   All of Blaube's words are in one rounded font, Nunito (chosen over
   Fredoka, Baloo 2 and Quicksand; not up for review), except the name line
   of a bubble or talk box, which uses the display font picked in Settings
