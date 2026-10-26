@@ -2210,6 +2210,8 @@ app.whenReady().then(async () => {
       const st = gitStates.get(id);
       const ask = sess && skillPrompt(text, (st && st.root) || sess.cwd);
       if (ask) { inbox.add(id, { who: 'note', text: `${String(text).trim().split(/\s/)[0]}: asked for that skill` }); text = ask; }
+      const words = !ask && sess && require('./commands').askInWords(text);
+      if (words) { inbox.add(id, { who: 'note', text: `${String(text).trim().split(/\s/)[0].toLowerCase()}: asked in words, as Claude Code’s command asks` }); text = words; }
     }
     // A session Blaube started: straight in, and its turn starts.
     if (owned.has(id)) {

@@ -73,6 +73,10 @@ const ABOUT = {
   export: 'Saves the conversation to Downloads',
   effort: 'How hard it thinks',
   help: 'What works here',
+  init: 'Writes a CLAUDE.md for this project',
+  review: 'Reviews a pull request',
+  'pr-comments': 'The comments on its pull request',
+  'security-review': 'Checks its changes for security problems',
   hooks: 'Opens the settings file hooks go in',
   exit: 'Ends it (a session Blaube started)',
   login: 'Signs Claude Code in, in your browser',
@@ -115,6 +119,23 @@ function skillPrompt(text, cwd = '', home = os.homedir()) {
   if (!k) return '';
   const rest = (m[2] || '').trim();
   return `Use your ${k.name} skill${rest ? ` for this: ${rest}` : '.'}`;
+}
+
+// Claude Code's own commands that are only a prompt (/init, /review...):
+// the same ask in words, so a session in a terminal gets it without its
+// terminal (one Blaube started takes the command itself). '' otherwise.
+const ASKS = {
+  init: 'Look through this codebase and write a CLAUDE.md at its root for future Claude Code sessions here: the commands to build, lint and test (and to run a single test), and the architecture that takes reading several files to understand. Keep it short and specific to this project, with no generic advice. If there is a CLAUDE.md already, improve it instead.',
+  review: (args) => `Review ${args ? `pull request ${args}` : 'a pull request: if I haven’t named one, list the open ones with \`gh pr list\` and ask which'}. Read it with \`gh pr view\` and \`gh pr diff\`, then give a short, specific review: what it does, whether it’s correct, and any bugs, risks or missing tests, each with its file and line.`,
+  'pr-comments': 'Fetch the comments on this branch’s GitHub pull request (`gh pr view --comments`, and the review comments with `gh api repos/{owner}/{repo}/pulls/{number}/comments`) and list them by file and line, with what each one asks for.',
+  'security-review': 'Do a security review of the changes on this branch that aren’t on the main branch yet (git diff against it). Look for injection, mistakes in authentication and access checks, secrets in code, unsafe handling of input, and data exposure. Report only real, exploitable problems, each with its file and line, why it matters and how to fix it.',
+};
+function askInWords(text) {
+  const m = /^\/([a-z][\w-]*)(?:\s+([\s\S]*))?$/i.exec(String(text || '').trim());
+  const a = m && ASKS[m[1].toLowerCase()];
+  if (!a) return '';
+  const args = (m[2] || '').trim();
+  return typeof a === 'function' ? a(args) : args ? `${a}\n\n${args}` : a;
 }
 
 // One of your own commands is only a prompt: what it says, with what you
@@ -170,4 +191,4 @@ function contextNote(r) {
   return { text: `Context: ${pct}% full (${kTokens(used)} of ${kTokens(r.maxTokens)})`, context: { max: r.maxTokens, parts: parts.map((p) => Object.assign(p, { label: `${p.name} ${kTokens(p.tokens)}` })) } };
 }
 
-module.exports = { skills, skillPrompt, slashCommand, commandNames, expand, control, contextNote, kTokens, EFFORTS };
+module.exports = { skills, skillPrompt, askInWords, slashCommand, commandNames, expand, control, contextNote, kTokens, EFFORTS };

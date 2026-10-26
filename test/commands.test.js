@@ -120,3 +120,15 @@ test('/cost and /logout say what they do here', () => {
   assert.equal(names.find((c) => c.name === 'logout').about, 'Signs Claude Code out');
   assert.equal(require('../src/main/commands').kTokens(120000), '120k');
 });
+
+test('/init, /review and the like as the same ask in words', () => {
+  const { askInWords } = require('../src/main/commands.js');
+  assert.match(askInWords('/init'), /^Look through this codebase and write a CLAUDE\.md/);
+  assert.match(askInWords('/init focus on the API'), /\n\nfocus on the API$/);
+  assert.match(askInWords('/review 42'), /^Review pull request 42\. Read it with `gh pr view`/);
+  assert.match(askInWords('/review'), /list the open ones with `gh pr list`/);
+  assert.match(askInWords('/security-review'), /^Do a security review/);
+  assert.match(askInWords('/PR-comments'), /gh pr view --comments/);
+  assert.equal(askInWords('/compact'), '');
+  assert.equal(askInWords('/api returns 500'), '');
+});

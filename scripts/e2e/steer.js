@@ -350,8 +350,8 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'Its MCP servers (claude mcp list)' && !e.running), 30000), '/mcp in a terminal’s session runs claude mcp list right there');
 	// A command only its terminal can take: Bring it here offered, so it needn't.
 	tracker.sessions.get(ID3).pid = process.pid;
-	await type('/pr-comments');
-	check(await until(() => inbox.log(ID3).some((e) => /^\/pr-comments is for Claude Code itself.*Or bring it here/.test(e.text || '')) && box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Bring it here')`)), 'a command only its terminal can take offers Bring it here');
+	await type('/output-style');
+	check(await until(() => inbox.log(ID3).some((e) => /^\/output-style is for Claude Code itself.*Or bring it here/.test(e.text || '')) && box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Bring it here')`)), 'a command only its terminal can take offers Bring it here');
 	tracker.sessions.get(ID3).pid = 0;
 	await type('/help');
 	check(await until(() => inbox.log(ID3).some((e) => /^Talk to it as you would in its terminal/.test(e.text || ''))), '/help says what works here');
@@ -372,6 +372,8 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await box(`(() => { const t = document.getElementById('text'); t.value = ''; t.dispatchEvent(new Event('input')); })()`);
 	await type('/release v2');
 	check(await until(() => inbox.log(ID3).some((e) => e.who === 'you' && e.text === 'Use your release skill for this: v2')), 'and /release v2 asks it for that skill in words, in a terminal’s session');
+	await type('/review 42');
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'you' && /^Review pull request 42\. Read it with `gh pr view`/.test(e.text)) && inbox.log(ID3).some((e) => e.text === '/review: asked in words, as Claude Code’s command asks')), '/review 42 reaches a terminal’s session as the same ask in words, no terminal');
 	await type('/vim');
 	check(await until(() => inbox.log(ID3).some((e) => e.text === '/vim is for Claude Code’s terminal screen; the box doesn’t need it.')), 'a terminal-screen-only command says so');
 	await type('/plugin');
