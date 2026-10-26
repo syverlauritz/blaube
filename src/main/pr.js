@@ -16,10 +16,11 @@ function findGh() {
   return places.find((p) => { try { return fs.statSync(p).isFile(); } catch { return false; } }) || 'gh';
 }
 
-const FIELDS = 'number,url,state,isDraft,title,reviewDecision,statusCheckRollup,baseRefName';
+const FIELDS = 'number,url,state,isDraft,title,reviewDecision,statusCheckRollup,baseRefName,headRefOid';
 
 // `gh pr view --json …` -> { number, url, state, draft, title, review,
-// checks: { pass, fail, pending }, base (the branch it goes into) }, or null.
+// checks: { pass, fail, pending }, base (the branch it goes into), head (its
+// last commit) }, or null.
 function parse(text) {
   let j;
   try { j = JSON.parse(text); } catch { return null; }
@@ -32,7 +33,7 @@ function parse(text) {
     else if (/^(FAILURE|ERROR|TIMED_OUT|CANCELLED|ACTION_REQUIRED|STARTUP_FAILURE)$/.test(how)) checks.fail++;
     else checks.pending++;
   }
-  return { number: j.number, url: String(j.url), state: String(j.state || 'OPEN').toUpperCase(), draft: !!j.isDraft, title: String(j.title || ''), review: String(j.reviewDecision || '').toUpperCase(), checks, base: /^[\w][\w./-]{0,100}$/.test(String(j.baseRefName || '')) && !/\.\./.test(j.baseRefName) ? String(j.baseRefName) : '' };
+  return { number: j.number, url: String(j.url), state: String(j.state || 'OPEN').toUpperCase(), draft: !!j.isDraft, title: String(j.title || ''), review: String(j.reviewDecision || '').toUpperCase(), checks, base: /^[\w][\w./-]{0,100}$/.test(String(j.baseRefName || '')) && !/\.\./.test(j.baseRefName) ? String(j.baseRefName) : '', head: /^[0-9a-f]{40,64}$/.test(String(j.headRefOid || '')) ? String(j.headRefOid) : '' };
 }
 
 // How it stands, in a few words: "PR #12 · checks failing".

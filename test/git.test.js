@@ -328,9 +328,37 @@ test('its pull request merged: Back to main, a step (git agreeing it’s merged)
   assert.deepEqual(q[0], { label: 'Back to main', prompt: 'Its pull request is merged: switches to main, pulls it, and deletes feature/tax', run: 'home' });
   assert.ok(!q.some((x) => x.label === 'Open a PR'), 'no new PR offered for a merged branch');
   assert.equal(command('home', st, merged), 'git switch main && git pull --ff-only && git branch -d feature/tax');
+  const head = 'a'.repeat(40);
+  assert.equal(command('home', st, Object.assign({}, merged, { head }), 'darwin'), `git switch main && git pull --ff-only && { git branch -d feature/tax 2>/dev/null || { [ "$(git rev-parse feature/tax)" = ${head} ] && git branch -D feature/tax; }; }`, 'squashed: deleted if it is just what the PR had');
+  assert.equal(command('home', st, Object.assign({}, merged, { head }), 'win32'), 'git switch main && git pull --ff-only && git branch -d feature/tax');
+  assert.equal(command('home', st, Object.assign({}, merged, { head: 'x; rm -rf ~' }), 'darwin'), 'git switch main && git pull --ff-only && git branch -d feature/tax');
   assert.ok(!quickActions(Object.assign({}, st, { changed: 1 }), 'idle', { pr: merged }).some((x) => x.run === 'home'), 'not with changes');
   assert.ok(!quickActions(st, 'idle', { pr: merged, gitFailed: 'home' }).some((x) => x.run === 'home'));
   assert.ok(!quickActions(st, 'idle', { pr: Object.assign({}, merged, { state: 'OPEN' }) }).some((x) => x.run === 'home'));
   for (const base of ['', 'main; rm -rf ~', '-x', 'a..b']) assert.equal(command('home', st, Object.assign({}, merged, { base })), '', base);
   assert.equal(command('home', Object.assign({}, st, { branch: 'x$(id)' }), merged), '');
+});
+
+test('Back to main deletes a squash-merged branch only while it is just what the PR had', { skip: process.platform === 'win32' }, () => {
+  const { command } = require('../src/main/git');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-home-'));
+  const env = Object.assign({}, process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
+  const g = (...a) => execFileSync('git', a, { cwd: dir, env }).toString().trim();
+  const sh = (cmd) => { try { execFileSync('sh', ['-c', cmd], { cwd: dir, env, stdio: 'pipe' }); return 0; } catch (e) { return e.status; } };
+  const bare = dir + '-remote.git';
+  try {
+    execFileSync('git', ['init', '-q', '--bare', bare]);
+    g('init', '-q', '-b', 'main'); g('remote', 'add', 'origin', bare);
+    fs.writeFileSync(path.join(dir, 'a.txt'), '1\n'); g('add', '.'); g('commit', '-qm', 'base'); g('push', '-q', '-u', 'origin', 'main');
+    const branchOff = (name) => { g('switch', '-q', '-c', name); fs.writeFileSync(path.join(dir, name + '.txt'), 'x\n'); g('add', '.'); g('commit', '-qm', name); return g('rev-parse', 'HEAD'); };
+    const st = (branch) => ({ branch, changed: 0 });
+    const pr = (head) => ({ state: 'MERGED', base: 'main', head });
+    const t1 = branchOff('topic');
+    assert.equal(sh(command('home', st('topic'), pr(t1), 'linux')), 0);
+    assert.equal(g('branch', '--show-current'), 'main');
+    assert.equal(g('branch', '--list', 'topic'), '', 'just what the PR had: deleted');
+    branchOff('other');
+    assert.notEqual(sh(command('home', st('other'), pr('b'.repeat(40)), 'linux')), 0);
+    assert.equal(g('branch', '--list', 'other'), 'other', 'a commit GitHub never saw: kept');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(bare, { recursive: true, force: true }); }
 });

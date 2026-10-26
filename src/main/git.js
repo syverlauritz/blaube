@@ -144,15 +144,19 @@ function diff(root, rel, how, cb) {
 // What Push and Pull run (fixed commands: nothing of yours in them). A
 // branch that was never pushed goes up to origin under its own name.
 // Home: its pull request merged, back to the branch it went into, that
-// brought up to date, and the merged one deleted (only if git agrees it's
-// merged: -d, not -D).
-function command(run, st, pr = null) {
+// brought up to date, and the merged one deleted: if git agrees it's merged
+// (-d), or, squashed on GitHub, if it's still just what the PR had (its
+// last commit the PR's: nothing of yours that GitHub doesn't have).
+function command(run, st, pr = null, platform = process.platform) {
   if (run === 'push') return st && !st.upstream ? 'git push --set-upstream origin HEAD' : 'git push';
   if (run === 'pull') return 'git pull --ff-only';
   if (run === 'home') {
     const base = pr && pr.state === 'MERGED' && branchName(pr.base), branch = st && branchName(st.branch);
     if (!base || !branch || base === branch) return '';
-    return `git switch ${base} && git pull --ff-only && git branch -d ${branch}`;
+    const del = /^[0-9a-f]{40,64}$/.test(String(pr.head || '')) && platform !== 'win32'
+      ? `{ git branch -d ${branch} 2>/dev/null || { [ "$(git rev-parse ${branch})" = ${pr.head} ] && git branch -D ${branch}; }; }`
+      : `git branch -d ${branch}`;
+    return `git switch ${base} && git pull --ff-only && ${del}`;
   }
   return '';
 }
