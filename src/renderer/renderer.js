@@ -2683,6 +2683,22 @@
     b.glanceAt = { spot: p }; b.glanceUntil = time + 1.8;
   }
 
+  // You pick up its task pet: it watches, worried, and hops up after it,
+  // reaching for it.
+  function petWorry(b) {
+    if (CFG.petEmpathy <= 0 || b.kind === 'child' || b.dying || b.body.grab) return;
+    let p = null;
+    for (const q of pets.values()) if (q.owner === b && q.held && !q.dying) { p = q; break; }
+    if (!p) return;
+    b.petWorryUntil = time + 0.6;
+    b.glanceAt = { spot: p }; b.glanceUntil = time + 0.3;
+    const c = b.body.centroid(), r = b.body.o.radius, dx = p.x - c.x, up = c.y - p.y;
+    if (b.body.onFloor() && time > (b.nextReach || 0) && b.state !== 'working' && (up > r * 1.5 || Math.abs(dx) > r * 3)) {
+      b.nextReach = time + 1 + Math.random() * 0.6;
+      b.hop(Math.max(-300, Math.min(300, dx * 0.8)) * Math.min(1.5, CFG.petEmpathy), -(200 + Math.min(200, Math.max(0, up - r))) * Math.min(1.3, CFG.petEmpathy));
+    }
+  }
+
   // On the floor, or sitting still on something (another slime, say).
   const resting = (o) => o.body.onFloor() || (!o.body.grab && Math.hypot(o.body.velocity(DT).x, o.body.velocity(DT).y) < 40);
 
@@ -2907,6 +2923,7 @@
     welcome(b);
     nibble(b);
     nudgePet(b);
+    petWorry(b);
     hiccup(b);
     // Hanging over the edge of a window: it clings and shuffles back on.
     const l = b.body.onLedge;
@@ -3022,6 +3039,7 @@
     else if (b.blow && time > b.blow.at) { expression = 'normal'; mouth = 'o'; } // (blowing a bubble)
     else if (b.nibbling) { expression = 'happy'; mouth = time - b.nibbling.at < 0.5 ? 'o' : Math.round((time - b.nibbling.at) / 0.18) % 2 ? 'grin' : 'flat'; } // (chomp chomp)
     else if (b.patted) { expression = 'happy'; mouth = 'smile'; }
+    else if (time < (b.petWorryUntil || 0)) { expression = 'worried'; mouth = 'o'; }
     else if (time < (b.squirmUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
     else if ((b.shy || 0) > 0.3) { expression = 'normal'; mouth = 'smile'; }
     else if (time < (b.wantsPetsUntil || 0) && time > (b.pettedUntil || 0)) { expression = 'normal'; mouth = 'smile'; }
