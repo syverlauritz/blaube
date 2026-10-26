@@ -355,6 +355,8 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	tracker.sessions.get(ID3).pid = 0;
 	await type('/help');
 	check(await until(() => inbox.log(ID3).some((e) => /^Talk to it as you would in its terminal/.test(e.text || ''))), '/help says what works here');
+	check(await until(() => box(`[...document.querySelectorAll('#inner .note.long')].some((n) => /^Talk to it as you would/.test(n.textContent) && n.offsetHeight > 30 && n.scrollWidth <= n.clientWidth)`)), 'and a long note wraps, all of it readable');
+	await shot('help');
 	await type('/resume');
 	check(await until(() => box(`document.body.classList.contains('overview') && document.getElementById('text').value === ''`)), '/resume opens the overview, where past sessions are picked up');
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);

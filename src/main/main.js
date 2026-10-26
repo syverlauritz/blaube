@@ -2018,7 +2018,7 @@ app.whenReady().then(async () => {
     }
     // "/help": what works here, in words.
     if (/^\/help\s*$/i.test(String(text).trim())) {
-      inbox.add(id, { who: 'note', text: `Talk to it as you would in its terminal. Start with ! to run a command here, # to remember something in CLAUDE.md, @ for its files, / for commands (each says what it does)${owned.has(id) ? '' : '; the ones only its terminal can take go there, or bring it here and they go straight in'}. ⌘0 shows every session, ⌘F finds things, ⌘S saves the conversation, ⌘. stops it.` });
+      inbox.add(id, { who: 'note', text: `Talk to it as you would in its terminal. Start with ! to run a command here, # to remember something in CLAUDE.md, @ for its files, / for commands (each says what it does)${owned.has(id) ? '' : '; the ones only its terminal can take go there, or bring it here and they go straight in'}. ${process.platform === 'darwin' ? '⌘0 shows every session, ⌘F finds things, ⌘S saves the conversation, ⌘. stops it' : 'Ctrl+0 shows every session, Ctrl+F finds things, Ctrl+S saves the conversation, Ctrl+. stops it'}.` });
       return;
     }
     // "/todos": its to-do list, in full.

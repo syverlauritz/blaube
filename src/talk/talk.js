@@ -329,7 +329,8 @@
   function message(m, fresh) {
     if (m.who === 'note') {
       const e = document.createElement('div');
-      e.className = 'note' + (m.error ? ' error' : '');
+      // (A long one, such as /help or /permissions, wraps: it's worth reading.)
+      e.className = 'note' + (m.error ? ' error' : '') + (String(m.text || '').length > 64 ? ' long' : '');
       e.textContent = m.text;
       // (/context: a bar of what fills it, as the terminal draws it.)
       if (m.context && m.context.max) {
