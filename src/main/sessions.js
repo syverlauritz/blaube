@@ -71,6 +71,9 @@ class SessionTracker extends EventEmitter {
       entry: payload._entry || (prev && prev.entry) || '',
       transcript: payload.transcript_path || (prev && prev.transcript) || '',
       pid: payload._pid || (prev && prev.pid) || 0,
+      // Its permission mode, as Claude Code last said ('default',
+      // 'acceptEdits', 'plan'...).
+      mode: typeof payload.permission_mode === 'string' ? payload.permission_mode : (prev && prev.mode) || '',
       project: cwd ? path.basename(cwd.replace(/[\\/]+$/, '')) : 'Claude',
       state: next.state,
       // While working: 'thinking' (the model) or 'tool' (running a tool).
@@ -87,9 +90,6 @@ class SessionTracker extends EventEmitter {
       agents: prev ? prev.agents : [],
       tasks: prev ? prev.tasks : [],
       tasksSeeded: !!(prev && prev.tasksSeeded),
-      // Its permission mode, as Claude Code last said ('default',
-      // 'acceptEdits', 'plan'...).
-      mode: typeof payload.permission_mode === 'string' ? payload.permission_mode : (prev && prev.mode) || '',
       updatedAt: this.now(),
     };
     this.sessions.set(id, session);
