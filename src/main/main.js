@@ -716,9 +716,10 @@ function pushTalk(id, focusField = false) {
 }
 let usageLimits = null; // (see limits.js)
 let noPlanLimits = false; // (Claude Code says there are none: an API key)
+let usageFailed = false; // (asked, and no answer: Couldn't check usage)
 // The snack jar on the stage shows them (see shared/snack.js), and is left
 // where you put it, per screen.
-function sendLimits() { if (win && !win.isDestroyed()) win.webContents.send('limits', { lim: usageLimits, noPlan: noPlanLimits }); }
+function sendLimits() { if (win && !win.isDestroyed()) win.webContents.send('limits', { lim: usageLimits, noPlan: noPlanLimits, checking: !usageLimits && !noPlanLimits && !usageFailed }); }
 const jarSpotNow = () => (prefs.jarSpots && prefs.jarSpots[String(currentDisplay().id)]) || null;
 let signedOutNow = false, signingInNow = () => false; // (Claude Code signed out; signing in now)
 const mcpStates = new Map(); // id -> its MCP servers, for a session Blaube started
@@ -2288,6 +2289,7 @@ app.whenReady().then(async () => {
     }
     const before = JSON.stringify(usageLimits);
     usageLimits = l;
+    usageFailed = noPlanLimits = false;
     if (JSON.stringify(usageLimits) !== before ) { pushTalks(); sendLimits(); }
   };
   if (TEST) global.__blaubeSetLimits = setLimits;
@@ -2298,17 +2300,33 @@ app.whenReady().then(async () => {
     if (id) owned.control(id, { subtype: 'get_usage', skip_behaviors: true }, (ok, r) => { if (ok && r) setLimits(limits.fromUsage(r.rate_limits)); });
   };
   owned.on('result', askUsage);
-  // With none of Blaube's running, a Claude Code of its own is asked (one
-  // that calls no model), when the overview opens: at most every 10 minutes.
-  let lastProbe = 0;
+  // With none of Blaube's running (or nothing heard from them yet), a
+  // Claude Code of its own is asked (one that calls no model): a moment
+  // after starting, then when the overview opens, at most every 10 minutes
+  // (a minute, after one that got no answer).
+  let lastProbe = 0, probing = false;
   const probeUsage = () => {
-    if (TEST || noPlanLimits || owned.list().length || Date.now() - lastProbe < 10 * 60e3) return;
+    if (TEST) { if (!usageFailed) { usageFailed = true; sendLimits(); } return; } // (tests never ask the real Claude Code)
+    if (noPlanLimits || probing || (owned.list().length && usageLimits) || Date.now() - lastProbe < (usageFailed ? 60e3 : 10 * 60e3)) return;
     const bin = owned.findClaude() || owned.shellPath();
-    if (!bin) return;
+    if (!bin) { usageFailed = true; sendLimits(); return; }
     lastProbe = Date.now();
+    probing = true;
+    const done = (r) => {
+      probing = false;
+      const l = limits.fromUsage(r && r.rate_limits);
+      if (l) return setLimits(l);
+      if (r && r.rate_limits_available === false) noPlanLimits = true; // (an API key, really: no plan limits to show)
+      else { usageFailed = true; setTimeout(probeUsage, 61e3).unref(); }
+      sendLimits();
+    };
     usageProbe.probe(bin, (r) => {
-      if (r && r.rate_limits_available === false && !noPlanLimits) { noPlanLimits = true; sendLimits(); } // (an API key: no plan limits to show)
-      setLimits(limits.fromUsage(r && r.rate_limits));
+      // An ANTHROPIC_API_KEY in Blaube's environment (handed down from
+      // wherever it was started: a terminal, a Claude Code session) wins
+      // over your signed-in subscription, and a key has no plan limits:
+      // asked again without it before saying so.
+      if (r && r.rate_limits_available === false && process.env.ANTHROPIC_API_KEY) return usageProbe.probe(bin, done, { withoutKey: true });
+      done(r);
     });
   };
   // Whether Claude Code is signed in (asked when the overview opens, at
@@ -2442,7 +2460,7 @@ app.whenReady().then(async () => {
     }
   }, 5e3).unref();
   if (TEST) global.__blaubeCheckAway = checkAway;
-  setTimeout(probeUsage, 20e3).unref();
+  setTimeout(probeUsage, 2e3).unref();
   setInterval(probeUsage, 15 * 60e3).unref();
   // Its MCP servers, as /mcp shows them: one that couldn't connect shows
   // in its box with Reconnect.

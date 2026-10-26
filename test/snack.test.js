@@ -71,9 +71,33 @@ test('hover lines: how much of each window, and when it resets', () => {
 	assert.equal(snack.lines(lim(1, 0.2), NOW + 3 * H)[1].text, '5 hours: fresh again');
 });
 
-test('hover lines when usage couldn’t be checked', () => {
-	assert.deepEqual(snack.lines(null, NOW).map((l) => l.text), ['Snack jar', 'Couldn’t check usage', 'Blaube hasn’t heard your limits yet']);
-	assert.match(snack.lines(null, NOW, true)[2].text, /API key/);
+test('hover lines when usage isn’t known: still checking, no answer, or an API key', () => {
+	assert.deepEqual(snack.lines(null, NOW, { checking: true }).map((l) => l.text), ['Snack jar', 'Checking usage…']);
+	assert.equal(snack.lines(null, NOW)[1].text, 'Couldn’t check usage');
+	assert.doesNotMatch(snack.lines(null, NOW)[2].text, /API key/);
+	assert.match(snack.lines(null, NOW, { noPlan: true })[2].text, /API key/);
+	// (Known limits win over a stale "checking".)
+	assert.match(snack.lines(lim(0.5, 0.1), NOW, { checking: true })[1].text, /^5 hours: 50% used/);
+});
+
+test('reset times on a 24-hour clock: "20:20", "Fri 09:00" days away', () => {
+	assert.equal(snack.clock(Date.UTC(2026, 9, 26, 20, 20), NOW), '20:20');
+	assert.equal(snack.clock(Date.UTC(2026, 9, 26, 13, 5), NOW), '13:05');
+	assert.match(snack.clock(Date.UTC(2026, 9, 30, 9, 0), NOW), /^\S+ 09:00$/);
+	assert.match(snack.lines(lim(0.62, 0.1), NOW)[1].text, /resets 14:00$/);
+});
+
+test('Claude Code’s newer answer (a subscription): per-model weeks as model_scoped', () => {
+	// (As a Max plan's get_usage answers now: the old per-model fields null.)
+	const rl = { five_hour: { utilization: 56, resets_at: '2026-10-26T14:19:59.856601+00:00' }, seven_day: { utilization: 31, resets_at: '2026-11-02T09:59:59.856621+00:00' }, seven_day_opus: null, seven_day_sonnet: null, model_scoped: [{ display_name: 'Fable', utilization: 4, resets_at: '2026-11-02T10:00:00+00:00' }] };
+	const l = limits.fromUsage(rl);
+	assert.deepEqual(l.windows.map((w) => w.kind), ['five_hour', 'seven_day', 'seven_day_fable']);
+	assert.equal(snack.level(l, NOW).toFixed(2), '0.44');
+	const out = snack.lines(l, NOW).map((x) => x.text);
+	assert.deepEqual(out.slice(0, 2), ['Snack jar · 5-hour limit', '5 hours: 56% used · resets 14:19']);
+	assert.match(out[2], /^Week: 31% used · resets \S+ 09:59$/);
+	assert.match(out[3], /^Fable this week: 4% used · resets \S+ 10:00$/);
+	assert.match(limits.line(l, NOW), /4% of the week \(Fable\)/);
 });
 
 test('from what Claude Code reports (limits.js) all the way to a level', () => {

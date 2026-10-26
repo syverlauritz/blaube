@@ -688,7 +688,7 @@
 
   // The shots script (scripts/shots) opens the window with ?debug to look
   // inside while it plays a scene.
-  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, hearts: () => hearts, now: () => time, sys, spoken, input: { down: (e) => onDown(e), move: (e) => onMove(e), up: (e) => onUp(e) }, ownMouse: false, ghost: (b, o) => ghostNow(b, o), ledges: () => ledges, roomFor: (b) => roomFor(b), mover: () => mover, jar: () => jar, cookies: () => cookies, throwCookie: (key) => throwCookie(key ? buddies.get(key) : undefined), jarLines: () => Snack.lines(jar.lim, Date.now(), jar.noPlan), jarOn: () => jarOn(), mouthAt: (b) => mouthAt(b) };
+  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, hearts: () => hearts, now: () => time, sys, spoken, input: { down: (e) => onDown(e), move: (e) => onMove(e), up: (e) => onUp(e) }, ownMouse: false, ghost: (b, o) => ghostNow(b, o), ledges: () => ledges, roomFor: (b) => roomFor(b), mover: () => mover, jar: () => jar, cookies: () => cookies, throwCookie: (key) => throwCookie(key ? buddies.get(key) : undefined), jarLines: () => Snack.lines(jar.lim, Date.now(), jar), jarOn: () => jarOn(), mouthAt: (b) => mouthAt(b) };
   const petSize = () => 34 * CFG.size;
 
   function syncPets(sessions) {
@@ -931,10 +931,10 @@
 	// worried; empty (the limit hit), they look hungry or nap until it
 	// resets, and it fills up again with cookies tumbling in.
 	const Snack = globalThis.BlaubeSnack, Jar = globalThis.BlaubeJar;
-	const jar = { x: 0, y: 0, vx: 0, vy: 0, angle: 0, va: 0, held: null, placed: false, spot: null, lim: null, noPlan: false, level: null, shown: 1, lid: 0, lidV: 0, lidOpenUntil: 0, rattle: 0, nextCookie: 0, lastCookie: -1e9, checkAt: 0, refillUntil: 0, ledge: null, still: 0, saved: null, hoverSeen: -9, body: null };
+	const jar = { x: 0, y: 0, vx: 0, vy: 0, angle: 0, va: 0, held: null, placed: false, spot: null, lim: null, noPlan: false, checking: true, level: null, shown: 1, lid: 0, lidV: 0, lidOpenUntil: 0, rattle: 0, nextCookie: 0, lastCookie: -1e9, checkAt: 0, refillUntil: 0, ledge: null, still: 0, saved: null, hoverSeen: -9, body: null };
 	const cookies = [], crumbs = [], tumbles = [];
 	const jarOn = () => CFG.snackJar !== 'Off';
-	const jarH = () => 92 * CFG.size, jarW = () => jarH() * 0.78;
+	const jarH = () => 150 * CFG.size, jarW = () => jarH() * 0.78;
 	// For its hover bubble, which hangs off something body-shaped.
 	jar.body = { centroid: () => ({ x: jar.x, y: jar.y - jarH() / 2 }), bbox: () => ({ minX: jar.x - jarW() / 2, maxX: jar.x + jarW() / 2, minY: jar.y - jarH() * 1.04, maxY: jar.y }), lookTop: null };
 
@@ -950,6 +950,7 @@
 		const before = jar.lim;
 		jar.lim = (m && m.lim) || null;
 		jar.noPlan = !!(m && m.noPlan);
+		jar.checking = !!(m && m.checking);
 		jar.checkAt = 0;
 		// Tokens being spent: a cookie's due soon (at most one every 45 s).
 		if (Snack.rose(before, jar.lim) && time - jar.lastCookie > 45) jar.nextCookie = Math.min(jar.nextCookie, time + 3 + Math.random() * 10);
@@ -1101,7 +1102,7 @@
 		const from = Jar.mouthOf({ x: jar.x, y: jar.y, w: jarW(), h: jarH() }), m = mouthAt(to);
 		const T = 0.85 + Math.min(0.5, Math.hypot(m.x - from.x, m.y - from.y) / 1600);
 		const G = 1500; // (a lower gravity than the slimes': a nice high arc)
-		const k = { x: from.x, y: from.y, x0: from.x, y0: from.y, m0: m, vx: (m.x - from.x) / T, vy: (m.y - from.y - 0.5 * G * T * T) / T, G, a: 0, va: (m.x > from.x ? 1 : -1) * 9, born: time, T, to, r: jarW() * 0.19 };
+		const k = { x: from.x, y: from.y, x0: from.x, y0: from.y, m0: m, vx: (m.x - from.x) / T, vy: (m.y - from.y - 0.5 * G * T * T) / T, G, a: 0, va: (m.x > from.x ? 1 : -1) * 9, born: time, T, to, r: jarW() * 0.13 };
 		cookies.push(k);
 		to.snack = { stage: 'catch', cookie: k, at: time };
 		jar.lidV += 7;
@@ -1180,7 +1181,7 @@
 	// In front of the slimes: what's flying.
 	function drawSnacks() {
 		if (!jarOn()) return;
-		for (const c of tumbles) if (time >= c.at) Jar.drawCookie(ctx, c.x, c.y, jarW() * 0.15, c.a);
+		for (const c of tumbles) if (time >= c.at) Jar.drawCookie(ctx, c.x, c.y, jarW() * 0.13, c.a);
 		for (const k of cookies) {
 			// (shrinking into its mouth at the very end)
 			const t = time - k.born, s = k.to && k.to.snack && k.to.snack.cookie === k ? Math.min(1, Math.max(0.35, (k.T - t) / 0.15)) : 1;
@@ -6296,7 +6297,7 @@
       }
     }
 		// Hovering the snack jar: your usage, in a status bubble.
-		if (jarOn() && jar.placed && time - jar.hoverSeen < 0.35 && !hovered) D.drawBubble(ctx, jar.body, Snack.lines(jar.lim, Date.now(), jar.noPlan), 1, W, false);
+		if (jarOn() && jar.placed && time - jar.hoverSeen < 0.35 && !hovered) D.drawBubble(ctx, jar.body, Snack.lines(jar.lim, Date.now(), jar), 1, W, false);
     if (CFG.debugOverlay) drawDebug(list);
   }
 
