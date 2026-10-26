@@ -470,6 +470,23 @@ function glanceNow(o) {
   });
 }
 
+// Sessions that are gone for good (not just ended: forgotten by the
+// tracker) leave nothing behind, however many come and go. Returns where
+// anything was still kept (for the load check, scripts/e2e/many.js).
+let sweepTimer = null;
+function sweepSoon() { if (!sweepTimer) sweepTimer = setTimeout(() => { sweepTimer = null; sweep(); }, 2000); }
+function sweep() {
+  const live = (id) => tracker.sessions.has(id) || owned.has(id) || (id === talkId && !!talkWin && !talkWin.isDestroyed() && talkWin.isVisible());
+  for (const id of [...inbox.logs.keys(), ...inbox.todos.keys(), ...inbox.steerable, ...inbox.typed.keys()]) if (!live(id)) inbox.forget(id);
+  const maps = { gitStates, looked, glances, talkHeights, notified, doing, errorCounts };
+  for (const m of Object.values(maps)) for (const id of [...m.keys()]) if (!live(id)) m.delete(id);
+  for (const [k, at] of [...lastBubble]) if (Date.now() - at > 60e3) lastBubble.delete(k);
+  while (agentDescriptions.size > 200) agentDescriptions.delete(agentDescriptions.keys().next().value);
+  return Object.entries(maps).filter(([, m]) => [...m.keys()].some((id) => !live(id))).map(([name]) => name)
+    .concat([...inbox.logs.keys()].some((id) => !live(id)) ? ['inbox'] : []);
+}
+if (TEST) global.__blaubeSweep = sweep;
+
 // --- Sessions Blaube starts itself (owned.js) ----------------------------------
 
 // Starts Claude Code in `cwd`, with no terminal: its slime pops out with
@@ -1208,6 +1225,7 @@ app.whenReady().then(async () => {
     if (c && c.to === 'gone' && c.session && inbox.logs.has(c.session.id) && !owned.has(c.session.id)) inbox.observe({ session_id: c.session.id, hook_event_name: 'SessionEnd' });
   });
   inbox.on('change', (id) => pushTalk(id));
+  tracker.on('change', sweepSoon);
   // A message from the slime went in: its turn starts, as if typed.
   // One went in at its next step, mid-turn: it nods, as when you type.
   inbox.on('heard', (id) => { if (win) win.webContents.send('nod', id); });

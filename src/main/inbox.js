@@ -320,6 +320,13 @@ class Inbox extends EventEmitter {
     }
   }
 
+  // A session that's gone for good: nothing is kept for it.
+  forget(id) {
+    if (this.waiters.has(id) || this.asks.has(id) || this.owned.has(id)) return false; // (still talking to it)
+    for (const m of [this.queue, this.logs, this.typed, this.todos, this.reachable, this.steerable, this.stops]) m.delete(id);
+    return true;
+  }
+
   // Everything about a session moves to its new id.
   rename(from, to) {
     for (const m of [this.waiters, this.queue, this.logs, this.asks, this.typed, this.todos]) if (m.has(from)) { m.set(to, m.get(from)); m.delete(from); }

@@ -535,3 +535,15 @@ test('a message added mid-turn doesn’t start a new turn: the reply counts ever
   const reply = inbox.log('s1').find((e) => e.who === 'claude');
   assert.deepEqual(reply.turn, { took: 120e3, steps: 3, files: ['/w/tax.js', '/w/tax.test.js'] });
 });
+
+test('a forgotten session leaves nothing behind, unless it’s still waiting on something', () => {
+  const inbox = new Inbox();
+  const p = { session_id: 's1', hook_event_name: 'PostToolUse', tool_name: 'TodoWrite', tool_input: { todos: [{ content: 'a', status: 'pending' }] } };
+  inbox.observe(p); inbox.step(p, true);
+  inbox.send('s1', 'hi');
+  inbox.observe({ session_id: 's1', hook_event_name: 'SessionEnd' });
+  assert.equal(inbox.forget('s1'), true);
+  for (const m of [inbox.queue, inbox.logs, inbox.todos, inbox.steerable, inbox.reachable, inbox.stops, inbox.typed]) assert.equal(m.has('s1'), false);
+  inbox.wait('s2', () => true);
+  assert.equal(inbox.forget('s2'), false, 'its inbox hook is still waiting');
+});

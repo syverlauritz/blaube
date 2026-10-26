@@ -153,6 +153,7 @@ npm run dist:mac         # build a .dmg (on macOS; ad-hoc signed, never uses you
 npm run build:mac:local  # just build dist/mac-*/Blaube.app
 npm run dist:win         # build an installer (on Windows)
 BLAUBE_TEST=scripts/e2e/steer.js BLAUBE_PORT=47873 npx electron .  # the real app, invisible: steps, Stop, mid-turn messages, slash commands, the overview (no tokens)
+BLAUBE_TEST=scripts/e2e/many.js BLAUBE_PORT=47874 npx electron .   # load: a dozen busy sessions at once, and nothing kept once they’re gone
 node scripts/make-icons.js  # re-render the icons (needs playwright)
 ```
 
