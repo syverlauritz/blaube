@@ -171,7 +171,7 @@ process.stdin.on('end', () => process.exit(0)); process.stdin.resume();
   owned.end(to);
 });
 
-test('Claude Code trying again, or falling back to another model, is passed on', async (t) => {
+test('Claude Code trying again, falling back to another model, or remembering something, is passed on', async (t) => {
   if (process.platform === 'win32') return t.skip('a script as the binary');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-owned-'));
   const bin = path.join(dir, 'claude');
@@ -179,14 +179,16 @@ test('Claude Code trying again, or falling back to another model, is passed on',
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
 out({ type: 'system', subtype: 'api_retry', attempt: 2, max_retries: 10, retry_delay_ms: 4000, error_status: 529, error: 'overloaded' });
 out({ type: 'system', subtype: 'model_fallback', content: 'Opus is overloaded, so this turn uses Sonnet.', originalModel: 'claude-opus', fallbackModel: 'claude-sonnet' });
+out({ type: 'system', subtype: 'memory_saved', writtenPaths: ['/home/me/.claude/memory/pnpm.md'] });
 process.stdin.on('end', () => process.exit(0)); process.stdin.resume();
 `, { mode: 0o755 });
   const owned = new Owned(() => bin);
   const got = [];
   owned.on('retry', (id, r) => got.push(['retry', r]));
   owned.on('fallback', (id, f) => got.push(['fallback', f]));
+  owned.on('remembered', (id, files) => got.push(['remembered', files]));
   const id = owned.start(dir);
-  for (let i = 0; i < 100 && got.length < 2; i++) await new Promise((r) => setTimeout(r, 20));
-  assert.deepEqual(got, [['retry', { attempt: 2, max: 10, delay: 4000, status: 529, error: 'overloaded' }], ['fallback', { text: 'Opus is overloaded, so this turn uses Sonnet.', from: 'claude-opus', to: 'claude-sonnet' }]]);
+  for (let i = 0; i < 100 && got.length < 3; i++) await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(got, [['retry', { attempt: 2, max: 10, delay: 4000, status: 529, error: 'overloaded' }], ['fallback', { text: 'Opus is overloaded, so this turn uses Sonnet.', from: 'claude-opus', to: 'claude-sonnet' }], ['remembered', ['/home/me/.claude/memory/pnpm.md']]]);
   owned.end(id);
 });

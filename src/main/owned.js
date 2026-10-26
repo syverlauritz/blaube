@@ -132,6 +132,7 @@ class Owned extends EventEmitter {
     // Claude's API busy (overloaded, rate limited): Claude Code tries again
     // by itself; and when it falls back to another model, it says why.
     if (m.type === 'system' && m.subtype === 'api_retry') this.emit('retry', id, { attempt: Number(m.attempt) || 0, max: Number(m.max_retries) || 0, delay: Number(m.retry_delay_ms) || 0, status: m.error_status || null, error: String(m.error || '') });
+    if (m.type === 'system' && m.subtype === 'memory_saved' && Array.isArray(m.writtenPaths) && m.writtenPaths.length) this.emit('remembered', id, m.writtenPaths.map(String));
     if (m.type === 'system' && m.subtype === 'model_fallback') this.emit('fallback', id, { text: String(m.content || ''), from: String(m.originalModel || m.original_model || ''), to: String(m.fallbackModel || m.fallback_model || '') });
     if (m.type === 'rate_limit_event' && m.rate_limit_info) this.emit('limits', m.rate_limit_info, id); // (your usage limits, see limits.js)
     // Claude Code's own answer to a command (not Claude's): "No messages to compact".
