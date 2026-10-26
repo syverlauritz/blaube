@@ -497,6 +497,17 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => inbox.log(ID3).some((e) => e.who === 'note' && /^npm run dev stopped \(code 1\)/.test(e.text) && e.runFailed), 30000), 'a dev server that crashes says so');
 	check(await until(() => box(`(() => { const b = document.querySelector('#quick button'); return !!b && b.textContent === 'Fix it' && /port 3000 in use/.test(b.title); })()`)), 'with Fix it, its last lines going along');
 	check(await until(() => box(`![...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Try again')`)), 'and it isn’t taken for Claude’s own error');
+	// Packages not installed (a fresh clone, or a pull brought new ones): Install packages, right there.
+	fs.mkdirSync(path.join(repo, 'dep'), { recursive: true });
+	fs.writeFileSync(path.join(repo, 'dep', 'package.json'), JSON.stringify({ name: 'dep', version: '1.0.0' }));
+	fs.writeFileSync(path.join(repo, '.npmrc'), 'offline=true\naudit=false\nfund=false\n');
+	fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ name: 'tax', version: '1.0.0', dependencies: { dep: 'file:./dep' } }));
+	fs.writeFileSync(path.join(repo, 'package-lock.json'), JSON.stringify({ name: 'tax', version: '1.0.0', lockfileVersion: 3, requires: true, packages: {} }));
+	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Install packages' && b.title === 'Runs npm install right here')`), 10000), 'packages not installed yet: Install packages');
+	await box(`[...document.querySelectorAll('#quick button')].find((b) => b.textContent === 'Install packages').click()`);
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'Installed its packages (npm install)' && e.ok && !e.running) && fs.existsSync(path.join(repo, 'node_modules', 'dep')), 60000), 'a tap installs them, a step with what npm printed, no model call');
+	check(await until(() => box(`![...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Install packages')`), 10000), 'and it isn’t offered again');
+	for (const f of ['dep', '.npmrc', 'package-lock.json', 'node_modules']) fs.rmSync(path.join(repo, f), { recursive: true, force: true });
 	fs.rmSync(path.join(repo, 'package.json')); fs.rmSync(path.join(repo, 'server.js'));
 	// Files named in a reply open right in the box; a long reply's rest is a tap away.
 	const edLog = repo + '-editor.txt', fakeEd = repo + '-code.sh';

@@ -59,3 +59,29 @@ test('one that fails says so with its code', { skip: process.platform === 'win32
     assert.match(r.out, /boom/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('packages need installing: no node_modules, or older than its lockfile', () => {
+  const { needsInstall } = require('../src/main/runs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-inst-'));
+  const at = (f, s) => { const t = new Date(Date.now() + s * 1000); fs.utimesSync(path.join(dir, f), t, t); };
+  try {
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ dependencies: { left: '1' } }));
+    assert.equal(needsInstall(dir), '', 'no lockfile here: maybe a package in a workspace');
+    fs.writeFileSync(path.join(dir, 'package-lock.json'), '{}');
+    assert.equal(needsInstall(dir), 'npm install', 'never installed');
+    fs.mkdirSync(path.join(dir, 'node_modules'));
+    fs.writeFileSync(path.join(dir, 'node_modules', '.package-lock.json'), '{}');
+    at('package-lock.json', -60);
+    assert.equal(needsInstall(dir), '', 'installed since');
+    at('package-lock.json', 60);
+    assert.equal(needsInstall(dir), 'npm install', 'a pull brought a newer lockfile');
+    fs.rmSync(path.join(dir, 'package-lock.json'));
+    fs.writeFileSync(path.join(dir, 'pnpm-lock.yaml'), '');
+    at('pnpm-lock.yaml', -60); at('node_modules', -120);
+    assert.equal(needsInstall(dir), 'pnpm install', 'pnpm: its marker missing, node_modules older');
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { dev: 'x' } }));
+    assert.equal(needsInstall(dir), '', 'nothing to install');
+    fs.writeFileSync(path.join(dir, 'package.json'), 'not json');
+    assert.equal(needsInstall(dir), '');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

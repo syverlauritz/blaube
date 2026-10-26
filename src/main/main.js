@@ -512,6 +512,7 @@ function pushTalk(id, focusField = false) {
       failedTests: failedTests(inbox.log(id)),
       gitFailed: gitFailed(inbox.log(id)),
       runFailed: require('./inbox').runFailed(inbox.log(id)),
+      install: s.cwd && !installingPackages.has(id) ? runs.needsInstall(s.cwd) : '',
       pr: prStates.get(id) || null,
       context: contextOf(id),
     }),
@@ -545,6 +546,7 @@ function carryFor(id, now = Date.now()) {
 let talkPicking = false; // (a file dialog from the box is open: it stays)
 let hubPast = [], hubFolders = [], hubCache = null; // what the overview last offered
 const gitStates = new Map(); // session id -> its last git status (or null: not a repository)
+const installingPackages = new Set(); // sessions whose packages are being installed from the box
 const discarded = new Map(); // session id -> { root, rel }: the file whose changes you last discarded in its box
 const prStates = new Map(); // session id -> its branch's pull request, as gh last said (or null)
 // Its git line: the branch and what's changed, and how its pull request stands.
@@ -2658,7 +2660,7 @@ app.whenReady().then(async () => {
   // (What you ran with ! in a session's box, for its next message.)
   // `as`: what to call it, for one of Claude Code's own (its output is for
   // you, so it doesn't go along with your next message).
-  function runForSession(id, cmd, as = '', then = () => {}, env = null) {
+  function runForSession(id, cmd, as = '', then = () => {}, env = null, timeout = 120e3) {
     const s = tracker.sessions.get(id);
     if (!s || !s.cwd || !cmd) return;
     const entry = inbox.add(id, { who: 'step', text: as || `You ran ${cmd.length > 60 ? cmd.slice(0, 59) + '…' : cmd}`, ok: true, kind: classify('Bash', { command: cmd }), detail: `$ ${cmd}\n…`, cmd: cmd.slice(0, 200), running: true });
@@ -2675,7 +2677,7 @@ app.whenReady().then(async () => {
       }
       inbox.emit('change', id);
       then(code, shown, entry);
-    }, env ? { env } : {});
+    }, Object.assign({ timeout }, env ? { env } : {}));
     return entry;
   }
   replyTo = sendMessage;
@@ -2695,6 +2697,20 @@ app.whenReady().then(async () => {
       git.status(s.cwd, (now) => { gitStates.set(id, now); pushTalk(id); });
     }, { GIT_TERMINAL_PROMPT: '0' });
     if (entry) entry.gitRun = run;
+  });
+  // Install packages, from its quick actions: npm install (or pnpm, yarn,
+  // bun, as its lockfile says) right there, a step, up to ten minutes.
+  ipcMain.on('talk-install', (_e, id) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    const cmd = s && s.cwd && s.state !== 'working' && s.state !== 'waiting' && !installingPackages.has(id) && runs.needsInstall(s.cwd);
+    if (!cmd) return;
+    installingPackages.add(id);
+    runForSession(id, cmd, `Installed its packages (${cmd})`, (code) => {
+      installingPackages.delete(id);
+      if (code === 0 && win) win.webContents.send('nod', id);
+      pushTalk(id);
+    }, null, 10 * 60e3);
+    pushTalk(id);
   });
   // Stops a background task: in a session Blaube started, asked of Claude
   // Code itself (stop_task); in a terminal's, the processes writing its

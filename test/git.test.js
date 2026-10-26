@@ -281,3 +281,9 @@ test('nothing committed yet: nothing to discard back to, said so', async () => {
     assert.equal(fs.existsSync(path.join(dir, 'n.md')), true);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('packages to install: Install packages, run right there', () => {
+  const q = quickActions(null, 'idle', { install: 'pnpm install' });
+  assert.deepEqual(q[0], { label: 'Install packages', prompt: 'Runs pnpm install right here', install: true });
+  assert.equal(quickActions(null, 'working', { install: 'npm install' }).length, 0);
+});

@@ -42,7 +42,8 @@ const MAIN = /^(main|master|trunk|develop)$/;
 // command that failed in it, context: how full its context is (%),
 // apiError: its last turn ended on an API error; pr: its branch's pull
 // request (pr.js); gitFailed: 'push' or
-// 'pull' when that's what git last failed at here; carryAt: { at, label, set }
+// 'pull' when that's what git last failed at here; install: the command
+// that installs its packages when they need it (runs.needsInstall); carryAt: { at, label, set }
 // when that was a usage limit that lifts then (set: it'll carry on by itself) }.
 function quickActions(st, state, more = {}) {
   if (state === 'working' || state === 'waiting') return [];
@@ -62,6 +63,9 @@ function quickActions(st, state, more = {}) {
   // lines go along.)
   if (more.runFailed) out.push({ label: 'Fix it', prompt: `\`${more.runFailed.command}\` stopped with an error. Its last lines:\n\n\`\`\`\n${more.runFailed.tail}\n\`\`\`\n\nFind out why and fix it, then tell me what was wrong.` });
   if (more.failedTests) out.push({ label: 'Fix the tests', prompt: `The tests failed (\`${more.failedTests}\`). Fix them, then run them again and tell me what was wrong.` });
+  // (Its packages aren't installed, or a pull brought new ones: installed
+  // right there, no model call.)
+  if (more.install) out.push({ label: 'Install packages', prompt: `Runs ${more.install} right here`, install: true });
   const n = st ? st.changed + st.untracked : 0;
   if (st && st.conflicts) out.push({ label: 'Fix conflicts', prompt: 'There are merge conflicts. Resolve them, keeping both sides’ intent, then tell me what you chose.' });
   if (n) out.push({ label: 'Commit', prompt: 'Commit the current changes with a clear message (split them into a few commits if they are unrelated).' });

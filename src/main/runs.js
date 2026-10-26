@@ -38,6 +38,26 @@ function manager(cwd) {
   return has('pnpm-lock.yaml') ? 'pnpm' : has('yarn.lock') ? 'yarn' : has('bun.lockb') || has('bun.lock') ? 'bun' : 'npm';
 }
 
+// Whether its packages need installing: its node_modules is missing, or
+// older than its lockfile (a pull brought new ones). The command that
+// installs them (`npm install`), or ''. Only where its lockfile is (not
+// a package inside a workspace, whose packages are installed above it).
+const LOCKS = { npm: 'package-lock.json', pnpm: 'pnpm-lock.yaml', yarn: 'yarn.lock' };
+const MARKS = { npm: '.package-lock.json', pnpm: '.modules.yaml', yarn: '.yarn-integrity' };
+function needsInstall(cwd) {
+  const mtime = (f) => { try { return fs.statSync(path.join(cwd, f)).mtimeMs; } catch { return 0; } };
+  const pm = manager(cwd);
+  const lock = pm === 'bun' ? Math.max(mtime('bun.lockb'), mtime('bun.lock')) : mtime(LOCKS[pm]);
+  if (!lock) return '';
+  let pkg;
+  try { pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8')); } catch { return ''; }
+  const deps = (k) => pkg && pkg[k] && typeof pkg[k] === 'object' ? Object.keys(pkg[k]).length : 0;
+  if (!deps('dependencies') && !deps('devDependencies')) return '';
+  const nm = mtime('node_modules');
+  const mark = (MARKS[pm] && mtime(path.join('node_modules', MARKS[pm]))) || (pm === 'yarn' && mtime(path.join('node_modules', '.yarn-state.yml'))) || nm;
+  return !nm || lock > mark + 1000 ? `${pm} install` : '';
+}
+
 // The ones running: id -> { id, session, cwd, name, command, out, url, proc }.
 const KEEP = 64 << 10;
 const running = new Map();
@@ -98,4 +118,4 @@ function output(id) {
 // Its last line that says something, for "stopped" notes.
 function lastLine(text) { return String(text || '').replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').split('\n').map((l) => l.trim()).filter(Boolean).pop() || ''; }
 
-module.exports = { scripts, manager, start, stop, stopAll, sessions, list, output, lastLine, events, LONG };
+module.exports = { needsInstall, scripts, manager, start, stop, stopAll, sessions, list, output, lastLine, events, LONG };
