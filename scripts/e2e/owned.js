@@ -407,6 +407,25 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
 	owned.end(LID);
 
+	// Clone a repository, then a session in it: no terminal for the clone.
+	const gitSrc = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-src-')), 'tiny');
+	fs.mkdirSync(gitSrc);
+	require('node:child_process').execFileSync('git', ['init', '-q', gitSrc]);
+	require('node:child_process').execFileSync('git', ['-C', gitSrc, '-c', 'user.email=a@b', '-c', 'user.name=a', 'commit', '-q', '--allow-empty', '-m', 'x']);
+	global.__blaubeCloneParent = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-parent-'));
+	const CLID = startSession(dir);
+	check(await until(() => talkId() === CLID, 8000), 'another session starts');
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
+	check(await until(() => box(`[...document.querySelectorAll('#overview .chips button')].some((b) => b.textContent === 'Clone a repository…')`)), 'the overview offers Clone a repository…');
+	const cloneIt = (what) => box(`(() => { const b = [...document.querySelectorAll('#overview .chips button')].find((x) => x.textContent === 'Clone a repository…'); if (b) b.click(); const f = document.querySelector('#overview .cloneform'); f.querySelector('input').value = ${JSON.stringify('x')}.replace('x', ${JSON.stringify(what)}); f.requestSubmit(); })()`);
+	await cloneIt('fix the login bug');
+	check(await until(() => box(`(document.querySelector('#overview .clonesaid') || {}).textContent === 'That doesn’t look like a repository: paste its address, or owner/repo for GitHub'`)), 'something that isn’t a repository says so');
+	await cloneIt('file://' + gitSrc);
+	const clonedTo = path.join(global.__blaubeCloneParent, 'tiny');
+	check(await until(() => fs.existsSync(path.join(clonedTo, '.git')) && owned.list().some((x) => (tracker.sessions.get(x) || {}).cwd === clonedTo), 10000), 'a repository is cloned next to your projects, and a session starts in it');
+	owned.end(CLID);
+	for (const x of owned.list()) if ((tracker.sessions.get(x) || {}).cwd === clonedTo) owned.end(x);
+
 	// Claude Code's own defaults for new sessions, from Blaube's menu.
 	global.__blaubeCcHome = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-cchome-'));
 	const ccMenu = () => global.__blaubeTrayMenu().items.find((i) => i.label === 'Claude Code defaults');

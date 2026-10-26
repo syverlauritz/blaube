@@ -811,6 +811,43 @@
     pick.className = 'dim';
     pick.onclick = () => api.newIn('pick', { plan: planFirst, worktree: ownTree, model: newModel });
     chips.append(pick);
+    // Or a project you don't have yet: cloned, then started in.
+    if (api.clone) {
+      const cl = document.createElement('button');
+      cl.textContent = 'Clone a repository…';
+      cl.className = 'dim';
+      cl.onclick = () => {
+        const form = document.createElement('form');
+        form.className = 'cloneform';
+        const input = document.createElement('input');
+        input.placeholder = 'owner/repo, or its address';
+        input.setAttribute('aria-label', 'Repository to clone');
+        const go = document.createElement('button');
+        go.type = 'submit';
+        go.textContent = 'Clone';
+        const said = document.createElement('div');
+        said.className = 'clonesaid';
+        form.append(input, go, said);
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          if (!input.value.trim() || go.disabled) return;
+          go.disabled = input.disabled = true;
+          go.textContent = 'Cloning…';
+          said.textContent = '';
+          const err = await api.clone(input.value.trim(), { plan: planFirst, model: newModel });
+          if (!err) return;
+          go.disabled = input.disabled = false;
+          go.textContent = 'Clone';
+          said.textContent = err;
+          requestAnimationFrame(fitWindow);
+        };
+        input.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); form.replaceWith(cl); requestAnimationFrame(fitWindow); } });
+        cl.replaceWith(form);
+        input.focus();
+        requestAnimationFrame(fitWindow);
+      };
+      chips.append(cl);
+    }
     box.append(chips);
     if (hub.past.length) {
       section('Pick up where you left off');

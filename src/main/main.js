@@ -27,6 +27,7 @@ const auth = require('./auth');
 const renamer = require('./rename');
 const branch = require('./branch');
 const ccDefaults = require('./ccDefaults');
+const cloner = require('./clone');
 const installer = require('./installer');
 const away = require('./away');
 const taskOutput = require('./taskOutput');
@@ -2624,6 +2625,24 @@ app.whenReady().then(async () => {
     hideTalk();
     startSession(folder, extra);
   });
+  // "Clone a repository…": git clone next to your other projects, then a
+  // session in it. Resolves with '' when it's started, or why not.
+  ipcMain.handle('talk-clone', (_e, text, opts) => new Promise((done) => {
+    const r = cloner.parse(text);
+    if (!r) return done('That doesn’t look like a repository: paste its address, or owner/repo for GitHub');
+    const docs = path.join(os.homedir(), 'Documents');
+    const parent = (TEST && global.__blaubeCloneParent) || (hubFolders[0] ? path.dirname(hubFolders[0]) : fs.existsSync(docs) ? docs : os.homedir());
+    const dest = cloner.destFor(parent, r.name);
+    if (!dest) return done(`There’s no free folder name for ${r.name} in ${parent}`);
+    cloner.clone(r.url, dest, (err) => {
+      if (err) return done(`Couldn’t clone it: ${err}`);
+      const model = opts && typeof opts.model === 'string' && /^[\w.\-[\]]{1,60}$/.test(opts.model) && opts.model !== 'default' ? opts.model : '';
+      hubCache = null;
+      hideTalk();
+      startSession(dest, [...(opts && opts.plan === true ? ['--permission-mode', 'plan'] : []), ...(model ? ['--model', model] : [])]);
+      done('');
+    });
+  }));
   // 📎 in the box: files to go with the next message (the box stays open
   // while you pick).
   ipcMain.handle('talk-attach', async (_e, id) => {
