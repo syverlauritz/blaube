@@ -123,7 +123,9 @@ class SessionTracker extends EventEmitter {
   // already running when Blaube started.
   handleAgent(session, p) {
     const event = p.hook_event_name;
-    const agentId = p.agent_id ? String(p.agent_id) : worktreeAgentId(p.cwd);
+    // (A session that itself runs in such a folder isn't its own helper.)
+    const wt = worktreeAgentId(p.cwd);
+    const agentId = p.agent_id ? String(p.agent_id) : wt && wt !== worktreeAgentId(session.cwd) ? wt : '';
     if (event === 'SubagentStart' || event === 'SubagentStop') {
       if (!agentId) return true;
       const had = session.agents.some((a) => a.id === agentId);
