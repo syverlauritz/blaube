@@ -169,6 +169,7 @@
       ['windowCurious', 1, 0, 3, 0.05, 'Curious about new windows and ones you drag'],
       ['rideWobble', 1, 0, 3, 0.05, 'Riding a window you move: it wobbles as the window starts and stops'],
       ['gust', 1, 0, 3, 0.05, 'A window swept past fast blows leaves along and makes slimes lean away'],
+      ['clockLife', 1, 0, 3, 0.05, 'They feel the time of day: lunch at noon, coffee mid-afternoon, Friday afternoon excitement, a Monday morning sigh'],
       ['seasons', 1, 0, 4, 0.05, 'Spring petals, summer butterflies, autumn leaves and winter snow (how many)'],
       ['nibble', 1, 0, 3, 0.05, 'Now and then a bored slime eats a leaf (or petal, or bit of snow) lying beside it'],
       ['snowballs', 1, 0, 2, 0.05, 'In snowy weather two bored slimes now and then have a snowball fight'],

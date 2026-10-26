@@ -1284,6 +1284,7 @@
     stepSeason();
     stepFlutters();
     stepFireworks();
+    clockLife();
     stepSnowballs();
   }
 
@@ -2300,6 +2301,36 @@
   const christmas = () => { const d = new Date(); return holiday === 'christmas' || (d.getMonth() === 11 && d.getDate() >= 20 && d.getDate() <= 26); };
   // The first minutes of the new year: fireworks, and they all cheer.
   const newYear = () => { const d = new Date(); return holiday === 'newyear' || (d.getMonth() === 0 && d.getDate() === 1 && d.getHours() === 0 && d.getMinutes() < 10); };
+  // The time of day, as the slimes feel it: around noon one wonders about
+  // lunch (its tummy rumbles), mid-afternoon about coffee, on a Friday
+  // afternoon they're excited for the weekend, and first thing on a Monday
+  // one lets out a sigh. Once a day each, only while you're around.
+  let clockAt = null; // (dev: force a time, e.g. '2026-10-30T16:10')
+  const clockDone = {};
+  function clockLife() {
+    if (CFG.clockLife <= 0 || sys.away || talkingTo || idleFor() > 60 || Math.random() > DT) return; // (checked about once a second)
+    const d = clockAt ? new Date(clockAt) : new Date(), h = d.getHours() + d.getMinutes() / 60, day = d.getDay();
+    const moment = h >= 12 && h < 12.5 ? 'lunch' : h >= 15 && h < 15.5 ? 'coffee' : day === 5 && h >= 16 && h < 18 ? 'weekend' : day === 1 && h >= 8.5 && h < 10.5 ? 'monday' : null;
+    const key = moment && moment + d.toDateString();
+    if (!moment || clockDone[key] || Math.random() > 0.2 * CFG.clockLife) return;
+    const calm = bigs().filter((o) => !o.dying && !o.body.grab && !o.bubble && o.body.onFloor() && (o.state === 'idle' || o.state === 'done') && (o.sleep || 0) < 0.2 && o.key !== talkingTo);
+    const b = calm[Math.floor(Math.random() * calm.length)];
+    if (!b) return;
+    clockDone[key] = true;
+    if (moment === 'lunch') { quip(b, 'lunch time?', 2.5); b.rumbleUntil = time + 0.9; }
+    else if (moment === 'coffee') { quip(b, 'coffee?', 2.2); b.hop(0, -260); }
+    else if (moment === 'weekend') {
+      quip(b, 'almost the weekend!', 2.5);
+      calm.forEach((o, i) => setTimeout(() => { if (o.dying || o.body.grab) return; o.happyUntil = time + 2; if (o.body.onFloor()) o.hop(0, -380); }, 220 * i));
+    } else { quip(b, 'monday…', 2.2); b.droopUntil = time + 2.5; }
+  }
+  // A rumbling tummy: little quick wobbles low down.
+  function rumble(b) {
+    if (time > (b.rumbleUntil || 0)) return;
+    const box = b.body.bbox(), c = b.body.centroid(), r = b.body.o.radius;
+    b.body.pushAt(c.x, box.maxY - r * 0.4, Math.sin(time * 55) * r * 1.6, 0, r * 0.5, DT);
+  }
+
   const rockets = [], sparks = [];
   let cheeredYear = 0;
   function stepFireworks() {
@@ -3776,6 +3807,7 @@
       b.say([{ text: `Still waiting on you (${mins} min)` }, ...(what ? [{ text: what, size: 12 }] : [])], 6, false, false);
     }
     sulk(b);
+    rumble(b);
     burp(b);
     somersault(b);
     tumble(b);
@@ -4850,6 +4882,7 @@
       flutters: () => flutters,
       flutter: (bat) => addFlutter(bat),
       holiday: (k) => { holiday = k; },
+      clock: (t) => { clockAt = t; },
       goo: () => bubbles,
       strands: () => strands,
       now: () => time,
