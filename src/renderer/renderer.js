@@ -1430,6 +1430,8 @@
       }
       if (f.landed) {
         if (time - f.landed > (f.kind === 'snow' ? 8 : 12)) flakes.splice(k, 1);
+        // On a window that's moved away from under it: it falls on.
+        else if (floorAt(f.x, f.y) > f.y + f.size) { f.landed = 0; f.vy = 0; }
         continue;
       }
       // Falling: drifting and swaying (leaves see-saw more), easing to their
