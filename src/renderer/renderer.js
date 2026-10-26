@@ -1403,6 +1403,17 @@
       }
     }
     if (!flakes.length) return;
+    // The cursor swept through them stirs them up too.
+    const ms = Math.hypot(mouse.vx, mouse.vy);
+    if (ms > 250) {
+      for (const f of flakes) {
+        if (f.on || Math.abs(f.x - mouse.x) > 28 || Math.abs(f.y - mouse.y) > 28) continue;
+        f.landed = 0; f.loose = time + 0.6;
+        f.vx = mouse.vx * (0.4 + Math.random() * 0.3);
+        f.vy = Math.min(mouse.vy * 0.4, 0) - 80 - Math.random() * 100;
+        f.va = (Math.random() - 0.5) * 12;
+      }
+    }
     const boxes = [...buddies.values()].filter((b) => !b.dying && !b.body.grab).map((b) => [b, b.body.bbox()]);
     for (let k = flakes.length - 1; k >= 0; k--) {
       const f = flakes[k];
