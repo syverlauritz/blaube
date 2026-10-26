@@ -196,6 +196,12 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await sleep(300);
 	check(lastArgs().includes('--worktree') && !inbox.log(treed).some((e) => /isn’t a git repository/.test(e.text)), 'in one, it gets a worktree of its own (claude --worktree)');
 	owned.end(treed);
+	// Quitting can move the sessions it started to terminals of their own.
+	const a1 = startSession(dir), a2 = startSession(dir);
+	await until(() => owned.has(a1) && owned.has(a2) && !!tracker.sessions.get(a1) && !!tracker.sessions.get(a2), 8000);
+	const moved = [];
+	await global.__blaubeMoveAll((s) => moved.push(s.id));
+	check(!owned.has(a1) && !owned.has(a2) && moved.includes(a1) && moved.includes(a2), 'quitting can move every session it started to a terminal of its own');
 	owned.end(id);
 
 	// A session in a terminal (here: a stand-in process) brought into Blaube.

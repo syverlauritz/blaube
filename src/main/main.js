@@ -1849,6 +1849,7 @@ app.whenReady().then(async () => {
   setInterval(() => carryTick(), 30e3).unref();
   if (TEST) global.__blaubeCarryTick = carryTick;
   if (TEST) global.__blaubeSessionMenu = sessionMenu;
+  if (TEST) global.__blaubeMoveAll = moveAllToTerminals;
   // A reply passed on to another session, as if pasted into its terminal.
   ipcMain.on('talk-forward', (_e, from, to, text) => {
     const a = from === talkId && tracker.sessions.get(from);
@@ -2269,15 +2270,34 @@ app.on('before-quit', (e) => {
   if (TEST || quitAnyway || (!waiting && !mine)) return;
   e.preventDefault();
   const lines = [];
-  if (mine) lines.push(mine === 1 ? 'A session you started in Blaube will stop. You can pick it up later in a terminal with claude --resume.' : `${mine} sessions you started in Blaube will stop. You can pick them up later in a terminal with claude --resume.`);
+  if (mine) lines.push(mine === 1 ? 'A session you started in Blaube will stop, unless you move it to a terminal, where it carries on with its conversation.' : `${mine} sessions you started in Blaube will stop, unless you move them to terminals, where each carries on with its conversation.`);
   if (waiting) lines.push(waiting === 1 ? 'A message hasn’t gone in yet and won’t be sent.' : `${waiting} messages haven’t gone in yet and won’t be sent.`);
+  // (Sessions it started can carry on in terminals instead.)
+  const buttons = mine ? ['Quit anyway', mine === 1 ? 'Move it to a terminal' : 'Move them to terminals', 'Cancel'] : ['Quit anyway', 'Cancel'];
   dialog.showMessageBox({
     type: 'question',
-    buttons: ['Quit anyway', 'Cancel'],
-    defaultId: 1,
-    cancelId: 1,
+    buttons,
+    defaultId: buttons.length - 1,
+    cancelId: buttons.length - 1,
     message: 'Quit Blaube?',
     detail: lines.join('\n\n'),
-  }).then(({ response }) => { if (response === 0) { quitAnyway = true; app.quit(); } });
+  }).then(async ({ response }) => {
+    if (response === buttons.length - 1) return;
+    if (response === 1) await moveAllToTerminals();
+    quitAnyway = true;
+    app.quit();
+  });
 });
+// Every session Blaube started, stopped here and resumed in a terminal
+// of its own (as Continue in terminal does, for all of them at once).
+async function moveAllToTerminals(open = openResumeTerminal) {
+  const list = owned.list().map((id) => tracker.sessions.get(id)).filter(Boolean).map((s) => Object.assign({}, s));
+  await Promise.all(list.map((s) => new Promise((done) => {
+    const gone = (id) => { if (id !== s.id) return; owned.removeListener('exit', gone); done(); };
+    owned.on('exit', gone);
+    owned.end(s.id);
+    setTimeout(() => { owned.removeListener('exit', gone); done(); }, 5000);
+  })));
+  for (const s of list) { try { open(s); } catch (e) { log(`couldn't move ${s.id} to a terminal: ${e.message}`); } }
+}
 app.on('will-quit', () => { globalShortcut.unregisterAll(); if (focus.stop) focus.stop(); owned.killAll(); });
