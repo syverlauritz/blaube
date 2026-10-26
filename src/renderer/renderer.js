@@ -249,7 +249,7 @@
       if (b.body.onFloor()) b.body.impulse((beat % 2 ? 1 : -1) * 55, -25, DT);
       if (Math.random() < 0.35) {
         const c = b.body.centroid();
-        hearts.push({ note: true, x: c.x + (Math.random() - 0.5) * b.body.o.radius, y: b.body.bbox().minY - 8, vx: (Math.random() - 0.5) * 30, born: time, size: 24 + Math.random() * 8, color: b.color });
+        spawnHeart({ note: true, x: c.x + (Math.random() - 0.5) * b.body.o.radius, y: b.body.bbox().minY - 8, vx: (Math.random() - 0.5) * 30, born: time, size: 24 + Math.random() * 8, color: b.color });
       }
     }
   }
@@ -676,7 +676,7 @@
 
   // The shots script (scripts/shots) opens the window with ?debug to look
   // inside while it plays a scene.
-  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, now: () => time, sys, spoken, input: { down: (e) => onDown(e), move: (e) => onMove(e), up: (e) => onUp(e) }, ownMouse: false, ghost: (b, o) => ghostNow(b, o) };
+  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, hearts: () => hearts, now: () => time, sys, spoken, input: { down: (e) => onDown(e), move: (e) => onMove(e), up: (e) => onUp(e) }, ownMouse: false, ghost: (b, o) => ghostNow(b, o) };
   const petSize = () => 34 * CFG.size;
 
   function syncPets(sessions) {
@@ -705,7 +705,7 @@
       if (p.dying && !p.saidBye) {
         p.saidBye = true;
         p.vy = -320;
-        hearts.push({ x: p.x, y: p.y - petSize(), vx: 0, born: time, size: 8 });
+        spawnHeart({ x: p.x, y: p.y - petSize(), vx: 0, born: time, size: 8 });
       }
       const PET = petSize(), h = PET / 2;
       // Riding on its slime's head (fetched): it sits on top and sways along,
@@ -1002,7 +1002,7 @@
           // A long one: it's earned a little party.
           // The hearts come out of the top of its head as it jumps, wherever
           // that is by then.
-          for (let i = 0; i < 7; i++) hearts.push({ from: b, dx: (Math.random() - 0.5) * 1.4, dy: 10 + Math.random() * 30, vx: (Math.random() - 0.5) * 120, rise: 220 + Math.random() * 80, born: time + 0.3 + i * 0.08, size: 9 + Math.random() * 6 });
+          for (let i = 0; i < 7; i++) spawnHeart({ from: b, dx: (Math.random() - 0.5) * 1.4, dy: 10 + Math.random() * 30, vx: (Math.random() - 0.5) * 120, rise: 220 + Math.random() * 80, born: time + 0.3 + i * 0.08, size: 9 + Math.random() * 6 });
           b.hop((Math.random() - 0.5) * 100, -CFG.doneHopStrength * 1.5);
           if (CFG.doneStretch > 0) b.stretchAt = time + 1.8; // ...then a good long stretch
         } else if (wantsAttention(b)) b.hop((Math.random() - 0.5) * 200, -CFG.doneHopStrength * 1.1);
@@ -1545,7 +1545,7 @@
       if (!b.patSince) b.patSince = time;
       const top = body.bbox().minY;
       if (mouse.y - top > r * 0.1) body.squashTop(-CFG.headPat * r * 0.6 * 60 * DT, DT);
-      if (time - b.patSince > 1.5 && !b.patHeart) { b.patHeart = true; hearts.push({ x: c.x, y: top - 6, vx: 0, born: time, size: 10 }); }
+      if (time - b.patSince > 1.5 && !b.patHeart) { b.patHeart = true; spawnHeart({ x: c.x, y: top - 6, vx: 0, born: time, size: 10 }); }
     } else { b.patSince = 0; b.patHeart = false; }
     // The cursor resting right on its face: it goes shy, blushing and looking
     // away, peeking back now and then; keep it up and it giggles and squirms.
@@ -1691,7 +1691,7 @@
         if (!k.caughtAt) {
           k.caughtAt = time;
           if (k.n > 0) quip(b, k.n + '!', 0.7);
-          if (k.n >= k.max) { stop(); b.cheerUntil = time + 1.2; hearts.push({ x: p.x, y: p.y - petSize(), vx: 0, born: time, size: 10 }); return; }
+          if (k.n >= k.max) { stop(); b.cheerUntil = time + 1.2; spawnHeart({ x: p.x, y: p.y - petSize(), vx: 0, born: time, size: 10 }); return; }
         }
         // A beat to line up, then a crouch, then pop: the pet flies up.
         const t = time - k.caughtAt, r = b.body.o.radius;
@@ -2226,7 +2226,7 @@
     if (time > (b.nextPuff || 0)) {
       b.nextPuff = time + 0.45 + Math.random() * 0.5;
       const c = body.centroid(), top = body.bbox().minY, side = Math.random() < 0.5 ? -1 : 1;
-      hearts.push({ puff: true, x: c.x + side * r * (0.25 + Math.random() * 0.3), y: top + 4, vx: side * (8 + Math.random() * 18), rise: 30 + Math.random() * 20, born: time, size: r * (0.08 + Math.random() * 0.05) });
+      spawnHeart({ puff: true, x: c.x + side * r * (0.25 + Math.random() * 0.3), y: top + 4, vx: side * (8 + Math.random() * 18), rise: 30 + Math.random() * 20, born: time, size: r * (0.08 + Math.random() * 0.05) });
       // ...and it huffs: a little squash with each puff.
       if (body.onFloor() && !body.grab) body.squashTop(r * 0.9, DT);
     }
@@ -2278,7 +2278,7 @@
       if (time > n.until || n.mum.dying || n.mum.body.grab) {
         b.nuzzling = null;
         b.happyUntil = n.mum.happyUntil = time + 1.5;
-        hearts.push({ x: (c.x + n.mum.body.centroid().x) / 2, y: Math.min(b.body.bbox().minY, n.mum.body.bbox().minY) - 8, vx: 0, born: time, size: 12 });
+        spawnHeart({ x: (c.x + n.mum.body.centroid().x) / 2, y: Math.min(b.body.bbox().minY, n.mum.body.bbox().minY) - 8, vx: 0, born: time, size: 12 });
         return false;
       }
       const mc = n.mum.body.centroid(), side = Math.sign(mc.x - c.x) || 1;
@@ -2716,7 +2716,7 @@
         b.bumpedAt = f.bumpedAt = time; // (no glare, no stars: it meant to)
         quipBack(b, Math.random() < 0.5 ? 'got you!' : 'caught!', 1.1);
         b.cheerUntil = time + 1.4; f.happyUntil = time + 1.6; f.dizzyUntil = 0;
-        hearts.push({ x: (c.x + fc.x) / 2, y: Math.min(body.bbox().minY, f.body.bbox().minY) - 8, vx: 0, born: time, size: 12 });
+        spawnHeart({ x: (c.x + fc.x) / 2, y: Math.min(body.bbox().minY, f.body.bbox().minY) - 8, vx: 0, born: time, size: 12 });
         f.giggleAt = time + 0.8;
       }
       return;
@@ -2744,12 +2744,13 @@
     const vf = f.body.velocity(DT), vo = o.body.velocity(DT);
     if (Math.hypot(vf.x, vf.y) < Math.hypot(vo.x, vo.y) || Math.hypot(vf.x - vo.x, vf.y - vo.y) < 350) return;
     if (f.bowled !== f.thrownAt) { f.bowled = f.thrownAt; f.pins = new Set(); }
+    const before = f.pins.size;
     f.pins.add(o);
     o.dizzyUntil = Math.max(o.dizzyUntil || 0, time + 0.8);
-    if (f.pins.size === 2) {
+    if (before < 2 && f.pins.size === 2) { // (once: not again every step they stay in contact)
       f.cheerUntil = time + 1.8;
       quipBack(f, 'strike!', 1.3);
-      hearts.push({ x: f.body.centroid().x, y: f.body.bbox().minY - 8, vx: 0, born: time, size: 13 });
+      spawnHeart({ x: f.body.centroid().x, y: f.body.bbox().minY - 8, vx: 0, born: time, size: 13 });
     }
   }
   // Two slimes hit each other: if they met fast enough, the one that got
@@ -2770,7 +2771,7 @@
       mum.happyUntil = time + 1.2;
       kid.happyUntil = time + 1.2;
       const top = mum.body.bbox().minY;
-      hearts.push({ x: mum.body.centroid().x, y: top - 8, vx: 0, born: time, size: 13 });
+      spawnHeart({ x: mum.body.centroid().x, y: top - 8, vx: 0, born: time, size: 13 });
       return;
     }
     if (rel >= CFG.dizzySpeed * 0.8) { hit.dizzyUntil = time + 1; return; }
@@ -2845,7 +2846,7 @@
       on.happyUntil = time + (family ? 3 : 1.5);
       if (family) {
         b.happyUntil = time + 3;
-        hearts.push({ x: c.x, y: top - 10, vx: 0, born: time, size: 11 });
+        spawnHeart({ x: c.x, y: top - 10, vx: 0, born: time, size: 11 });
       } else {
         b.annoyedUntil = time + 1.5;
         b.annoyedAt = on;
@@ -3567,7 +3568,7 @@
             if (clear) { g.n++; quip(g.j, g.n + '!', 0.6); }
             if (g.n >= g.record) {
               g.stage = 'done'; g.at = time;
-              for (const o of all) { o.cheerUntil = time + 1.6; hearts.push({ x: o.body.centroid().x, y: o.body.bbox().minY - 8, vx: 0, born: time, size: 11 }); }
+              for (const o of all) { o.cheerUntil = time + 1.6; spawnHeart({ x: o.body.centroid().x, y: o.body.bbox().minY - 8, vx: 0, born: time, size: 11 }); }
               quip(g.j, 'yay!', 1.3);
             }
           } else {
@@ -4088,7 +4089,7 @@
       p.va = Math.sign(p.vx || 1) * 3;
       p.nextHop = time + 2.5;
       quipBack(b, 'got it!', 1.2);
-      hearts.push({ x: c.x, y: box.minY - 10, vx: 0, born: time, size: 10 });
+      spawnHeart({ x: c.x, y: box.minY - 10, vx: 0, born: time, size: 10 });
       return;
     }
     if (time - f.start > 0.35 && b.body.onFloor() && !b.pendingHop && time > (f.next || 0)) {
@@ -4142,7 +4143,7 @@
     if (o.body.onFloor()) o.body.impulse(-ov.x * 0.25, 0, DT);
     if (time - g.heart > 0.7) {
       g.heart = time;
-      hearts.push({ x: (oc.x + bc.x) / 2 + (Math.random() - 0.5) * 12, y: Math.min(b.body.bbox().minY, o.body.bbox().minY) - 6, vx: (Math.random() - 0.5) * 30, born: time, size: 10 + Math.random() * 4 });
+      spawnHeart({ x: (oc.x + bc.x) / 2 + (Math.random() - 0.5) * 12, y: Math.min(b.body.bbox().minY, o.body.bbox().minY) - 6, vx: (Math.random() - 0.5) * 30, born: time, size: 10 + Math.random() * 4 });
     }
   }
 
@@ -4265,7 +4266,7 @@
         body.impulse(-body.velocity(DT).x * 0.3, 0, DT);
         body.spin((-body.angle * 4 - body.angularVelocity(DT)) * 0.3 * amt, DT);
       }
-      if (t > 0.7 && !g.said && !g.quiet) { g.said = true; quip(b, 'ta-da!', 1.2); b.happyUntil = time + 2; hearts.push({ x: body.centroid().x, y: body.bbox().minY - 8, vx: 0, born: time, size: 12 }); }
+      if (t > 0.7 && !g.said && !g.quiet) { g.said = true; quip(b, 'ta-da!', 1.2); b.happyUntil = time + 2; spawnHeart({ x: body.centroid().x, y: body.bbox().minY - 8, vx: 0, born: time, size: 12 }); }
       if (amt <= 0 && t > (g.rise || 0.6)) { body.morph(0, g.kind); b.shape = null; b.shapeAmt = 0; }
       b.nextHop = time + 1;
       return;
@@ -4835,7 +4836,7 @@
     if (time < (b.pounceUntil || 0)) {
       if (!b.caught && b.body.contains(mouse.x, mouse.y)) {
         b.caught = true;
-        hearts.push({ x: mouse.x, y: mouse.y - 10, vx: 0, born: time, size: 12 });
+        spawnHeart({ x: mouse.x, y: mouse.y - 10, vx: 0, born: time, size: 12 });
       }
       return;
     }
@@ -5535,7 +5536,7 @@
       const isPet = target.task !== undefined;
       const c = isPet ? { x: target.x, y: target.y } : target.body.centroid();
       const top = isPet ? target.y - petSize() : target.body.bbox().minY;
-      hearts.push({ x: c.x + (Math.random() - 0.5) * 30, y: top - 6, vx: (Math.random() - 0.5) * 40, born: time, size: isPet ? 7 : 10 + Math.random() * 4 });
+      spawnHeart({ x: c.x + (Math.random() - 0.5) * 30, y: top - 6, vx: (Math.random() - 0.5) * 40, born: time, size: isPet ? 7 : 10 + Math.random() * 4 });
       if (!isPet && target.body.onFloor()) target.body.impulse(dir * 60, -40, DT);
       if (isPet && target.vy === 0) target.vy = -140;
     }
@@ -5543,6 +5544,22 @@
 
   // Little hearts floating up and fading (from petting).
   const hearts = [];
+  // Every heart, puff and note comes through here, so none can ever flood:
+  // a lone heart too soon after another one nearby is dropped (0.3 s), and
+  // only so many are alive per blob (6). Bursts (born in the future) pass
+  // the first rule, but not the cap.
+  function spawnHeart(h) {
+    for (let i = hearts.length - 1; i >= 0; i--) if (time - hearts[i].born > 1.6) hearts.splice(i, 1);
+    if (h.puff || h.note) { hearts.push(h); return; }
+    let alive = 0;
+    for (const o of hearts) {
+      if (o.puff || o.note) continue;
+      alive++;
+      if (h.born <= time && o.born <= time && time - o.born < 0.3 && Math.hypot((o.from ? 0 : o.x) - (h.from ? 0 : h.x), (o.from ? 0 : o.y) - (h.from ? 0 : h.y)) < 160) return;
+    }
+    if (alive >= 6 * Math.max(1, buddies.size)) return;
+    hearts.push(h);
+  }
   function drawHearts() {
     for (let i = hearts.length - 1; i >= 0; i--) {
       const h = hearts[i], age = time - h.born;
@@ -6091,7 +6108,7 @@
         b.squirmUntil = time + 0.6 + 0.4 * Math.min(1, CFG.feelings);
         b.happyUntil = time + 2.5;
         const top = b.body.bbox().minY, c = b.body.centroid();
-        for (let i = 0; i < 2; i++) hearts.push({ x: c.x + (i ? 12 : -12), y: top - 6, vx: (i ? 30 : -30), born: time + i * 0.15, size: 10 });
+        for (let i = 0; i < 2; i++) spawnHeart({ x: c.x + (i ? 12 : -12), y: top - 6, vx: (i ? 30 : -30), born: time + i * 0.15, size: 10 });
         quipBack(b, pick(['aw, thanks!', 'hehe', 'anytime!']), 1.8);
       } else {
         b.sheepishUntil = time + 2.5;
