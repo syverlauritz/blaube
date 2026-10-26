@@ -1484,35 +1484,7 @@
       const top = body.bbox().minY;
       if (mouse.y - top > r * 0.1) body.squashTop(-CFG.headPat * r * 0.6 * 60 * DT, DT);
       if (time - b.patSince > 1.5 && !b.patHeart) { b.patHeart = true; hearts.push({ x: c.x, y: top - 6, vx: 0, born: time, size: 10 }); }
-      // Keep your hand there and it nods off under it, purring, breathing
-      // slow and deep.
-      if (CFG.patDoze > 0 && time - b.patSince > 6 / CFG.patDoze) {
-        if (!b.patDozing) { b.patDozing = true; quip(b, 'purrr…', 1.6); }
-        body.squashTop(-(0.5 + 0.5 * Math.sin((time - b.patSince) * 1.6)) * r * 0.35 * 60 * DT, DT); // (each breath pushes up into it)
-      }
-    } else {
-      if (b.patDozing) { b.blink = 1; b.surpriseUntil = time + 0.3; } // (blinks awake)
-      b.patSince = 0; b.patHeart = false; b.patDozing = false;
-    }
-    // The cursor held still just out of reach above its head: it stretches
-    // up on tiptoe toward it, eyes on it, and leans under it. If it still
-    // can't reach after a moment it gives a little hop up to boop it (and a
-    // heart if it does; see pounce). Reaching it, it's a head pat.
-    const calmNow = (b.state === 'idle' || b.state === 'done') && b.kind !== 'home' && !b.stackedBy && (b.mood || 0) > -0.3;
-    const gap = body.bbox().minY - mouse.y;
-    if (CFG.reach > 0 && calmNow && !drag && !b.patted && Math.abs(dx) < r * 0.7 && gap > 0 && gap < r * 1.3 && performance.now() / 1000 - mouse.lastMove > 0.6 && time > (b.nextReach || 0)) {
-      if (!b.reachSince) b.reachSince = time;
-      const t = time - b.reachSince, k = CFG.reach;
-      body.squashTop(-k * r * Math.min(1, t / 0.5) * 0.9 * 60 * DT, DT);
-      body.lean(Math.max(-1, Math.min(1, dx / r)) * k * r * 2 * DT, DT);
-      if (t > 2.2 && !b.pendingHop) {
-        b.reachSince = 0;
-        b.nextReach = time + 4;
-        b.hop(dx * 3, -Math.sqrt(2 * CFG.gravity * (gap + r * 0.6)) * 1.05);
-        b.pounceUntil = time + 0.9;
-        b.caught = false;
-      }
-    } else b.reachSince = 0;
+    } else { b.patSince = 0; b.patHeart = false; }
     // The cursor resting right on its face: it goes shy, blushing and looking
     // away, peeking back now and then; keep it up and it giggles and squirms.
     const staring = CFG.shy > 0 && !drag && !b.patted && body.contains(mouse.x, mouse.y) && performance.now() / 1000 - mouse.lastMove > 0.8;
@@ -2513,7 +2485,6 @@
   }
   function nightcap(b) {
     const h = new Date().getHours(), santa = CFG.seasons > 0 && christmas();
-    if (!santa && CFG.seasons > 0 && CFG.witchHats > 0 && spooky() && b.body.o.radius > 12 && !b.dying) { witchHat(b); return; }
     const k = b.body.o.radius <= 12 || b.dying ? 0 : santa ? 1 : CFG.nightcap > 0 && (h >= 22 || h < 7) ? ramp(b.sleep || 0, 0.5, 0.85) : 0;
     if (k <= 0) { b.capSwing = 0; return; }
     const body = b.body, r = body.o.radius;
@@ -2536,40 +2507,6 @@
     ctx.fillStyle = '#f4f1ea';
     ctx.beginPath(); ctx.ellipse(x, y + ht * 0.12, w * 0.55, ht * 0.14, 0, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(tipX, tipY, r * 0.09 * k + 1, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-  }
-
-  // Halloween week: they dress up in pointy witch hats whose tips flop
-  // and swing as they move.
-  function witchHat(b) {
-    const body = b.body, r = body.o.radius, k = Math.min(1.3, CFG.witchHats);
-    let top = 0;
-    for (let i = 0; i < body.n; i++) if (body.py[i] < body.py[top]) top = i;
-    const x = body.px[top], y = body.py[top] + r * 0.06, side = b.key.length % 2 ? 1 : -1;
-    const v = body.velocity(DT);
-    b.capSwing = (b.capSwing || 0) + (-v.x * 0.0015 - (b.capSwing || 0)) * 0.08;
-    const bw = r * 0.78 * k, ht = r * 0.95 * k, cw = r * 0.42 * k;
-    // The tip bends over to one side, more as it swings.
-    const bend = side * 0.35 + b.capSwing * 1.4;
-    const midX = x + bend * ht * 0.25, midY = y - ht * 0.6, tipX = x + bend * ht * 0.75, tipY = y - ht * 0.82;
-    body.lookTop = Math.min(body.lookTop ?? Infinity, y - ht * 1.05);
-    ctx.save();
-    ctx.fillStyle = '#3a2f52';
-    ctx.beginPath(); ctx.ellipse(x, y, bw, r * 0.13 * k, 0, 0, Math.PI * 2); ctx.fill(); // (the brim)
-    ctx.beginPath();
-    ctx.moveTo(x - cw, y);
-    ctx.quadraticCurveTo(x - cw * 0.55 + bend * ht * 0.1, midY, tipX, tipY);
-    ctx.quadraticCurveTo(midX + cw * 0.35, midY + ht * 0.05, x + cw, y);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#e8892f'; // (a band round it)
-    ctx.beginPath();
-    ctx.moveTo(x - cw * 0.97, y - ht * 0.02);
-    ctx.lineTo(x + cw * 0.97, y - ht * 0.02);
-    ctx.lineTo(x + cw * 0.86, y - ht * 0.16);
-    ctx.lineTo(x - cw * 0.86, y - ht * 0.16);
-    ctx.closePath();
-    ctx.fill();
     ctx.restore();
   }
 
@@ -5284,9 +5221,7 @@
     else if (b.sneeze) { expression = 'pained'; mouth = 'o'; } // (about to sneeze)
     else if (b.blow && time > b.blow.at) { expression = 'normal'; mouth = 'o'; } // (blowing a bubble)
     else if (b.nibbling) { expression = 'happy'; mouth = time - b.nibbling.at < 0.5 ? 'o' : Math.round((time - b.nibbling.at) / 0.18) % 2 ? 'grin' : 'flat'; } // (chomp chomp)
-    else if (b.patted && b.patDozing) { expression = 'sleepy'; mouth = 'smile'; } // (nodded off under your hand)
     else if (b.patted) { expression = 'happy'; mouth = 'smile'; }
-    else if (b.reachSince && time - b.reachSince > 0.3) { mouth = 'o'; }
     else if (time < (b.petWorryUntil || 0)) { expression = 'worried'; mouth = 'o'; }
     else if (b.teeter && !body.grab) { expression = 'worried'; mouth = 'o'; } // (on the brink)
     else if (time < (b.sheepishUntil || 0)) { expression = 'worried'; mouth = 'wobble'; } // (told off)
@@ -5414,12 +5349,6 @@
       wantLook = Math.max(wantLook, 1);
       if (expression === 'concentrate' || expression === 'sleepy') { expression = 'normal'; mouth = 'o'; }
     }
-    // Reaching up for the cursor: eyes right up on it.
-    if (b.reachSince && !glaring) {
-      const c = body.centroid();
-      b.gazeTarget = { x: mouse.x, y: c.y + (mouse.y - c.y) * 3 };
-      wantLook = Math.max(wantLook, 1);
-    }
     // Keepy-uppy: eyes on the pet.
     if (b.keepy && !glaring) {
       b.gazeTarget = { x: b.keepy.pet.x, y: b.keepy.pet.y };
@@ -5457,8 +5386,6 @@
       const to = b.gazeTarget || mouse;
       b.gaze.x = to.x; b.gaze.y = to.y; b.gaze.vx = 0; b.gaze.vy = 0;
     }
-    // Nodded off under your hand: it stays asleep, whatever's going on.
-    if (b.patted && b.patDozing && expression !== 'dizzy') { expression = 'sleepy'; mouth = 'smile'; checkIn = false; }
     // Talking: the mouth follows its babble (not mid-yawn or seeing stars).
     // Shut between syllables, it's its own mouth (a smile, mostly).
     const talk = talkMouth(b);
