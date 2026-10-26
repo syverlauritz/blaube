@@ -116,3 +116,13 @@ test('news of its pull request is a notification when its slime can’t be seen'
   assert.deepEqual(notification({ event: 'pr', project: 'kalkis', text: 'PR #12 is merged' }), { title: 'kalkis: PR #12 is merged', body: 'On GitHub.' });
   assert.equal(notification({ event: 'pr', project: 'kalkis', text: 'PR #12 is merged', seen: true }), null);
 });
+
+test('changes left uncommitted a while after it finished are mentioned, once per set', () => {
+  const { leftUncommitted } = require('../src/main/attention');
+  const git = { branch: 'main', changed: 2, untracked: 1, files: [{ path: 'a.js' }, { path: 'b.js' }, { path: 'c.md' }] };
+  assert.deepEqual(leftUncommitted({ state: 'done', git, idleFor: 21 * 60e3 }), { text: '3 files changed, not committed yet', key: 'main|3|a.js|b.js|c.md' });
+  assert.equal(leftUncommitted({ state: 'done', git, idleFor: 5 * 60e3 }), null, 'not so soon');
+  assert.equal(leftUncommitted({ state: 'working', git, idleFor: 60 * 60e3 }), null, 'not while it works');
+  assert.equal(leftUncommitted({ state: 'idle', git: { branch: 'main', changed: 0, untracked: 0, files: [] }, idleFor: 60 * 60e3 }), null);
+  assert.equal(leftUncommitted({ state: 'idle', git: { branch: 'x', changed: 1, untracked: 0, files: [{ path: 'a' }] }, idleFor: 60e3 }, 0).text, '1 file changed, not committed yet');
+});

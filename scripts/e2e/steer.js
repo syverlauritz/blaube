@@ -639,6 +639,15 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	global.__blaubeAway = '';
 	global.__blaubeCheckAway(5);
 	check(!global.__blaubeAway, 'once');
+	// Finished a while ago, its changes not committed: its slime says so, once.
+	await page(`window.blaube.talk(${JSON.stringify(ID2)}, { x: 300, y: 600, r: 60 })`);
+	await until(() => talkId() === ID2);
+	global.__blaubeNudgeAfter = 0;
+	check(await until(() => (global.__blaubeNudged || {}).id === ID3 && /^\d+ files? changed, not committed yet$/.test(global.__blaubeNudged.text), 10000), `a while after it finished with changes uncommitted, its slime says so (${(global.__blaubeNudged || {}).text})`);
+	global.__blaubeNudged = null;
+	await sleep(2500);
+	check(!global.__blaubeNudged, 'once, not every time it looks');
+	global.__blaubeNudgeAfter = null;
 	await hook({ session_id: ID3, hook_event_name: 'SessionEnd' });
 	await page(`window.blaube.talk(${JSON.stringify(ID)}, { x: 300, y: 600, r: 60 })`);
 	await until(() => talkId() === ID);

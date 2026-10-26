@@ -537,6 +537,7 @@ let talkPicking = false; // (a file dialog from the box is open: it stays)
 let hubPast = [], hubFolders = [], hubCache = null; // what the overview last offered
 const gitStates = new Map(); // session id -> its last git status (or null: not a repository)
 const installingPackages = new Set(); // sessions whose packages are being installed from the box
+const nudged = new Map(); // session id -> the uncommitted changes its slime last mentioned
 const discarded = new Map(); // session id -> { root, rel }: the file whose changes you last discarded in its box
 const prStates = new Map(); // session id -> its branch's pull request, as gh last said (or null)
 // Its git line: the branch and what's changed, and how its pull request stands.
@@ -653,7 +654,7 @@ function sweepSoon() { if (!sweepTimer) sweepTimer = setTimeout(() => { sweepTim
 function sweep() {
   const live = (id) => tracker.sessions.has(id) || owned.has(id) || (id === talkId && !!talkWin && !talkWin.isDestroyed() && talkWin.isVisible());
   for (const id of [...inbox.logs.keys(), ...inbox.todos.keys(), ...inbox.steerable, ...inbox.typed.keys()]) if (!live(id)) inbox.forget(id);
-  const maps = { gitStates, prStates, discarded, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan, carryLater, mcpStates, rewound, foreground };
+  const maps = { gitStates, prStates, discarded, nudged, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan, carryLater, mcpStates, rewound, foreground };
   for (const id of [...muted]) if (!live(id)) muted.delete(id);
   for (const sid of runs.sessions()) if (!live(sid)) runs.stopAll(sid); // (its dev server goes with it)
   for (const m of Object.values(maps)) for (const id of [...m.keys()]) if (!live(id)) m.delete(id);
@@ -1854,6 +1855,13 @@ app.whenReady().then(async () => {
         const line = gitLine(o.id);
         gitStates.set(o.id, st);
         if (gitLine(o.id) !== line) { pushState(); if (o.id === talkId) pushTalk(o.id); }
+        // (Finished a while ago with its changes uncommitted: its slime says so, once.)
+        const left = attention.leftUncommitted({ state: o.state, git: st, idleFor: Date.now() - (o.updatedAt || Date.now()) }, TEST && global.__blaubeNudgeAfter != null ? global.__blaubeNudgeAfter : 20 * 60e3);
+        if (left && nudged.get(o.id) !== left.key && win && !(talkWin && talkWin.isVisible() && talkId === o.id)) {
+          nudged.set(o.id, left.key);
+          win.webContents.send('say', { id: o.id, text: left.text, seconds: 5, status: true });
+          if (TEST) global.__blaubeNudged = { id: o.id, text: left.text };
+        }
         if (!bin || !st.branch) return;
         pulls.look(o.cwd, st.branch, (now) => {
           const was = prStates.get(o.id);

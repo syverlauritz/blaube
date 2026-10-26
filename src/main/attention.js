@@ -105,4 +105,14 @@ function search(sessions, q) {
   return out.sort((a, b) => b.hits - a.hits);
 }
 
-module.exports = { mostWanted, notification, glance, today, search };
+// Its changes left uncommitted a while after it finished: its slime says
+// so, once for each set of changes. { text, key } (key: which changes), or
+// null.
+function leftUncommitted({ state, git, idleFor = 0 }, after = 20 * 60e3) {
+  if ((state !== 'done' && state !== 'idle') || !git || idleFor < after) return null;
+  const n = (git.changed || 0) + (git.untracked || 0);
+  if (!n) return null;
+  return { text: `${n} file${n === 1 ? '' : 's'} changed, not committed yet`, key: [git.branch, n, ...(git.files || []).map((f) => f.path)].join('|') };
+}
+
+module.exports = { mostWanted, notification, glance, today, search, leftUncommitted };
