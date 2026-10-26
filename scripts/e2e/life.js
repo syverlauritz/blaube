@@ -1,7 +1,8 @@
 // End-to-end check of the slimes themselves, with no Claude Code and no
 // tokens: sessions are driven through fake hooks, and it checks the bodies
 // stay healthy, a turn's end is said out loud once (not twice, cut off),
-// and stopping the choir leaves no mouth still miming the song.
+// stopping the choir leaves no mouth still miming the song, and they
+// react to the computer (away and back, the charger, a low battery).
 //
 //   npm run e2e:life
 //
@@ -72,6 +73,19 @@ module.exports = async function run({ win, tracker }) {
 	// A failed test run lets some air out.
 	win.webContents.send('react', { id: 's1', kind: 'testfail' });
 	check(await until(() => js(`${b1}.droop > 0.3`), 3000), 'a failed test makes it droop');
+	// The computer: away a while, s2 finishes, you're back: it tells you.
+	win.webContents.send('system', { kind: 'idle', seconds: 900 });
+	check(await until(() => js(`__blaube.sys.away`), 1000), 'idle a long time, you count as away');
+	ev('s2', 'UserPromptSubmit'); ev('s2', 'Stop', { last_assistant_message: 'Done.' });
+	await sleep(800);
+	win.webContents.send('system', { kind: 'idle', seconds: 1 });
+	check(await until(() => js(`[...__blaube.buddies.values()].some((b) => b.bubble && b.bubble.lines.some((l) => /p-s2: done/.test(l.text)))`), 2000), 'back, a slime says what finished while you were away');
+	win.webContents.send('system', { kind: 'ac' });
+	check(await until(() => js(`[...__blaube.buddies.values()].some((b) => b.chargeUntil)`), 1500), 'charger in: they tingle');
+	await js(`__blaube.sys.battery = { level: 0.05, charging: false }`);
+	check(await until(() => js(`__blaube.sys.low > 0.3`), 4000), 'low battery: they get tired');
+	await js(`__blaube.sys.battery = { level: 0.05, charging: true }`);
+	await sleep(1500);
 	check(await js(`[...__blaube.buddies.values()].every((b) => [...b.body.px].every(Number.isFinite))`), 'bodies still finite after all that');
 	check(errs.length === 0, 'no renderer errors ' + errs.slice(0, 3).join(' | '));
 	return failed ? 1 : 0;

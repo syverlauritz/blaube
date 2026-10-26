@@ -116,6 +116,10 @@
       ['petEmpathy', 1, 0, 2, 0.05, 'Task pets rush to a dizzy slime and cheer when it\'s happy'],
       ['gulp', 1, 0, 3, 0.05, 'A mother gulps a helper back in (ripple and swell)'],
       ['nightSleepy', 1, 0, 2, 0.05, 'Sleepier late at night (doze sooner, more yawns)'],
+      ['systemLife', 1, 0, 2, 0.05, 'React to the computer: wake up with it, perk up on the charger, tire on low battery'],
+      ['awayAfter', 300, 30, 1800, 10, 'You count as away after this long without keyboard or mouse (s)'],
+      ['welcomeBack', true, 0, 0, 0, 'Back from away: say what changed while you were gone'],
+      ['lowBattery', 0.15, 0, 0.5, 0.01, 'Tired below this battery level (0 = never)'],
     ]],
     ['World', [
       ['dockCollision', true, 0, 0, 0, 'Collide with the Dock / taskbar'],

@@ -19,6 +19,9 @@
 
   let W = 0, H = 0;
   let mouse = { x: -1e4, y: -1e4, lastMove: performance.now() / 1000, vx: 0, vy: 0, px: -1e4, py: -1e4 };
+  // The computer: how long you've been idle anywhere (from the app), whether
+  // you're away, the battery, and how tired a low battery makes them (0..1).
+  const sys = { idle: 0, idleAt: -1, away: false, awayFrom: 0, before: null, battery: null, low: 0, lowSaid: false };
   let drag = null; // { buddy, pet or glasses, x0, y0, t0, moved }
   let settings = { hooksInstalled: true };
   let time = 0;
@@ -70,6 +73,8 @@
 
     hop(vx, vy) {
       if (this.body.grab) return;
+      // Low on battery: tired, smaller hops.
+      if (sys.low > 0) { vx *= 1 - 0.3 * sys.low; vy *= 1 - 0.3 * sys.low; }
       if (talkingTo && buddies.get(talkingTo) === this) return; // stays put while you talk to it
       // Up on a window it minds the edge: a hop that would land past it
       // turns back (mothers wander off now and then; helpers never).
@@ -550,7 +555,7 @@
 
   // The shots script (scripts/shots) opens the window with ?debug to look
   // inside while it plays a scene.
-  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, now: () => time };
+  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, now: () => time, sys };
   const petSize = () => 34 * CFG.size;
 
   function syncPets(sessions) {
@@ -872,6 +877,7 @@
   function step() {
     glideLedges();
     stepPets();
+    stepBattery();
     stepChoir();
     for (const b of [...buddies.values()]) {
       if (b.removed) continue;
@@ -892,7 +898,7 @@
       // jitters, worst while it's held.)
       // Dozing (idle, nobody around for two minutes): it slumps, softer and
       // flatter. When you come back it wakes with a big stretch up.
-      const asleep = b.state === 'idle' && performance.now() / 1000 - mouse.lastMove > dozeAfter() && !body.grab;
+      const asleep = b.state === 'idle' && idleFor() > dozeAfter() && !body.grab;
       b.sleep = (b.sleep || 0) + ((asleep ? 1 : 0) - (b.sleep || 0)) * (asleep ? 0.002 : 0.05);
       if (!asleep && b.sleep > 0.5 && !b.woke && body.onFloor()) { b.woke = true; body.squashTop(-CFG.sleepSlump * body.o.radius * 90, DT); b.nextBlink = time; }
       if (asleep) b.woke = false;
@@ -900,6 +906,7 @@
       // Just gulped a helper back in: a swell that wobbles down.
       if (b.gulpAt && time - b.gulpAt < 1.2) { const t = time - b.gulpAt; body.areaScale *= 1 + 0.1 * CFG.gulp * Math.sin(t * 9) * Math.exp(-t * 3); }
       body.o.pressure = Math.min(0.85, CFG.pressure * trait(b, 'firm') * (1 + CFG.contextTighten * b.fill)) * (1 - 0.5 * b.droop) * (1 - 2 * CFG.sleepSlump * b.sleep);
+      if (sys.low > 0) { body.areaScale *= 1 - 0.06 * sys.low; body.o.pressure *= 1 - 0.35 * sys.low; }
       // Pressure alone tops out early, so a full one also holds its round
       // shape harder and its skin goes taut: it barely squashes or sags.
       const firm = b.fill * b.fill * CFG.contextFirm;
@@ -1053,6 +1060,7 @@
     const body = b.body;
     if (b.dying || b.removed) return;
     if (b.pendingHop) crouch(b);
+    tingle(b);
     if (body.grab) { held(b); return; }
     b.stillFor = 0;
     b.wriggling = false;
@@ -1306,6 +1314,133 @@
   }
   // How long without the mouse before an idle slime dozes off (s).
   const dozeAfter = () => 120 - 75 * Math.min(1, lateness());
+  // How long since you last did anything: the mouse here, or (as the app
+  // reports it) the keyboard or mouse anywhere, so typing in a terminal
+  // doesn't count as leaving them alone.
+  function idleFor() {
+    const now = performance.now() / 1000, mouseIdle = now - mouse.lastMove;
+    return sys.idleAt < 0 ? mouseIdle : Math.min(mouseIdle, sys.idle + now - sys.idleAt);
+  }
+
+  // --- The computer -------------------------------------------------------
+
+  function onSystem(m) {
+    if (m.kind === 'idle') {
+      sys.idle = m.seconds;
+      sys.idleAt = performance.now() / 1000;
+      if (!sys.away && m.seconds > CFG.awayAfter) goAway(m.seconds);
+      else if (sys.away && m.seconds < 5) comeBack();
+      return;
+    }
+    if (m.kind === 'battery-level') { sys.battery = { level: m.level, charging: !!m.charging }; return; }
+    if (m.kind === 'sleep') goAway(0);
+    else if (m.kind === 'wake') { wakeUp(); comeBack(); }
+    else if (m.kind === 'ac') charge();
+  }
+
+  // You've gone (idle a while, or the lid shut): remember how each session
+  // stood, so when you're back they can tell you what changed.
+  function goAway(already) {
+    if (sys.away) return;
+    sys.away = true;
+    sys.awayFrom = Date.now() - already * 1000;
+    sys.before = new Map([...buddies.values()].filter((b) => b.kind === 'mother' && b.session).map((b) => [b.key, b.state]));
+  }
+
+  function comeBack() {
+    if (!sys.away) return;
+    sys.away = false;
+    const before = sys.before || new Map();
+    sys.before = null;
+    if (Date.now() - sys.awayFrom < CFG.awayAfter * 1000 * 0.9) return;
+    const word = { waiting: 'needs you', done: 'done' };
+    const news = [...buddies.values()].filter((b) => b.kind === 'mother' && !b.dying && b.session && word[b.state] && before.get(b.key) !== b.state);
+    // The ones with news come over to say hello; everyone looks pleased.
+    let i = 0;
+    for (const b of buddies.values()) {
+      if (b.dying || b.kind === 'child') continue;
+      const has = news.includes(b);
+      setTimeout(() => {
+        b.greetUntil = time + 1.5;
+        b.nextBlink = time;
+        if (has && CFG.systemLife > 0 && b.body.onFloor()) {
+          const dx = mouse.x - b.body.centroid().x;
+          b.hop(Math.sign(dx) * Math.min(420, Math.abs(dx) * 0.8) * CFG.seekYou, -380 * Math.min(1.5, CFG.systemLife));
+        }
+      }, 250 + i++ * 220 + Math.random() * 150);
+    }
+    if (!CFG.welcomeBack || !news.length) return;
+    const by = buddies.get(HOME) || news[0];
+    const mins = Math.round((Date.now() - sys.awayFrom) / 60000);
+    by.say([{ text: mins >= 2 ? `While you were away (${mins} min):` : 'While you were away:' },
+      ...news.map((b) => ({ text: `${label(b)}: ${word[b.state]}`, color: D.STATE_COLORS[b.state] }))], 8, false, false);
+  }
+
+  // The screen wakes (lid open, unlocked): they wake with it, a big stretch
+  // up and a blink, one after another.
+  function wakeUp() {
+    if (CFG.systemLife <= 0) return;
+    let i = 0;
+    for (const b of buddies.values()) {
+      if (b.dying) continue;
+      // (One mid-hop stretches when it lands.)
+      const go = (tries) => {
+        const body = b.body;
+        if (b.dying) return;
+        if (!body.onFloor() || body.grab) { if (tries < 20) setTimeout(() => go(tries + 1), 150); return; }
+        body.squashTop(-CFG.systemLife * body.o.radius * 16, DT);
+        b.startleUntil = time + 0.35;
+        b.nextBlink = time + 0.2;
+        b.sleep = Math.min(b.sleep || 0, 0.4);
+      };
+      setTimeout(() => go(0), i++ * 120 + Math.random() * 200);
+    }
+  }
+
+  // The charger goes in: a tingle runs through them and they perk up.
+  function charge() {
+    sys.lowSaid = false;
+    if (CFG.systemLife <= 0) return;
+    let i = 0;
+    for (const b of buddies.values()) {
+      if (b.dying) continue;
+      setTimeout(() => { b.chargeUntil = time + 0.6; }, i++ * 90);
+    }
+    const by = buddies.get(HOME) || bigs()[0];
+    if (by) by.say([{ text: '⚡', size: 30 }], 1.4, false, false);
+  }
+
+  // While charging up: a fizzy tingle, then a little hop when it's done.
+  function tingle(b) {
+    if (!b.chargeUntil) return;
+    const body = b.body, k = CFG.systemLife;
+    if (time < b.chargeUntil) {
+      if (body.onFloor() && !body.grab) {
+        const c = body.centroid(), r = body.o.radius;
+        const a = Math.random() * Math.PI * 2;
+        body.pushAt(c.x + Math.cos(a) * r * 0.8, c.y + Math.sin(a) * r * 0.8, Math.cos(a) * 160 * k, Math.sin(a) * 160 * k, r * 0.5, DT);
+      }
+      return;
+    }
+    b.chargeUntil = 0;
+    b.happyUntil = time + 1.5;
+    if (body.onFloor() && !body.grab) b.hop((Math.random() - 0.5) * 80, -300 * Math.min(1.5, k));
+  }
+
+  // Low battery (and not charging): they get tired, softer and saggier,
+  // with smaller hops. Said once, the first time it gets low.
+  function stepBattery() {
+    const bat = sys.battery;
+    const goal = CFG.systemLife > 0 && CFG.lowBattery > 0 && bat && !bat.charging && bat.level <= CFG.lowBattery
+      ? Math.min(1, CFG.systemLife * (1 - 0.5 * bat.level / CFG.lowBattery)) : 0;
+    sys.low += (goal - sys.low) * 0.004;
+    if (goal > 0 && !sys.lowSaid && sys.low > 0.3) {
+      sys.lowSaid = true;
+      const by = buddies.get(HOME) || bigs()[0];
+      if (by) by.say([{ text: `🔋 ${Math.round(bat.level * 100)}%, getting tired` }], 4, false, false);
+    }
+    if (bat && bat.charging) sys.lowSaid = false;
+  }
 
   // Each slime is its own character: from its key it gets a little more or
   // less of some traits (bouncy, curious, fidgety, blinky, firm), so two
@@ -1550,7 +1685,7 @@
       b.nextYawn = time + 20 + Math.random() * 30;
     }
     // Left alone for a couple of minutes, idle slimes doze off and yawn.
-    if (b.kind !== 'home' && b.state === 'idle' && performance.now() / 1000 - mouse.lastMove > dozeAfter() && time > (b.nextIdleYawn || 0)) {
+    if (b.kind !== 'home' && b.state === 'idle' && idleFor() > dozeAfter() && time > (b.nextIdleYawn || 0)) {
       if (b.nextIdleYawn) yawn(b, 1.6, 0.5);
       b.nextIdleYawn = time + (25 + Math.random() * 40) / (1 + lateness());
     }
@@ -1681,7 +1816,7 @@
     else if (b.pain > 0.05) { expression = 'pained'; mouth = 'wobble'; }
     else if (st === 'done' && unseen(b)) { expression = 'happy'; mouth = 'grin'; }
     else if (st === 'working') { expression = 'concentrate'; mouth = 'flat'; }
-    else if (st === 'idle' && performance.now() / 1000 - mouse.lastMove > dozeAfter()) { expression = 'sleepy'; mouth = 'flat'; }
+    else if (st === 'idle' && idleFor() > dozeAfter()) { expression = 'sleepy'; mouth = 'flat'; }
     // Saying something by itself (a status bubble): eyes open to tell you.
     // Just hovering doesn't wake it from its work.
     if (b.bubble && (expression === 'concentrate' || expression === 'sleepy')) { expression = 'normal'; mouth = 'smile'; }
@@ -2373,6 +2508,14 @@
     if (!m.status) turnLine(m.text);
   });
   api.onWorld((w) => setObstacles(w.obstacles));
+  if (api.onSystem) api.onSystem(onSystem);
+  // The battery, where the browser can see it.
+  if (navigator.getBattery) navigator.getBattery().then((bat) => {
+    const read = () => { sys.battery = { level: bat.level, charging: bat.charging }; };
+    read();
+    bat.addEventListener('levelchange', read);
+    bat.addEventListener('chargingchange', read);
+  }).catch(() => {});
   if (api.onLedges) api.onLedges(setLedges);
 
   api.onCommand((cmd) => {
@@ -2408,13 +2551,15 @@
 
   // Lets the renderer run in a plain browser for development and screenshots.
   function devShim() {
-    const listeners = { state: [], command: [], config: [], world: [], ledges: [] };
+    const listeners = { state: [], command: [], config: [], world: [], ledges: [], system: [] };
     window.__blaube = {
       setState: (s) => listeners.state.forEach((f) => f(s)),
       command: (c) => listeners.command.forEach((f) => f(c)),
       setConfig: (c) => listeners.config.forEach((f) => f(c)),
       setWorld: (w) => listeners.world.forEach((f) => f(w)),
       setLedges: (l) => listeners.ledges.forEach((f) => f(l)),
+      system: (m) => listeners.system.forEach((f) => f(m)),
+      sys: () => sys,
       buddies: () => buddies,
       pets: () => pets,
     };
@@ -2429,6 +2574,7 @@
       onConfig: (f) => listeners.config.push(f),
       onWorld: (f) => listeners.world.push(f),
       onLedges: (f) => listeners.ledges.push(f),
+      onSystem: (f) => listeners.system.push(f),
       onState: (f) => listeners.state.push(f),
       onCommand: (f) => listeners.command.push(f),
     };
