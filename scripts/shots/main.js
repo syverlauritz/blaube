@@ -376,6 +376,27 @@ const SCENES = {
 			{ who: 'claude', text: 'Committed as f3a91c2 “Fix flaky e2e timeout”.', turn: { took: 252e3, steps: 9, files: ['/w/test/e2e.js', '/w/src/main/inbox.js'] } },
 		] },
 	},
+	// /context in a session Blaube started: what fills it, as a bar.
+	talkContext: {
+		sessions: [session('tx', 'blaube', 'done', { color: '#5B8DEF', look: 'antenna' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1000, 640],
+		talk: { key: 'tx', inbox: 'ready', owned: true, canMode: true, mode: 'acceptEdits', model: 'Opus 5.5', context: 62, limit: '82% of the week used', log: [
+			{ who: 'you', text: 'how full are you?', via: 'blaube', status: 'sent' },
+			{ who: 'claude', text: 'About two thirds. Most of it is our conversation so far.' },
+			{ who: 'you', text: '/context', via: 'blaube', status: 'sent' },
+			{ who: 'note', text: 'Context: 62% full (124k of 200k)', context: { max: 200000, parts: [
+				{ name: 'Messages', tokens: 81000, kind: 'used', label: 'Messages 81k' },
+				{ name: 'System tools', tokens: 29200, kind: 'used', label: 'System tools 29.2k' },
+				{ name: 'Skills', tokens: 6800, kind: 'used', label: 'Skills 6.8k' },
+				{ name: 'System prompt', tokens: 3800, kind: 'used', label: 'System prompt 3.8k' },
+				{ name: 'Memory files', tokens: 3200, kind: 'used', label: 'Memory files 3.2k' },
+				{ name: 'Autocompact buffer', tokens: 33000, kind: 'buffer', label: 'Autocompact buffer 33k' },
+				{ name: 'Free space', tokens: 43000, kind: 'free', label: 'Free space 43k' },
+			] } },
+		] },
+	},
 	talkAsk: {
 		sessions: [session('ta', 'blaube', 'waiting', { color: '#5B8DEF', look: 'antenna', message: 'Claude needs your permission to use Bash' })],
 		wait: 3500,
