@@ -56,6 +56,26 @@ test("helpers' tokens count toward the total, not the context", () => {
 	assert.deepStrictEqual(sessionUsage(file), { total: 1100, context: 5010, limit: 200000 });
 });
 
+test("a helper's own tokens, from its transcript (subagents/agent-<id>.jsonl)", () => {
+	const { helperTokens } = require('../src/main/usage.js');
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-'));
+	const file = path.join(dir, 's1.jsonl');
+	fs.writeFileSync(file, line('a', { input_tokens: 10, output_tokens: 90 }));
+	const sub = path.join(dir, 's1', 'subagents');
+	fs.mkdirSync(sub, { recursive: true });
+	const u = { input_tokens: 3, cache_creation_input_tokens: 30000, cache_read_input_tokens: 9000, output_tokens: 500 };
+	// (One call written as two lines counts once; cache reads don't count.)
+	fs.writeFileSync(path.join(sub, 'agent-a1b2c3.jsonl'), line('h1', u, { isSidechain: true }) + line('h1', u, { isSidechain: true }));
+	fs.writeFileSync(path.join(sub, 'agent-a1b2c3.meta.json'), '{"agentType":"Explore"}');
+	fs.writeFileSync(path.join(sub, 'agent-other.jsonl'), line('o', { input_tokens: 99999 }, { isSidechain: true }));
+	assert.strictEqual(helperTokens(file, 'a1b2c3'), 30503);
+	// It keeps up as the helper works.
+	fs.appendFileSync(path.join(sub, 'agent-a1b2c3.jsonl'), line('h2', { input_tokens: 1, cache_creation_input_tokens: 2000, output_tokens: 496 }, { isSidechain: true }));
+	assert.strictEqual(helperTokens(file, 'a1b2c3'), 33000);
+	assert.strictEqual(helperTokens(file, 'nobody'), 0);
+	assert.strictEqual(helperTokens('', 'a1b2c3'), 0);
+});
+
 test('reads the effort of the newest call, for the session and each helper', () => {
 	const { sessionEffort } = require('../src/main/usage.js');
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-'));

@@ -253,7 +253,25 @@
     return out;
   }
 
-  const api = { GROUPS, SETTINGS, DEFAULTS, PALETTE, sanitize };
+  // How much bigger tokens make a slime (×): a step bigger each time the
+  // total doubles, counted from `from` (100k for a session, 20k for a helper,
+  // which uses far fewer).
+  function tokenGrowth(cfg, total, from) {
+    if (!total) return 1;
+    return Math.min(cfg.maxTokenGrowth, 1 + cfg.tokenGrowth * Math.log2(1 + total / from));
+  }
+
+  // A helper's radius from its own tokens, never past three quarters of
+  // its mother's full size (what her tokens make her, before she gives any
+  // of it to her children: what she has left depends on how many she has,
+  // and would make them all the same size). motherTokens null: no mother.
+  function childRadius(cfg, tokens, motherTokens) {
+    const r = cfg.childRadius * tokenGrowth(cfg, tokens, 20000);
+    if (motherTokens == null) return r;
+    return Math.min(r, Math.max(cfg.childRadius, 0.75 * cfg.mainRadius * tokenGrowth(cfg, motherTokens, 100000)));
+  }
+
+  const api = { GROUPS, SETTINGS, DEFAULTS, PALETTE, sanitize, tokenGrowth, childRadius };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.BlaubeConfig = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
