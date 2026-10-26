@@ -14,12 +14,22 @@ function mostWanted(sessions) {
 // `seen`: the slimes are where you can see them (in front of your windows),
 // or you're talking to this one. Finishing counts only after a wait
 // (`secs` of work); needing you always counts.
-// `ask`: what it's asking permission for ({ kind, tool, detail }), if
-// anything: then it says what, and can be answered right there (actions).
+// `ask`: what it's asking permission for ({ kind, tool, detail }), or its
+// question ({ kind: 'question', input }), if anything: then it says what,
+// and can be answered right there (actions).
 function notification({ event, project, title, text, secs = 0, seen = false, enabled = true, ask = null }) {
   if (!enabled || seen) return null;
   const name = title || project || 'Claude';
   const short = (t, n = 140) => { t = String(t || '').replace(/[`*_#>]+/g, '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+  // A question: what it asks; a single pick of up to three is answered
+  // right there (actions), and a single question can be answered in words
+  // (question: what the answer is to).
+  const qs = ask && ask.kind === 'question' && ask.input && Array.isArray(ask.input.questions) ? ask.input.questions : [];
+  if (event === 'waiting' && qs.length) {
+    const q = qs[0] || {}, one = qs.length === 1 && !q.multiSelect;
+    const labels = (q.options || []).map((o) => String((o && o.label) || '')).filter(Boolean);
+    return Object.assign({ title: `${name} asks`, body: short(q.question) || 'It has a question for you.' }, one ? { question: String(q.question || '') } : {}, one && labels.length && labels.length <= 3 ? { actions: labels } : {});
+  }
   if (event === 'waiting' && ask && ask.kind === 'tool') return { title: `${name} asks to use ${ask.tool || 'a tool'}`, body: short(ask.detail) || short(text) || 'It’s waiting for your answer.', actions: ['Allow', 'Deny'] };
   if (event === 'waiting') return { title: `${name} needs you`, body: short(text) || 'It’s waiting for your answer.' };
   if (event === 'error') return { title: `${name} couldn’t go on`, body: short(text) || 'Claude Code couldn’t get an answer.' };

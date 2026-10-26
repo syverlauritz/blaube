@@ -1054,21 +1054,24 @@ function notify(s, event, text, secs = 0) {
   const mode = prefs.config.notify || 'Behind windows';
   const seen = (talkWin && talkWin.isVisible() && talkId === s.id) || (mode !== 'Always' && prefs.config.onTop !== 'Off' && win && win.isVisible());
   // (Asking permission: Allow and Deny right in it, on macOS.)
-  const ask = event === 'waiting' && process.platform === 'darwin' ? (inbox.asks.get(s.id) || []).slice(-1)[0] : null;
+  const ask = event === 'waiting' ? (inbox.asks.get(s.id) || []).slice(-1)[0] : null;
   const n = attention.notification({ event, project: s.project, title: usage.sessionInfo(transcriptPath(s)).title, text, secs, seen, enabled: mode !== 'Off', ask });
   if (!n || Date.now() - (notified.get(s.id) || 0) < 15000) return;
   notified.set(s.id, Date.now());
   // (On macOS you can answer one that's done right in the notification.)
   // (And a permission ask can be answered "no, do this instead" in words.)
+  // (A question: a tap on an answer, or one in your own words.)
   const askReply = ask && ask.kind === 'tool' && n.actions;
-  const note = new Notification(Object.assign({ title: n.title, body: n.body }, event === 'done' ? { hasReply: true, replyPlaceholder: `Reply to ${s.project}` } : askReply ? { hasReply: true, replyPlaceholder: 'Or say what to do instead' } : {},
+  const answer = (label) => inbox.decide(s.id, ask.key, 'allow', { [n.question]: label });
+  const note = new Notification(Object.assign({ title: n.title, body: n.body }, event === 'done' ? { hasReply: true, replyPlaceholder: `Reply to ${s.project}` } : askReply ? { hasReply: true, replyPlaceholder: 'Or say what to do instead' } : n.question ? { hasReply: true, replyPlaceholder: 'Or answer in your words' } : {},
     n.actions ? { actions: n.actions.map((text) => ({ type: 'button', text })) } : {}));
-  note.on('action', (_e, i) => { shown.delete(note); if (ask && n.actions && !inbox.decide(s.id, ask.key, i === 0 ? 'allow' : 'deny') && win) win.webContents.send('open-talk', s.id); });
+  note.on('action', (_e, i) => { shown.delete(note); if (ask && n.actions && !(n.question ? answer(n.actions[i]) : inbox.decide(s.id, ask.key, i === 0 ? 'allow' : 'deny')) && win) win.webContents.send('open-talk', s.id); });
   note.on('reply', (_e, text) => {
     shown.delete(note);
     const said = String(text || '').trim();
     if (!said || !tracker.sessions.has(s.id)) return;
     if (askReply) { if (!inbox.decide(s.id, ask.key, 'deny', { message: said }) && win) win.webContents.send('open-talk', s.id); return; }
+    if (n.question && ask) { if (!answer(said) && win) win.webContents.send('open-talk', s.id); return; }
     if (replyTo) replyTo(s.id, said);
   });
   // (Held on to until it's gone, or a click may never arrive.)

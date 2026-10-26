@@ -89,3 +89,14 @@ test('the overview says how long it has been waiting on you', () => {
   assert.equal(glance({ state: 'waiting', waitingSince: now - 130 * 60e3, now }).status, 'Needs you (2h)');
   assert.equal(glance({ state: 'waiting', waitingSince: now - 20e3, now }).status, 'Needs you');
 });
+
+test('a question in a notification: what it asks, its answers a tap away', () => {
+  const ask = (questions) => ({ kind: 'question', input: { questions } });
+  const n = notification({ event: 'waiting', project: 'kalkis', ask: ask([{ question: 'Which year?', options: [{ label: '2027' }, { label: '2028' }] }]) });
+  assert.deepEqual(n, { title: 'kalkis asks', body: 'Which year?', question: 'Which year?', actions: ['2027', '2028'] });
+  const many = notification({ event: 'waiting', project: 'kalkis', ask: ask([{ question: 'Pick some', multiSelect: true, options: [{ label: 'a' }] }]) });
+  assert.deepEqual(many, { title: 'kalkis asks', body: 'Pick some' }, 'several picks: answered in its box');
+  const four = notification({ event: 'waiting', project: 'kalkis', ask: ask([{ question: 'Which?', options: [{ label: 'a' }, { label: 'b' }, { label: 'c' }, { label: 'd' }] }]) });
+  assert.equal(four.actions, undefined);
+  assert.equal(four.question, 'Which?', 'still answerable in words');
+});
