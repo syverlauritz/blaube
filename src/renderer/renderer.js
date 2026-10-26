@@ -1036,7 +1036,7 @@
   function twitch(b) {
     if (CFG.earTwitch <= 0 || !TWITCHY[b.look] || b.dying || (b.sleep || 0) > 0.5) return;
     const k = Math.min(2, CFG.earTwitch), c = b.body.centroid(), r = b.body.o.radius;
-    const near = !drag && Math.hypot(mouse.x - c.x, mouse.y - c.y) < r * 2.5;
+    const near = !drag && !lulled(b) && Math.hypot(mouse.x - c.x, mouse.y - c.y) < r * 2.5;
     if (near && !b.cursorNear) Looks.flick(b, -7 * k, 0); // (pricks up)
     b.cursorNear = near;
     if (time < (b.nextTwitch ?? (b.nextTwitch = time + 3 + Math.random() * 10))) return;
@@ -1268,7 +1268,7 @@
       // jitters, worst while it's held.)
       // Dozing (idle, nobody around for two minutes): it slumps, softer and
       // flatter. When you come back it wakes with a big stretch up.
-      const asleep = b.state === 'idle' && idleFor() > dozeAfter() && !body.grab;
+      const asleep = b.state === 'idle' && dozing() && !body.grab;
       b.sleep = (b.sleep || 0) + ((asleep ? 1 : 0) - (b.sleep || 0)) * (asleep ? 0.002 : 0.05);
       if (!asleep && b.sleep > 0.5 && !b.woke && body.onFloor()) { b.woke = true; body.squashTop(-CFG.sleepSlump * body.o.radius * 90, DT); b.nextBlink = time; }
       // Waking pops the bubble it was snoring, with a start.
@@ -1552,7 +1552,7 @@
     const dx = mouse.x - c.x, dy = mouse.y - c.y, d = Math.hypot(dx, dy);
     // A cursor whizzing past makes it flinch: it ducks and leans away.
     const ms = Math.hypot(mouse.vx, mouse.vy);
-    if (CFG.flinch > 0 && ms > CFG.flinchSpeed && d < r * 1.8 && !body.contains(mouse.x, mouse.y) && time > (b.flinchAt || 0)) {
+    if (CFG.flinch > 0 && !lulled(b) && ms > CFG.flinchSpeed && d < r * 1.8 && !body.contains(mouse.x, mouse.y) && time > (b.flinchAt || 0)) {
       b.flinchAt = time + 1.2;
       b.startleUntil = time + 0.45;
       b.surpriseUntil = time + 0.45;
@@ -1561,7 +1561,7 @@
     }
     // The cursor resting on top of its head: like a cat, it pushes up into
     // your hand and shuts its eyes.
-    if (CFG.headPat > 0 && !drag && body.contains(mouse.x, mouse.y) && mouse.y < c.y - r * 0.35 && performance.now() / 1000 - mouse.lastMove > 0.7) {
+    if (CFG.headPat > 0 && !lulled(b) && !drag && body.contains(mouse.x, mouse.y) && mouse.y < c.y - r * 0.35 && performance.now() / 1000 - mouse.lastMove > 0.7) {
       b.patted = true;
       if (!b.patSince) b.patSince = time;
       const top = body.bbox().minY;
@@ -1570,7 +1570,7 @@
     } else { b.patSince = 0; b.patHeart = false; }
     // The cursor resting right on its face: it looks right at you; keep it
     // up and it giggles and squirms.
-    const staring = CFG.shy > 0 && !drag && !b.patted && body.contains(mouse.x, mouse.y) && performance.now() / 1000 - mouse.lastMove > 0.8;
+    const staring = CFG.shy > 0 && !lulled(b) && !drag && !b.patted && body.contains(mouse.x, mouse.y) && performance.now() / 1000 - mouse.lastMove > 0.8;
     b.stare = staring ? (b.stare || 0) + DT : Math.max(0, (b.stare || 0) - DT * 2);
     if (b.stare > 4.5 / Math.max(0.25, Math.min(1, CFG.shy))) {
       b.stare = 1.6;
@@ -1609,7 +1609,7 @@
     strain(b, r);
     tapFoot(b, r);
     typeAway(b, r);
-    const calm = (b.state === 'idle' || b.state === 'done') && !meditating(b) && !b.stackedBy && time > (b.pounceUntil || 0) && !playing(b);
+    const calm = (b.state === 'idle' || b.state === 'done') && !lulled(b) && !meditating(b) && !b.stackedBy && time > (b.pounceUntil || 0) && !playing(b);
     if (!calm) return;
     // A cursor close by: it leans over toward it, curious. Not when you're
     // on it (that's petting), and not if it's been sitting still a while.
@@ -2453,12 +2453,28 @@
     const now = performance.now() / 1000, mouseIdle = now - mouse.lastMove;
     return sys.idleAt < 0 ? mouseIdle : Math.min(mouseIdle, sys.idle + now - sys.idleAt);
   }
+  // Dozing off is a latch: once left alone long enough they're asleep, and
+  // moving the mouse (over them, near them, anywhere) doesn't wake them. Only
+  // a real touch does: a click or grab, the keyboard, the screen waking.
+  const doze = { on: false, since: 0, touchAt: 0 };
+  function dozing() {
+    const now = performance.now() / 1000;
+    if (doze.on && doze.touchAt > doze.since) doze.on = false;
+    if (!doze.on && idleFor() > dozeAfter() && now > doze.touchAt) { doze.on = true; doze.since = now; }
+    return doze.on;
+  }
+  const touched = () => { doze.touchAt = performance.now() / 1000; };
+  // Asleep enough that the cursor is nothing to it: no flinching, no
+  // greeting, no eyes opening to look.
+  const lulled = (b) => (b.sleep || 0) > 0.3 || (b.state === 'idle' && !b.body.grab && dozing());
 
   // --- The computer -------------------------------------------------------
 
   function onSystem(m) {
     if (m.kind === 'idle') {
       if (m.seconds < sys.idle) sys.asleep = false; // (used since: in case a wake went missing)
+      // Input since the last report that wasn't the mouse moving: the keyboard.
+      if (m.seconds < sys.idle - 0.5 && mouse.lastMove < performance.now() / 1000 - m.seconds - 1.5) touched();
       sys.idle = m.seconds;
       sys.idleAt = performance.now() / 1000;
       if (!sys.away && m.seconds > CFG.awayAfter) goAway(m.seconds);
@@ -2467,7 +2483,7 @@
     }
     if (m.kind === 'battery-level') { sys.battery = { level: m.level, charging: !!m.charging }; return; }
     if (m.kind === 'sleep') { goAway(0); sys.asleep = true; sys.idle = 0; }
-    else if (m.kind === 'wake') { sys.asleep = false; wakeUp(); comeBack(); }
+    else if (m.kind === 'wake') { sys.asleep = false; touched(); wakeUp(); comeBack(); }
     else if (m.kind === 'ac') charge();
   }
 
@@ -2494,6 +2510,7 @@
       if (b.dying || b.kind === 'child') continue;
       const has = news.includes(b);
       setTimeout(() => {
+        if (lulled(b)) return; // (asleep: the mouse alone doesn't wake it)
         b.greetUntil = time + 1.5;
         b.nextBlink = time;
         if (has && CFG.systemLife > 0 && b.body.onFloor()) {
@@ -2505,7 +2522,7 @@
     // First thing in the morning (away overnight): a big stretch all round.
     const h = new Date().getHours();
     const morning = h >= 5 && h < 12 && (new Date(sys.awayFrom).toDateString() !== new Date().toDateString() || Date.now() - sys.awayFrom > 4 * 3600e3);
-    if (morning) wakeUp();
+    if (morning && doze.touchAt > performance.now() / 1000 - 10) wakeUp(); // (a click or key, not just the mouse)
     if (!CFG.welcomeBack || (!news.length && !morning)) return;
     const by = buddies.get(HOME) || news[0] || bigs()[0];
     if (!by) return;
@@ -4460,7 +4477,7 @@
   function circled(b) {
     const c = b.body.centroid(), r = b.body.o.radius;
     const d = Math.hypot(mouse.x - c.x, mouse.y - c.y);
-    const near = CFG.circleDizzy > 0 && !b.body.grab && !b.dying && b.kind !== 'home' && d > r * 0.5 && d < r * 3.5 && performance.now() / 1000 - mouse.lastMove < 0.4;
+    const near = CFG.circleDizzy > 0 && !lulled(b) && !b.body.grab && !b.dying && b.kind !== 'home' && d > r * 0.5 && d < r * 3.5 && performance.now() / 1000 - mouse.lastMove < 0.4;
     const ci = b.circling || (b.circling = { a: 0, last: null, at: -9 });
     if (!near) {
       ci.last = null;
@@ -4787,7 +4804,7 @@
 
   // Fond of you (petted lately): it tags along after your cursor for a bit.
   function tagAlong(b) {
-    if ((b.mood || 0) < 0.75 || b.kind === 'child' || b.ghost || b.ghostBy || b.body.grab || !b.body.onFloor() || b.pendingHop || time < (b.nextTagAlong || 0)) return;
+    if ((b.mood || 0) < 0.75 || lulled(b) || b.kind === 'child' || b.ghost || b.ghostBy || b.body.grab || !b.body.onFloor() || b.pendingHop || time < (b.nextTagAlong || 0)) return;
     if (b.state !== 'idle' && b.state !== 'done') return;
     if (performance.now() / 1000 - mouse.lastMove > 3 || mouse.x < 0 || mouse.x > W) return;
     const c = b.body.centroid(), r = b.body.o.radius, dx = mouse.x - c.x;
@@ -4888,7 +4905,7 @@
       }
       return;
     }
-    const calm = b.kind !== 'home' && (b.state === 'idle' || b.state === 'done') && !b.body.grab && !b.merging && !drag && b.body.onFloor() && !b.stackedBy;
+    const calm = b.kind !== 'home' && (b.state === 'idle' || b.state === 'done') && !lulled(b) && !b.body.grab && !b.merging && !drag && b.body.onFloor() && !b.stackedBy;
     const c = b.body.centroid(), r = b.body.o.radius, above = b.body.bbox().minY - mouse.y;
     const teasing = calm && Math.abs(mouse.x - c.x) < r * 1.6 && above > r * 0.2 && above < r * 3.5 && performance.now() / 1000 - mouse.lastMove < 0.3;
     if (!teasing) {
@@ -5378,7 +5395,7 @@
     circled(b);
     twitch(b);
     stepFive(b);
-    if (b.kind !== 'home' && b.state === 'idle' && idleFor() > dozeAfter() && time > (b.nextIdleYawn || 0)) {
+    if (b.kind !== 'home' && b.state === 'idle' && dozing() && time > (b.nextIdleYawn || 0)) {
       if (b.nextIdleYawn) yawn(b, 1.6, 0.5);
       b.nextIdleYawn = time + (25 + Math.random() * 40) / (1 + lateness());
     }
@@ -5578,7 +5595,7 @@
     else if (st === 'working' && b.stuck) { expression = 'pained'; mouth = 'wobble'; }
     else if (st === 'working' && b.tapping) { expression = 'normal'; mouth = 'flat'; calmWork = true; b.glanceAt = { spot: { x: body.centroid().x + (b.key.length % 2 ? 1 : -1) * body.o.radius * 2, y: body.bbox().maxY + body.o.radius } }; b.glanceUntil = time + 0.1; }
     else if (st === 'working') { expression = 'concentrate'; mouth = 'flat'; calmWork = true; }
-    else if (st === 'idle' && idleFor() > dozeAfter()) { expression = 'sleepy'; mouth = 'flat'; }
+    else if (st === 'idle' && dozing()) { expression = 'sleepy'; mouth = 'flat'; }
     // Crowded a while: not smiling about it.
     if (expression === 'normal' && mouth === 'smile' && (b.crowdedFor || 0) > 4 && !body.grab && st !== 'waiting') mouth = 'flat';
     // Saying something by itself (a status bubble): eyes open to tell you.
@@ -5923,7 +5940,7 @@
     const under = drag || petAt(mouse.x, mouse.y) || glassesAt(mouse.x, mouse.y) ? null : buddyAt(mouse.x, mouse.y);
     if (under) {
       // Coming back to a slime after a while: it perks up to say hi.
-      if (under !== hovered && time - (under.lastHover || -99) > 6 && CFG.eyeLife > 0) {
+      if (under !== hovered && time - (under.lastHover || -99) > 6 && CFG.eyeLife > 0 && !lulled(under)) {
         under.greetUntil = time + 0.8;
         if (under.body.onFloor() && !under.body.grab && under.state !== 'working') under.body.squashTop(-under.body.o.radius * 3 * CFG.eyeLife, DT);
       }
@@ -6037,7 +6054,7 @@
     const dx = mouse.x - pet.lastX;
     pet.lastX = mouse.x;
     if (target !== pet.target) { pet.target = target; pet.flips = []; pet.dir = 0; return; }
-    if (!target || Math.abs(dx) < 2) return;
+    if (!target || Math.abs(dx) < 2 || (target.body && lulled(target))) return; // (a sleeper isn't petted awake)
     const dir = Math.sign(dx);
     if (dir !== pet.dir) { pet.flips.push(time); pet.dir = dir; }
     pet.flips = pet.flips.filter((t) => time - t < 1.2);
@@ -6545,6 +6562,7 @@
   function onDown(e) {
     console.log(`[blaube] mousedown ${e.button} at ${e.clientX},${e.clientY} slime=${!!buddyAt(e.clientX, e.clientY)} pet=${!!petAt(e.clientX, e.clientY)}`);
     if (e.button !== 0) return;
+    touched();
     const owner = glassesAt(e.clientX, e.clientY);
     if (owner) {
       // Pick up lost glasses, to hand them back.

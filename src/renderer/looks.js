@@ -412,16 +412,17 @@
 					});
 					break;
 				case 'horns':
-					// Little blunt nubs in the body's colour with rounded tips, the
-					// ones off to the side bending outward (the middle one stands
-					// straight).
+					// Short, wide rounded triangles in the body's colour (like friendly
+					// dino plates), the ones off to the side leaning outward (the
+					// middle one stands straight).
 					if (back) at(0, () => {
-						const lean = Math.sign(part.shift) * Math.min(1, Math.abs(part.shift) * 2) * u * 0.3, tip = u * 0.34;
+						const lean = Math.sign(part.shift) * Math.min(1, Math.abs(part.shift) * 2) * u * 0.3;
+						const bw = u * 1.0, by = u * 0.8, ay = -u * 1.15, t = 0.88; // base half-width, base y, apex y, where the straight sides stop
 						ctx.beginPath();
-						ctx.moveTo(-u * 0.75, u * 0.8);
-						ctx.quadraticCurveTo(-u * 0.6, -u * 0.45, lean - tip, -u * 1.2);
-						ctx.arc(lean, -u * 1.2, tip, Math.PI, 0);
-						ctx.quadraticCurveTo(u * 0.6, -u * 0.45, u * 0.75, u * 0.8);
+						ctx.moveTo(-bw, by);
+						ctx.lineTo(lean - bw * (1 - t), by + (ay - by) * t);
+						ctx.quadraticCurveTo(lean, ay - u * 0.08, lean + bw * (1 - t), by + (ay - by) * t);
+						ctx.lineTo(bw, by);
 						ctx.closePath();
 						ctx.fill();
 					});
