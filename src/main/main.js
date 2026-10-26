@@ -868,6 +868,15 @@ function notify(s, event, text, secs = 0) {
   note.show();
 }
 
+// A slash command Blaube can't type in for you (Windows, or a terminal it
+// can't drive): it goes on the clipboard and its terminal comes forward,
+// so it's one paste away.
+function handOver(s, cmd) {
+  clipboard.writeText(cmd);
+  inbox.add(s.id, { who: 'note', text: `${cmd.split(/\s/)[0]} is for Claude Code itself, so it’s on your clipboard: paste it into its terminal.` });
+  if (!TEST) goToSession(s);
+}
+
 // The talk shortcut: opens the talk box of the slime that needs you most
 // (or closes the open one).
 function talkShortcut() {
@@ -1168,7 +1177,8 @@ function trayMenu() {
   const mark = { waiting: '❓', working: '⏳', done: '✅', idle: '💤' };
   const rows = live.map((o) => {
     const g = glanceAt(o);
-    return { label: `${mark[o.state] || '•'}  ${o.project}`, sublabel: g.status, toolTip: g.meta, click: () => { if (!win) return; if (process.platform === 'darwin') app.focus({ steal: true }); win.webContents.send('open-talk', o.id); } };
+    // (Only macOS shows a sublabel: elsewhere the status goes on the line.)
+    return { label: `${mark[o.state] || '•'}  ${o.project}${process.platform === 'darwin' || !g.status ? '' : `  ·  ${g.status.length > 40 ? g.status.slice(0, 39) + "…" : g.status}`}`, sublabel: g.status, toolTip: g.meta, click: () => { if (!win) return; if (process.platform === 'darwin') app.focus({ steal: true }); win.webContents.send('open-talk', o.id); } };
   });
   return Menu.buildFromTemplate([...(rows.length ? [...rows, { type: 'separator' }] : []), ...appMenuTemplate()]);
 }
@@ -1183,6 +1193,9 @@ function refreshTray() {
 
 app.whenReady().then(async () => {
   if (process.platform === 'darwin' && app.dock) app.dock.hide();
+  // Windows shows (and routes clicks on) notifications by app id: the
+  // installer's, or this Electron's own when run from the source folder.
+  if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? 'app.blaube.desktop' : process.execPath);
 
   loadPrefs();
 
@@ -1438,12 +1451,12 @@ app.whenReady().then(async () => {
       const s = tracker.sessions.get(id);
       const cmd = String(text).trim();
       const typeable = process.platform === 'darwin' && !!s.pid && (s.term === 'Apple_Terminal' || s.term === 'iTerm.app');
-      if (!typeable) { inbox.add(id, { who: 'note', text: `Blaube can’t run ${cmd.split(/\s/)[0]} in this session. Use its terminal.` }); return; }
+      if (!typeable) return handOver(s, cmd);
       if (s.state === 'working' || s.state === 'waiting') { inbox.add(id, { who: 'note', text: `${cmd.split(/\s/)[0]} has to wait until it’s free. Send it again then.` }); return; }
       inbox.add(id, { who: 'you', text: cmd, via: 'blaube', status: 'sent' });
       typeIntoSession(s, cmd, (ok, why) => {
         log(`typed ${cmd.split(/\s/)[0]} into ${s.project}'s terminal: ${ok ? 'ok' : 'no (' + why + ')'}`);
-        if (!ok) inbox.add(id, { who: 'note', text: `Couldn’t type ${cmd.split(/\s/)[0]} into its terminal.` });
+        if (!ok) handOver(s, cmd);
         else inbox.typed.set(id, { text: cmd, entries: [] }); // its echo isn't logged twice
       });
       return;

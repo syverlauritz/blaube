@@ -13,6 +13,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const { clipboard } = require('electron');
 const { toolHookCommand } = require('../../src/main/claudeHooks');
 
 const OUT = path.join(__dirname, '..', '..', 'shots');
@@ -99,7 +100,9 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await type('/compact');
 	await sleep(400);
 	check(inbox.view(ID).queued === 0, '/compact isn’t sent to Claude as a message');
-	check((await texts()).some((t) => /\/compact/.test(t) && /terminal|wait/.test(t)), 'the box says where it has to go instead');
+	check((await texts()).some((t) => /\/compact/.test(t) && /clipboard/.test(t)), 'where Blaube can’t type it in, the box says it’s on the clipboard');
+	const clip = await clipboard.readText();
+	check(clip === '/compact', `and it is (${JSON.stringify(clip)})`);
 	await type('/api returns 500 on the brackets page');
 	check(await until(() => inbox.view(ID).queued === 1), 'a message that just starts with a path is a message');
 	for (const e of inbox.queue.get(ID) || []) inbox.unsend(ID, e.n);
