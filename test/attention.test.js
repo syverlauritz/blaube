@@ -75,3 +75,9 @@ test('an API error is worth a notification', () => {
   const { notification } = require('../src/main/attention.js');
   assert.deepEqual(notification({ event: 'error', project: 'kalkis', text: '5-hour limit reached ∙ resets 3pm' }), { title: 'kalkis couldn’t go on', body: '5-hour limit reached ∙ resets 3pm' });
 });
+
+test('a background task that crashed is worth a notification', () => {
+  const { notification } = require('../src/main/attention');
+  assert.deepEqual(notification({ event: 'task', project: 'kalkis', text: 'Dev server' }), { title: 'kalkis: Dev server stopped', body: 'It ended with an error. Its last lines are in its box.' });
+  assert.equal(notification({ event: 'task', project: 'kalkis', text: 'Dev server', seen: true }), null);
+});

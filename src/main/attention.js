@@ -23,6 +23,7 @@ function notification({ event, project, title, text, secs = 0, seen = false, ena
   if (event === 'waiting' && ask && ask.kind === 'tool') return { title: `${name} asks to use ${ask.tool || 'a tool'}`, body: short(ask.detail) || short(text) || 'It’s waiting for your answer.', actions: ['Allow', 'Deny'] };
   if (event === 'waiting') return { title: `${name} needs you`, body: short(text) || 'It’s waiting for your answer.' };
   if (event === 'error') return { title: `${name} couldn’t go on`, body: short(text) || 'Claude Code couldn’t get an answer.' };
+  if (event === 'task') return { title: `${name}: ${short(text, 60) || 'a background task'} stopped`, body: 'It ended with an error. Its last lines are in its box.' };
   if (event === 'done' && secs >= 20) return { title: `${name} is done`, body: short(text) || 'It finished its turn.' };
   return null;
 }

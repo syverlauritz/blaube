@@ -1807,6 +1807,7 @@ app.whenReady().then(async () => {
         else {
           inbox.add(s.id, { who: 'note', text: `${name} stopped with an error (code ${r.exited})${last ? ': ' + shorten(last.trim(), 120) : ''}`, error: true });
           if (win && readySessions.has(s.id)) win.webContents.send('say', { id: s.id, text: shorten(`${name} stopped`, 60), seconds: 5, status: true });
+          if (readySessions.has(s.id)) notify(s, 'task', name);
         }
         pushState();
         if (talkId === s.id) pushTalk(s.id);
