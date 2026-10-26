@@ -2830,7 +2830,7 @@
   // its last one falls a little short, and the first one says "copycat!".
   function trick(b) {
     if (CFG.tricks <= 0 || b.kind === 'child') return;
-    const ok = b.state === 'idle' && !b.body.grab && !b.merging && !b.prank && !b.tag && !b.snow && !b.parade && (b.sleep || 0) < 0.1 && idleFor() < 30 && b !== buddies.get(talkingTo);
+    const ok = b.state === 'idle' && !b.body.grab && !b.merging && !b.prank && !b.tag && !b.snow && !b.parade && (b.sleep || 0) < 0.1 && (idleFor() < 30 || showingOff) && b !== buddies.get(talkingTo);
     const c = b.copy;
     if (c) {
       if (!ok || c.lead.dying || time - c.start > 12) { b.copy = null; return; }
@@ -2851,16 +2851,16 @@
       return;
     }
     if (b.trick) {
-      if (!ok) { b.trick = null; return; }
+      if (!ok) { b.trick = null; b.forceFlip = false; return; }
       if (!b.body.onFloor()) { b.trick.up = true; return; }
       if (b.pendingHop || time < b.trick.next || (b.trick.n && !b.trick.up)) return; // (each from the ground)
-      if (b.trick.n >= 3) { b.trick = null; b.happyUntil = time + 1.5; return; }
+      if (b.trick.n >= 3) { b.trick = null; b.forceFlip = false; b.happyUntil = time + 1.5; return; }
       b.trick.n++;
       b.trick.up = false;
       const vx = (Math.random() - 0.5) * 40, vy = -(240 + b.trick.n * 130) * Math.min(1.4, CFG.tricks);
       b.hop(vx, vy);
       // Now and then the last one's a somersault.
-      if (b.trick.n === 3 && Math.random() < 0.45 * CFG.flips) b.flip = { dir: Math.random() < 0.5 ? -1 : 1, vy, at: time };
+      if (b.trick.n === 3 && (Math.random() < 0.45 * CFG.flips || (b.forceFlip && CFG.flips > 0))) b.flip = { dir: Math.random() < 0.5 ? -1 : 1, vy, at: time };
       const o = b.trick.copy;
       if (o && o.copy) o.copy.hops.push({ at: time + 0.45, vx, vy, n: b.trick.n });
       b.trick.next = time + 0.12;
@@ -3670,7 +3670,26 @@
     at(29, () => { const b = big()[1] || big()[0]; if (b && !b.blow) b.blow = { at: time + 0.7, side: 1 }; });
     at(31, () => addFlutter());
     at(17, () => { const b = buddies.get(HOME) || big()[0]; if (b) b.say([{ text: 'While you were away (demo):' }, ...summaryLines()], 6, false, false); });
-    at(34, () => { seasonOverride = was; showingOff = false; });
+    // Part two: a trampoline, a burp, a dream, a somersault, a tumble.
+    at(34, () => {
+      const [b, o] = big();
+      if (!b || !o || b.body.grab || o.body.grab) return;
+      const c = o.body.centroid();
+      b.body.teleport(c.x, Math.max(b.body.o.radius + 10, c.y - o.body.o.radius * 4.5));
+      const v = b.body.velocity(DT);
+      b.body.impulse(-v.x, 500 - v.y, DT);
+    });
+    at(39, () => { const b = big()[0]; if (b) { b.bubble = null; b.burpAt = time; } });
+    at(42, () => { const b = big()[1] || big()[0]; if (b) { b.dream = { what: 'sheep', until: time + 4.5, demo: true }; b.napUntil = time + 4.5; } });
+    at(47.5, () => { const b = big()[0]; if (b) { b.forceFlip = true; startTrick(b, false); } });
+    at(53, () => {
+      const b = big()[1] || big()[0];
+      if (!b || b.body.grab) return;
+      const v = b.body.velocity(DT), dir = b.body.centroid().x < W / 2 ? 1 : -1;
+      b.body.impulse(dir * 1100 - v.x, -900 - v.y, DT);
+      throwSpin(b);
+    });
+    at(58, () => { seasonOverride = was; showingOff = false; });
   }
   let showingOff = false;
 
@@ -3902,6 +3921,7 @@
     else if (b.splat) { expression = 'dizzy'; mouth = 'wobble'; }
     else if (time < (b.annoyedUntil || 0) && b.annoyedAt && !b.annoyedAt.dying && !body.grab) { expression = 'annoyed'; mouth = 'flat'; }
     else if (time < (b.yawnUntil || 0)) { expression = 'sleepy'; mouth = 'yawn'; }
+    else if (time < (b.napUntil || 0) && !body.grab) { expression = 'sleepy'; mouth = 'flat'; } // (a quick nap, for show)
     else if (time < (b.winceUntil || 0)) { expression = 'pained'; mouth = 'wobble'; }
     else if (time < (b.cheerUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
     else if (time < (b.burpUntil || 0)) { expression = 'normal'; mouth = 'o'; } // (*burp*)
@@ -4221,7 +4241,7 @@
       b.faceTurn = { x: face.turnX || 0, y: face.turnY || 0 };
       if (face.expression === 'sleepy' && face.mouth !== 'yawn') D.drawZzz(ctx, b.body, time);
       nightcap(b);
-      if (b.dream && time < b.dream.until && !b.bubble && b !== hovered && (b.sleep || 0) > 0.8) D.drawDream(ctx, b.body, time, W, b.dream.what);
+      if (b.dream && time < b.dream.until && !b.bubble && b !== hovered && ((b.sleep || 0) > 0.8 || b.dream.demo)) D.drawDream(ctx, b.body, time, W, b.dream.what);
       const sweat = Math.max(ramp(b.fill || 0, CFG.sweatAt, 1), busySweat(b));
       if (sweat > 0) D.drawSweat(ctx, b.body, time, sweat);
       drawBeads(b);

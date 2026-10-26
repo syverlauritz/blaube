@@ -40,7 +40,7 @@ A squishy Claude-orange slime that lives on your desktop. Grab it, toss it, watc
 
 Press **⌘⌥⇧B** (Ctrl+Alt+Shift+B on Windows), or **Option/Alt + right-click** a big slime. Every parameter (colour, sizes, all the physics, dragging, hops, Dock collision, a physics debug overlay) has a live slider. **Copy config** puts the current values on the clipboard as JSON (the full config plus just what you changed), ready to paste back to Claude to bake in as the new defaults. **Paste config** applies a JSON blob. Settings are saved between launches.
 
-**Show off** runs through the rarer bits of life in about 35 seconds (a trick, a prank, a sneeze, hiccups, the charger tingle, a while-you-were-away note, a game of tag, a goo bubble), so you don't have to wait hours to see them. Each section has its own **Reset**. The five **Life** sections (body, you, mood, together, world) hold everything that makes the slimes feel alive; every knob at 0 switches its behaviour off. If something feels off:
+**Show off** runs through the rarer bits of life in about a minute (a trick, a prank, a sneeze, hiccups, the charger tingle, a while-you-were-away note, a game of tag, a goo bubble, a butterfly, a trampoline bounce, a burp, a dream, a somersault, a tumble), so you don't have to wait hours to see them. Each section has its own **Reset**. The five **Life** sections (body, you, mood, together, world) hold everything that makes the slimes feel alive; every knob at 0 switches its behaviour off. If something feels off:
 
 - **Too twitchy overall:** lower `idleFidget`, `leanToCursor` and `personality` first.
 - **Hops feel slow to start:** lower `hopCrouch`. **Not springy enough:** raise `crouchDepth`.
