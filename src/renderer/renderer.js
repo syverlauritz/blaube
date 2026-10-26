@@ -2819,6 +2819,57 @@
     }
   }
 
+  // Throw a slime at a calm one and it may catch it: it braces, eyes on it,
+  // leans in and takes the hit with a big squish, the two of them stuck
+  // together for a moment ("got you!").
+  function catchThrown(b) {
+    const k = b.catching, body = b.body;
+    if (k) {
+      const f = k.f, t = time - k.at;
+      if (f.dying || body.grab || f.body.grab || t > 1.2 || (k.caught && t > 1.6)) { b.catching = null; return; }
+      if (k.caught) return;
+      const c = body.centroid(), fc = f.body.centroid(), r = body.o.radius;
+      const dx = fc.x - c.x, dy = fc.y - c.y, d = Math.hypot(dx, dy) || 1;
+      // Braced: low, leaning in toward it, eyes on it.
+      b.glanceAt = f; b.glanceUntil = time + 0.2;
+      if (body.onFloor()) {
+        body.squashTop(r * 0.3 * 60 * DT, DT);
+        body.lean(Math.sign(dx) * r * 8 * DT, DT);
+        body.impulse(-body.velocity(DT).x * 0.3, 0, DT);
+      }
+      if (d < (r + f.body.o.radius) * 1.08) {
+        // Caught: most of its speed goes into a squish, a little into a
+        // push back for the catcher.
+        k.caught = true; k.at = time;
+        const v = f.body.velocity(DT), kk = Math.min(1, CFG.catching);
+        f.body.impulse(-v.x * 0.75 * kk, -Math.min(0, v.y) * 0.5 * kk, DT);
+        body.impulse(v.x * 0.15 * kk, 0, DT);
+        body.squashTop(r * 4 * kk, DT);
+        b.bumpedAt = f.bumpedAt = time; // (no glare, no stars: it meant to)
+        if (CFG.gooStrands > 0) stick(b, f);
+        quip(b, Math.random() < 0.5 ? 'got you!' : 'caught!', 1.1);
+        b.cheerUntil = time + 1.4; f.happyUntil = time + 1.6; f.dizzyUntil = 0;
+        hearts.push({ x: (c.x + fc.x) / 2, y: Math.min(body.bbox().minY, f.body.bbox().minY) - 8, vx: 0, born: time, size: 12 });
+        f.giggleAt = time + 0.8;
+      }
+      return;
+    }
+    if (CFG.catching <= 0 || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || !body.onFloor() || b.merging || b.dying || (b.mood || 0) < -0.3 || (b.sleep || 0) > 0.3 || b.tower || b.pile || b.tug || b.rope || b.balloon || b.frog) return;
+    const c = body.centroid(), r = body.o.radius;
+    for (const f of buddies.values()) {
+      if (f === b || f.kind !== 'mother' || f.dying || f.body.grab || f.body.onFloor() || time - (f.thrownAt ?? -9) > 1.2 || [...buddies.values()].some((o) => o.catching && o.catching.f === f)) continue;
+      const v = f.body.velocity(DT), speed = Math.hypot(v.x, v.y);
+      if (speed < 300 || speed > 1800 * CFG.catching) continue;
+      const fc = f.body.centroid(), dx = fc.x - c.x, dy = fc.y - c.y, d = Math.hypot(dx, dy);
+      const closing = -(dx * v.x + dy * v.y) / (d || 1);
+      if (closing < 200 || (d - r - f.body.o.radius) / closing > 0.55 || dy < -r * 4) continue;
+      // Heading its way: a gulp, and it braces.
+      b.catching = { f, at: time };
+      b.surpriseUntil = time + 0.3;
+      return;
+    }
+  }
+
   // Two slimes hit each other: if they met fast enough, the one that got
   // hit (the slower one) sees stars for a moment.
   function bump(a, b) {
@@ -4976,6 +5027,7 @@
     skipRope(b);
     hideSeek(b);
     dogpile(b);
+    catchThrown(b);
     trickTreat(b);
     comfort(b);
     snowFight(b);
@@ -5105,6 +5157,7 @@
     else if (time < (b.burpUntil || 0)) { expression = 'normal'; mouth = 'o'; } // (*burp*)
     else if (time < (b.countingUntil || 0)) { expression = 'happy'; mouth = 'o'; } // (eyes shut, counting)
     else if (time < (b.hiding || 0) && !body.grab) { expression = 'peek'; mouth = 'flat'; } // (hiding, peeking out)
+    else if (b.catching && !b.catching.caught) { expression = 'normal'; mouth = 'o'; } // (here it comes!)
     else if (b.rope && b.rope.j === b && b.rope.stage === 'swing') { expression = 'happy'; mouth = body.onFloor() ? 'smile' : 'grin'; } // (skipping)
     else if (b.hug || (b.huggedBy && b.huggedBy.hug && b.huggedBy.hug.o === b)) { expression = 'happy'; mouth = 'smile'; } // (a hug)
     else if (body.grab && time < (b.wheeUntil || 0)) { expression = 'happy'; mouth = 'grin'; } // (swung gently)
@@ -5815,7 +5868,7 @@
     } else {
       drag.buddy.body.endGrab();
       if (tap) click(drag.buddy, e);
-      else throwSpin(drag.buddy);
+      else { throwSpin(drag.buddy); drag.buddy.thrownAt = time; }
     }
     drag = null;
     updateIgnore();
