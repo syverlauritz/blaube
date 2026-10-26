@@ -71,12 +71,14 @@ function quickActions(st, state, more = {}) {
   if (more.env) out.push({ label: 'Make .env', prompt: `Copies ${more.env} to .env, for you to fill in`, env: true });
   const n = st ? st.changed + st.untracked : 0;
   if (st && st.conflicts) out.push({ label: 'Fix conflicts', prompt: 'There are merge conflicts. Resolve them, keeping both sides’ intent, then tell me what you chose.' });
-  if (n) out.push({ label: 'Commit', prompt: 'Commit the current changes with a clear message (split them into a few commits if they are unrelated).' });
+  if (n && !(st && st.midway)) out.push({ label: 'Commit', prompt: 'Commit the current changes with a clear message (split them into a few commits if they are unrelated).' });
   // (A branch that was never pushed has no upstream to count from.)
   const unpushed = st && st.branch && !st.upstream && !MAIN.test(st.branch);
   // Push and Pull run git right there (no model call); if git couldn't
   // (`more.gitFailed`), the next tap asks Claude to sort it out instead.
   const direct = (run) => (more.gitFailed === run ? {} : { run });
+  // (A merge or rebase midway, its conflicts settled: finished right there.)
+  if (st && st.midway && !st.conflicts) out.unshift(Object.assign(st.midway === 'rebase' ? { label: 'Continue the rebase', prompt: 'A rebase is under way and its conflicts are settled: continue it (resolving any new conflicts, keeping both sides’ intent), then tell me what you chose.' } : { label: 'Finish the merge', prompt: 'A merge is under way and its conflicts are settled: finish it with a commit, then tell me what it brought in.' }, direct('finish')));
   if (st && !n && (st.ahead || unpushed)) out.push(Object.assign({ label: 'Push', prompt: unpushed ? 'Push this branch and set its upstream.' : 'Push this branch.' }, direct('push')));
   // (Its pull request, if it has one (see pr.js): failing checks first.)
   const pr = more.pr && more.pr.state === 'OPEN' ? more.pr : null;
@@ -111,16 +113,21 @@ function status(cwd, cb, now = Date.now()) {
   execFile('git', ['status', '--porcelain=v2', '--branch', '--untracked-files=all'], { cwd, timeout: 3000, windowsHide: true }, (err, out) => {
     if (err) return done(null);
     const st = parseStatus(out);
+    // (A merge or rebase under way: 'merge' or 'rebase', from git's own files.)
+    const midway = (dir) => { st.midway = !dir ? '' : ['rebase-merge', 'rebase-apply'].some((d) => fs.existsSync(path.join(dir, d))) ? 'rebase' : fs.existsSync(path.join(dir, 'MERGE_HEAD')) ? 'merge' : ''; };
     // Its files are named from the top of the repository: where that is.
-    if (roots.has(cwd)) { st.root = roots.get(cwd); return done(st); }
-    execFile('git', ['rev-parse', '--show-toplevel'], { cwd, timeout: 3000, windowsHide: true }, (e2, top) => {
-      st.root = e2 ? '' : path.resolve(String(top).trim());
-      if (st.root) roots.set(cwd, st.root);
+    if (roots.has(cwd)) { st.root = roots.get(cwd); midway(gitDirs.get(cwd)); return done(st); }
+    execFile('git', ['rev-parse', '--show-toplevel', '--absolute-git-dir'], { cwd, timeout: 3000, windowsHide: true }, (e2, top) => {
+      const [root, dir] = e2 ? [] : String(top).trim().split('\n');
+      st.root = root ? path.resolve(root.trim()) : '';
+      if (st.root) { roots.set(cwd, st.root); gitDirs.set(cwd, dir ? dir.trim() : ''); }
+      midway(dir && dir.trim());
       done(st);
     });
   });
 }
 const roots = new Map(); // cwd -> the top of its repository
+const gitDirs = new Map(); // cwd -> its repository's .git folder
 
 // What changed in one file, for the talk box: the diff against the last
 // commit without its headers (a new file: its start). Calls back with text.
@@ -153,6 +160,7 @@ function diff(root, rel, how, cb) {
 function command(run, st, pr = null, platform = process.platform) {
   if (run === 'push') return st && !st.upstream ? 'git push --set-upstream origin HEAD' : 'git push';
   if (run === 'pull') return 'git pull --ff-only';
+  if (run === 'finish') return !st || !st.midway || st.conflicts ? '' : st.midway === 'rebase' ? 'git -c core.editor=true rebase --continue' : 'git commit --no-edit';
   if (run === 'home') {
     const base = pr && pr.state === 'MERGED' && branchName(pr.base), branch = st && branchName(st.branch);
     if (!base || !branch || base === branch) return '';

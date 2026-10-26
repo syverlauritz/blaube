@@ -466,8 +466,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await box(`document.getElementById('git').click(); document.getElementById('git').click()`);
 	const undoMore = `([...document.querySelectorAll('#branches .commits li')].find((l) => l.firstChild.firstChild.textContent === 'more') || document).querySelector('.undo')`;
 	check(await until(() => box(`(() => { const u = ${undoMore}; return !!u && [...document.querySelectorAll('#branches .commits .undo')].length === 1; })()`), 10000), 'its newest commit, pushed nowhere, has Undo (and only it)');
-	await box(`${undoMore}.click()`);
-	await until(() => box(`(${undoMore} || {}).textContent === 'Undo it?'`));
+	await until(() => box(`(() => { const u = ${undoMore}; if (u && u.textContent === 'Undo') u.click(); return !!u && u.textContent === 'Undo it?'; })()`));
 	await sleep(400);
 	await shot('undo');
 	await until(() => box(`(() => { const u = ${undoMore}; if (u) u.click(); return !!u; })()`));
@@ -589,8 +588,13 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await sleep(400);
 	await shot('conflict');
 	await box(`[...${clashRow}.querySelectorAll('.keep')][1].click()`);
-	check(await until(() => fs.readFileSync(clash, 'utf8') === 'theirs\n' && !gq('diff', '--name-only', '--diff-filter=U') && inbox.log(ID3).some((e) => e.text === 'Kept their version of clash.txt: no conflicts left, Commit finishes it'), 10000), 'a tap on Theirs keeps theirs and marks it settled');
-	gq('merge', '--abort'); gq('reset', '-q', '--keep', before); gq('branch', '-D', 'clash-b');
+	check(await until(() => fs.readFileSync(clash, 'utf8') === 'theirs\n' && !gq('diff', '--name-only', '--diff-filter=U') && inbox.log(ID3).some((e) => e.text === 'Kept their version of clash.txt: no conflicts left, Finish the merge finishes it'), 10000), 'a tap on Theirs keeps theirs and marks it settled');
+	check(await until(() => box(`(() => { const b = document.querySelector('#quick button'); return !!b && b.textContent === 'Finish the merge' && /git commit --no-edit/.test(b.title); })()`) && box(`![...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Commit')`), 10000), 'then Finish the merge, first (and not Commit)');
+	gq('config', 'user.name', 't'); gq('config', 'user.email', 't@t');
+	await box(`document.querySelector('#quick button').click()`);
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'Finished the merge' && e.ok && !e.running) && gq('log', '-1', '--format=%p').split(' ').length === 2, 15000), 'a tap commits the merge, git itself');
+	check(await until(() => box(`![...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Finish the merge')`), 10000), 'and it isn’t offered again');
+	gq('reset', '-q', '--keep', before); gq('branch', '-D', 'clash-b'); gq('config', '--unset', 'user.name'); gq('config', '--unset', 'user.email');
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'what did you change?' });
 	// While it works: how long it's been at it, as the terminal counts.
 	tracker.sessions.get(ID3).turnStart = Date.now() - 75e3;

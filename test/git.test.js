@@ -461,3 +461,40 @@ test('a file in conflict, settled: your version or theirs (flipped in a rebase),
     assert.equal(await p('../a.txt', 'mine'), 'Can’t settle that one');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('a merge or rebase midway, its conflicts settled: finished right there', () => {
+  const { quickActions, command } = require('../src/main/git');
+  const st = (o) => Object.assign({ branch: 'main', ahead: 0, behind: 0, changed: 1, untracked: 0, upstream: true, conflicts: 0, files: [] }, o);
+  const merge = quickActions(st({ midway: 'merge' }), 'idle');
+  assert.deepEqual([merge[0].label, merge[0].run], ['Finish the merge', 'finish']);
+  assert.ok(!merge.some((q) => q.label === 'Commit'), 'not Commit: that’s what Finish does');
+  assert.equal(command('finish', st({ midway: 'merge' })), 'git commit --no-edit');
+  assert.equal(quickActions(st({ midway: 'rebase', branch: '' }), 'idle')[0].label, 'Continue the rebase');
+  assert.equal(command('finish', st({ midway: 'rebase' })), 'git -c core.editor=true rebase --continue');
+  assert.equal(command('finish', st({ midway: 'merge', conflicts: 1 })), '', 'not with conflicts left');
+  assert.ok(!quickActions(st({ midway: 'merge', conflicts: 1 }), 'idle').some((q) => q.run === 'finish'));
+  const failed = quickActions(st({ midway: 'merge' }), 'idle', { gitFailed: 'finish' })[0];
+  assert.ok(failed.label === 'Finish the merge' && !failed.run && /finish it with a commit/.test(failed.prompt), 'when git couldn’t, Claude is asked');
+});
+
+test('git status says when a merge or rebase is under way', async () => {
+  const { status, forget } = require('../src/main/git');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-midway-'));
+  const env = Object.assign({}, process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
+  const g = (...a) => { try { return execFileSync('git', a, { cwd: dir, env, stdio: 'pipe' }).toString().trim(); } catch { return 'failed'; } };
+  const now = () => { forget(dir); return new Promise((r) => status(dir, r)); };
+  try {
+    g('init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'base\n'); g('add', '.'); g('commit', '-qm', 'base');
+    g('switch', '-q', '-c', 'b'); fs.writeFileSync(path.join(dir, 'a.txt'), 'b\n'); g('commit', '-qam', 'b');
+    g('switch', '-q', 'main'); fs.writeFileSync(path.join(dir, 'a.txt'), 'main\n'); g('commit', '-qam', 'main');
+    assert.equal((await now()).midway, '');
+    g('merge', 'b');
+    assert.deepEqual([(await now()).midway, (await now()).conflicts], ['merge', 1]);
+    g('merge', '--abort');
+    g('rebase', 'b');
+    assert.equal((await now()).midway, 'rebase');
+    g('rebase', '--abort');
+    assert.equal((await now()).midway, '');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

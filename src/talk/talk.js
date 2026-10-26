@@ -1142,7 +1142,7 @@
       const b = document.createElement('button');
       b.type = 'button';
       b.textContent = q.label;
-      b.title = q.run === 'push' ? 'Runs git push right here' : q.run === 'pull' ? 'Runs git pull right here (only if it needs no merge)' : q.prompt;
+      b.title = q.run === 'push' ? 'Runs git push right here' : q.run === 'pull' ? 'Runs git pull right here (only if it needs no merge)' : q.run === 'finish' ? `Runs ${q.label === 'Continue the rebase' ? 'git rebase --continue' : 'git commit --no-edit'} right here` : q.prompt;
       b.onclick = () => { if (!current) return; if (q.here) api.continueHere(current.id); else if (q.signIn) api.signIn(current.id); else if (q.bring) api.bringHere(current.id); else if ('later' in q) api.later(current.id, q.later); else if (q.run && api.gitRun) api.gitRun(current.id, q.run); else if (q.install && api.install) api.install(current.id); else if (q.env && api.makeEnv) api.makeEnv(current.id); else api.send(current.id, q.prompt); box.hidden = true; };
       box.append(b);
     }

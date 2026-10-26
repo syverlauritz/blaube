@@ -2769,14 +2769,19 @@ app.whenReady().then(async () => {
     const pr = prStates.get(id);
     const cmd = s && st && s.state !== 'working' && s.state !== 'waiting' && git.command(run, st, pr);
     if (!cmd) return;
-    const as = run === 'push' ? `Pushed ${st.branch || 'it'}` : run === 'home' ? `Back on ${pr.base}, up to date, ${st.branch} deleted` : `Pulled into ${st.branch || 'it'}`;
+    const as = run === 'push' ? `Pushed ${st.branch || 'it'}` : run === 'home' ? `Back on ${pr.base}, up to date, ${st.branch} deleted` : run === 'finish' ? (st.midway === 'rebase' ? 'Carried on with the rebase' : 'Finished the merge') : `Pulled into ${st.branch || 'it'}`;
     const entry = runForSession(id, cmd, as, (code) => {
       if (code === 0 && win) win.webContents.send('nod', id);
       if (code === 0 && run === 'push') pulls.forget(s.cwd, st.branch); // (its checks start again)
-      if (code !== 0) entry.text = run === 'push' ? 'git couldn’t push (tap for why); Push again asks Claude to' : run === 'home' ? `git couldn’t do all of it (tap for why): ${st.branch} may still be there` : 'git couldn’t pull without a merge (tap for why); Pull again asks Claude to';
+      if (code !== 0) entry.text = run === 'finish' ? 'git couldn’t finish it (tap for why); tapping it again asks Claude to' : run === 'push' ? 'git couldn’t push (tap for why); Push again asks Claude to' : run === 'home' ? `git couldn’t do all of it (tap for why): ${st.branch} may still be there` : 'git couldn’t pull without a merge (tap for why); Pull again asks Claude to';
       if (run === 'home') { prStates.delete(id); pulls.forget(s.cwd, st.branch); }
       git.forget(s.cwd);
-      git.status(s.cwd, (now) => { gitStates.set(id, now); pushTalk(id); });
+      git.status(s.cwd, (now) => {
+        // (A rebase that stopped at its next conflict didn't fail: settle that one too.)
+        if (code !== 0 && run === 'finish' && now && now.conflicts) { entry.text = `Stopped at the next conflict: settle it, then Continue the rebase again`; delete entry.gitRun; }
+        gitStates.set(id, now);
+        pushTalk(id);
+      });
     }, { GIT_TERMINAL_PROMPT: '0' });
     if (entry) entry.gitRun = run;
   }
@@ -3030,7 +3035,7 @@ app.whenReady().then(async () => {
       if (err) { inbox.add(id, { who: 'note', text: `Couldn’t settle ${f.path}: ${err}` }); return done(err); }
       git.status(s.cwd, (now) => {
         const left = now ? now.conflicts : 0;
-        inbox.add(id, { who: 'note', text: `Kept ${side === 'mine' ? 'your' : 'their'} version of ${f.path}${left ? ` (${left} more in conflict)` : ': no conflicts left, Commit finishes it'}` });
+        inbox.add(id, { who: 'note', text: `Kept ${side === 'mine' ? 'your' : 'their'} version of ${f.path}${left ? ` (${left} more in conflict)` : `: no conflicts left, ${now && now.midway === 'rebase' ? 'Continue the rebase' : 'Finish the merge'} finishes it`}` });
         gitStates.set(id, now);
         pushTalk(id);
         done('');
