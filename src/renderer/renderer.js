@@ -4819,8 +4819,7 @@
     // Today's tally, once there's something to tally.
     const day = b.kind === 'mother' && b.session && b.session.today;
     if (day && day.turns && day.day === new Date().toDateString()) {
-      const m = Math.round(day.workMs / 60000), worked = m < 1 ? 'under a minute' : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60 ? (m % 60) + ' min' : ''}`.trim();
-      lines.push({ text: `Today: ${day.turns} turn${day.turns > 1 ? 's' : ''} · ${worked} of work`, dim: true });
+      lines.push({ text: `Today: ${day.turns} turn${day.turns > 1 ? 's' : ''} · ${workedFor(day.workMs)} of work`, dim: true });
     }
     // How far through its todo list.
     const pr = b.kind === 'mother' && b.session && b.session.progress;
@@ -4834,6 +4833,12 @@
       else if (!settings.talked) lines.push({ text: 'Click to talk', dim: true });
     }
     return lines;
+  }
+
+  // 95 min (in ms) -> "1 h 35 min".
+  function workedFor(ms) {
+    const m = Math.round(ms / 60000);
+    return m < 1 ? 'under a minute' : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`;
   }
 
   // 3 -> "3 min ago", 135 -> "2 h ago" (or "3 min", "2 h" for a stretch of time).
