@@ -975,11 +975,15 @@ function notify(s, event, text, secs = 0) {
   if (muted.has(s.id)) return;
   const mode = prefs.config.notify || 'Behind windows';
   const seen = (talkWin && talkWin.isVisible() && talkId === s.id) || (mode !== 'Always' && prefs.config.onTop !== 'Off' && win && win.isVisible());
-  const n = attention.notification({ event, project: s.project, title: usage.sessionInfo(transcriptPath(s)).title, text, secs, seen, enabled: mode !== 'Off' });
+  // (Asking permission: Allow and Deny right in it, on macOS.)
+  const ask = event === 'waiting' && process.platform === 'darwin' ? (inbox.asks.get(s.id) || []).slice(-1)[0] : null;
+  const n = attention.notification({ event, project: s.project, title: usage.sessionInfo(transcriptPath(s)).title, text, secs, seen, enabled: mode !== 'Off', ask });
   if (!n || Date.now() - (notified.get(s.id) || 0) < 15000) return;
   notified.set(s.id, Date.now());
   // (On macOS you can answer one that's done right in the notification.)
-  const note = new Notification(Object.assign({ title: n.title, body: n.body }, event === 'done' ? { hasReply: true, replyPlaceholder: `Reply to ${s.project}` } : {}));
+  const note = new Notification(Object.assign({ title: n.title, body: n.body }, event === 'done' ? { hasReply: true, replyPlaceholder: `Reply to ${s.project}` } : {},
+    n.actions ? { actions: n.actions.map((text) => ({ type: 'button', text })) } : {}));
+  note.on('action', (_e, i) => { shown.delete(note); if (ask && n.actions && !inbox.decide(s.id, ask.key, i === 0 ? 'allow' : 'deny') && win) win.webContents.send('open-talk', s.id); });
   note.on('reply', (_e, text) => { shown.delete(note); if (replyTo && tracker.sessions.has(s.id) && String(text || '').trim()) replyTo(s.id, String(text).trim()); });
   // (Held on to until it's gone, or a click may never arrive.)
   shown.add(note);

@@ -63,3 +63,10 @@ test('search finds what was said in any session, most hits first, with a snippet
   assert.match(r[1].snippet, /brackets\.test\.js failed/);
   assert.deepEqual(search(sessions, 'x'), [], 'too short');
 });
+
+test('a permission it asks for can be answered from the notification', () => {
+  const { notification } = require('../src/main/attention.js');
+  const n = notification({ event: 'waiting', project: 'kalkis', text: 'Claude needs your permission to use Bash', ask: { kind: 'tool', tool: 'Bash', detail: 'Run `npm test`' } });
+  assert.deepEqual(n, { title: 'kalkis asks to use Bash', body: 'Run npm test', actions: ['Allow', 'Deny'] });
+  assert.equal(notification({ event: 'waiting', project: 'kalkis', text: 'Pick one', ask: { kind: 'question' } }).actions, undefined, 'a question needs the box');
+});
