@@ -279,6 +279,9 @@
   .dots { align-items: center; max-width: 100%; }
   .dots .doing { margin-left: 4px; font: 600 14px var(--ui); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dots .doing:empty { display: none; }
+  .dots .bgit { border: 0; border-radius: 999px; padding: 1px 10px; background: var(--soft); font: 600 13px var(--ui); color: var(--dim); cursor: pointer; }
+  .dots .bgit:hover { color: var(--ink); }
+  .dots .bgit[hidden] { display: none; }
   .dots { flex-wrap: wrap; }
   .dots .helpers { flex-basis: 100%; margin: 2px 0 0; padding: 0; list-style: none; }
   .dots .helpers:empty { display: none; }

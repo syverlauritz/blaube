@@ -23,6 +23,7 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
     if (r.subtype === 'set_model') { model = r.model.startsWith('claude-') ? r.model : 'claude-' + r.model; return ok({ model }); }
     if (r.subtype === 'set_permission_mode') { ok({ mode: r.mode }); return out({ type: 'system', subtype: 'status', permissionMode: r.mode }); }
     if (r.subtype === 'stop_task') return ok({});
+    if (r.subtype === 'background_tasks') return ok({ backgrounded: r.tool_use_id === 'tu-fg' });
     if (r.subtype === 'list_models') return ok({ models: [{ value: 'default', displayName: 'Default (recommended)', description: 'Sonnet 5.5 · Efficient for routine tasks' }, { value: 'opus', displayName: 'Opus', description: 'Opus 5.5 · Best for everyday, complex tasks' }, { value: 'haiku', displayName: 'Haiku', description: 'Haiku 5.5 · Fastest for quick answers' }] });
     if (r.subtype === 'get_context_usage') return ok({ categories: [{ name: 'System tools', tokens: 29000, kind: 'used' }, { name: 'Messages', tokens: 61000, kind: 'used' }, { name: 'Free space', tokens: 410000, kind: 'free' }], totalTokens: 90000, maxTokens: 500000, percentage: 18 });
     if (r.subtype === 'rewind_files') return ok(seen.has(r.user_message_id) ? (r.dry_run ? { canRewind: true, filesChanged: ['/x/a.js', '/x/b.js'], insertions: 3, deletions: 1 } : { canRewind: true }) : { canRewind: false, error: 'No file checkpoint found for this message.' });
@@ -37,7 +38,7 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
   if (m.type === 'user' && m.message.content === '/cost') { out({ type: 'assistant', message: { model: '<synthetic>', content: [{ type: 'text', text: 'Error: Nothing to show yet' }] } }); return out({ type: 'result', subtype: 'success', result: '' }); }
   if (m.type === 'user' && m.message.content === 'busy week') used = [30, 82];
   if (m.type === 'user' && m.message.content === 'busy week') out({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', rateLimitType: 'seven_day', utilization: 0.82, resetsAt: Math.round(Date.now() / 1000) + 3 * 86400, unifiedWindows: { five_hour: { utilization: 0.3, resetsAt: Math.round(Date.now() / 1000) + 3600, status: 'allowed' }, seven_day: { utilization: 0.82, resetsAt: Math.round(Date.now() / 1000) + 3 * 86400, status: 'allowed' } } } });
-  if (m.type === 'user') turn = setTimeout(() => out({ type: 'result', subtype: 'success', result: model + ' here.' }), m.message.content === 'slow' ? 20000 : m.message.content === 'edit two' ? 1500 : 50);
+  if (m.type === 'user') turn = setTimeout(() => out({ type: 'result', subtype: 'success', result: model + ' here.' }), m.message.content === 'slow' ? 20000 : m.message.content === 'edit two' ? 1500 : m.message.content === 'start the server' ? 6000 : 50);
 });
 `;
 
@@ -125,6 +126,15 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	// /context: what fills it, asked of Claude Code and drawn in the box.
 	await type('/context');
 	check(await until(() => box(`(() => { const n = [...document.querySelectorAll('#inner .note.context')].pop(); return !!n && n.textContent.startsWith('Context: 18% full (90k of 500k)') && n.querySelectorAll('.ctxbar .seg').length === 3 && /Messages 61k/.test(n.querySelector('.ctxkeys').textContent); })()`)), '/context shows what fills its context, as a bar');
+	// A command it waits on can go to the background (Ctrl+B in the terminal).
+	await type('start the server');
+	await sleep(300);
+	await post({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_use_id: 'tu-fg', tool_input: { command: 'npm run dev' } });
+	check(!(await box(`!document.querySelector('#inner .dots .bgit').hidden`)), 'a command it just started has no Run in background yet');
+	check(await until(() => box(`!!document.querySelector('#inner .dots .bgit') && !document.querySelector('#inner .dots .bgit').hidden`), 5000), 'one it has waited on a few seconds offers Run in background');
+	await box(`document.querySelector('#inner .dots .bgit').click()`);
+	check(await until(() => inbox.log(id).some((e) => e.who === 'note' && e.text === 'Running in the background now: npm run dev')), 'which moves it there, asked of Claude Code itself');
+	await until(() => tracker.sessions.get(id).state === 'done', 8000);
 	// A background task it started stops at once, asked of Claude Code itself.
 	await new Promise((done) => {
 		const req = require('node:http').request({ host: '127.0.0.1', port: PORT, path: '/blaube/hook', method: 'POST', headers: { 'content-type': 'application/json', 'x-blaube-entry': 'cli' } }, (res) => { res.resume(); res.on('end', done); });

@@ -455,6 +455,7 @@ function pushTalk(id, focusField = false) {
     canBring: canBringIn(s), // (it could carry on in Blaube instead)
     context: contextOf(id), // (how full its context is, %)
     limit: limits.warn(usageLimits), // (your usage limits, once they're close)
+    canBackground: !!foreground.get(id) && Date.now() - foreground.get(id).at >= 3000,
     mcp: (mcpStates.get(id) || []).filter((m) => m.status === 'failed' || m.status === 'needs-auth'), // (MCP servers that aren't there)
     usage: limits.line(usageLimits),
     canMode: owned.has(id), // (one Blaube started can be asked to change it)
@@ -488,6 +489,7 @@ function pushTalk(id, focusField = false) {
 let usageLimits = null; // (see limits.js)
 const mcpStates = new Map(); // id -> its MCP servers, for a session Blaube started
 const rewound = new Map(); // id -> what Claude should hear about files you put back
+const foreground = new Map(); // id -> { tool, at, what }: a command it's waiting on, in a session Blaube started
 // Sessions that hit a usage limit and carry on by themselves once it lifts.
 const carryLater = new Map(); // id -> when
 function carryFor(id, now = Date.now()) {
@@ -584,7 +586,7 @@ function sweepSoon() { if (!sweepTimer) sweepTimer = setTimeout(() => { sweepTim
 function sweep() {
   const live = (id) => tracker.sessions.has(id) || owned.has(id) || (id === talkId && !!talkWin && !talkWin.isDestroyed() && talkWin.isVisible());
   for (const id of [...inbox.logs.keys(), ...inbox.todos.keys(), ...inbox.steerable, ...inbox.typed.keys()]) if (!live(id)) inbox.forget(id);
-  const maps = { gitStates, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan, carryLater, mcpStates, rewound };
+  const maps = { gitStates, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan, carryLater, mcpStates, rewound, foreground };
   for (const id of [...muted]) if (!live(id)) muted.delete(id);
   for (const m of Object.values(maps)) for (const id of [...m.keys()]) if (!live(id)) m.delete(id);
   for (const [k, at] of [...lastBubble]) if (Date.now() - at > 60e3) lastBubble.delete(k);
@@ -983,6 +985,14 @@ function statusBubble({ session: s, agentId, payload: p }) {
   if (!agentId) {
     if (p.hook_event_name === 'PreToolUse') doing.set(s.id, describeTool(p.tool_name, p.tool_input || {}));
     else if (p.hook_event_name === 'Stop') doing.delete(s.id);
+    // A command it waits on (a dev server, a long build) in a session Blaube
+    // started: after a few seconds, the box offers to background it (Ctrl+B).
+    if (/^(PreToolUse|PostToolUse|PostToolUseFailure|Stop)$/.test(p.hook_event_name)) foreground.delete(s.id);
+    if (p.hook_event_name === 'PreToolUse' && p.tool_name === 'Bash' && !(p.tool_input || {}).run_in_background && owned.has(s.id)) {
+      const fg = { tool: String(p.tool_use_id || ''), at: Date.now(), what: shorten(String(p.tool_input.description || p.tool_input.command || 'that command'), 60) };
+      foreground.set(s.id, fg);
+      setTimeout(() => { if (foreground.get(s.id) === fg && talkId === s.id) pushTalk(s.id); }, 3100);
+    }
     if (talkId === s.id) pushTalk(s.id);
   }
   if (!win) return;
@@ -1562,6 +1572,18 @@ app.whenReady().then(async () => {
       });
     });
   }));
+  // "Run in background" (Ctrl+B in the terminal): the command it's waiting
+  // on carries on in the background and it gets on with the rest.
+  ipcMain.on('talk-background', (_e, id) => {
+    const fg = id === talkId && owned.has(id) && foreground.get(id);
+    if (!fg) return;
+    owned.control(id, Object.assign({ subtype: 'background_tasks' }, fg.tool ? { tool_use_id: fg.tool } : {}), (ok, r) => {
+      if (ok) foreground.delete(id);
+      if (ok && r && r.backgrounded === false) { log(`background ${id}: nothing to move`); return pushTalk(id); } // (it had just finished)
+      inbox.add(id, ok ? { who: 'note', text: `Running in the background now: ${fg.what}` } : { who: 'note', text: `Couldn’t move it to the background: ${r}`, error: true });
+      pushTalk(id);
+    });
+  });
   ipcMain.handle('talk-mcp-reconnect', (_e, id, name) => new Promise((done) => {
     if (!id || id !== talkId || !owned.has(id) || !(mcpStates.get(id) || []).some((m) => m.name === name)) return done(false);
     owned.control(id, { subtype: 'mcp_reconnect', serverName: name }, (ok, r) => {

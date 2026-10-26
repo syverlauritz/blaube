@@ -13,7 +13,8 @@
   let drawn = { entries: [], thinking: -1, open: '' }, ends = []; // what the log shows, and each entry's last element
   const dots = document.createElement('div'); // the slime thinking
   dots.className = 'dots';
-  dots.innerHTML = '<i></i><i></i><i></i><span class="doing"></span><ul class="helpers"></ul>'; // and what it's doing ("Editing face.js"), and its helpers
+  dots.innerHTML = '<i></i><i></i><i></i><span class="doing"></span><button class="bgit" type="button" hidden title="Let it carry on in the background (Ctrl+B in the terminal)">Run in background</button><ul class="helpers"></ul>'; // and what it's doing ("Editing face.js"), and its helpers
+  dots.querySelector('.bgit').onclick = (e) => { e.currentTarget.hidden = true; if (current) api.background(current.id); };
   const drafts = new Map(); // what you'd typed, per session
   const open = new Set(); // long replies you unfolded (by time)
 
@@ -536,6 +537,7 @@
       }
     }
     dots.querySelector('.doing').textContent = s.doing || '';
+    dots.querySelector('.bgit').hidden = !s.canBackground || !api.background;
     // Helpers it sent off, each with what it's on ("Finding the tax tables:
     // Reading rates.js"); one waiting on you says so.
     const hl = dots.querySelector('.helpers');
