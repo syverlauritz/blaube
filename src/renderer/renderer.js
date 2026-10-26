@@ -1047,6 +1047,15 @@
       body.squashTop(CFG.flinch * r * 2.2, DT);
     }
     if (nuzzle(b, r, c)) return;
+    // A helper on its way home: its mother leans in to catch it.
+    if (CFG.socialize > 0) {
+      for (const k of buddies.values()) {
+        if (k.mother !== b || !k.merging || k.dying) continue;
+        const kc = k.body.centroid(), kx = kc.x - c.x;
+        const close = 1 - ramp(Math.hypot(kx, kc.y - c.y), r * 1.5, r * 4);
+        if (close > 0) { body.lean(Math.sign(kx) * close * CFG.socialize * r * 20 * DT, DT); body.impulse(-body.velocity(DT).x * 0.15, 0, DT); return; }
+      }
+    }
     strain(b, r);
     const calm = (b.state === 'idle' || b.state === 'done') && !meditating(b) && !b.stackedBy && time > (b.pounceUntil || 0);
     if (!calm) return;
@@ -1063,7 +1072,40 @@
       if (dy < -r) body.squashTop(-near * CFG.leanToCursor * r * 14 * DT, DT);
       return;
     }
+    if (chat(b, r, c)) return;
     fidget(b, r);
+  }
+
+  // Two calm slimes sitting together now and then have a little chat: they
+  // look at each other and take turns, the one talking bobbing and leaning
+  // in, the other leaning in a little to listen.
+  function chat(b, r, c) {
+    if (CFG.socialize <= 0) return false;
+    const ch = b.chat;
+    if (ch) {
+      const o = ch.a === b ? ch.b : ch.a;
+      if (time > ch.until || o.dying || o.body.grab || !o.body.onFloor() || o.chat !== ch) { b.chat = null; return false; }
+      const side = Math.sign(o.body.centroid().x - c.x) || 1;
+      const speaker = Math.floor((time - ch.from) / ch.turn) % 2 === (ch.a === b ? 0 : 1);
+      const k = CFG.socialize * r * DT;
+      b.body.lean(side * (speaker ? 14 : 6) * k, DT);
+      b.body.impulse(-b.body.velocity(DT).x * 0.15, 0, DT); // feet planted
+      if (speaker) b.body.squashTop(Math.sin((time - ch.from) * 14) * 18 * k, DT);
+      b.glanceAt = o;
+      b.glanceUntil = time + 0.2;
+      return true;
+    }
+    if (time < (b.nextChat || 0)) return false;
+    b.nextChat = time + (6 + Math.random() * 10) / CFG.socialize;
+    if (Math.random() > 0.4 * trait(b, 'curious')) return false;
+    for (const o of buddies.values()) {
+      if (o === b || o.dying || o.chat || o.body.grab || !o.body.onFloor() || !(o.state === 'idle' || o.state === 'done')) continue;
+      const oc = o.body.centroid();
+      if (Math.hypot(oc.x - c.x, oc.y - c.y) > (r + o.body.o.radius) * 1.7) continue;
+      b.chat = o.chat = { a: b, b: o, from: time, until: time + 3 + Math.random() * 3, turn: 0.7 + Math.random() * 0.5 };
+      return true;
+    }
+    return false;
   }
 
   // A thump travels: a slime landing hard sets any slime it's touching

@@ -110,6 +110,7 @@
       ['windowCurious', 1, 0, 3, 0.05, 'Curious about new windows and ones you drag'],
       ['seekYou', 1, 0, 2, 0.05, 'Needing you a while, it hops over to your cursor'],
       ['seekAfter', 20, 3, 120, 1, 'Starts coming to you after waiting (s)'],
+      ['socialize', 1, 0, 3, 0.05, 'Calm slimes chat; mothers lean in to catch helpers'],
     ]],
     ['World', [
       ['dockCollision', true, 0, 0, 0, 'Collide with the Dock / taskbar'],
