@@ -433,9 +433,9 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Push' && /git push/.test(b.title))`), 10000), 'with nothing to commit and nothing pushed, Push runs git itself');
 	await box(`[...document.querySelectorAll('#quick button')].find((b) => b.textContent === 'Push').click()`);
 	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'Pushed feature/tax' && e.ok && !e.running) && execFileSync('git', ['rev-parse', 'feature/tax'], { cwd: bare }).toString() === execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo }).toString(), 15000), 'Push pushes it, a step in the box, no model call');
-	check(await until(() => box(`[...document.querySelectorAll('#branches .commits li > button')].map((b) => b.firstChild.textContent).join() === 'tax,start'`), 10000), 'its latest commits show under its branches');
+	check(await until(() => box(`[...document.querySelectorAll('#branches .commits li > button:first-child')].map((b) => b.firstChild.textContent).join() === 'tax,start'`), 10000), 'its latest commits show under its branches');
 	await sleep(1500); // (it reads them again once the push has settled)
-	await until(() => box(`(() => { const b = [...document.querySelectorAll('#branches .commits li > button')].find((x) => x.firstChild.textContent === 'tax'); if (b && b.getAttribute('aria-expanded') === 'false') b.click(); return !!b; })()`));
+	await until(() => box(`(() => { const b = [...document.querySelectorAll('#branches .commits li > button:first-child')].find((x) => x.firstChild.textContent === 'tax'); if (b && b.getAttribute('aria-expanded') === 'false') b.click(); return !!b; })()`));
 	check(await until(() => box(`(() => { const p = document.querySelector('#branches .commits .diff'); return !!p && !p.hidden && /^tax\\n\\n── /.test(p.textContent) && /── notes\\.md/.test(p.textContent) && /── src\\/tax\\.js/.test(p.textContent) && p.querySelector('.add'); })()`)), 'and a tap shows what one changed, file by file');
 	await sleep(500);
 	await shot('commits');
@@ -460,6 +460,15 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && /^git couldn’t push/.test(e.text) && !e.ok), 15000), 'when git can’t push, the box says so');
 	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Push' && b.title === 'Push this branch.')`), 10000), 'and Push then asks Claude instead');
 	execFileSync('git', ['remote', 'set-url', 'origin', bare], { cwd: repo });
+	// Its newest commit, pushed nowhere: Undo (twice), its changes kept.
+	await box(`document.getElementById('git').click(); document.getElementById('git').click()`);
+	const undoMore = `([...document.querySelectorAll('#branches .commits li')].find((l) => l.firstChild.firstChild.textContent === 'more') || document).querySelector('.undo')`;
+	check(await until(() => box(`(() => { const u = ${undoMore}; return !!u && [...document.querySelectorAll('#branches .commits .undo')].length === 1; })()`), 10000), 'its newest commit, pushed nowhere, has Undo (and only it)');
+	await box(`${undoMore}.click()`);
+	await until(() => box(`(${undoMore} || {}).textContent === 'Undo it?'`));
+	await until(() => box(`(() => { const u = ${undoMore}; if (u) u.click(); return !!u; })()`));
+	check(await until(() => execFileSync('git', ['log', '-1', '--format=%s'], { cwd: repo }).toString().trim() === 'tax' && inbox.log(ID3).some((e) => /^Undid the commit “more”: its changes are back, not committed/.test(e.text || '')), 10000), 'a second tap takes it back, git reset --soft');
+	check(await until(() => box(`[...document.querySelectorAll('#branches .commits li > button:first-child')].map((b) => b.firstChild.textContent)[0] === 'tax' && !document.querySelector('#branches .commits .undo')`), 10000), 'and the list follows (tax is pushed: no Undo)');
 	// Its pull request, from gh (a stand-in here): how it stands, and its slime says when checks finish.
 	const prFile = path.join(repo + '-pr.json'), fakeGh = repo + '-gh.sh';
 	const prSays = (rollup) => fs.writeFileSync(prFile, JSON.stringify({ number: 5, url: 'https://github.com/o/r/pull/5', state: 'OPEN', isDraft: false, title: 'Tax rounding', reviewDecision: '', statusCheckRollup: rollup }));

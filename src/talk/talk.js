@@ -1127,7 +1127,7 @@
   // Tap the git line for the files it's changed; tap one to see it.
   // (Its branches too: switch to one, or start a new one.)
   let gitOpen = false, gitFor = '';
-  const discardSure = new Map(); // file -> when its ↺ was tapped once
+  const discardSure = new Map(); // file (or commit) -> when its ↺ (or Undo) was tapped once
   $('git').addEventListener('click', () => { if (!current || !current.git || current.ended) return; gitOpen = !gitOpen; renderGitFiles(current); });
   function renderGitFiles(s) {
     const list = s.ended ? [] : (s.gitFiles || []);
@@ -1357,7 +1357,27 @@
           if (!pre.hidden && !pre.textContent) api.commit(s.id, c.hash).then((t) => { colorDiff(pre, t || '(can’t show it)'); requestAnimationFrame(fitWindow); });
           requestAnimationFrame(fitWindow);
         };
-        li.append(b, pre);
+        li.append(b);
+        // (Its newest, pushed nowhere: Undo, twice to be sure.)
+        if (c.undoable && api.undoCommit && !busy) {
+          const un = document.createElement('button');
+          un.type = 'button';
+          un.className = 'reveal undo';
+          un.textContent = 'Undo';
+          un.title = 'Take this commit back, keeping its changes (git reset --soft HEAD~1)';
+          // (Tapped once: kept across the list being drawn again.)
+          const sureAt = () => discardSure.get(c.hash) || 0;
+          if (Date.now() - sureAt() < 4000) { un.textContent = 'Undo it?'; un.classList.add('sure'); }
+          un.onclick = async () => {
+            if (Date.now() - sureAt() > 4000) { discardSure.clear(); discardSure.set(c.hash, Date.now()); un.textContent = 'Undo it?'; un.classList.add('sure'); setTimeout(() => { if (Date.now() - sureAt() >= 4000) { un.textContent = 'Undo'; un.classList.remove('sure'); } }, 4100); return; }
+            discardSure.delete(c.hash);
+            un.disabled = true;
+            const err = await api.undoCommit(s.id, c.hash);
+            if (err) { un.textContent = 'Undo'; un.classList.remove('sure'); un.disabled = false; } // (the box says why; done: its git line changes, and this is drawn again)
+          };
+          li.append(un);
+        }
+        li.append(pre);
         ul.append(li);
       }
       box.append(ul);

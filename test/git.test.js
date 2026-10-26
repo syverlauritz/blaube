@@ -288,3 +288,34 @@ test('packages to install: Install packages, run right there', () => {
   assert.deepEqual(q[0], { label: 'Install packages', prompt: 'Runs pnpm install right here', install: true });
   assert.equal(quickActions(null, 'working', { install: 'npm install' }).length, 0);
 });
+
+test('the newest commit, pushed nowhere, can be undone with its changes kept', async () => {
+  const { canUndo, undoCommit, commits } = require('../src/main/git');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-undo-'));
+  const env = Object.assign({}, process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
+  const g = (...a) => execFileSync('git', a, { cwd: dir, env }).toString().trim();
+  const p = (f, ...a) => new Promise((r) => f(dir, ...a, r));
+  try {
+    g('init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'one\n'); g('add', '.'); g('commit', '-qm', 'first');
+    assert.equal(await p(canUndo, g('rev-parse', 'HEAD')), false, 'not the first commit');
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'two\n'); g('add', '.'); g('commit', '-qm', 'second');
+    const second = g('rev-parse', 'HEAD');
+    assert.equal(await p(canUndo, g('rev-parse', 'HEAD~1')), false, 'not an older one');
+    assert.equal(await p(canUndo, second), true);
+    // Pushed: no.
+    const bare = dir + '-remote.git';
+    execFileSync('git', ['init', '-q', '--bare', bare]);
+    g('remote', 'add', 'origin', bare); g('push', '-q', 'origin', 'main');
+    assert.equal(await p(canUndo, second), false, 'it’s on a remote');
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'three\n'); g('add', '.'); g('commit', '-qm', 'third');
+    const third = g('rev-parse', 'HEAD');
+    assert.equal(await p(undoCommit, third), '');
+    assert.equal(g('rev-parse', 'HEAD'), second);
+    assert.equal(g('status', '--porcelain'), 'M  a.txt', 'its changes kept, staged');
+    assert.equal(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8'), 'three\n');
+    assert.match(await p(undoCommit, second), /pushed/);
+    assert.equal((await new Promise((r) => commits(dir, r)))[0].subject, 'second');
+    fs.rmSync(bare, { recursive: true, force: true });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

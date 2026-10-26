@@ -268,6 +268,25 @@ function putBack(root, rel, cb) {
     });
   });
 }
+// The newest commit taken back, its changes kept (`git reset --soft
+// HEAD~1`), as long as it's pushed nowhere, isn't a merge and isn't the
+// first: canUndo cb(bool), undoCommit cb(error or '').
+function canUndo(cwd, hash, cb) {
+  execFile('git', ['rev-list', '--parents', '-n', '1', 'HEAD'], { cwd, timeout: 3000, windowsHide: true }, (err, out) => {
+    const ids = String(out || '').trim().split(/\s+/);
+    if (err || !/^[0-9a-f]{40,64}$/.test(String(hash)) || ids[0] !== hash || ids.length !== 2) return cb(false);
+    execFile('git', ['branch', '-r', '--contains', 'HEAD'], { cwd, timeout: 3000, windowsHide: true }, (e2, remote) => cb(!e2 && !String(remote).trim()));
+  });
+}
+function undoCommit(cwd, hash, cb) {
+  canUndo(cwd, hash, (ok) => {
+    if (!ok) return cb('It’s been pushed, or isn’t the newest commit any more');
+    execFile('git', ['reset', '--soft', 'HEAD~1'], { cwd, timeout: 5000, windowsHide: true }, (err, _o, errOut) => {
+      forget(cwd);
+      cb(err ? gitSaid(errOut) || 'git couldn’t undo it' : '');
+    });
+  });
+}
 const gitSaid = (errOut) => (String(errOut || '').split('\n').find((l) => /^(fatal|error):/.test(l)) || '').replace(/^(fatal|error):\s*/, '');
 
-module.exports = { discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };
+module.exports = { canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };

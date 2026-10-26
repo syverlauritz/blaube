@@ -2927,7 +2927,27 @@ app.whenReady().then(async () => {
     const s = id === talkId && tracker.sessions.get(id);
     if (!s || !s.cwd || id.startsWith('demo-')) return done([]);
     const st = gitStates.get(id);
-    git.commits(s.cwd, (list) => done(list.map((c, i) => Object.assign(c, { when: history.ago(c.at), unpushed: !!(st && st.upstream && i < st.ahead) }))));
+    git.commits(s.cwd, (list) => {
+      const out = list.map((c, i) => Object.assign(c, { when: history.ago(c.at), unpushed: !!(st && st.upstream && i < st.ahead) }));
+      // (The newest, if it's pushed nowhere: Undo takes it back.)
+      if (!out.length || s.state === 'working' || s.state === 'waiting') return done(out);
+      git.canUndo(s.cwd, out[0].hash, (ok) => { out[0].undoable = ok; done(out); });
+    });
+  }));
+  // Undo on its newest commit: taken back, its changes kept, uncommitted.
+  ipcMain.handle('talk-undo-commit', (_e, id, hash) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    if (!s || !s.cwd) return done('Can’t undo that one');
+    if (s.state === 'working' || s.state === 'waiting') return done('Not while it’s working: wait for it to finish');
+    git.commits(s.cwd, (list) => {
+      const c = list[0];
+      if (!c || c.hash !== hash) return done('It isn’t the newest commit any more');
+      git.undoCommit(s.cwd, hash, (err) => {
+        inbox.add(id, err ? { who: 'note', text: `Couldn’t undo “${c.subject}”: ${err}` } : { who: 'note', text: `Undid the commit “${c.subject}”: its changes are back, not committed (it’s still in git reflog, ${c.short})` });
+        git.status(s.cwd, (now) => { gitStates.set(id, now); pushTalk(id); });
+        done(err);
+      });
+    }, 1);
   }));
   ipcMain.handle('talk-commit', (_e, id, hash) => new Promise((done) => {
     const s = id === talkId && tracker.sessions.get(id);
