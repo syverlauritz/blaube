@@ -36,7 +36,7 @@
     return h >>> 0;
   }
 
-  // The words to syllables: [{ vowel, consonant, gap, stress }], at most
+  // The words to syllables: [{ vowel, consonant, gap, stress, word }], at most
   // `max` of them (a long reply is a short babble, not a speech).
   function syllables(text, max) {
     const out = [];
@@ -48,7 +48,7 @@
       if (!parts.length) parts.push(['', w, 'a']);
       parts.forEach(([, lead, g], i) => {
         if (out.length >= max) return;
-        out.push({ vowel: VOWEL_OF[g[g.length - 1]] || 'a', consonant: lead[lead.length - 1] || '', gap: i === parts.length - 1 ? 'word' : '', stress: i === 0 });
+        out.push({ vowel: VOWEL_OF[g[g.length - 1]] || 'a', consonant: lead[lead.length - 1] || '', gap: i === parts.length - 1 ? 'word' : '', stress: i === 0, word: w });
       });
       if (out.length >= max) break;
     }
@@ -83,7 +83,8 @@
   // formant filters that sweep from vowel to vowel. Syllables are swells in
   // its volume, each opening with a "wah"; words and pauses let it fall
   // quiet. Few, round syllables: a word of one is long, a word of more is
-  // a quick pair ("wah wah wahwah").
+  // a quick pair ("wah wah wahwah"). About one word in three starts with a
+  // "bl" instead ("blah"), the same words every time for the same slime.
   function speak(ctx, text, opts = {}) {
     const at = opts.at ?? ctx.currentTime + 0.02;
     const out = opts.out || ctx.destination;
@@ -108,7 +109,9 @@
       if (last && question) semis = 6;
       if (last && !question && !excited) semis -= 2;
       const gap = { '': 0, word: 0.03 + rand() * 0.05, comma: 0.22, stop: 0.34, end: 0 }[s.gap] * pace;
-      plan.push({ t, dur, gap, f0: base * Math.pow(2, semis / 12), v: VOWELS[s.vowel], s, last });
+      const blah = s.stress && ((hash(s.word) ^ seed) >>> 0) % 100 < 33;
+      if (blah) s = Object.assign({}, s, { vowel: 'a', consonant: 'b' });
+      plan.push({ t, dur, gap, f0: base * Math.pow(2, semis / 12), v: VOWELS[s.vowel], s, last, blah });
       t += dur + gap;
     });
     return perform(ctx, plan, { at, out, seed, base, wah: opts.wah, volume: (opts.volume ?? 0.5) * (excited ? 1.15 : 1), bend: question ? 1.3 : excited ? 1 : 0.85 });
@@ -133,7 +136,7 @@
   }
 
   // The talkbox itself, playing a planned line: [{ t, dur, gap, f0, v,
-  // s: { consonant, vowel, stress }, last, legato, hold }].
+  // s: { consonant, vowel, stress }, last, legato, hold, blah }].
   function perform(ctx, plan, o) {
     const { at, base } = o;
     const out = o.out || ctx.destination;
@@ -181,15 +184,17 @@
     tone.frequency.value = Math.min(5000, 1800 + base * 4); // a big voice is darker
     amp.connect(tone).connect(bus).connect(out);
 
-    // Each syllable: shut for the "w" just before it, then a sweep open
-    // into the vowel. Ramps in time order, so they never overlap.
+    // Each syllable: shut for the "w" just before it, held there a moment
+    // (for an "l"), then a sweep open into the vowel. Ramps in time order,
+    // so they never overlap.
     let swept = at;
     const held = new Map();
-    const sweep = (param, shut, open, t0, len) => {
+    const sweep = (param, shut, open, t0, len, hold = 0) => {
       const from = Math.max(swept, t0 - 0.04);
       if (from < t0 - 0.005) { param.setValueAtTime(held.get(param) ?? open, from); param.exponentialRampToValueAtTime(shut, t0); }
       else param.setValueAtTime(shut, t0);
-      param.exponentialRampToValueAtTime(open, t0 + len);
+      if (hold) param.setValueAtTime(shut, t0 + hold);
+      param.exponentialRampToValueAtTime(open, t0 + hold + len);
       held.set(param, open);
     };
 
@@ -208,7 +213,14 @@
       // "Wah": the filter and the mouth go from shut and round ("w", "u")
       // to the vowel, over the first part of the syllable.
       const len = Math.min(dur * 0.6, (p.hold ? 0.09 : 0.05) + wahAmount * 0.07);
-      if (!p.tied) {
+      if (p.blah) {
+        // "Blah": a soft, darker "l" (the tongue up: a low second formant)
+        // that moves quickly into the "a".
+        const hold = Math.min(0.035, dur * 0.2), move = Math.min(0.045, dur * 0.3);
+        sweep(wah.frequency, wahOpen * 0.35, wahOpen, t0, move, hold);
+        for (const m of mouth) sweep(m.bp.frequency, LATERAL[m.k] * formantShift, formant(v, m.k) * formantShift, t0, move, hold);
+        swept = t0 + hold + move;
+      } else if (!p.tied) {
         sweep(wah.frequency, wahAmount > 0 ? wahOpen * Math.pow(0.1, wahAmount) : wahOpen, wahOpen, t0, len);
         for (const m of mouth) {
           const f = formant(v, m.k) * formantShift, w = formant(VOWELS.u, m.k) * formantShift;
@@ -219,7 +231,8 @@
       // A round swell per syllable that overlaps the next a little: inside
       // a word it dips but doesn't stop, between words it nearly does.
       const floor = p.legato ? 0.8 : p.gap < 0.02 ? 0.4 : p.gap < 0.15 ? 0.08 : 0.0001;
-      amp.gain.setTargetAtTime(p.s.stress || p.hold ? 1 : 0.8, t0 - 0.005, 0.02);
+      if (p.blah) amp.gain.setTargetAtTime(0.4, t0 - 0.005, 0.012); // the "l", softer
+      amp.gain.setTargetAtTime(p.s.stress || p.hold ? 1 : 0.8, p.blah ? t0 + Math.min(0.035, dur * 0.2) : t0 - 0.005, 0.02);
       amp.gain.setTargetAtTime(floor, t1 - Math.min(p.hold ? 0.07 : 0.05, dur * 0.4), 0.035);
       if (/[stkcfhzxqjdg]/.test(p.s.consonant)) tick(ctx, bus, t0, p.s.consonant);
     }
@@ -255,6 +268,8 @@
 
   // A vowel's third formant isn't in the table: it barely moves, so it's
   // set from the second.
+  // An "l": a low first formant, the second between "u" and "a".
+  const LATERAL = { f1: 360, f2: 1050, f3: 2600 };
   const formant = (v, k) => (k === 'f3' ? Math.max(2500, v.f2 + 900) : v[k]);
 
   // "s", "t", "k"...: a tiny breath of noise at the start of a syllable.
