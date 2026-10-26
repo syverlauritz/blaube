@@ -1423,7 +1423,7 @@ function sessionMenu(id) {
       { label: 'Continue in terminal', click: () => continueInTerminal(s) },
       { label: 'End session', click: () => endOwned(s) },
     ] : [
-      { label: 'Go to its terminal', sublabel: process.platform === 'darwin' ? '⌥-click the slime' : 'Alt-click the slime', enabled: !isDemo, click: () => goToSession(s) },
+      { label: 'Go to its terminal', sublabel: process.platform === 'darwin' ? '⌥-click the blob' : 'Alt-click the blob', enabled: !isDemo, click: () => goToSession(s) },
       { label: 'Resume in a new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
       { label: 'Bring it into Blaube', enabled: canBringIn(s), click: () => bringIn(s) },
     ]),
@@ -1438,7 +1438,7 @@ function sessionMenu(id) {
     { label: 'Colour', submenu: colorMenu(colorOf(s) || prefs.config.color, (hex) => { prefs.colors[colorKey(s)] = hex; savePrefs(); pushState(); }) },
     { label: 'Blaube', submenu: appMenuTemplate() },
     { type: 'separator' },
-    { label: 'Hide this slime', toolTip: 'Until its session ends', click: () => tracker.dismiss(id) },
+    { label: 'Hide this blob', toolTip: 'Until its session ends', click: () => tracker.dismiss(id) },
   ]);
 }
 
@@ -1482,7 +1482,7 @@ async function askDockAccess() {
     type: 'question',
     buttons: ['Open Settings', 'Cancel'],
     defaultId: 0,
-    message: 'Let the slimes bump into the Dock’s sides?',
+    message: 'Let the blobs bump into the Dock’s sides?',
     detail: 'macOS only tells Blaube where the Dock’s icons are if Blaube is allowed under Privacy & Security → Accessibility. Blaube only reads the Dock’s size and position with it.\n\nTurn Blaube on there; the Dock’s ends become solid within a few seconds.',
   });
   if (response !== 0) return;
@@ -1545,7 +1545,7 @@ async function uninstallHooks() {
   const { response } = await dialog.showMessageBox({
     type: 'question', buttons: ['Disconnect', 'Cancel'], defaultId: 1, cancelId: 1,
     message: 'Disconnect Blaube from Claude Code?',
-    detail: 'Blaube’s hooks come out of your Claude Code settings. The slimes stop knowing what your sessions are doing, and you can’t talk to them from here, until you connect again.',
+    detail: 'Blaube’s hooks come out of your Claude Code settings. The blobs stop knowing what your sessions are doing, and you can’t talk to them from here, until you connect again.',
   });
   if (response !== 0) return;
   try {

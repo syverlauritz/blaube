@@ -55,7 +55,7 @@
   }
 
   function hint(s) {
-    if (s.demo) return 'Demo slimes can’t talk back. Try a real session!';
+    if (s.demo) return 'Demo blobs can’t talk back. Try a real session!';
     if (s.ended) return (s.log.some((m) => m.status === 'unsent') ? `${s.project} has ended, so what you sent last didn’t go in.` : `${s.project} has ended.`) + (s.cwd ? ' Pick it up here to keep going.' : ' Right-click its slime next time to resume it in a new terminal.');
     if (s.owned) return s.log.length ? '' : 'Started by Blaube. Right-click me to end it or move it to a terminal.';
     if (s.ask) return '';
