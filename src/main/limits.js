@@ -50,6 +50,21 @@ function warn(lim, now = Date.now()) {
   return `${Math.round(w.used * 100)}% of ${name} used`;
 }
 
+// The same, from Claude Code's answer to get_usage (rate_limits: windows of
+// { utilization 0..100, resets_at ISO }), or null without plan limits.
+function fromUsage(rl) {
+  if (!rl || typeof rl !== 'object') return null;
+  const windows = [];
+  for (const kind of Object.keys(WINDOWS)) {
+    const w = rl[kind];
+    if (!w || typeof w.utilization !== 'number') continue;
+    const used = Math.max(0, Math.min(1, w.utilization / 100));
+    const at = w.resets_at ? Date.parse(w.resets_at) : NaN;
+    windows.push({ kind, used, resetsAt: Number.isFinite(at) ? at : 0, status: used >= 1 ? 'rejected' : 'allowed' });
+  }
+  return windows.length ? { status: windows.some((w) => w.status === 'rejected') ? 'rejected' : 'allowed', windows } : null;
+}
+
 // When a usage limit it hit lifts: from what Blaube last heard of your
 // limits, or else from Claude Code's words ("5-hour limit reached ∙ resets
 // 3pm", "…will reset at 3:30pm (Europe/Oslo)"), as your local time. 0 if
@@ -66,4 +81,4 @@ function liftsAt(lim, text, now = Date.now()) {
   return d.getTime();
 }
 
-module.exports = { read, line, warn, when, liftsAt };
+module.exports = { read, fromUsage, line, warn, when, liftsAt };

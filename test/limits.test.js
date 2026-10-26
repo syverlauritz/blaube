@@ -49,3 +49,13 @@ test('when a usage limit lifts: from its report, or from what Claude Code said',
   assert.equal(limits.liftsAt(null, 'API Error: 529 overloaded', NOW), 0, 'not a limit');
   assert.equal(limits.liftsAt(limits.read(info), 'API Error: 500', NOW), 0, 'close to a limit isn’t at one');
 });
+
+test('reads get_usage’s rate_limits too (percentages, ISO times)', () => {
+  const l = limits.fromUsage({ five_hour: { utilization: 46, resets_at: '2026-10-26T15:30:00Z' }, seven_day: { utilization: 79, resets_at: '2026-10-30T09:00:00Z' }, seven_day_opus: null, model_scoped: [] });
+  assert.equal(limits.line(l, NOW), 'Usage: 46% of 5 hours (resets 3:30pm) · 79% of the week (resets Fri)');
+  assert.equal(limits.warn(l, NOW), '79% of the week used');
+  const full = limits.fromUsage({ five_hour: { utilization: 100, resets_at: '2026-10-26T15:00:00Z' } });
+  assert.equal(limits.liftsAt(full, '', NOW), Date.UTC(2026, 9, 26, 15));
+  assert.equal(limits.fromUsage(null), null);
+  assert.equal(limits.fromUsage({ five_hour: null }), null);
+});

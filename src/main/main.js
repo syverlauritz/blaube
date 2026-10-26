@@ -1518,11 +1518,20 @@ app.whenReady().then(async () => {
   });
   owned.on('mode', (id, mode) => tracker.setMode(id, mode));
   // Your usage limits, as Claude Code tells a session Blaube started.
-  owned.on('limits', (info) => {
+  const setLimits = (l) => {
+    if (!l) return;
     const before = JSON.stringify(usageLimits);
-    usageLimits = limits.read(info) || usageLimits;
+    usageLimits = l;
     if (JSON.stringify(usageLimits) !== before && talkId) pushTalk(talkId);
-  });
+  };
+  owned.on('limits', (info) => setLimits(limits.read(info)));
+  // (And asked for now and then: get_usage, which calls no model.)
+  const askUsage = () => {
+    const id = owned.list()[0];
+    if (id) owned.control(id, { subtype: 'get_usage', skip_behaviors: true }, (ok, r) => { if (ok && r) setLimits(limits.fromUsage(r.rate_limits)); });
+  };
+  owned.on('result', askUsage);
+  setInterval(askUsage, 5 * 60e3).unref();
   owned.on('compacted', (id) => inbox.add(id, { who: 'note', text: 'Compacted: it carries on from a summary of the conversation so far' }));
   owned.on('result', (id, r) => {
     pickedModel.delete(id); // (its transcript says now)
