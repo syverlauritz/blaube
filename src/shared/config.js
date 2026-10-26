@@ -117,6 +117,8 @@
       ['gulp', 1, 0, 3, 0.05, 'A mother gulps a helper back in (ripple and swell)'],
       ['nightSleepy', 1, 0, 2, 0.05, 'Sleepier late at night (doze sooner, more yawns)'],
       ['spectate', 1, 0, 2, 0.05, 'Watch a slime fly past (and duck if it comes right at them)'],
+      ['breathSync', 1, 0, 3, 0.05, 'Slimes resting together fall into breathing together'],
+      ['huddle', 1, 0, 2, 0.05, 'Dozing off, a slime shuffles over to curl up beside a neighbour'],
       ['cheerOthers', 1, 0, 2, 0.05, 'When one finishes, the others look over and nearby ones are pleased for it'],
       ['systemLife', 1, 0, 2, 0.05, 'React to the computer: wake up with it, perk up on the charger, tire on low battery'],
       ['awayAfter', 300, 30, 1800, 10, 'You count as away after this long without keyboard or mouse (s)'],

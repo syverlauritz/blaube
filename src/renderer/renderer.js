@@ -838,6 +838,50 @@
     }
   }
 
+  // Slimes resting against each other slowly fall into breathing together.
+  function breatheTogether(b) {
+    if (CFG.breathSync <= 0 || b.pain > 0.2 || b.body.grab) return;
+    const m = b.body.bbox(), reach = b.body.o.radius * 0.5, mine = time * b.breathRate + b.breathPhase;
+    for (const o of buddies.values()) {
+      if (o === b || o.dying || o.body.grab) continue;
+      const n = o.body.bbox();
+      if (n.minX - m.maxX > reach || m.minX - n.maxX > reach || n.minY - m.maxY > reach || m.minY - n.maxY > reach) continue;
+      b.breathPhase += DT * 1.2 * CFG.breathSync * Math.sin(time * o.breathRate + o.breathPhase - mine);
+    }
+  }
+
+  // Dozing off with another slime close by: it inches over, sleepily,
+  // to curl up next to it.
+  function huddle(b) {
+    if (CFG.huddle <= 0 || b.kind === 'child') return;
+    if ((b.sleep || 0) < 0.1) { b.huddled = false; b.huddleTo = null; return; }
+    if (b.sleep < 0.3) return;
+    const c = b.body.centroid(), r = b.body.o.radius;
+    // (By their actual outlines: dozing, they're wider than they are round.)
+    const gapTo = (o) => { const m = b.body.bbox(), n = o.body.bbox(); return Math.max(n.minX - m.maxX, m.minX - n.maxX); };
+    if (!b.huddled) {
+      b.huddled = true;
+      let near = null, nd = Infinity;
+      for (const o of buddies.values()) {
+        if (o === b || o.dying || !o.big || !o.body.onFloor() || o.huddleTo === b) continue;
+        const d = gapTo(o);
+        if (Math.abs(o.body.centroid().y - c.y) < r * 2 && d > r * 0.2 && d < r * 8 * CFG.huddle && d < nd) { near = o; nd = d; }
+      }
+      if (!near || Math.random() > 0.8) return;
+      b.huddleTo = near; // (so the two don't both shuffle over and meet halfway)
+      b.huddleFrom = time;
+    }
+    const to = b.huddleTo;
+    if (!to || to.dying || to.body.grab || time - b.huddleFrom > 120) return;
+    const gap = gapTo(to);
+    if (gap < 3 || gap > r * 10) return; // (snug, or it was carried off)
+    // Inching: a slow crawl, the top rising and falling with each push.
+    const want = Math.sign(to.body.centroid().x - c.x) * Math.min(90, 20 + gap * 1.2);
+    const v = b.body.velocity(DT);
+    b.body.impulse((want - v.x) * 0.08, 0, DT);
+    b.body.squashTop(Math.sin(time * 7) * r * 0.6 * DT * 60, DT);
+  }
+
   // A slime finishes: the others look over, and calm ones nearby are
   // pleased for it (a long one gets a little hop of applause).
   function cheerOn(b, big) {
@@ -911,6 +955,7 @@
       b.fill = (b.fill || 0) + (contextFill(b) - (b.fill || 0)) * 0.01;
       b.pain = ramp(b.fill, CFG.painAt, 1);
       b.breathPhase += DT * b.breathRate * 1.5 * b.pain;
+      breatheTogether(b);
       // A setback (a failed tool or test) lets some air out for a moment.
       b.droop = (b.droop || 0) + ((time < (b.droopUntil || 0) ? 1 : 0) - (b.droop || 0)) * (time < (b.droopUntil || 0) ? 0.02 : 0.006);
       body.areaScale = (1 + CFG.contextInflate * b.fill * b.fill) * (1 + CFG.breathe * Math.sin(time * b.breathRate + b.breathPhase)) * (1 - CFG.droop * b.droop);
@@ -1741,6 +1786,7 @@
       b.nextYawn = time + 20 + Math.random() * 30;
     }
     // Left alone for a couple of minutes, idle slimes doze off and yawn.
+    if (b.body.onFloor() && !b.body.grab && !b.merging) huddle(b);
     if (b.kind !== 'home' && b.state === 'idle' && idleFor() > dozeAfter() && time > (b.nextIdleYawn || 0)) {
       if (b.nextIdleYawn) yawn(b, 1.6, 0.5);
       b.nextIdleYawn = time + (25 + Math.random() * 40) / (1 + lateness());
@@ -2625,6 +2671,8 @@
       setLedges: (l) => listeners.ledges.forEach((f) => f(l)),
       system: (m) => listeners.system.forEach((f) => f(m)),
       sys: () => sys,
+      now: () => time,
+      idleFor: (seconds) => { mouse.lastMove = performance.now() / 1000 - seconds; },
       buddies: () => buddies,
       pets: () => pets,
     };
