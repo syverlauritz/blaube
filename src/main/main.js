@@ -280,7 +280,10 @@ let talkHiddenAt = 0, talkHiddenId = null, talkReady = null, talkBefore = 0;
 let lastOtherApp = 0; // the app in front before you reached for a slime (macOS)
 let frontLookup = Promise.resolve(); // that lookup, while it runs
 const talkHeights = new Map(); // session id -> how tall its box wants to be (without the tail)
-const TALK_W = 384, TALK_MIN_H = 190, TALK_MAX_H = 580;
+// Big enough to read and write in, like a chat window (narrower only on a
+// screen too small for it).
+const TALK_W = 600, TALK_MIN_H = 420, TALK_MAX_H = 820;
+const TALK_MIN_ABOVE = 460; // less room than this above its slime: it goes beside, where it has the screen's height
 const talkH = () => talkHeights.get(talkId) || 280;
 
 // Puts the box where it belongs for its slime and its current height.
@@ -290,7 +293,10 @@ const talkH = () => talkHeights.get(talkId) || 280;
 let talkGoal = null, talkAt = null, talkVel = { x: 0, y: 0 }, talkGlide = null;
 function placeTalkWin(jump = false) {
   if (!talkWin || !talkSpot) return;
-  const place = placeTalk(talkSpot, screen.getDisplayNearestPoint(talkSpot).workArea, TALK_W, talkH(), talkTail && talkTail.side);
+  const area = screen.getDisplayNearestPoint(talkSpot).workArea;
+  const w = Math.min(TALK_W, area.width);
+  const place = placeTalk(talkSpot, area, w, talkH(), talkTail && talkTail.side, TALK_MIN_ABOVE);
+  place.w = w;
   const moved = !talkTail || place.tail.side !== talkTail.side || Math.abs(place.tail.at - talkTail.at) > 0.5;
   // Switching sides isn't a drift: it goes straight there.
   if (talkTail && place.tail.side !== talkTail.side) jump = true;
@@ -315,7 +321,7 @@ function placeTalkWin(jump = false) {
 }
 
 function applyTalkBounds() {
-  talkWin.setBounds({ x: Math.round(talkAt.x), y: Math.round(talkAt.y), width: TALK_W, height: talkGoal.h });
+  talkWin.setBounds({ x: Math.round(talkAt.x), y: Math.round(talkAt.y), width: talkGoal.w, height: talkGoal.h });
   sendTalkRect();
 }
 
@@ -324,7 +330,7 @@ function sendTalkRect() {
   if (!win || !talkAt || !talkGoal) return;
   const wb = win.getBounds();
   const visible = talkWin && talkWin.isVisible();
-  win.webContents.send('talk-rect', visible ? { id: talkId, x: talkAt.x - wb.x, y: talkAt.y - wb.y, w: TALK_W, h: talkGoal.h, side: talkTail.side, vx: talkVel.x } : null);
+  win.webContents.send('talk-rect', visible ? { id: talkId, x: talkAt.x - wb.x, y: talkAt.y - wb.y, w: talkGoal.w, h: talkGoal.h, side: talkTail.side, vx: talkVel.x } : null);
 }
 
 // A soft spring (like the balloons' settle in face.js, softer): it follows

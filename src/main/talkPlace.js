@@ -4,17 +4,18 @@
 // over it. `at` is the top of the slime (x, y, r) in screen coordinates,
 // `content` the height the window would like, `prev` the side it was on (it
 // keeps to it unless the room changes clearly, so it can't flip back and
-// forth). Returns { x, y, h, tail } for the window; tail.side says which
-// edge of the bubble the tail leaves from.
+// forth). `minAbove` is the shortest box worth putting above (a roomier
+// box asks for more). Returns { x, y, h, tail } for the window; tail.side
+// says which edge of the bubble the tail leaves from.
 const MIN_ABOVE = 240; // shorter than this above the slime, it goes beside
 const GAP = 34; // between the bubble and the slime's head: the tail's length
 const PAD = 12; // the window reaches this far round the bubble (room for its wobble)
 const STICKY = 30;
 
-function placeTalk(at, area, w, content, prev) {
+function placeTalk(at, area, w, content, prev, minAbove = MIN_ABOVE) {
   const r = at.r || 60;
   const room = at.y - GAP + PAD - area.y;
-  const need = Math.min(content, MIN_ABOVE) + (prev && prev !== 'bottom' ? STICKY : prev === 'bottom' ? -STICKY : 0);
+  const need = Math.min(content, minAbove) + (prev && prev !== 'bottom' ? STICKY : prev === 'bottom' ? -STICKY : 0);
   let x, y, h, side;
   if (room >= need) {
     side = 'bottom';
