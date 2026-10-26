@@ -51,15 +51,19 @@ function transcriptPath(s) {
 
 // The session's title, as Claude Code shows it: a /rename title if there is
 // one, otherwise the title Claude gave it. Read from the end of its
-// transcript and cached until the file changes.
+// transcript and cached until the file changes, and for a while even if
+// it does: a working session's transcript changes all the time, and this
+// is asked on every hook event (up to 1 MB read per session each time).
 const titles = new Map();
+const TITLE_FRESH = 15e3;
 function sessionTitle(s) {
 	const file = transcriptPath(s);
 	if (!file) return '';
+	const hit = titles.get(file);
+	if (hit && Date.now() - hit.at < TITLE_FRESH) return hit.title;
 	let st;
 	try { st = fs.statSync(file); } catch { return ''; }
-	const hit = titles.get(file);
-	if (hit && hit.mtime === st.mtimeMs) return hit.title;
+	if (hit && hit.mtime === st.mtimeMs) { hit.at = Date.now(); return hit.title; }
 	let text = '';
 	try {
 		const len = Math.min(st.size, 1 << 20);
@@ -75,7 +79,7 @@ function sessionTitle(s) {
 		try { return v ? JSON.parse(`"${v}"`) : ''; } catch { return ''; }
 	};
 	const title = cleanTitle(lastOf('customTitle') || lastOf('aiTitle'));
-	titles.set(file, { mtime: st.mtimeMs, title });
+	titles.set(file, { mtime: st.mtimeMs, title, at: Date.now() });
 	return title;
 }
 
