@@ -1,8 +1,9 @@
 // The snack jar: your Claude usage limits as a jar of cookies on the
-// stage. Full when a limit window is fresh, emptier as you use it, empty
-// with crumbs once the limit is hit; it fills up again when it resets.
-// What the jar shows (the 5-hour limit, or the week when that's closer to
-// running out), what its hover bubble says, and how often a cookie flies.
+// stage. Twenty cookies when a limit window is fresh, one fewer for each 5%
+// you use (each one flies out to a slime as it goes), empty with crumbs once
+// the limit is hit; it fills up again when it resets. What the jar shows
+// (the 5-hour limit, or the week when that's closer to running out), how
+// many cookies that is, and what its hover bubble says.
 // The limits are main/limits.js's: { status, windows: [{ kind, used 0..1,
 // resetsAt ms, status }] }.
 (function (root) {
@@ -75,21 +76,34 @@
 		return out;
 	}
 
-	// Seconds until the next cookie flies: every 1 to 3 minutes while a
-	// session works (sooner with more of them at it), 6 to 12 idle.
-	function nextCookie(working, rnd = Math.random) {
-		if (working > 0) return (60 + rnd() * 120) / Math.min(2, 1 + 0.25 * (working - 1));
-		return 360 + rnd() * 360;
+	// A full jar's cookies: one for each 5% of the limit.
+	const CAP = 20;
+	// Most thrown one after another for one jump in usage; past that the
+	// rest just go (a jump that big is the jar switching to the week's
+	// limit, not twenty cookies' worth eaten at once).
+	const MAX_THROWS = 5;
+
+	// How many cookies are in the jar at this level (null, nothing known:
+	// full).
+	const cookies = (lv) => (lv == null ? CAP : Math.max(0, Math.min(CAP, Math.round(lv * CAP))));
+
+	// What the jar does to get from `have` cookies (and `coming` tumbling
+	// in) to `want`: { throws (out to slimes, one by one), drop (gone at
+	// once), cancel (tumbling ones not wanted after all), tumble (more to
+	// tumble in) }.
+	function plan(have, coming, want) {
+		const out = { throws: 0, drop: 0, cancel: 0, tumble: 0 };
+		if (want > have + coming) out.tumble = want - have - coming;
+		else if (want < have + coming) {
+			out.cancel = Math.min(coming, have + coming - want);
+			const less = Math.max(0, have - want);
+			out.throws = Math.min(MAX_THROWS, less);
+			out.drop = less - out.throws;
+		}
+		return out;
 	}
 
-	// Usage went up since the last report (tokens being spent): a cookie's
-	// due soon. Rationed by the caller.
-	function rose(before, after, now = Date.now()) {
-		const a = pick(before, now), b = pick(after, now);
-		return !!(a && b && a.kind === b.kind && b.used - a.used >= 0.01);
-	}
-
-	const api = { LOW, windows, pick, level, change, clock, lines, nextCookie, rose };
+	const api = { LOW, CAP, MAX_THROWS, windows, pick, level, change, clock, lines, cookies, plan };
 	if (typeof module !== 'undefined' && module.exports) module.exports = api;
 	else root.BlaubeSnack = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

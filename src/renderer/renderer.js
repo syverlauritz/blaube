@@ -923,15 +923,17 @@
   }
 
 	// --- Snack jar: your usage limits ----------------------------------------
-	// A glass cookie jar on the floor: as full as what's left of your usage
-	// limit (shared/snack.js; drawn by jar.js). Now and then its lid pops and
-	// a cookie arcs into a nearby slime's mouth: nom. Hover it for the
+	// A glass cookie jar on the floor with as many cookies as what's left of
+	// your usage limit (twenty when it's fresh, one fewer for each 5% used:
+	// shared/snack.js; drawn by jar.js). Each time your usage goes up by a
+	// cookie's worth, its lid pops and the top cookie arcs out into a nearby
+	// slime's mouth: nom (a jump of several: a few, one after another). Hover it for the
 	// numbers. Pick it up like a pet; it stays where you put it (the app
 	// keeps the spot, per screen). Nearly empty, slimes near it glance at it,
 	// worried; empty (the limit hit), they look hungry or nap until it
 	// resets, and it fills up again with cookies tumbling in.
 	const Snack = globalThis.BlaubeSnack, Jar = globalThis.BlaubeJar;
-	const jar = { x: 0, y: 0, vx: 0, vy: 0, angle: 0, va: 0, held: null, placed: false, spot: null, lim: null, noPlan: false, checking: true, level: null, shown: 1, lid: 0, lidV: 0, lidOpenUntil: 0, rattle: 0, nextCookie: 0, lastCookie: -1e9, checkAt: 0, refillUntil: 0, ledge: null, still: 0, saved: null, hoverSeen: -9, body: null };
+	const jar = { x: 0, y: 0, vx: 0, vy: 0, angle: 0, va: 0, held: null, placed: false, spot: null, lim: null, noPlan: false, checking: true, level: null, shown: 1, lid: 0, lidV: 0, lidOpenUntil: 0, rattle: 0, count: null, owed: 0, owedSince: 0, nextThrow: 0, thrown: 0, checkAt: 0, refillUntil: 0, ledge: null, still: 0, saved: null, hoverSeen: -9, body: null };
 	const cookies = [], crumbs = [], tumbles = [];
 	const jarOn = () => CFG.snackJar !== 'Off';
 	const jarH = () => 150 * CFG.size, jarW = () => jarH() * 0.78;
@@ -947,13 +949,10 @@
 	// The app says what it last heard of your limits (and where the jar was
 	// left on this screen).
 	function onLimits(m) {
-		const before = jar.lim;
 		jar.lim = (m && m.lim) || null;
 		jar.noPlan = !!(m && m.noPlan);
 		jar.checking = !!(m && m.checking);
 		jar.checkAt = 0;
-		// Tokens being spent: a cookie's due soon (at most one every 45 s).
-		if (Snack.rose(before, jar.lim) && time - jar.lastCookie > 45) jar.nextCookie = Math.min(jar.nextCookie, time + 3 + Math.random() * 10);
 	}
 	function onJarSpot(spot) {
 		if (!spot || !Number.isFinite(spot.x) || !Number.isFinite(spot.y)) { jar.spot = jar.saved = null; jar.placed = false; return; } // (none kept for this screen)
@@ -972,7 +971,13 @@
 	}
 
 	function stepJar() {
-		if (!jarOn() || !W) { cookies.length = 0; tumbles.length = 0; return; }
+		if (!jarOn() || !W) {
+			// (Hidden: it keeps count quietly, nothing thrown.)
+			cookies.length = 0; tumbles.length = 0; jar.owed = 0;
+			jar.level = Snack.level(jar.lim, Date.now());
+			if (jar.level != null) jar.count = Snack.cookies(jar.level);
+			return;
+		}
 		const w = jarW(), h = jarH();
 		if (!jar.placed) {
 			// Its first time out: on the floor, over toward the right.
@@ -981,7 +986,6 @@
 			jar.placed = true;
 			jar.holdUntil = time + 4;
 			keepJarOn();
-			jar.nextCookie = time + 20 + Math.random() * 40;
 		}
 		// How full it is, looked at twice a second (a reset passes by the
 		// clock alone, before anyone says so).
@@ -991,9 +995,9 @@
 			const what = Snack.change(jar.level, lv);
 			jar.level = lv;
 			if (what) jarNews(what);
+			countCookies();
 		}
-		const want = jar.level == null ? 1 : jar.level;
-		jar.shown += (want - jar.shown) * (1 - Math.exp(-DT * (time < jar.refillUntil ? 0.9 : 1.6)));
+		jar.shown = (jar.count == null ? Snack.CAP : jar.count) / Snack.CAP;
 		// Its lid: a spring, held up while cookies tumble in.
 		const lidTo = time < jar.lidOpenUntil ? 0.55 : 0;
 		jar.lidV += (-160 * (jar.lid - lidTo) - 9 * jar.lidV) * DT;
@@ -1048,7 +1052,6 @@
 			jar.refillUntil = time + 2.4;
 			jar.lidOpenUntil = time + 2;
 			jar.lidV += 6;
-			for (let i = 0; i < 7; i++) tumbles.push({ x: jar.x + (Math.random() - 0.5) * jarW() * 0.4, y: jar.y - jarH() * 2.2 - i * 26, vy: 0, a: Math.random() * 6, va: (Math.random() - 0.5) * 10, at: time + i * 0.22 });
 			let said = false;
 			for (const b of bigs()) {
 				b.jarWorryUntil = b.hungryUntil = b.napUntil = 0;
@@ -1059,6 +1062,26 @@
 		} else if (what === 'empty') {
 			jar.rattle = 0.4;
 			for (const b of bigs()) if (near(b, 6) && b.state !== 'working') { b.hungryUntil = time + 3.5; b.nextHungry = time + 12 + Math.random() * 10; }
+		}
+	}
+	// The cookies in it, kept to your usage: the first time it's known, just
+	// so many; after that, a cookie's worth more used throws one (the
+	// throwing is stepCookies'), a reset tumbles them back in over the top.
+	function countCookies() {
+		if (jar.level == null) return;
+		const want = Snack.cookies(jar.level);
+		if (jar.count == null) { jar.count = want; return; }
+		const coming = tumbles.length;
+		const p = Snack.plan(jar.count, coming, want);
+		if (p.cancel) tumbles.splice(coming - p.cancel, p.cancel); // (the last to come in, not yet there)
+		jar.count -= p.drop;
+		if (p.throws && !jar.owed) jar.owedSince = time;
+		jar.owed = p.throws;
+		if (p.tumble) {
+			const last = tumbles.length ? tumbles[tumbles.length - 1].at : time, gap = p.tumble > 4 ? 0.13 : 0.3;
+			for (let i = 1; i <= p.tumble; i++) tumbles.push({ x: jar.x + (Math.random() - 0.5) * jarW() * 0.4, y: jar.y - jarH() * 2.2 - Math.random() * 40, vy: 0, a: Math.random() * 6, va: (Math.random() - 0.5) * 10, at: Math.max(time, last) + i * gap });
+			jar.lidOpenUntil = Math.max(jar.lidOpenUntil, tumbles[tumbles.length - 1].at + 0.6);
+			jar.lidV += 4;
 		}
 	}
 	// Within so many of its radii of the jar.
@@ -1088,43 +1111,59 @@
 	}
 
 	// Who gets the next cookie: the nearest calm-enough big slime (a busy
-	// one first: it's the one eating your tokens).
+	// one first: it's the one eating your tokens). One still chewing can
+	// take another; one with a cookie on its way can't.
 	function cookieFor() {
-		const ok = bigs().filter((b) => !b.body.grab && !b.snack && !b.splitting && (b.sleep || 0) < 0.5 && time > (b.napUntil || 0) && !b.balloon && !b.tower && !b.pile && !b.rope && !b.singing && !b.ghost && !b.roll && !b.tumble);
+		const ok = bigs().filter((b) => !b.body.grab && !(b.snack && b.snack.stage === 'catch') && !b.splitting && (b.sleep || 0) < 0.5 && time > (b.napUntil || 0) && !b.balloon && !b.tower && !b.pile && !b.rope && !b.singing && !b.ghost && !b.roll && !b.tumble);
 		const busy = ok.filter((b) => b.state === 'working');
 		const from = busy.length ? busy : ok;
 		return from.sort((a, b) => Math.abs(a.body.centroid().x - jar.x) - Math.abs(b.body.centroid().x - jar.x))[0] || null;
 	}
 
-	// The lid pops and a cookie arcs out toward its mouth.
-	function throwCookie(to = cookieFor()) {
-		if (!to || jar.held || !jarOn() || (jar.level != null && jar.level <= 0)) return false;
-		const from = Jar.mouthOf({ x: jar.x, y: jar.y, w: jarW(), h: jarH() }), m = mouthAt(to);
+	// The lid pops and the top cookie of the pile leaves it (the jar has one
+	// fewer from now): up out of the opening and in an arc toward its mouth.
+	// No one to have it (toss): it's tossed out onto the floor and crumbles.
+	function throwCookie(to = cookieFor(), toss = false) {
+		const have = jar.count == null ? Snack.CAP : jar.count;
+		if ((!to && !toss) || jar.held || !jarOn() || have <= 0) return false;
+		const j = { x: jar.x, y: jar.y, w: jarW(), h: jarH(), angle: jar.angle };
+		const top = Jar.cookieAt(j, have - 1), from = Jar.mouthOf(j);
+		from.y -= top.r;
+		const m = to ? mouthAt(to) : { x: jar.x + (Math.random() < 0.5 ? -1 : 1) * jarW() * (1 + Math.random()), y: jar.y - 10 };
 		const T = 0.85 + Math.min(0.5, Math.hypot(m.x - from.x, m.y - from.y) / 1600);
 		const G = 1500; // (a lower gravity than the slimes': a nice high arc)
-		const k = { x: from.x, y: from.y, x0: from.x, y0: from.y, m0: m, vx: (m.x - from.x) / T, vy: (m.y - from.y - 0.5 * G * T * T) / T, G, a: 0, va: (m.x > from.x ? 1 : -1) * 9, born: time, T, to, r: jarW() * 0.13 };
+		const pop = 0.22; // (out of the pile and up through the opening first)
+		const k = { x: top.x, y: top.y, sx: top.x, sy: top.y, pop, x0: from.x, y0: from.y, m0: m, vx: (m.x - from.x) / T, vy: (m.y - from.y - 0.5 * G * T * T) / T, G, a: top.a, va: (m.x > from.x ? 1 : -1) * 9, born: time + pop, T, to, r: top.r, tone: top.tone };
 		cookies.push(k);
-		to.snack = { stage: 'catch', cookie: k, at: time };
+		jar.count = have - 1;
+		jar.thrown++;
+		if (to) to.snack = { stage: 'catch', cookie: k, at: time };
 		jar.lidV += 7;
 		jar.rattle = Math.max(jar.rattle, 0.4);
-		jar.lastCookie = time;
 		return true;
 	}
 
 	function stepCookies() {
-		if (time > jar.nextCookie) {
-			const working = bigs().filter((b) => b.state === 'working').length;
-			jar.nextCookie = time + Snack.nextCookie(working);
-			throwCookie();
+		// The cookies your usage says have been eaten, one at a time.
+		if (jar.owed > 0 && time >= jar.nextThrow && !jar.held) {
+			const to = cookieFor(), late = time - jar.owedSince > 5; // (no one to have it for a while: out onto the floor)
+			if ((to || late) && throwCookie(to, late)) { jar.owed--; jar.nextThrow = time + 0.8; }
+			else if (!jar.count) jar.owed = 0;
 		}
 		for (let i = cookies.length - 1; i >= 0; i--) {
 			const k = cookies[i], t = time - k.born, b = k.to;
+			if (t < 0) {
+				// Out of the pile, up through the opening.
+				const e = 1 + t / k.pop, ease = e * e * (3 - 2 * e);
+				k.x = k.sx + (k.x0 - k.sx) * ease; k.y = k.sy + (k.y0 - k.sy) * ease; k.a += k.va * 0.4 * DT;
+				continue;
+			}
 			const lost = !b || b.dying || b.body.grab || !b.snack || b.snack.cookie !== k;
 			if (lost) {
 				// Its slime went off: it just falls, and crumbles.
 				if (b && b.snack && b.snack.cookie === k) b.snack = null;
 				k.vy += CFG.gravity * DT; k.x += k.vx * DT; k.y += k.vy * DT; k.a += k.va * DT;
-				if (k.y >= floorAt(k.x, k.y)) { crumble(k.x, floorAt(k.x, k.y) - 3, 6); cookies.splice(i, 1); }
+				if (k.vy > 0 && k.y >= floorAt(k.x, k.y)) { crumble(k.x, floorAt(k.x, k.y) - 3, 6); cookies.splice(i, 1); }
 				continue;
 			}
 			// A throw at where its mouth was, steered onto where it is now.
@@ -1166,8 +1205,11 @@
 			const c = tumbles[i];
 			if (time < c.at) continue;
 			c.vy += CFG.gravity * 0.6 * DT; c.y += c.vy * DT; c.a += c.va * DT;
-			c.x += (jar.x - c.x) * Math.min(1, DT * 3);
-			if (c.y > jar.y - jarH() * (0.15 + 0.6 * jar.shown)) { tumbles.splice(i, 1); jar.rattle = Math.max(jar.rattle, 0.5); }
+			// (each one lands on the pile, where the next one goes)
+			const spot = Jar.cookieAt({ x: jar.x, y: jar.y, w: jarW(), h: jarH(), angle: jar.angle }, jar.count == null ? Snack.CAP : jar.count);
+			const inside = c.y > jar.y - jarH() * 0.85; // (in over the top, then onto its place)
+			c.x += ((inside ? spot.x : jar.x) - c.x) * Math.min(1, DT * (inside ? 14 : 4));
+			if (c.y > spot.y) { tumbles.splice(i, 1); jar.count = Math.min(Snack.CAP, (jar.count || 0) + 1); jar.rattle = Math.max(jar.rattle, 0.25); }
 		}
 	}
 	function crumble(x, y, n) {
@@ -1176,16 +1218,17 @@
 
 	function drawJar() {
 		if (!jarOn() || !jar.placed) return;
-		Jar.drawJar(ctx, { x: jar.x, y: jar.y, w: jarW(), h: jarH(), angle: jar.angle, level: jar.shown, lid: jar.lid, rattle: jar.rattle, t: time });
+		Jar.drawJar(ctx, { x: jar.x, y: jar.y, w: jarW(), h: jarH(), angle: jar.angle, count: jar.count == null ? Snack.CAP : jar.count, lid: jar.lid, rattle: jar.rattle, t: time });
 	}
 	// In front of the slimes: what's flying.
 	function drawSnacks() {
 		if (!jarOn()) return;
-		for (const c of tumbles) if (time >= c.at) Jar.drawCookie(ctx, c.x, c.y, jarW() * 0.13, c.a);
+		const r = Jar.pile(jarW(), jarH()).r;
+		for (const c of tumbles) if (time >= c.at) Jar.drawCookie(ctx, c.x, c.y, r, c.a);
 		for (const k of cookies) {
 			// (shrinking into its mouth at the very end)
 			const t = time - k.born, s = k.to && k.to.snack && k.to.snack.cookie === k ? Math.min(1, Math.max(0.35, (k.T - t) / 0.15)) : 1;
-			Jar.drawCookie(ctx, k.x, k.y, k.r * s, k.a);
+			Jar.drawCookie(ctx, k.x, k.y, k.r * s, k.a, k.tone);
 		}
 		for (const c of crumbs) Jar.drawCrumb(ctx, c.x, c.y, c.r, Math.min(1, (2.6 - (time - c.born)) / 0.6));
 	}

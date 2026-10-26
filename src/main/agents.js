@@ -1,6 +1,7 @@
 // Polls `claude agents --json`, which lists the Claude Code sessions running
 // on this machine with a busy/idle status. Local only: no API calls.
 const { execFile } = require('node:child_process');
+const { claudeEnv } = require('./claudeEnv');
 const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -18,7 +19,7 @@ function findClaude() {
 }
 
 function run(cb) {
-  const opts = { timeout: 8000, maxBuffer: 1 << 20, windowsHide: true, cwd: os.homedir() };
+  const opts = { timeout: 8000, maxBuffer: 1 << 20, windowsHide: true, cwd: os.homedir(), env: claudeEnv() };
   const bin = findClaude();
   if (bin && !bin.endsWith('.cmd')) return execFile(bin, ['agents', '--json'], opts, cb);
   if (process.platform === 'win32') return execFile('cmd.exe', ['/d', '/s', '/c', 'claude agents --json'], opts, cb);

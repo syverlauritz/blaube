@@ -5,17 +5,16 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const { claudeEnv } = require('./claudeEnv');
 
 // cb(answer | null): Claude Code's get_usage answer ({ rate_limits, ... }).
-// opts.withoutKey: asked with no ANTHROPIC_API_KEY (Claude Code would use it
-// over your signed-in subscription, and a key has no plan limits).
+// Asked with no API key in its environment (see claudeEnv.js): a key would
+// win over your signed-in subscription, and a key has no plan limits.
 function probe(bin, cb, opts = {}) {
   if (!bin || (process.platform === 'win32' && /\.(cmd|bat)$/i.test(bin))) return cb(null); // (a script on Windows: not worth a shell)
   let dir;
   try { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-usage-')); } catch { return cb(null); }
-  const env = Object.assign({}, process.env);
-  if (opts.withoutKey) delete env.ANTHROPIC_API_KEY;
-  for (const k of Object.keys(env)) if (k === 'CLAUDECODE' || /^CLAUDE_CODE_(CHILD_SESSION|SESSION_|ENTRYPOINT)/.test(k)) delete env[k];
+  const env = claudeEnv();
   let p;
   try {
     p = spawn(bin, ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--setting-sources', 'local', '--no-session-persistence'], { cwd: dir, env, stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });

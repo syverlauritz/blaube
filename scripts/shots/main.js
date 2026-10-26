@@ -873,10 +873,11 @@ const usage = (five, week, models = []) => ({ lim: { status: five >= 1 ? 'reject
 const jarScene = (limits, extra = {}) => Object.assign({ sessions: [session('a', 'blaube', 'idle')], limits, jar: { x: 770, y: 516 }, wait: 3500 }, extra);
 SCENES.jarFull = jarScene(usage(0.02, 0.1));
 SCENES.jarHalf = jarScene(usage(0.5, 0.2));
+SCENES.jarLow = jarScene(usage(0.91, 0.3));
 SCENES.jarEmpty = jarScene(usage(1, 0.4), { wait: 14000 });
 SCENES.jarHover = jarScene(usage(0.62, 0.41, [['seven_day_opus', 0.12]]), { mouse: [770, 470] });
 SCENES.jarUnknown = jarScene(null, { mouse: [770, 470] });
-SCENES.jarCookie = jarScene(usage(0.62, 0.41), { sessions: [session('a', 'blaube', 'working')], jar: { x: 700, y: 516 }, motion: { frames: 24, every: 60, drop: 0, still: true, hopAt: [], jsAt: { 0: 'cookieFar', 1: 'cookie' } } });
+SCENES.jarCookie = jarScene(usage(0.62, 0.41), { sessions: [session('a', 'blaube', 'working')], jar: { x: 700, y: 516 }, motion: { frames: 36, every: 60, drop: 0, still: true, hopAt: [], jsAt: { 0: 'cookieFar', 1: 'cookie' } } });
 SCENES.jarClose = jarScene(usage(0.45, 0.2), { config: { size: 2 }, jar: { x: 1050, y: 516 }, size: [1200, 560] });
 SCENES.jarLedge = jarScene(usage(0.3, 0.2), { window: [420, 300], jar: { x: 700, y: 300 } });
 
@@ -1188,7 +1189,8 @@ async function shootMotion(win, name, m) {
 			// Two slimes stood apart, and the left one going as a ghost.
 			if (m.jsAt && m.jsAt[i] === 'teleport') await js(`(() => { const l = [...__blaube.buddies.values()]; l[0].body.teleport(220, 300); l[1].body.teleport(760, 300); })()`);
 			if (m.jsAt && m.jsAt[i] === 'cookieFar') { await js(`[...__blaube.buddies.values()][0].body.teleport(260, 430)`); await sleep(1500); }
-			if (m.jsAt && m.jsAt[i] === 'cookie') await js(`__blaube.throwCookie()`);
+			// (a cookie's worth more of your usage used: 62% to 67%, one cookie out)
+			if (m.jsAt && m.jsAt[i] === 'cookie') win.webContents.send('fire', 'limits', usage(0.67, 0.41));
 			if (m.jsAt && m.jsAt[i] === 'giveUp') await js(`(() => { const k = [...__blaube.buddies.values()].find((b) => b.kind === 'child'); k.tries = { key: 'shot', n: 9 }; })()`);
 			if (m.jsAt && m.jsAt[i] === 'ghost') await js(`(() => { const l = [...__blaube.buddies.values()]; __blaube.ghost(l[0], l[1]); })()`);
 			if (m.mouseAt && m.mouseAt[i]) {

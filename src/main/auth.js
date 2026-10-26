@@ -2,16 +2,13 @@
 // `claude auth status` and `claude auth login` (it opens your browser, as
 // /login does). Neither calls a model.
 const { execFile, spawn } = require('node:child_process');
+const { claudeEnv } = require('./claudeEnv');
 
 // Claude Code's words when it isn't signed in (or its sign-in ran out).
 const SIGNED_OUT = /run \/login|not logged in|please log ?in|invalid api key|oauth token (?:has )?(?:expired|been revoked)|authentication_error|invalid bearer token/i;
 const signedOut = (text) => SIGNED_OUT.test(String(text || ''));
 
-const quiet = (env) => {
-  env = Object.assign({}, env || process.env);
-  for (const k of Object.keys(env)) if (k === 'CLAUDECODE' || /^CLAUDE_CODE_(CHILD_SESSION|SESSION_|ENTRYPOINT)/.test(k)) delete env[k];
-  return env;
-};
+const quiet = (env) => claudeEnv(env || process.env); // (no API key: it's your Claude login that's asked about)
 
 // cb(true: signed in | false: signed out | null: couldn't tell).
 function status(bin, cb) {

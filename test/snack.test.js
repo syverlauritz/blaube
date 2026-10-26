@@ -107,17 +107,26 @@ test('from what Claude Code reports (limits.js) all the way to a level', () => {
 	assert.equal(snack.level(l, NOW).toFixed(2), '0.21');
 });
 
-test('cookies: every 1-3 minutes at work, sooner with more at it, rarer idle', () => {
-	assert.equal(snack.nextCookie(1, () => 0), 60);
-	assert.equal(snack.nextCookie(1, () => 1), 180);
-	assert.ok(snack.nextCookie(3, () => 0.5) < snack.nextCookie(1, () => 0.5));
-	assert.ok(snack.nextCookie(20, () => 0) >= 30);
-	assert.ok(snack.nextCookie(0, () => 0) >= 360 && snack.nextCookie(0, () => 1) <= 720);
+test('twenty cookies when full, one fewer for each 5% used', () => {
+	assert.equal(snack.CAP, 20);
+	assert.equal(snack.cookies(1), 20);
+	assert.equal(snack.cookies(null), 20); // (nothing known: drawn full)
+	assert.equal(snack.cookies(0), 0);
+	assert.equal(snack.cookies(0.38), 8); // (62% used)
+	assert.equal(snack.cookies(0.33), 7); // (67% used: one more eaten)
+	assert.equal(snack.cookies(0.5), 10);
+	assert.equal(snack.cookies(snack.level(lim(0.62, 0.1), NOW)), 8);
+	assert.equal(snack.cookies(snack.level(lim(1, 0.1), NOW)), 0);
 });
 
-test('usage rising (tokens spent) is noticed', () => {
-	assert.equal(snack.rose(lim(0.4, 0.1), lim(0.42, 0.1), NOW), true);
-	assert.equal(snack.rose(lim(0.4, 0.1), lim(0.4, 0.1), NOW), false);
-	assert.equal(snack.rose(null, lim(0.4, 0.1), NOW), false);
-	assert.equal(snack.rose(lim(0.9, 0.1), lim(0.1, 0.1), NOW), false); // (a reset is no snack)
+test('a step of usage throws one cookie; a jump throws a few and the rest go; a reset tumbles them in', () => {
+	assert.deepEqual(snack.plan(8, 0, 7), { throws: 1, drop: 0, cancel: 0, tumble: 0 });
+	assert.deepEqual(snack.plan(8, 0, 8), { throws: 0, drop: 0, cancel: 0, tumble: 0 });
+	assert.deepEqual(snack.plan(8, 0, 5), { throws: 3, drop: 0, cancel: 0, tumble: 0 });
+	assert.deepEqual(snack.plan(8, 0, 0), { throws: 5, drop: 3, cancel: 0, tumble: 0 });
+	assert.deepEqual(snack.plan(0, 0, 20), { throws: 0, drop: 0, cancel: 0, tumble: 20 });
+	assert.deepEqual(snack.plan(4, 6, 20), { throws: 0, drop: 0, cancel: 0, tumble: 10 }); // (some already on their way in)
+	assert.deepEqual(snack.plan(4, 6, 7), { throws: 0, drop: 0, cancel: 3, tumble: 0 }); // (fewer wanted than are coming)
+	assert.deepEqual(snack.plan(4, 6, 2), { throws: 2, drop: 0, cancel: 6, tumble: 0 });
+	assert.deepEqual(snack.plan(0, 0, 0), { throws: 0, drop: 0, cancel: 0, tumble: 0 }); // (an empty jar throws nothing)
 });

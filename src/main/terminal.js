@@ -2,6 +2,7 @@
 // project folder. This uses your local `claude` CLI, not the API.
 const { spawn, execFile } = require('node:child_process');
 const path = require('node:path');
+const { claudeEnv, unsetPrefix } = require('./claudeEnv');
 
 function resumeCommand(sessionId) {
   if (!/^[\w-]+$/.test(sessionId)) throw new Error('Unexpected session id');
@@ -16,13 +17,13 @@ function openResumeTerminal(session, platform = process.platform) {
   const cmd = resumeCommand(session.id);
   const cwd = session.cwd || require('node:os').homedir();
   if (platform === 'darwin') {
-    const script = `cd ${shQuote(cwd)} && ${cmd}`;
+    const script = `cd ${shQuote(cwd)} && ${unsetPrefix()}${cmd}`; // (Terminal's shell has its own environment: the keys go in the line)
     const apple = `tell application "Terminal"\n activate\n do script ${JSON.stringify(script)}\nend tell`;
     spawn('osascript', ['-e', apple], { detached: true, stdio: 'ignore' }).unref();
   } else if (platform === 'win32') {
-    spawn('cmd.exe', ['/c', 'start', '"Blaube"', 'cmd.exe', '/k', cmd], { cwd, detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
+    spawn('cmd.exe', ['/c', 'start', '"Blaube"', 'cmd.exe', '/k', cmd], { cwd, env: claudeEnv(), detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
   } else {
-    spawn('x-terminal-emulator', ['-e', 'bash', '-lc', `cd ${shQuote(cwd)} && ${cmd}; exec bash`], { detached: true, stdio: 'ignore' }).unref();
+    spawn('x-terminal-emulator', ['-e', 'bash', '-lc', `cd ${shQuote(cwd)} && ${unsetPrefix()}${cmd}; exec bash`], { env: claudeEnv(), detached: true, stdio: 'ignore' }).unref();
   }
 }
 
