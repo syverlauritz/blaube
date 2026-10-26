@@ -316,14 +316,22 @@ class Inbox extends EventEmitter {
     }
   }
 
+  // Everything about a session moves to its new id.
+  rename(from, to) {
+    for (const m of [this.waiters, this.queue, this.logs, this.asks, this.typed, this.todos]) if (m.has(from)) { m.set(to, m.get(from)); m.delete(from); }
+    for (const set of [this.reachable, this.owned, this.steerable, this.stops]) if (set.has(from)) { set.delete(from); set.add(to); }
+    this.emit('change', to);
+  }
+
   log(id) { return this.logs.get(id) || []; }
 
   add(id, entry) {
     const log = this.logs.get(id) || [];
     const e = Object.assign({ at: this.now(), n: this.nextKey++ }, entry);
     log.push(e);
+    // (In batches: every trim redraws the talk box from scratch.)
     const steps = log.filter((x) => x.who === 'step');
-    if (steps.length > MAX_STEPS) log.splice(log.indexOf(steps[0]), 1);
+    if (steps.length > MAX_STEPS + 20) { const drop = new Set(steps.slice(0, steps.length - MAX_STEPS)); log.splice(0, log.length, ...log.filter((x) => !drop.has(x))); }
     if (log.length > MAX_LOG + MAX_STEPS) log.splice(0, log.length - MAX_LOG - MAX_STEPS);
     this.logs.set(id, log);
     this.emit('change', id);

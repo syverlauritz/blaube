@@ -283,7 +283,7 @@ test('steps never push what was said out of the log', () => {
   for (let i = 0; i < 200; i++) inbox.observe({ session_id: 's1', hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: `f${i}.js` } });
   const log = inbox.log('s1');
   assert.equal(log[0].text, 'first');
-  assert.equal(log.filter((e) => e.who === 'step').length, 40);
+  assert.ok(log.filter((e) => e.who === 'step').length <= 60);
   assert.equal(log[log.length - 1].text, 'Edited f199.js');
 });
 
@@ -461,4 +461,40 @@ test('ticking off a to-do item, and pressing Stop, are moments the slime can rea
   inbox.step({ session_id: 's1', hook_event_name: 'PreToolUse' }, true);
   inbox.stop('s1');
   assert.deepEqual(seen, [['ticked', 's1', 1, 2], ['ticked', 's1', 2, 2], ['stopping', 's1']]);
+});
+
+test('a session that carries on under a new id keeps its conversation, list and messages', () => {
+  const inbox = new Inbox();
+  inbox.owned.add('old');
+  inbox.add('old', { who: 'you', text: 'hi', via: 'blaube', status: 'sent' });
+  inbox.todos.set('old', [{ id: '1', text: 'x', doing: 'x', status: 'pending' }]);
+  const tracker = new SessionTracker();
+  tracker.handle({ session_id: 'old', hook_event_name: 'SessionStart', cwd: '/w' });
+  assert.ok(tracker.rename('old', 'new'));
+  inbox.rename('old', 'new');
+  assert.equal(tracker.sessions.get('new').id, 'new');
+  assert.ok(!tracker.sessions.has('old'));
+  assert.equal(inbox.log('new')[0].text, 'hi');
+  assert.ok(inbox.owned.has('new') && !inbox.owned.has('old'));
+  assert.equal(inbox.view('new').todos.length, 1);
+});
+
+test('a hook payload too big to read whole still says what happened', async () => {
+  const inbox = new Inbox();
+  const tracker = new SessionTracker();
+  const server = await startHookServer(tracker, 0, inbox);
+  const port = server.address().port;
+  try {
+    const body = JSON.stringify({ session_id: 'huge', transcript_path: '/t', cwd: '/tmp/huge', hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'cat big.log', description: 'Show the log' }, tool_response: { stdout: 'x'.repeat(6e6) } });
+    const http = require('node:http');
+    await new Promise((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port, path: '/blaube/hook', method: 'POST', headers: { 'content-type': 'application/json' } }, (res) => { res.resume(); res.on('end', resolve); });
+      req.on('error', reject);
+      req.end(body);
+    });
+    const step = inbox.log('huge')[0];
+    assert.deepEqual([step.text, step.detail], ['Show the log', '$ cat big.log\n(too long to show)']);
+  } finally {
+    server.close();
+  }
 });

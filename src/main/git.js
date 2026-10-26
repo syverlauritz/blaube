@@ -35,22 +35,30 @@ function quickActions(st, state) {
   const n = st ? st.changed + st.untracked : 0;
   if (st && st.conflicts) out.push({ label: 'Fix conflicts', prompt: 'There are merge conflicts. Resolve them, keeping both sides’ intent, then tell me what you chose.' });
   if (n) out.push({ label: 'Commit', prompt: 'Commit the current changes with a clear message (split them into a few commits if they are unrelated).' });
-  if (st && !n && st.ahead) out.push({ label: 'Push', prompt: 'Push this branch.' });
-  if (st && st.branch && !MAIN.test(st.branch) && (n || st.ahead || st.upstream)) out.push({ label: 'Open a PR', prompt: 'Open a pull request for this branch (commit and push first if needed) and give me the link.' });
+  // (A branch that was never pushed has no upstream to count from.)
+  const unpushed = st && st.branch && !st.upstream && !MAIN.test(st.branch);
+  if (st && !n && (st.ahead || unpushed)) out.push({ label: 'Push', prompt: unpushed ? 'Push this branch and set its upstream.' : 'Push this branch.' });
+  if (st && st.branch && !MAIN.test(st.branch)) out.push({ label: 'Open a PR', prompt: 'Open a pull request for this branch (commit and push first if needed) and give me the link.' });
   out.push({ label: 'Run tests', prompt: 'Run the tests and tell me what fails, if anything.' });
   if (st && st.behind) out.push({ label: 'Pull', prompt: 'Pull the latest changes into this branch and tell me if anything conflicts.' });
   return out.slice(0, 4);
 }
 
 // Reads it (at most once every few seconds per folder).
+// One git at a time per folder: callers that ask meanwhile get its answer.
 const cache = new Map(); // cwd -> { at, st }
+const asking = new Map(); // cwd -> [cb]
 function status(cwd, cb, now = Date.now()) {
   const hit = cache.get(cwd);
   if (hit && now - hit.at < 4000) return cb(hit.st);
+  if (asking.has(cwd)) { asking.get(cwd).push(cb); return; }
+  asking.set(cwd, [cb]);
   execFile('git', ['status', '--porcelain=v2', '--branch'], { cwd, timeout: 3000, windowsHide: true }, (err, out) => {
     const st = err ? null : parseStatus(out);
     cache.set(cwd, { at: Date.now(), st });
-    cb(st);
+    const waiting = asking.get(cwd) || [];
+    asking.delete(cwd);
+    for (const f of waiting) f(st);
   });
 }
 

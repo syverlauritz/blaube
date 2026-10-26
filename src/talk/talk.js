@@ -761,7 +761,10 @@
     if (askKey && current.ask && current.ask.kind === 'plan') planButtons();
     fit(); send.disabled = !current || current.demo || (!text.value.trim() && !files.length); requestAnimationFrame(fitWindow); });
   text.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('form').requestSubmit(); }
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      if ((e.metaKey || e.ctrlKey) && !text.value.trim()) return; // ⌘↩ on an empty field is for the card
+      e.preventDefault(); $('form').requestSubmit();
+    }
   });
   $('form').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -821,11 +824,12 @@
     const items = [...(e.clipboardData ? e.clipboardData.items : [])].filter((it) => it.kind === 'file' && /^image\//.test(it.type));
     if (!items.length) return;
     e.preventDefault();
+    const into = current.id; // (if you hop to another slime meanwhile, it isn't theirs)
     for (const it of items) {
       const f = it.getAsFile();
       if (!f) continue;
-      const saved = await api.paste(current.id, new Uint8Array(await f.arrayBuffer()), f.type);
-      if (saved) addFile(saved, `Image ${files.filter((x) => /^Image /.test(x.name)).length + 1}`);
+      const saved = await api.paste(into, new Uint8Array(await f.arrayBuffer()), f.type);
+      if (saved && current && current.id === into) addFile(saved, `Image ${files.filter((x) => /^Image /.test(x.name)).length + 1}`);
     }
   });
   document.addEventListener('dragover', (e) => { if (current && !text.disabled) { e.preventDefault(); document.body.classList.add('dropping'); } });
@@ -883,7 +887,9 @@
   // The card from the keyboard: ⌘↩ allows (or goes ahead), ⇧⌘↩ always,
   // ⌘⌫ denies (or keeps planning). Arrow keys move between options.
   document.addEventListener('keydown', (e) => {
-    if (!askKey || !current || !current.ask || $('ask').hidden || e.isComposing) return;
+    // (Not when ↩ just sent what you typed: that was a message, not a yes.)
+    if (!askKey || !current || !current.ask || $('ask').hidden || e.isComposing || e.defaultPrevented) return;
+    if (document.activeElement === text && text.value.trim()) return;
     const mod = e.metaKey || e.ctrlKey;
     const press = (id) => { const b = $(id); if (b && !b.hidden && !b.disabled) { e.preventDefault(); b.click(); } };
     if (mod && e.key === 'Enter' && current.ask.kind !== 'question') return press(e.shiftKey ? 'always' : 'allow');

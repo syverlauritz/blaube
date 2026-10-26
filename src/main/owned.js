@@ -72,7 +72,7 @@ class Owned extends EventEmitter {
     const proc = viaCmd
       ? spawn('cmd.exe', ['/d', '/s', '/c', `"${[quote(bin), ...args.map(quote)].join(' ')}"`], Object.assign(opts, { windowsVerbatimArguments: true }))
       : spawn(bin, args, opts);
-    const s = { proc, cwd, startedAt: Date.now(), err: '', buf: '' };
+    const s = { id, proc, cwd, startedAt: Date.now(), err: '', buf: '' }; // (s.id can change: see read)
     this.sessions.set(id, s);
     proc.stdout.setEncoding('utf8');
     proc.stdout.on('data', (chunk) => {
@@ -83,7 +83,7 @@ class Owned extends EventEmitter {
         s.buf = s.buf.slice(i + 1);
         let m;
         try { m = JSON.parse(line); } catch { continue; }
-        this.read(id, m);
+        this.read(s.id, m);
       }
     });
     proc.stderr.setEncoding('utf8');
@@ -95,10 +95,10 @@ class Owned extends EventEmitter {
     const ended = (code, signal) => {
       if (over) return;
       over = true;
-      if (s.buf.trim()) { try { this.read(id, JSON.parse(s.buf)); } catch { /* half a line */ } }
-      this.sessions.delete(id);
+      if (s.buf.trim()) { try { this.read(s.id, JSON.parse(s.buf)); } catch { /* half a line */ } }
+      this.sessions.delete(s.id);
       if (settingsFile) fs.rm(settingsFile, { force: true }, () => {});
-      this.emit('exit', id, code == null && !signal ? 1 : code, s.err.trim(), signal || null);
+      this.emit('exit', s.id, code == null && !signal ? 1 : code, s.err.trim(), signal || null);
     };
     proc.on('error', (e) => { s.err = (s.err + e.message).slice(-2000); if (!proc.pid) ended(1, null); });
     proc.on('close', ended);
@@ -109,9 +109,17 @@ class Owned extends EventEmitter {
 
   // One line of its output: a finished turn is what Blaube needs.
   read(id, m) {
-    // A picked-up session should carry on under its own id; if Claude Code
-    // gave it a new one, its hooks won't match its slime: say so.
-    if (m.type === 'system' && m.subtype === 'init' && m.session_id && m.session_id !== id) this.emit('renamed', id, m.session_id);
+    if (m.type === 'system' && m.subtype === 'init' && m.session_id && m.session_id !== id && this.sessions.has(id)) {
+      // A picked-up session should carry on under its own id. If Claude
+      // Code gave it a new one, everything follows the new one (its hooks
+      // report under it).
+      const s = this.sessions.get(id);
+      this.sessions.delete(id);
+      s.id = String(m.session_id);
+      this.sessions.set(s.id, s);
+      this.emit('renamed', id, s.id);
+      return;
+    }
     if (m.type === 'result') {
       this.emit('result', id, { text: typeof m.result === 'string' ? m.result : '', error: !!m.is_error, subtype: m.subtype || '' });
     }

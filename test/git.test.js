@@ -29,6 +29,7 @@ test('quick actions fit the moment, and never while it works', () => {
   assert.deepEqual(labels(parseStatus('# branch.head main\n# branch.ab +1 -0\n')), ['Push', 'Run tests']);
   assert.deepEqual(labels(parseStatus('# branch.head main\n1 .M N... x\n')), ['Commit', 'Run tests'], 'no PR from main');
   assert.deepEqual(labels(null), ['Run tests'], 'not a git folder');
+  assert.deepEqual(labels(parseStatus('# branch.head feature/x\n')), ['Push', 'Open a PR', 'Run tests'], 'never pushed');
   assert.deepEqual(labels(parseStatus(OUT), 'working'), []);
   assert.deepEqual(labels(parseStatus(OUT), 'waiting'), []);
 });

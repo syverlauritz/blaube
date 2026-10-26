@@ -28,6 +28,30 @@ function once(res, onGone) {
   return reply;
 }
 
+const BIG = 4e6;
+
+// What a too-big hook payload is about, from its start: Claude Code puts
+// the ids, the event and the tool's input before its output.
+function headOf(text) {
+  const str = (key) => { const m = new RegExp(`"${key}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`).exec(text); try { return m ? JSON.parse(`"${m[1]}"`) : ''; } catch { return ''; } };
+  const out = {};
+  for (const k of ['session_id', 'hook_event_name', 'tool_name', 'cwd', 'transcript_path', 'agent_id', 'tool_use_id']) { const v = str(k); if (v) out[k] = v; }
+  const input = /"tool_input"\s*:\s*(\{)/.exec(text);
+  if (input) {
+    // The input object, if it's whole within what was kept.
+    let depth = 0, inStr = false;
+    for (let i = input.index + input[0].length - 1; i < text.length; i++) {
+      const c = text[i];
+      if (inStr) { if (c === '\\') i++; else if (c === '"') inStr = false; continue; }
+      if (c === '"') inStr = true;
+      else if (c === '{') depth++;
+      else if (c === '}' && --depth === 0) { try { out.tool_input = JSON.parse(text.slice(input.index + input[0].length - 1, i + 1)); } catch { /* not whole */ } break; }
+    }
+  }
+  out.tool_response = '(too long to show)';
+  return out;
+}
+
 function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
   const server = http.createServer((req, res) => {
     // Only Claude Code's hooks (curl) talk to Blaube. A web page could reach
@@ -83,12 +107,15 @@ function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
       res.writeHead(404);
       return res.end();
     }
-    let body = '';
+    let body = '', big = false;
     req.setEncoding('utf8');
-    // (A tool's whole output comes along: a big file read, a long log.)
+    // A tool's whole output comes along (a big file read, a long log).
+    // Past a few MB only the start is kept, and read for what matters
+    // (see headOf): parsing it all would stall the slimes.
     req.on('data', (c) => {
+      if (big) return;
       body += c;
-      if (body.length > 32e6) req.destroy();
+      if (body.length > BIG) { big = true; body = body.slice(0, 256 << 10); }
     });
     req.on('end', () => {
       // What goes back to Claude (tool hooks only; see inbox.step).
@@ -97,7 +124,7 @@ function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
         if (answer) { res.writeHead(200, { 'content-type': 'application/json' }); res.end(answer); } else { res.writeHead(204); res.end(); }
       };
       try {
-        const payload = JSON.parse(body);
+        const payload = big ? headOf(body) : JSON.parse(body);
         for (const k of Object.keys(payload)) if (k.startsWith('_')) delete payload[k]; // ours to set, never the sender's
         const term = req.headers['x-blaube-term'];
         if (term) payload._term = String(term).slice(0, 64);
@@ -130,4 +157,4 @@ function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
   });
 }
 
-module.exports = { startHookServer, DEFAULT_PORT, HOOK_PATH, INBOX_PATH, PERMISSION_PATH };
+module.exports = { headOf, startHookServer, DEFAULT_PORT, HOOK_PATH, INBOX_PATH, PERMISSION_PATH };

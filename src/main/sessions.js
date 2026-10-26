@@ -218,6 +218,18 @@ class SessionTracker extends EventEmitter {
   }
 
   // Marks done/waiting sessions as seen, so Blaube stops pestering.
+  // A session carries on under another id (a picked-up one Claude Code
+  // gave a new id): same slime, new name for it.
+  rename(from, to) {
+    const s = this.sessions.get(from);
+    if (!s || this.sessions.has(to)) return false;
+    this.sessions.delete(from);
+    s.id = to;
+    this.sessions.set(to, s);
+    this.emit('change', { session: s, from: s.state, to: s.state });
+    return true;
+  }
+
   acknowledge() {
     for (const s of this.sessions.values()) s.seen = true;
   }

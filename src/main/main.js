@@ -10,6 +10,7 @@ const claudeHooks = require('./claudeHooks');
 const history = require('./history');
 const attention = require('./attention');
 const git = require('./git');
+const { slashCommand } = require('./commands');
 const { openResumeTerminal, resumeCommand, focusSessionApp, typeIntoSession } = require('./terminal');
 const { startAgentsPoller, listAgents, findClaude } = require('./agents');
 const { Owned } = require('./owned');
@@ -438,7 +439,15 @@ const gitStates = new Map(); // session id -> its last git status (or null: not 
 
 // A session at a glance, for the overview in the talk box.
 const lastDoing = new Map(); // session id -> what its latest tool call is about
+const glances = new Map(); // session id -> { at, state, g } (worked out at most once a second)
 function glanceAt(o) {
+  const hit = glances.get(o.id);
+  if (hit && hit.state === o.state && Date.now() - hit.at < 1000) return hit.g;
+  const g = glanceNow(o);
+  glances.set(o.id, { at: Date.now(), state: o.state, g });
+  return g;
+}
+function glanceNow(o) {
   const tk = tokens.get(o.id);
   const todo = inbox.todos.get(o.id) || [];
   const last = [...inbox.log(o.id)].reverse().find((e) => e.who === 'claude');
@@ -1195,7 +1204,16 @@ app.whenReady().then(async () => {
     inbox.owned.add(id);
     tracker.handle({ session_id: id, hook_event_name: 'SessionStart', cwd, _entry: 'blaube' }, 'blaube');
   });
-  owned.on('renamed', (id, to) => log(`session ${id} is running as ${to}: its hooks won't match its slime`));
+  owned.on('renamed', (id, to) => {
+    log(`session ${id} carries on as ${to}`);
+    // Its hooks may have got there first, as a session of their own.
+    if (tracker.sessions.has(to)) { tracker.sessions.delete(to); readySessions.delete(to); }
+    tracker.rename(id, to);
+    inbox.rename(id, to);
+    if (readySessions.has(id)) { readySessions.delete(id); readySessions.add(to); }
+    if (talkId === id) talkId = to;
+    pushState();
+  });
   owned.on('result', (id, r) => {
     if (r.error && !r.text) inbox.add(id, { who: 'note', text: `Something went wrong${r.subtype ? ` (${r.subtype})` : ''}.` });
     else inbox.replied(id, r.text);
@@ -1246,7 +1264,12 @@ app.whenReady().then(async () => {
     clipboard.writeText(JSON.stringify({ blaube: prefs.config, changed }, null, 2));
   });
   globalShortcut.register(TUNING_SHORTCUT, openTuning);
-  try { globalShortcut.register(TALK_SHORTCUT, talkShortcut); } catch { /* taken by another app */ }
+  if (!globalShortcut.register(TALK_SHORTCUT, talkShortcut)) log(`${TALK_SHORTCUT} is taken by another app: no talk shortcut`);
+  // Pasted images from more than a week ago go.
+  fs.readdir(path.join(app.getPath('temp'), 'blaube-pastes'), (err, names) => {
+    if (err) return;
+    for (const n of names) { const f = path.join(app.getPath('temp'), 'blaube-pastes', n); fs.stat(f, (e, st) => { if (!e && Date.now() - st.mtimeMs > 7 * 86400e3) fs.rm(f, { force: true }, () => {}); }); }
+  });
 
   refreshDock();
   setInterval(refreshDock, 4 * 1000); // the Dock grows and shrinks as apps open and quit
@@ -1353,7 +1376,8 @@ app.whenReady().then(async () => {
     // A slash command (/compact, /model...) is for Claude Code, not Claude:
     // typed into its terminal when it's free, if Blaube can; never sent as
     // a message.
-    if (/^\/[a-z][\w:-]*(\s|$)/i.test(String(text).trim())) {
+    const slash = slashCommand(text, (tracker.sessions.get(id) || {}).cwd);
+    if (slash) {
       const s = tracker.sessions.get(id);
       const cmd = String(text).trim();
       const typeable = process.platform === 'darwin' && !!s.pid && (s.term === 'Apple_Terminal' || s.term === 'iTerm.app');
