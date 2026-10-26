@@ -3102,6 +3102,35 @@
   // Left waiting on you a long while (8 minutes by default), a little rain
   // cloud gathers over its head and it slumps, glum: the one you've kept
   // waiting longest is easy to spot. Point at it and the cloud puffs away.
+  // Run the cursor round and round a slime and its eyes follow it round,
+  // until (a few laps in) it's seeing stars.
+  function circled(b) {
+    const c = b.body.centroid(), r = b.body.o.radius;
+    const d = Math.hypot(mouse.x - c.x, mouse.y - c.y);
+    const near = CFG.circleDizzy > 0 && !b.body.grab && !b.dying && b.kind !== 'home' && d > r * 0.5 && d < r * 3.5 && performance.now() / 1000 - mouse.lastMove < 0.4;
+    const ci = b.circling || (b.circling = { a: 0, last: null, at: -9 });
+    if (!near) {
+      ci.last = null;
+      if (time - ci.at > 0.6) ci.a *= Math.max(0, 1 - DT * 3); // stopped going round: it settles
+      return;
+    }
+    const ang = Math.atan2(mouse.y - c.y, mouse.x - c.x);
+    if (ci.last !== null) {
+      let da = ang - ci.last;
+      if (da > Math.PI) da -= Math.PI * 2; else if (da < -Math.PI) da += Math.PI * 2;
+      // Going the other way starts the count again.
+      if (Math.sign(da) !== Math.sign(ci.a) && Math.abs(da) > 0.02) ci.a *= 0.3;
+      ci.a += da;
+      if (Math.abs(da) > 0.01) ci.at = time;
+    }
+    ci.last = ang;
+    if (Math.abs(ci.a) > CFG.circleDizzy * Math.PI * 2) {
+      ci.a = 0;
+      b.dizzyUntil = time + 2.2;
+      quip(b, 'whoa…', 1.4);
+    }
+  }
+
   // Standing at the very edge of a window, it teeters: a worried look down
   // at the drop, a wobble back and forth over it, then a shuffle back to
   // safety. Too far over and it just slides off.
@@ -3526,6 +3555,7 @@
     }
     sulk(b);
     teeter(b);
+    circled(b);
     twitch(b);
     stepFive(b);
     if (b.kind !== 'home' && b.state === 'idle' && idleFor() > dozeAfter() && time > (b.nextIdleYawn || 0)) {
@@ -3790,6 +3820,12 @@
       wideSeen = Math.max(0, 1 - seen.d / (body.o.radius * 4)) * 0.6 * Math.min(1, CFG.spectate);
       if (expression === 'concentrate' || expression === 'sleepy') { expression = 'normal'; mouth = 'o'; }
     }
+    // Being circled: its eyes go round after the cursor.
+    if (b.circling && Math.abs(b.circling.a) > Math.PI && time - b.circling.at < 0.4 && !glaring && expression !== 'dizzy') {
+      b.gazeTarget = { x: mouse.x, y: mouse.y };
+      wantLook = Math.max(wantLook, 1);
+      if (expression === 'concentrate' || expression === 'sleepy') { expression = 'normal'; mouth = 'o'; }
+    }
     // On the brink of a window: eyes down over the drop.
     if (b.teeter && !body.grab && !glaring) {
       const c = body.centroid(), r = body.o.radius;
@@ -3888,6 +3924,9 @@
     // How long it's been waiting on you.
     const waited = b.state === 'waiting' && b.stateSince !== undefined ? Math.floor((time - b.stateSince) / 60) : 0;
     if (waited >= 1) lines.push({ text: `Waiting ${waited} min`, dim: true });
+    // How long this turn has been going.
+    const turn = b.state === 'working' && b.kind === 'mother' && b.session && b.session.turnStart ? Math.floor((Date.now() - b.session.turnStart) / 60000) : 0;
+    if (turn >= 1) lines.push({ text: `Working for ${turn} min`, dim: true });
     // How far through its todo list.
     const pr = b.kind === 'mother' && b.session && b.session.progress;
     if (pr && pr.total) lines.push({ text: `Plan: ${pr.done} of ${pr.total}${pr.current ? ' \u00b7 ' + pr.current : ''}`, dim: true });
