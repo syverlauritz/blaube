@@ -6,7 +6,7 @@ test('says what happened while you were away', () => {
   const since = 1000;
   const sessions = [
     { id: 'a', project: 'kalkis', state: 'done' },
-    { id: 'b', project: 'web', title: 'Hero rework', state: 'waiting' },
+    { id: 'b', project: 'web', name: 'web · Hero rework', state: 'waiting' },
     { id: 'c', project: 'api', state: 'working' },
     { id: 'demo-1', project: 'demo', state: 'waiting' },
   ];
@@ -15,7 +15,7 @@ test('says what happened while you were away', () => {
     ['b', [{ who: 'claude', at: 1200, turn: { files: ['Hero.tsx'] } }]],
     ['c', [{ who: 'claude', at: 1300 }]],
   ]);
-  assert.equal(recap(sessions, logs, since), 'kalkis finished · Hero rework needs you · 3 replies · 3 files changed');
+  assert.equal(recap(sessions, logs, since), 'kalkis finished · web · Hero rework needs you · 3 replies · 3 files changed');
   assert.equal(recap(sessions.slice(0, 1), logs, 2000), '', 'nothing since');
   assert.equal(recap([{ id: 'x', project: 'p', state: 'waiting' }], new Map(), since), 'p needs you');
   const many = ['a', 'b', 'c', 'd'].map((id) => ({ id, project: id, state: 'done' }));

@@ -1145,7 +1145,7 @@
       const name = a.description || a.type || 'agent';
       return name.length > 28 ? name.slice(0, 27) + '…' : name;
     }
-    return (b.session && b.session.project) || 'Claude';
+    return (b.session && (b.session.shownName || b.session.project)) || 'Claude';
   }
 
   const kidsOf = (m) => [...buddies.values()].filter((b) => b.mother === m && !b.dying);
@@ -5179,7 +5179,7 @@
     // The last status update, while it still matches what the slime is doing.
     const text = st && st.state === b.state && (b.state !== 'working' || time - st.at < 20) ? st.text : STATE_WORDS[b.state] || b.state;
     const info = (b.kind === 'mother' && b.session && b.session.info) || {};
-    const lines = [{ text: info.title || label(b) }, { text, color: D.STATE_COLORS[b.state] }];
+    const lines = [{ text: label(b) }, { text, color: D.STATE_COLORS[b.state] }];
     const extra = [info.branch, modelName(info.model)].filter(Boolean).join(' · ');
     if (extra) lines.push({ text: extra, dim: true });
     // How long it's been waiting on you.

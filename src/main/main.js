@@ -15,6 +15,7 @@ const { startAgentsPoller, listAgents, findClaude } = require('./agents');
 const { Owned } = require('./owned');
 const history = require('./history');
 const attention = require('./attention');
+const { names: sessionNames } = require('../shared/names');
 const markdown = require('./markdown');
 const git = require('./git');
 const projectFiles = require('./files');
@@ -463,6 +464,7 @@ function pushTalk(id, focusField = false) {
   talkWin.webContents.send('talk-state', Object.assign({
     id,
     project: s.project,
+    shownName: shownOf(s).full, shownSub: shownOf(s).sub,
     title: id.startsWith('demo-') ? '' : usage.sessionInfo(transcriptPath(s)).title, // (its name: Claude's title, or yours from /rename)
     state: s.state,
     color: colorOf(s) || prefs.config.color || '#D97757',
@@ -503,7 +505,7 @@ function pushTalk(id, focusField = false) {
     quick: quickFor(id, s),
     // Every slime, to switch between them from the box.
     today: attention.today([...inbox.logs.values()]),
-    others: tracker.list().filter(isReady).map((o) => Object.assign({ id: o.id, project: o.project, color: colorOf(o) || prefs.config.color || '#D97757', state: o.state, ask: askOf(o.id), urls: (o.tasks || []).map((t) => ({ label: t.description || t.command, url: taskUrls.get(`${o.id}/${t.id}`) || '' })).concat(runs.list(o.id)).filter((t) => t.url).slice(0, 2).map((t) => ({ label: t.label, url: t.url })) }, glanceAt(o))),
+    others: tracker.list().filter(isReady).map((o) => Object.assign({ id: o.id, project: o.project, shownName: shownOf(o).full, shownSub: shownOf(o).sub, color: colorOf(o) || prefs.config.color || '#D97757', state: o.state, ask: askOf(o.id), urls: (o.tasks || []).map((t) => ({ label: t.description || t.command, url: taskUrls.get(`${o.id}/${t.id}`) || '' })).concat(runs.list(o.id)).filter((t) => t.url).slice(0, 2).map((t) => ({ label: t.label, url: t.url })) }, glanceAt(o))),
   }, inbox.view(id), owned.has(id) ? { stoppable: true } : {})); // (one Blaube started can always be stopped)
   if (s.cwd && !id.startsWith('demo-')) {
     git.status(s.cwd, (st) => {
@@ -823,7 +825,7 @@ async function endOwned(s, what = 'End it') {
   if (cur && (cur.state === 'working' || cur.state === 'waiting')) {
     const { response } = await dialog.showMessageBox({
       type: 'question', buttons: [`${what} now`, 'Cancel'], defaultId: 1, cancelId: 1,
-      message: `${s.project} is in the middle of something.`,
+      message: `${shownOf(s).full} is in the middle of something.`,
       detail: 'Stopping now cuts off what it’s doing. The conversation so far is kept.',
     });
     if (response !== 0) return false;
@@ -941,6 +943,14 @@ function createWindow() {
 const readySessions = new Set(), checkedTasks = new Set(), checkingTasks = new Set();
 const isReady = (s) => readySessions.has(s.id);
 
+// What each live session is called: its repo, and its chat name only where
+// two sessions share a repo (shared/names.js). { name, sub, full } by id.
+function shownNames() {
+  const live = tracker.list().filter(isReady).filter((o) => !o.id.startsWith('demo-'));
+  return sessionNames(live, (o) => usage.sessionInfo(transcriptPath(o)).title);
+}
+const shownOf = (s) => shownNames().get(s.id) || { name: s.project, sub: '', full: s.project };
+
 function checkSeededTasks(s) {
   if (checkedTasks.has(s.id) || checkingTasks.has(s.id)) return;
   const live = s.tasks.filter((t) => !t.demo);
@@ -962,6 +972,7 @@ function pushState() {
   send({
     pending: all.filter((s) => !isReady(s)).length,
     sessions: all.filter(isReady).map((s) => Object.assign({}, s, {
+      shownName: shownOf(s).full,
       color: colorOf(s),
       tokens: tokens.get(s.id) || null,
       info: Object.assign(usage.sessionInfo(transcriptPath(s)), gitStates.get(s.id) ? { branch: [gitLine(s.id), testsWords(s.id)].filter(Boolean).join(' · ') } : {}), // (its git line on hover: branch, changes, its PR, its tests)
@@ -1153,7 +1164,7 @@ function notify(s, event, text, secs = 0) {
   const log = inbox.log(s.id), last = [...log].reverse().find((e) => e.who === 'claude');
   const t = event === 'done' ? require('./inbox').turnOf(log, Date.now()) || (last && Date.now() - last.at < 10e3 && last.turn) : null;
   const turn = event === 'done' ? { files: t ? t.files.length : 0, failed: !!failedTests(log) } : null;
-  const n = attention.notification({ event, project: s.project, title: usage.sessionInfo(transcriptPath(s)).title, text, secs, seen, enabled: mode !== 'Off', ask, turn });
+  const n = attention.notification({ event, project: s.project, name: shownOf(s).full, text, secs, seen, enabled: mode !== 'Off', ask, turn });
   if (!n || Date.now() - (notified.get(s.id) || 0) < 15000) return;
   notified.set(s.id, Date.now());
   // (On macOS you can answer one that's done right in the notification.)
@@ -1426,7 +1437,7 @@ function sessionMenu(id) {
   const isDemo = id.startsWith('demo-');
   const mine = owned.has(id);
   return Menu.buildFromTemplate([
-    { label: s.project, enabled: false },
+    { label: shownOf(s).full, enabled: false },
     { label: `${word}${s.message && s.state === 'waiting' ? ': ' + s.message : ''}`, enabled: false },
     ...(effort ? [{ label: effort, enabled: false }] : []),
     { type: 'separator' },
@@ -1464,7 +1475,7 @@ function sessionMenu(id) {
 function forkSession(s) {
   const id = startSession(s.cwd, [], '', s.id);
   if (!id) return null;
-  inbox.add(id, { who: 'note', text: `A copy of ${s.title || s.project}’s conversation: try something else here, it carries on as it was` });
+  inbox.add(id, { who: 'note', text: `A copy of ${shownOf(s).full}’s conversation: try something else here, it carries on as it was` });
   inbox.add(s.id, { who: 'note', text: 'Forked into a new session' });
   return id;
 }
@@ -1633,7 +1644,7 @@ function trayMenu() {
   const rows = live.map((o) => {
     const g = glanceAt(o);
     // (Only macOS shows a sublabel: elsewhere the status goes on the line.)
-    const row = { label: `${mark[o.state] || '•'}  ${o.project}${process.platform === 'darwin' || !g.status ? '' : `  ·  ${g.status.length > 40 ? g.status.slice(0, 39) + "…" : g.status}`}`, sublabel: g.status, toolTip: g.meta };
+    const row = { label: `${mark[o.state] || '•'}  ${shownOf(o).full}${process.platform === 'darwin' || !g.status ? '' : `  ·  ${g.status.length > 40 ? g.status.slice(0, 39) + "…" : g.status}`}`, sublabel: g.status, toolTip: g.meta };
     const open = () => { if (!win) return; if (process.platform === 'darwin') app.focus({ steal: true }); win.webContents.send('open-talk', o.id); };
     // Answered or stopped right from the menu bar, without opening anything.
     const ask = o.state === 'waiting' ? (inbox.asks.get(o.id) || [])[0] : null;
@@ -1891,7 +1902,7 @@ app.whenReady().then(async () => {
     if (!awaySince || idle > 30) return;
     const since = awaySince;
     awaySince = 0;
-    const text = away.recap(tracker.list().filter(isReady).map((o) => ({ id: o.id, project: o.project, title: o.id.startsWith('demo-') ? '' : usage.sessionInfo(transcriptPath(o)).title, state: o.state })), inbox.logs, since);
+    const text = away.recap(tracker.list().filter(isReady).map((o) => ({ id: o.id, project: o.project, name: shownOf(o).full, state: o.state })), inbox.logs, since);
     if (!text) return;
     log(`while you were away: ${text}`);
     if (TEST) { global.__blaubeAway = text; return; }
@@ -2313,8 +2324,8 @@ app.whenReady().then(async () => {
     const a = from === talkId && tracker.sessions.get(from);
     const b = tracker.sessions.get(to);
     if (!a || !b || from === to || to.startsWith('demo-') || !isReady(b) || typeof text !== 'string' || !text.trim() || text.length > 50000) return;
-    sendMessage(to, `(This is from ${a.title || a.project}, another Claude Code session working in ${a.cwd || 'another folder'}; I'm passing it on:)\n\n${text}`);
-    inbox.add(from, { who: 'note', text: `Sent to ${b.title || b.project}` });
+    sendMessage(to, `(This is from ${shownOf(a).full}, another Claude Code session working in ${a.cwd || 'another folder'}; I'm passing it on:)\n\n${text}`);
+    inbox.add(from, { who: 'note', text: `Sent to ${shownOf(b).full}` });
     if (win) win.webContents.send('nod', to);
   });
   ipcMain.on('talk-send', (_e, id, text) => {

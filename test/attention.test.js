@@ -17,7 +17,7 @@ test('notifications only when the slimes can’t be seen, and finishing only aft
   assert.equal(notification({ event: 'waiting', project: 'kalkis', seen: true }), null);
   assert.equal(notification({ event: 'waiting', project: 'kalkis', enabled: false }), null);
   assert.equal(notification({ event: 'done', project: 'kalkis', secs: 5 }), null);
-  assert.deepEqual(notification({ event: 'done', project: 'kalkis', title: 'Fix login', text: '**All** tests pass.', secs: 90 }), { title: 'Fix login is done', body: 'All tests pass.' });
+  assert.deepEqual(notification({ event: 'done', project: 'kalkis', name: 'kalkis · Fix login', text: '**All** tests pass.', secs: 90 }), { title: 'kalkis · Fix login is done', body: 'All tests pass.' });
 });
 
 test('a session at a glance, in words', () => {
