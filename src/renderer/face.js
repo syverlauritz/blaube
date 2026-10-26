@@ -1165,19 +1165,31 @@
 	// with room, trailing its puffs down to its head. At most three lines of
 	// the plain font, the newest words last. avoid: other slimes'
 	// heads ({ x, y, w, h }), which it never covers. Drawn after drawStatus.
-	const THOUGHT_W = 250, THOUGHT_LINE = 20, THOUGHT_LINES = 3;
+	// One spacing system for thought bubbles (a mother's and a helper's):
+	// the same padding all round (text is centred on its capitals, so padY
+	// plus half a line's leading comes out at padX), a line height that
+	// gives wrapped lines air, and set gaps between the groups.
+	const THINK = {
+		padX: 16, padY: 11,
+		task: `700 16px ${TEXT_FONT}`, taskLine: 22,
+		state: `600 15px ${TEXT_FONT}`, stateLine: 21,
+		dim: `600 14px ${TEXT_FONT}`, dimLine: 20,
+		afterTask: 6, afterState: 2,
+	};
+	const PUFF_GAP = 36, PUFFS = [5.5, 3.5]; // (bubble bottom to head, and the two puffs in it)
+	const THOUGHT_W = 250, THOUGHT_LINE = THINK.dimLine, THOUGHT_LINES = 3;
 	function drawThought(ctx, b, text, W, avoid = []) {
 		const S = b.statusBox;
 		if (!text || !S || !fontsReady) return;
 		ctx.save();
-		ctx.font = `600 14px ${TEXT_FONT}`;
+		ctx.font = THINK.dim;
 		let rows = wrap(ctx, text, THOUGHT_W);
 		if (rows.length > THOUGHT_LINES) {
 			rows = rows.slice(-THOUGHT_LINES);
 			if (!rows[0].startsWith('…')) rows[0] = '…' + rows[0];
 		}
-		const w = Math.max(ICON_W, Math.ceil(Math.max(...rows.map((r) => ctx.measureText(r).width))) + PAD_X * 2);
-		const h = rows.length * THOUGHT_LINE + PAD_Y * 2;
+		const w = Math.max(ICON_W, Math.ceil(Math.max(...rows.map((r) => ctx.measureText(r).width))) + THINK.padX * 2);
+		const h = rows.length * THOUGHT_LINE + THINK.padY * 2;
 		const hits = (x, y) => x < 8 || x + w > W - 8 || y < 8
 			|| placed.some((o) => o !== S.slot && x < o.x + o.w + GAP && x + w + GAP > o.x && y < o.y + o.h + 26 && y + h + GAP > o.y) // (and its tail or puffs)
 			|| avoid.some((o) => x < o.x + o.w && x + w > o.x && y < o.y + o.h && y + h > o.y);
@@ -1208,7 +1220,7 @@
 			const c = b.centroid(), r = b.o.radius, top = b.bbox().minY;
 			const from = { x: side > 0 ? x + rad * 0.9 : x + w - rad * 0.9, y: y + h - 2 };
 			const to = { x: c.x + side * r * 0.5, y: top + r * 0.1 };
-			for (const [k, pr] of [[0.36, 6], [0.7, 3.8]]) {
+			for (const [k, pr] of [[0.36, PUFFS[0]], [0.7, PUFFS[1]]]) {
 				const px = from.x + (to.x - from.x) * k, py = from.y + (to.y - from.y) * k;
 				ctx.moveTo(px + pr, py);
 				ctx.arc(px, py, pr, 0, Math.PI * 2);
@@ -1216,7 +1228,7 @@
 		} else {
 			// Above it: the puffs trail down toward it, in the gap.
 			const mx = Math.max(x + rad, Math.min(x + w - rad, S.x + S.w / 2));
-			for (const [dy, pr] of [[10, 6], [23, 3.8]]) {
+			for (const [dy, pr] of [[11, PUFFS[0]], [23, PUFFS[1]]]) {
 				ctx.moveTo(mx + pr, y + h + dy);
 				ctx.arc(mx, y + h + dy, pr, 0, Math.PI * 2);
 			}
@@ -1226,8 +1238,8 @@
 		ctx.fill();
 		ctx.fillStyle = INK;
 		ctx.textAlign = 'left';
-		ctx.textBaseline = 'middle';
-		rows.forEach((row, i) => ctx.fillText(row, x + PAD_X, y + PAD_Y + (i + 0.5) * THOUGHT_LINE));
+		ctx.textBaseline = 'alphabetic';
+		rows.forEach((row, i) => ctx.fillText(row, x + THINK.padX, baseline(ctx, y + THINK.padY + (i + 0.5) * THOUGHT_LINE)));
 		ctx.restore();
 	}
 
@@ -1237,11 +1249,11 @@
 	// card: { task, status: { text, color }, action, fromEnd } (fromEnd: the
 	// action is a thought's tail, so its newest words are the ones kept).
 	// avoid: other slimes' heads, which it never covers, as with drawThought.
-	const CARD_W = 260, TASK_LINE = 22, TASK_LINES = 3, ACTION_LINES = 2;
+	const CARD_W = 260, TASK_LINES = 3, ACTION_LINES = 2;
 	function drawHelperThought(ctx, b, card, W, avoid = []) {
 		if (!card || !card.task || !fontsReady) return;
 		ctx.save();
-		const taskFont = `700 16px ${TEXT_FONT}`, stateFont = `600 15px ${TEXT_FONT}`, actionFont = `600 14px ${TEXT_FONT}`;
+		const taskFont = THINK.task, stateFont = THINK.state, actionFont = THINK.dim;
 		ctx.font = taskFont;
 		let task = wrap(ctx, card.task, CARD_W);
 		if (task.length <= TASK_LINES) task = balanced(ctx, card.task, CARD_W); // (evened out when it all fits)
@@ -1257,60 +1269,76 @@
 		const widest = (rows, font, extra = 0) => { ctx.font = font; return Math.max(0, ...rows.map((r) => ctx.measureText(r).width + extra)); };
 		const status = card.status && card.status.text ? card.status : null;
 		const tw = Math.max(widest(task, taskFont), status ? widest([status.text], stateFont, status.color ? 16 : 0) : 0, widest(action, actionFont));
-		const w = Math.max(ICON_W, Math.ceil(tw) + PAD_X * 2);
-		const h = task.length * TASK_LINE + (status ? 22 : 0) + action.length * THOUGHT_LINE + PAD_Y * 2;
-		// Over its head with room for the puffs, and up past any bubble
-		// already there or another slime's head.
+		const w = Math.max(ICON_W, Math.ceil(tw) + THINK.padX * 2);
+		// The rows, top to bottom, each with the space it takes and the gap
+		// before it: the task's lines, a gap, its state, a smaller one, the action.
+		const rows = [
+			...task.map((text, i) => ({ text, font: taskFont, lh: THINK.taskLine, gap: 0 })),
+			...(status ? [{ text: status.text, font: stateFont, lh: THINK.stateLine, gap: THINK.afterTask, dot: status.color }] : []),
+			...action.map((text, i) => ({ text, font: actionFont, lh: THINK.dimLine, gap: i ? 0 : status ? THINK.afterState : THINK.afterTask, dim: true })),
+		];
+		const h = rows.reduce((sum, r) => sum + r.gap + r.lh, 0) + THINK.padY * 2;
+		// Right over its head, its puffs between: shifted aside past a bubble
+		// that's in the way (as long as it still sits over its own head),
+		// else up past it, or past another slime's head.
 		const c = b.centroid(), box = b.bbox();
 		const top = b.lookTop != null ? Math.min(box.minY, b.lookTop) : box.minY;
 		const tip = { x: c.x, y: top - 4 };
-		const x = Math.max(8, Math.min(W - w - 8, c.x - w / 2));
-		let y = tip.y - 30 - h;
+		const rad0 = pillRadius(h), clampX = (x) => Math.max(8, Math.min(W - w - 8, x));
+		const over = (x) => x + rad0 + 6 <= tip.x && tip.x <= x + w - rad0 - 6;
+		const hitAt = (x, y) => placed.find((o) => x < o.x + o.w + GAP && x + w + GAP > o.x && y < o.y + o.h + 26 && y + h + GAP > o.y)
+			|| avoid.find((o) => x < o.x + o.w && x + w > o.x && y < o.y + o.h && y + h > o.y);
+		let x = clampX(c.x - w / 2), y = tip.y - PUFF_GAP - h;
 		for (let tries = 0; tries < 8 && y > 8; tries++) {
-			const hit = placed.find((o) => x < o.x + o.w + GAP && x + w + GAP > o.x && y < o.y + o.h + 26 && y + h + GAP > o.y)
-				|| avoid.find((o) => x < o.x + o.w && x + w > o.x && y < o.y + o.h && y + h > o.y);
+			const hit = hitAt(x, y);
 			if (!hit) break;
+			const aside = [clampX(hit.x - GAP - w), clampX(hit.x + hit.w + GAP)].find((sx) => over(sx) && !hitAt(sx, y));
+			if (aside !== undefined) { x = aside; break; }
 			y = hit.y - GAP - h;
 		}
 		y = Math.max(8, y);
 		placed.push({ x, y, w, h });
-		const p = settle(b, { tip, x, y, gap: 30 }, w, h);
+		const p = settle(b, { tip, x, y, gap: PUFF_GAP }, w, h);
 		ctx.fillStyle = '#fff';
 		ctx.beginPath();
 		const rad = pillRadius(h);
-		// Two puffs on the way from its bottom down to its head.
-		const from = { x: Math.max(p.x + rad, Math.min(p.x + w - rad, tip.x)), y: p.y + h + 2 };
-		for (const [k, pr] of [[0.3, 6], [0.72, 3.8]]) {
-			const px = from.x + (tip.x - from.x) * k, py = from.y + (tip.y - from.y) * k;
+		// Puffs, evenly spaced from its bottom down to just over its head:
+		// two, and more (getting smaller) when it had to go higher.
+		const from = { x: Math.max(p.x + rad, Math.min(p.x + w - rad, tip.x)), y: p.y + h };
+		const len = Math.hypot(tip.x - from.x, tip.y - from.y) || 1;
+		const n = Math.max(2, Math.min(5, Math.round(len / 26)));
+		const puffs = Array.from({ length: n }, (_, i) => PUFFS[0] + ((PUFFS[1] - PUFFS[0]) * i) / (n - 1));
+		const space = Math.max(2, (len - 2 * puffs.reduce((s, r) => s + r, 0)) / (n + 1));
+		let along = 0;
+		for (const pr of puffs) {
+			along += space + pr;
+			const px = from.x + ((tip.x - from.x) * along) / len, py = from.y + ((tip.y - from.y) * along) / len;
 			ctx.moveTo(px + pr, py);
 			ctx.arc(px, py, pr, 0, Math.PI * 2);
+			along += pr;
 		}
 		ctx.fill();
 		roundRect(ctx, p.x, p.y, w, h, rad);
 		ctx.fill();
 		ctx.textAlign = 'left';
-		ctx.textBaseline = 'middle';
-		let ly = p.y + PAD_Y;
-		ctx.font = taskFont;
-		ctx.fillStyle = INK;
-		for (const row of task) { ctx.fillText(row, p.x + PAD_X, ly + TASK_LINE / 2); ly += TASK_LINE; }
-		if (status) {
-			let lx = p.x + PAD_X;
-			if (status.color) {
-				ctx.fillStyle = status.color;
+		ctx.textBaseline = 'alphabetic';
+		let ly = p.y + THINK.padY;
+		for (const r of rows) {
+			ly += r.gap;
+			ctx.font = r.font;
+			const mid = ly + r.lh / 2;
+			let lx = p.x + THINK.padX;
+			if (r.dot) {
+				ctx.fillStyle = r.dot;
 				ctx.beginPath();
-				ctx.arc(lx + 5, ly + 11, 5, 0, Math.PI * 2);
+				ctx.arc(lx + 5, mid, 5, 0, Math.PI * 2);
 				ctx.fill();
 				lx += 16;
 			}
-			ctx.font = stateFont;
-			ctx.fillStyle = INK;
-			ctx.fillText(ellipsize(ctx, status.text, w - (lx - p.x) - PAD_X), lx, ly + 11);
-			ly += 22;
+			ctx.fillStyle = r.dim ? '#6b7280' : INK;
+			ctx.fillText(r.dot ? ellipsize(ctx, r.text, w - (lx - p.x) - THINK.padX) : r.text, lx, baseline(ctx, mid));
+			ly += r.lh;
 		}
-		ctx.font = actionFont;
-		ctx.fillStyle = '#6b7280';
-		for (const row of action) { ctx.fillText(row, p.x + PAD_X, ly + THOUGHT_LINE / 2); ly += THOUGHT_LINE; }
 		ctx.restore();
 	}
 
