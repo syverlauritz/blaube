@@ -118,6 +118,7 @@
       ['feelings', 1, 0, 2, 0.05, 'Thank it in a prompt and it blushes and squirms; tell it off and it looks sheepish'],
       ['scrollSquish', 1, 0, 3, 0.05, 'Scroll over a slime to squish it flat or pull it tall'],
       ['circleDizzy', 3, 0, 10, 0.5, 'Run the cursor round a slime this many times and it gets dizzy; its eyes follow it round (0 = off)'],
+      ['hugs', 1, 0, 1.5, 0.05, 'Hold a slime you carry gently against another for a moment and they hug, hearts and all'],
       ['headPat', 1, 0, 3, 0.05, 'Rest the cursor on its head: it pushes up into it like a cat'],
       ['listen', 1, 0, 2, 0.05, 'Typing to it in its talk box: it watches and bobs along'],
       ['seekYou', 1, 0, 2, 0.05, 'Needing you a while, it hops over to your cursor'],

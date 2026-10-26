@@ -2521,7 +2521,7 @@
     b.stillFor = Math.hypot(g.vx, g.vy) < 90 ? (b.stillFor || 0) + DT : 0;
     // (Grumpy with you, it wants down much sooner.)
     const after = CFG.wriggleAfter * ((b.mood || 0) < -0.3 ? 0.3 : 1);
-    b.wriggling = CFG.wriggle > 0 && b.stillFor > after && time > b.dizzyUntil && (b.stillFor - after) % 2.6 < 1.3;
+    b.wriggling = CFG.wriggle > 0 && b.stillFor > after && time > b.dizzyUntil && !b.hug && (b.stillFor - after) % 2.6 < 1.3;
     if (b.wriggling && time > (b.nextKick || 0)) {
       // Kicks: held by its top, a lean swings its bottom from side to side.
       b.kickDir = -(b.kickDir || 1);
@@ -3103,6 +3103,50 @@
   // Left waiting on you a long while (8 minutes by default), a little rain
   // cloud gathers over its head and it slumps, glum: the one you've kept
   // waiting longest is easy to spot. Point at it and the cloud puffs away.
+  // Hold one you're carrying gently against another for a moment and they
+  // hug: both happy, the other leaning in, hearts between them. Let go and
+  // the other gives a pleased little hop.
+  function hug(b) {
+    const g = b.hug;
+    const held = CFG.hugs > 0 && drag && drag.buddy === b && !b.dying;
+    let o = null;
+    if (held) {
+      const c = b.body.centroid(), r = b.body.o.radius, v = b.body.velocity(DT);
+      if (Math.hypot(v.x, v.y) < 160) {
+        for (const x of buddies.values()) {
+          if (x === b || x.dying || x.kind === 'home' || x.merging || x.body.grab) continue;
+          const d = Math.hypot(x.body.centroid().x - c.x, x.body.centroid().y - c.y);
+          if (d < (r + x.body.o.radius) * 1.12 && (!o || d < o.d)) o = { x, d };
+        }
+      }
+      o = o && o.x;
+    }
+    if (!o || (g && g.o !== o)) {
+      b.hugT = 0;
+      if (g) {
+        b.hug = null; g.o.huggedBy = null;
+        if (time - g.since > 1 && g.o.body.onFloor()) { g.o.hop(0, -260); quip(g.o, 'hehe', 1); }
+      }
+      return;
+    }
+    b.hugT = (b.hugT || 0) + DT;
+    if (!g) {
+      if (b.hugT < 0.6) return;
+      b.hug = { o, since: time, heart: time };
+      o.huggedBy = b;
+      feel(b, 0.1);
+      return;
+    }
+    // The other leans in to it, and stands its ground rather than get shoved along.
+    const oc = o.body.centroid(), bc = b.body.centroid(), ov = o.body.velocity(DT);
+    o.body.lean((Math.sign(bc.x - oc.x) || 1) * o.body.o.radius * 1.6 * Math.min(1.5, CFG.hugs), DT);
+    if (o.body.onFloor()) o.body.impulse(-ov.x * 0.25, 0, DT);
+    if (time - g.heart > 0.7) {
+      g.heart = time;
+      hearts.push({ x: (oc.x + bc.x) / 2 + (Math.random() - 0.5) * 12, y: Math.min(b.body.bbox().minY, o.body.bbox().minY) - 6, vx: (Math.random() - 0.5) * 30, born: time, size: 10 + Math.random() * 4 });
+    }
+  }
+
   // Fast asleep, now and then it dreams: of what it was last working on, or
   // of sheep jumping a fence.
   function dream(b) {
@@ -3567,6 +3611,7 @@
     }
     sulk(b);
     dream(b);
+    hug(b);
     teeter(b);
     circled(b);
     twitch(b);
@@ -3705,6 +3750,7 @@
     else if (time < (b.yawnUntil || 0)) { expression = 'sleepy'; mouth = 'yawn'; }
     else if (time < (b.winceUntil || 0)) { expression = 'pained'; mouth = 'wobble'; }
     else if (time < (b.cheerUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
+    else if (b.hug || (b.huggedBy && b.huggedBy.hug && b.huggedBy.hug.o === b)) { expression = 'happy'; mouth = 'smile'; } // (a hug)
     else if (body.grab && b.wriggling) { expression = 'worried'; mouth = 'wobble'; }
     else if (body.grab || time < (b.surpriseUntil || 0)) { mouth = 'o'; }
     else if (time < (b.booUntil || 0)) { expression = 'normal'; mouth = 'o'; }
