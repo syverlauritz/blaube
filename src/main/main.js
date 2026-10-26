@@ -1046,10 +1046,18 @@ function notify(s, event, text, secs = 0) {
   if (!n || Date.now() - (notified.get(s.id) || 0) < 15000) return;
   notified.set(s.id, Date.now());
   // (On macOS you can answer one that's done right in the notification.)
-  const note = new Notification(Object.assign({ title: n.title, body: n.body }, event === 'done' ? { hasReply: true, replyPlaceholder: `Reply to ${s.project}` } : {},
+  // (And a permission ask can be answered "no, do this instead" in words.)
+  const askReply = ask && ask.kind === 'tool' && n.actions;
+  const note = new Notification(Object.assign({ title: n.title, body: n.body }, event === 'done' ? { hasReply: true, replyPlaceholder: `Reply to ${s.project}` } : askReply ? { hasReply: true, replyPlaceholder: 'Or say what to do instead' } : {},
     n.actions ? { actions: n.actions.map((text) => ({ type: 'button', text })) } : {}));
   note.on('action', (_e, i) => { shown.delete(note); if (ask && n.actions && !inbox.decide(s.id, ask.key, i === 0 ? 'allow' : 'deny') && win) win.webContents.send('open-talk', s.id); });
-  note.on('reply', (_e, text) => { shown.delete(note); if (replyTo && tracker.sessions.has(s.id) && String(text || '').trim()) replyTo(s.id, String(text).trim()); });
+  note.on('reply', (_e, text) => {
+    shown.delete(note);
+    const said = String(text || '').trim();
+    if (!said || !tracker.sessions.has(s.id)) return;
+    if (askReply) { if (!inbox.decide(s.id, ask.key, 'deny', { message: said }) && win) win.webContents.send('open-talk', s.id); return; }
+    if (replyTo) replyTo(s.id, said);
+  });
   // (Held on to until it's gone, or a click may never arrive.)
   shown.add(note);
   note.on('click', () => { shown.delete(note); if (win && tracker.sessions.has(s.id)) win.webContents.send('open-talk', s.id); });
