@@ -1652,6 +1652,7 @@
     const boxes = [...buddies.values()].filter((b) => !b.dying && !b.body.grab).map((b) => [b, b.body.bbox()]);
     for (let k = flakes.length - 1; k >= 0; k--) {
       const f = flakes[k];
+      if (f.eaten) continue; // (on its way into a mouth)
       if (f.on) {
         const b = f.on.b, body = b.body, i = f.on.i;
         const v = b.vel || { x: 0, y: 0 }, c = body.centroid();
@@ -2549,6 +2550,36 @@
     }
   }
 
+  // Now and then a bored slime leans over and eats a leaf (or petal, or a
+  // bit of snow) lying beside it: it slides into its mouth, chomp chomp.
+  function nibble(b) {
+    if (CFG.nibble <= 0 || b.kind === 'child' || b.dying) return;
+    const n = b.nibbling;
+    const body = b.body, c = body.centroid(), r = body.o.radius;
+    if (n) {
+      const t = time - n.at;
+      if (body.grab || t > 2.2) { b.nibbling = null; return; }
+      if (t < 0.5) {
+        // Leaning over to it, and drawing it in.
+        body.lean(Math.sign(n.f.x - c.x) * r * 10 * DT, DT);
+        const mx = c.x + Math.sign(n.f.x - c.x) * r * 0.2, my = c.y + r * 0.1, k = Math.min(1, t / 0.5);
+        n.f.x += (mx - n.f.x) * k * 0.3; n.f.y += (my - n.f.y) * k * 0.3; n.f.landed = 0; n.f.eaten = true; n.f.a += DT * 6;
+      } else if (!n.gone) {
+        n.gone = true;
+        const i = flakes.indexOf(n.f);
+        if (i >= 0) flakes.splice(i, 1);
+        if (Math.random() < 0.6) quip(b, n.f.kind === 'snow' ? 'brr' : 'nom', 1);
+      } else if (body.onFloor() && Math.round(t / 0.18) % 2 === 0 && t < 1.6) body.squashTop(r * 0.5 * 60 * DT, DT); // (chewing)
+      return;
+    }
+    const ok = (b.state === 'idle' || b.state === 'done') && !body.grab && body.onFloor() && !b.tag && !b.prank && !b.trick && !b.blow && (b.sleep || 0) < 0.1;
+    if (!ok || !flakes.length || time < (b.nextNibble ?? (b.nextNibble = time + (60 + Math.random() * 180) / CFG.nibble))) return;
+    b.nextNibble = time + (90 + Math.random() * 240) / CFG.nibble;
+    const bb = body.bbox();
+    const f = flakes.find((f) => f.landed && !f.on && !f.ledge && !f.eaten && Math.abs(f.y - bb.maxY) < 20 && Math.abs(f.x - c.x) < r * 1.5 && Math.abs(f.x - c.x) > r * 0.6);
+    if (f) b.nibbling = { f, at: time };
+  }
+
   // On the floor, or sitting still on something (another slime, say).
   const resting = (o) => o.body.onFloor() || (!o.body.grab && Math.hypot(o.body.velocity(DT).x, o.body.velocity(DT).y) < 40);
 
@@ -2771,6 +2802,7 @@
     tag(b);
     blow(b);
     welcome(b);
+    nibble(b);
     hiccup(b);
     // Hanging over the edge of a window: it clings and shuffles back on.
     const l = b.body.onLedge;
@@ -2884,6 +2916,7 @@
     else if (time < (b.booUntil || 0)) { expression = 'normal'; mouth = 'o'; }
     else if (b.sneeze) { expression = 'pained'; mouth = 'o'; } // (about to sneeze)
     else if (b.blow && time > b.blow.at) { expression = 'normal'; mouth = 'o'; } // (blowing a bubble)
+    else if (b.nibbling) { expression = 'happy'; mouth = time - b.nibbling.at < 0.5 ? 'o' : Math.round((time - b.nibbling.at) / 0.18) % 2 ? 'grin' : 'flat'; } // (chomp chomp)
     else if (b.patted) { expression = 'happy'; mouth = 'smile'; }
     else if (time < (b.wantsPetsUntil || 0) && time > (b.pettedUntil || 0)) { expression = 'normal'; mouth = 'smile'; }
     else if (time - (b.sneezedAt ?? -9) < 0.5) { expression = 'happy'; mouth = 'flat'; }
