@@ -25,11 +25,37 @@ module.exports = async function run({ win, tracker }) {
 	await sleep(1500);
 	// A window on the left, the helper on it; mum on the floor far right.
 	const size = await js(`({ w: innerWidth, h: innerHeight })`);
+	// Mum up on a window too high to jump to: the helper jumps, gets close
+	// to her in the air and falls back. Those near misses mustn't count as
+	// getting closer, and it gives up only once it's back on the ground.
+	{
+		const high = { id: 8, x0: 300, x1: 700, y: 80, wx: 300, at: Date.now() };
+		win.webContents.send('ledges', [high]);
+		await sleep(100);
+		await js(`(() => { ${mom}.body.teleport(560, 0); ${kid}.body.teleport(380, ${size.h - 150}); })()`);
+		check(await until(() => js(`!!${mom}.body.onLedge && ${kid}.body.onFloor()`), 3000), 'mum is up on a high window, her helper below');
+		// Watch: how close it gets in the air, and where it is the moment it gives up.
+		await js(`(() => {
+			const k = ${kid}, m = ${mom}, t0 = __blaube.now();
+			window.__air = Infinity; window.__ground = Infinity; window.__gave = null;
+			window.__watch = setInterval(() => { const c = k.body.centroid(), mc = m.body.centroid(), d = Math.hypot(mc.x - c.x, mc.y - c.y) / m.body.o.radius; if (k.body.onFloor()) __ground = Math.min(__ground, d); else __air = Math.min(__air, d); }, 5);
+			let g = null;
+			Object.defineProperty(k, 'gaveUp', { configurable: true, get: () => g, set: (v) => { if (v && !g && !__gave) __gave = { grounded: k.body.onFloor(), after: __blaube.now() - t0 }; g = v; } });
+		})()`);
+		const gave = await until(() => js(`!!window.__gave`), 20000);
+		const info = await js(`({ air: __air, ground: __ground, gave: __gave, onLedge: !!${kid}.body.onLedge })`);
+		check(info.air < info.ground * 0.7, `in the air it gets much closer to her than it ever is on the ground (${info.air.toFixed(2)} against ${info.ground.toFixed(2)} of her radii)`);
+		check(gave && info.gave.after < 16, `it still gives up in time (after ${gave ? info.gave.after.toFixed(1) : '-'} s)`);
+		check(gave && info.gave.grounded && !info.onLedge, 'only once it has landed, below her');
+		await js(`(() => { clearInterval(__watch); const k = ${kid}; delete k.gaveUp; k.gaveUp = null; k.gaveUps = 0; k.reach = null; })()`);
+		win.webContents.send('ledges', []);
+		await sleep(1500);
+	}
 	const ledge = { id: 9, x0: 80, x1: 440, y: Math.round(size.h * 0.45), wx: 80, at: Date.now() };
 	win.webContents.send('ledges', [ledge]);
 	await sleep(100);
 	await js(`(() => { ${kid}.body.teleport(260, ${ledge.y - 120}); ${mom}.body.teleport(${size.w - 200}, ${size.h - 200}); })()`);
-	check(await until(() => js(`${kid}.body.onLedge && ${kid}.body.onFloor()`), 3000), 'the helper is up on the window');
+	check(await until(() => js(`${kid}.body.onLedge && ${kid}.body.onFloor() && ${mom}.body.onFloor() && ${mom}.body.centroid().x > ${size.w - 400}`), 3000), 'the helper is up on the window, mum on the floor far off');
 	// Watch it try: it hops, and never gets any closer.
 	await js(`(() => { const k = ${kid}; window.__hops = 0; const hop = k.hop.bind(k); k.hop = (vx, vy) => { window.__hops++; hop(vx, vy); }; })()`);
 	const gave = await until(() => js(`!!${kid}.gaveUp`), 14000);

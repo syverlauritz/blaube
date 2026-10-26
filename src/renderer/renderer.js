@@ -4872,7 +4872,7 @@
 
   // A helper that can't get to its mum (she's up a window too high, it
   // won't jump off the window it's on, she's being carried off) gives up
-  // after a while of getting no closer (about 7 s and a few hops; 4 s on
+  // after a while of getting no closer (about 7 s and a few hops; 3 s on
   // its way home, its hops being quicker): a sigh, a heart breaking above
   // it, a slump. Then it rests for minutes (4 to 8, twice that each time it
   // has to give up again, 20 at most) before it tries again, unless she
@@ -4888,6 +4888,9 @@
     if (b.kind !== 'child' || b.dying) return;
     const m = b.mother;
     if (!m || m.dying || m.removed) { b.reach = b.gaveUp = null; return; }
+    // Where it can get to is judged only when it's standing somewhere (a
+    // jump that sails up past her and falls back is a miss, not a reach).
+    const grounded = b.body.onFloor() && !b.pendingHop && !b.body.grab;
     const g = b.gaveUp;
     if (g) {
       // The sigh comes as the heart's halves fall away (its bubble would
@@ -4898,7 +4901,7 @@
         if (!b.dying) b.say([{ text: 'haah…' }], 2.4, false, mayTalk('flavour') ? { softer: 0.6, pace: 1.6 } : false);
       }
       if (b.merging && !g.merging) { b.gaveUp = null; return; } // (done now: it tries again, to get home)
-      if (!mumOutOfReach(b) && !b.merging) {
+      if (grounded && !mumOutOfReach(b) && !b.merging) {
         // She came: all better.
         b.gaveUp = b.reach = null;
         b.gaveUps = 0;
@@ -4908,18 +4911,21 @@
       } else if (time > g.until) b.gaveUp = b.reach = null;
       return;
     }
-    if (b.body.grab || b.splitting || (b.merging && time - b.merging.since < 0.9) || !mumOutOfReach(b)) { b.reach = null; return; }
+    if (b.body.grab || b.splitting || (b.merging && time - b.merging.since < 0.9)) { b.reach = null; return; }
+    if (!grounded) return; // (in the air: nothing's decided till it lands, and it gives up only once it has)
+    if (!m.body.onFloor() && !m.body.grab) return; // (nor while she's mid-hop or falling)
+    if (!mumOutOfReach(b)) { b.reach = null; return; }
     const c = b.body.centroid(), mc = m.body.centroid(), d = Math.hypot(mc.x - c.x, mc.y - c.y), r = b.body.o.radius;
     const k = b.reach;
     if (!k || d < k.best - r * 1.5) { b.reach = { best: d, since: time, hops: 0 }; return; }
-    if (k.hops < 4 || time - k.since < (b.merging ? 4 : 7)) return;
+    if (k.hops < 4 || time - k.since < (b.merging ? 3 : 7)) return;
     // No use.
     b.gaveUps = (b.gaveUps || 0) + 1;
     const rest = b.merging ? 2.8 : Math.min(20 * 60, (240 + Math.random() * 240) * 2 ** (b.gaveUps - 1));
     b.gaveUp = { at: time, until: time + rest, merging: !!b.merging };
     b.reach = null;
     b.droopUntil = time + 2.5;
-    if (b.body.onFloor()) b.body.squashTop(r * 2, DT);
+    b.body.squashTop(r * 2, DT);
     spawnHeart({ x: c.x, y: Math.min(b.body.bbox().minY, b.body.lookTop ?? Infinity) - 22, vx: 0, born: time, size: Math.max(10, r * 0.22), broken: true });
   }
 
