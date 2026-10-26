@@ -542,3 +542,37 @@ test('its repository on GitHub, and the link its branches show', () => {
   assert.deepEqual(webLink(repo, st({ branch: 'main' }), null).url, 'https://github.com/o/r/tree/main');
   assert.equal(webLink('', st(), null), null);
 });
+
+test('a pushed commit reverted with a new one; a conflict leaves a revert to finish', async () => {
+  const { revert, status, forget, command, quickActions } = require('../src/main/git');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-revert-'));
+  const env = Object.assign({}, process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
+  const g = (...a) => execFileSync('git', a, { cwd: dir, env, stdio: 'pipe' }).toString().trim();
+  const p = (h) => new Promise((r) => revert(dir, h, (err, conflict) => r([err, conflict])));
+  const was = process.env.GIT_COMMITTER_NAME;
+  Object.assign(process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
+  try {
+    g('init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(dir, 'a.txt'), '1\n'); g('add', '.'); g('commit', '-qm', 'base');
+    fs.writeFileSync(path.join(dir, 'b.txt'), 'x\n'); g('add', '.'); g('commit', '-qm', 'add b');
+    const addB = g('rev-parse', 'HEAD');
+    fs.writeFileSync(path.join(dir, 'a.txt'), '2\n'); g('commit', '-qam', 'two');
+    const two = g('rev-parse', 'HEAD');
+    fs.writeFileSync(path.join(dir, 'a.txt'), '3\n'); g('commit', '-qam', 'three');
+    assert.deepEqual(await p(addB), ['', false]);
+    assert.equal(fs.existsSync(path.join(dir, 'b.txt')), false);
+    assert.match(g('log', '-1', '--format=%s'), /^Revert "add b"/);
+    assert.deepEqual(await p(two), ['', true], 'three changed the same line');
+    forget(dir);
+    const st = await new Promise((r) => status(dir, r));
+    assert.deepEqual([st.midway, st.conflicts], ['revert', 1]);
+    assert.equal(command('finish', Object.assign({}, st, { conflicts: 0 })), 'git -c core.editor=true revert --continue');
+    assert.equal(quickActions(Object.assign({}, st, { conflicts: 0 }), 'idle')[0].label, 'Finish the revert');
+    g('revert', '--abort');
+    assert.deepEqual(await p('nope'), ['Can’t find that commit', false]);
+    assert.deepEqual(await p(g('rev-list', '--max-parents=0', 'HEAD')), ['It’s the first commit', false]);
+  } finally {
+    if (was == null) for (const k of ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL']) delete process.env[k];
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

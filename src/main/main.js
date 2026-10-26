@@ -2769,7 +2769,7 @@ app.whenReady().then(async () => {
     const pr = prStates.get(id);
     const cmd = s && st && s.state !== 'working' && s.state !== 'waiting' && git.command(run, st, pr);
     if (!cmd) return;
-    const as = run === 'push' ? `Pushed ${st.branch || 'it'}` : run === 'home' ? `Back on ${pr.base}, up to date, ${st.branch} deleted` : run === 'finish' ? (st.midway === 'rebase' ? 'Carried on with the rebase' : 'Finished the merge') : run === 'abort' ? `Called off the ${st.midway}: back to how it was before` : `Pulled into ${st.branch || 'it'}`;
+    const as = run === 'push' ? `Pushed ${st.branch || 'it'}` : run === 'home' ? `Back on ${pr.base}, up to date, ${st.branch} deleted` : run === 'finish' ? (st.midway === 'rebase' ? 'Carried on with the rebase' : `Finished the ${st.midway}`) : run === 'abort' ? `Called off the ${st.midway}: back to how it was before` : `Pulled into ${st.branch || 'it'}`;
     const entry = runForSession(id, cmd, as, (code) => {
       if (code === 0 && win) win.webContents.send('nod', id);
       if (code === 0 && run === 'push') pulls.forget(s.cwd, st.branch); // (its checks start again)
@@ -2778,7 +2778,7 @@ app.whenReady().then(async () => {
       git.forget(s.cwd);
       git.status(s.cwd, (now) => {
         // (A rebase that stopped at its next conflict didn't fail: settle that one too.)
-        if (code !== 0 && run === 'finish' && now && now.conflicts) { entry.text = `Stopped at the next conflict: settle it, then Continue the rebase again`; delete entry.gitRun; }
+        if (code !== 0 && run === 'finish' && now && now.conflicts) { entry.text = `Stopped at the next conflict: settle it, then ${git.finishLabel(now.midway || st.midway)} again`; delete entry.gitRun; }
         gitStates.set(id, now);
         pushTalk(id);
       });
@@ -3035,7 +3035,7 @@ app.whenReady().then(async () => {
       if (err) { inbox.add(id, { who: 'note', text: `Couldn’t settle ${f.path}: ${err}` }); return done(err); }
       git.status(s.cwd, (now) => {
         const left = now ? now.conflicts : 0;
-        inbox.add(id, { who: 'note', text: `Kept ${side === 'mine' ? 'your' : 'their'} version of ${f.path}${left ? ` (${left} more in conflict)` : `: no conflicts left, ${now && now.midway === 'rebase' ? 'Continue the rebase' : 'Finish the merge'} finishes it`}` });
+        inbox.add(id, { who: 'note', text: `Kept ${side === 'mine' ? 'your' : 'their'} version of ${f.path}${left ? ` (${left} more in conflict)` : `: no conflicts left, ${git.finishLabel(now && now.midway || 'merge')} finishes it`}` });
         gitStates.set(id, now);
         pushTalk(id);
         done('');
@@ -3113,7 +3113,9 @@ app.whenReady().then(async () => {
       const out = list.map((c, i) => Object.assign(c, { when: history.ago(c.at), unpushed: !!(st && st.upstream && i < st.ahead) }));
       // (The newest, if it's pushed nowhere: Undo takes it back.)
       if (!out.length || s.state === 'working' || s.state === 'waiting') return done(out);
-      git.canUndo(s.cwd, out[0].hash, (ok) => { out[0].undoable = ok; done(out); });
+      // (Any other, with nothing changed here: Revert, a new commit that undoes it.)
+      const clean = st && !st.changed && !st.midway;
+      git.canUndo(s.cwd, out[0].hash, (ok) => { out[0].undoable = ok; for (const c of out) if (clean && !c.undoable) c.revertable = true; done(out); });
     });
   }));
   // Undo on its newest commit: taken back, its changes kept, uncommitted.
@@ -3130,6 +3132,23 @@ app.whenReady().then(async () => {
         done(err);
       });
     }, 1);
+  }));
+  ipcMain.handle('talk-revert', (_e, id, hash) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    const st = gitStates.get(id);
+    if (!s || !s.cwd || !st) return done('Can’t revert that one');
+    if (s.state === 'working' || s.state === 'waiting') return done('Not while it’s working: wait for it to finish');
+    if (st.changed || st.midway) return done('Commit or set aside your changes first');
+    git.commits(s.cwd, (list) => {
+      const c = list.find((x) => x.hash === hash);
+      if (!c) return done('Can’t revert that one');
+      git.revert(s.cwd, hash, (err, conflict) => {
+        inbox.add(id, { who: 'note', text: err ? `Couldn’t revert “${c.subject}”: ${err}` : conflict ? `Reverting “${c.subject}” ran into a conflict: settle it (Mine or Theirs on the file), then Finish the revert` : `Reverted “${c.subject}”: a new commit undoes it (Push sends it)` });
+        if (!err && !conflict && win) win.webContents.send('nod', id);
+        git.status(s.cwd, (now) => { gitStates.set(id, now); pushTalk(id); });
+        done(err);
+      });
+    });
   }));
   ipcMain.handle('talk-commit', (_e, id, hash) => new Promise((done) => {
     const s = id === talkId && tracker.sessions.get(id);

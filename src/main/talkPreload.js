@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   settle: (id, file, side) => ipcRenderer.invoke('talk-settle', id, file, side),
   merged: (id) => ipcRenderer.invoke('talk-merged', id),
   web: (id) => ipcRenderer.invoke('talk-web', id),
+  revert: (id, hash) => ipcRenderer.invoke('talk-revert', id, hash),
   deleteMerged: (id, names) => ipcRenderer.invoke('talk-delete-merged', id, names),
   signIn: (id) => ipcRenderer.send('talk-sign-in', id),
   taskOutput: (id, taskId) => ipcRenderer.invoke('talk-task-output', id, taskId),

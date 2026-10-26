@@ -36,6 +36,8 @@ function summary(st) {
 }
 
 const MAIN = /^(main|master|trunk|develop)$/;
+// What finishes a merge (rebase, revert, cherry-pick) that's under way.
+const finishLabel = (midway) => (midway === 'rebase' ? 'Continue the rebase' : `Finish the ${midway}`);
 
 // What you might want next, as { label, prompt }: only while it isn't busy.
 // `more`: { stopped: you stopped its last turn, runFailed: { command, tail }
@@ -77,8 +79,8 @@ function quickActions(st, state, more = {}) {
   // Push and Pull run git right there (no model call); if git couldn't
   // (`more.gitFailed`), the next tap asks Claude to sort it out instead.
   const direct = (run) => (more.gitFailed === run ? {} : { run });
-  // (A merge or rebase midway, its conflicts settled: finished right there.)
-  if (st && st.midway && !st.conflicts) out.unshift(Object.assign(st.midway === 'rebase' ? { label: 'Continue the rebase', prompt: 'A rebase is under way and its conflicts are settled: continue it (resolving any new conflicts, keeping both sides’ intent), then tell me what you chose.' } : { label: 'Finish the merge', prompt: 'A merge is under way and its conflicts are settled: finish it with a commit, then tell me what it brought in.' }, direct('finish')));
+  // (A merge, rebase, revert or cherry-pick midway, its conflicts settled: finished right there.)
+  if (st && st.midway && !st.conflicts) out.unshift(Object.assign({ label: finishLabel(st.midway), prompt: st.midway === 'merge' ? 'A merge is under way and its conflicts are settled: finish it with a commit, then tell me what it brought in.' : `A ${st.midway} is under way and its conflicts are settled: continue it (resolving any new conflicts, keeping both sides’ intent), then tell me what you chose.` }, direct('finish')));
   // (Or called off, back to before it started: a second tap to be sure.)
   if (st && st.midway && more.gitFailed !== 'abort') out.splice(st.conflicts ? out.findIndex((q) => q.label === 'Fix conflicts') + 1 : 1, 0, { label: `Call off the ${st.midway}`, prompt: `Runs git ${st.midway} --abort right here: back to how it was before the ${st.midway} started`, run: 'abort', sure: 'Call it off?' });
   if (st && !n && (st.ahead || unpushed)) out.push(Object.assign({ label: 'Push', prompt: unpushed ? 'Push this branch and set its upstream.' : 'Push this branch.' }, direct('push')));
@@ -115,8 +117,8 @@ function status(cwd, cb, now = Date.now()) {
   execFile('git', ['status', '--porcelain=v2', '--branch', '--untracked-files=all'], { cwd, timeout: 3000, windowsHide: true }, (err, out) => {
     if (err) return done(null);
     const st = parseStatus(out);
-    // (A merge or rebase under way: 'merge' or 'rebase', from git's own files.)
-    const midway = (dir) => { st.midway = !dir ? '' : ['rebase-merge', 'rebase-apply'].some((d) => fs.existsSync(path.join(dir, d))) ? 'rebase' : fs.existsSync(path.join(dir, 'MERGE_HEAD')) ? 'merge' : ''; };
+    // (A merge, rebase, revert or cherry-pick under way, from git's own files.)
+    const midway = (dir) => { st.midway = !dir ? '' : ['rebase-merge', 'rebase-apply'].some((d) => fs.existsSync(path.join(dir, d))) ? 'rebase' : fs.existsSync(path.join(dir, 'MERGE_HEAD')) ? 'merge' : fs.existsSync(path.join(dir, 'REVERT_HEAD')) ? 'revert' : fs.existsSync(path.join(dir, 'CHERRY_PICK_HEAD')) ? 'cherry-pick' : ''; };
     // Its files are named from the top of the repository: where that is.
     if (roots.has(cwd)) { st.root = roots.get(cwd); midway(gitDirs.get(cwd)); return done(st); }
     execFile('git', ['rev-parse', '--show-toplevel', '--absolute-git-dir'], { cwd, timeout: 3000, windowsHide: true }, (e2, top) => {
@@ -163,7 +165,7 @@ function command(run, st, pr = null, platform = process.platform) {
   if (run === 'push') return st && !st.upstream ? 'git push --set-upstream origin HEAD' : 'git push';
   if (run === 'pull') return 'git pull --ff-only';
   if (run === 'abort') return st && st.midway ? `git ${st.midway} --abort` : '';
-  if (run === 'finish') return !st || !st.midway || st.conflicts ? '' : st.midway === 'rebase' ? 'git -c core.editor=true rebase --continue' : 'git commit --no-edit';
+  if (run === 'finish') return !st || !st.midway || st.conflicts ? '' : st.midway === 'merge' ? 'git commit --no-edit' : `git -c core.editor=true ${st.midway} --continue`;
   if (run === 'home') {
     const base = pr && pr.state === 'MERGED' && branchName(pr.base), branch = st && branchName(st.branch);
     if (!base || !branch || base === branch) return '';
@@ -316,6 +318,22 @@ function undoCommit(cwd, hash, cb) {
     });
   });
 }
+// A pushed commit taken back with a new one that undoes it (`git revert
+// --no-edit`), history kept; not a merge. cb(error or '', whether it
+// stopped at a conflict to settle).
+function revert(cwd, hash, cb) {
+  execFile('git', ['rev-list', '--parents', '-n', '1', String(hash)], { cwd, timeout: 3000, windowsHide: true }, (err, out) => {
+    const ids = String(out || '').trim().split(/\s+/);
+    if (err || !/^[0-9a-f]{40,64}$/.test(String(hash)) || ids[0] !== hash) return cb('Can’t find that commit', false);
+    if (ids.length !== 2) return cb(ids.length > 2 ? 'It’s a merge: ask Claude to take it back' : 'It’s the first commit', false);
+    execFile('git', ['revert', '--no-edit', hash], { cwd, timeout: 10000, windowsHide: true, env: Object.assign({}, process.env, { GIT_EDITOR: 'true' }) }, (e2, o2, errOut) => {
+      forget(cwd);
+      if (!e2) return cb('', false);
+      const conflict = /conflict/i.test(String(o2) + errOut);
+      cb(conflict ? '' : gitSaid(errOut) || 'git couldn’t revert it', conflict);
+    });
+  });
+}
 // Switching branches with changes: they're set aside on the branch they
 // were made on (git's stash, named for it), and come back when you switch
 // back to it. park cb(error or ''); unpark cb(error or '', whether any were).
@@ -443,4 +461,4 @@ function webLink(repo, st, pr) {
 }
 const gitSaid = (errOut) => (String(errOut || '').split('\n').find((l) => /^(fatal|error):/.test(l)) || '').replace(/^(fatal|error):\s*/, '');
 
-module.exports = { githubOf, github, webLink, merged, deleteMerged, settle, fetchQuietly, park, parked, unpark, canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };
+module.exports = { revert, finishLabel, githubOf, github, webLink, merged, deleteMerged, settle, fetchQuietly, park, parked, unpark, canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };

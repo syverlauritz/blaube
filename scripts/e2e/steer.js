@@ -626,6 +626,20 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await box(`document.querySelector('#branches .prlink.web').click()`);
 	check(await until(() => global.__blaubeOpened === `https://github.com/o/tax/compare/${gq('branch', '--show-current')}?expand=1`), `and a tap opens it (${global.__blaubeOpened})`);
 	gq('remote', 'set-url', 'origin', bare);
+	// A commit further back: Revert, a new commit undoing it (twice to be sure).
+	const revBefore = gq('rev-parse', 'HEAD'), stashed = gq('status', '--porcelain', '--untracked-files=no') !== '';
+	if (stashed) gq('stash', 'push', '-q', '-m', 'e2e');
+	gq('config', 'user.name', 't'); gq('config', 'user.email', 't@t');
+	fs.writeFileSync(path.join(repo, 'oops.txt'), 'oops\n'); gq('add', 'oops.txt'); gq('commit', '-q', '-m', 'oops', 'oops.txt');
+	gq('commit', '-q', '--allow-empty', '-m', 'after');
+	const oopsRow = `([...document.querySelectorAll('#branches .commits li')].find((l) => l.firstChild.firstChild.textContent === 'oops') || document)`;
+	check(await until(async () => { await box(`document.getElementById('git').click(); document.getElementById('git').click()`); await sleep(400); return box(`(() => { const r = ${oopsRow}.querySelector('.revert'); return !!r && /git revert/.test(r.title); })()`); }, 10000), 'a commit further back has Revert');
+	await box(`${oopsRow}.querySelector('.revert').click()`);
+	check(await until(() => box(`(${oopsRow}.querySelector('.revert') || {}).textContent === 'Revert it?'`)) && fs.existsSync(path.join(repo, 'oops.txt')), 'one tap asks to be sure');
+	await until(() => box(`(() => { const r = ${oopsRow}.querySelector('.revert'); if (r) r.click(); return !!r; })()`));
+	check(await until(() => !fs.existsSync(path.join(repo, 'oops.txt')) && /^Revert "oops"/.test(gq('log', '-1', '--format=%s')) && inbox.log(ID3).some((e) => e.text === 'Reverted “oops”: a new commit undoes it (Push sends it)'), 10000), 'a second tap reverts it with a new commit');
+	gq('reset', '-q', '--keep', revBefore); gq('config', '--unset', 'user.name'); gq('config', '--unset', 'user.email');
+	if (stashed) gq('stash', 'pop', '-q');
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'what did you change?' });
 	// While it works: how long it's been at it, as the terminal counts.
 	tracker.sessions.get(ID3).turnStart = Date.now() - 75e3;

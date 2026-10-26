@@ -1142,7 +1142,7 @@
       const b = document.createElement('button');
       b.type = 'button';
       b.textContent = q.label;
-      b.title = q.run === 'push' ? 'Runs git push right here' : q.run === 'pull' ? 'Runs git pull right here (only if it needs no merge)' : q.run === 'finish' ? `Runs ${q.label === 'Continue the rebase' ? 'git rebase --continue' : 'git commit --no-edit'} right here` : q.sure ? `${q.prompt} (tap twice)` : q.prompt;
+      b.title = q.run === 'push' ? 'Runs git push right here' : q.run === 'pull' ? 'Runs git pull right here (only if it needs no merge)' : q.run === 'finish' ? `Runs ${q.label === 'Finish the merge' ? 'git commit --no-edit' : `git ${q.label.split(' ').pop()} --continue`} right here` : q.sure ? `${q.prompt} (tap twice)` : q.prompt;
       // (One that can't be taken back asks to be sure: a second tap.)
       let sureAt = 0;
       const was = b.textContent;
@@ -1471,6 +1471,23 @@
             if (err) { un.textContent = 'Undo'; un.classList.remove('sure'); un.disabled = false; } // (the box says why; done: its git line changes, and this is drawn again)
           };
           li.append(un);
+        } else if (c.revertable && api.revert && !busy) {
+          // (Any other, pushed: Revert, a new commit undoing it, twice to be sure.)
+          const rv = document.createElement('button');
+          rv.type = 'button';
+          rv.className = 'reveal revert';
+          rv.textContent = 'Revert';
+          rv.title = 'Undo what this commit did with a new commit (git revert), history kept';
+          const sureAt = () => discardSure.get('revert:' + c.hash) || 0;
+          if (Date.now() - sureAt() < 4000) { rv.textContent = 'Revert it?'; rv.classList.add('sure'); }
+          rv.onclick = async () => {
+            if (Date.now() - sureAt() > 4000) { discardSure.clear(); discardSure.set('revert:' + c.hash, Date.now()); rv.textContent = 'Revert it?'; rv.classList.add('sure'); setTimeout(() => { if (Date.now() - sureAt() >= 4000) { rv.textContent = 'Revert'; rv.classList.remove('sure'); } }, 4100); return; }
+            discardSure.delete('revert:' + c.hash);
+            rv.disabled = true;
+            const err = await api.revert(s.id, c.hash);
+            if (err) { rv.textContent = 'Revert'; rv.classList.remove('sure'); rv.disabled = false; rv.title = err; }
+          };
+          li.append(rv);
         }
         li.append(pre);
         ul.append(li);
