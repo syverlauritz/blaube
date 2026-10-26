@@ -14,6 +14,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // answered, a message answered (or not yet, if it's "slow").
 const FAKE = `#!/usr/bin/env node
 const A = process.argv.slice(2).join(' '), SIGNED = require('node:path').join(__dirname, 'signed-in');
+if (A === 'doctor') { console.log('Claude Code doctor\\n\\nNo problems found'); process.exit(0); }
 if (A === 'auth status --json') { console.log(JSON.stringify({ loggedIn: require('node:fs').existsSync(SIGNED) })); process.exit(0); }
 if (A === 'auth login') { console.log('Opening your browser… https://claude.ai/oauth/authorize?fake=1'); setTimeout(() => { require('node:fs').writeFileSync(SIGNED, ''); console.log('Login successful.'); process.exit(0); }, 300); return; }
 let model = 'claude-opus', turn = null, used = [12, 40], mcpUp = false; const seen = new Set();
@@ -131,6 +132,8 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	fs.rmSync(path.join(dir, 'signed-in'));
 	await type('/login');
 	check(await until(() => fs.existsSync(path.join(dir, 'signed-in'))) && !inbox.log(id).some((e) => e.who === 'you' && e.text === '/login'), '/login signs in the same way, without going to Claude');
+	await type('/doctor');
+	check(await until(() => inbox.log(id).some((e) => e.who === 'step' && e.text === 'Checked Claude Code (claude doctor)' && !e.running && /No problems found/.test(e.detail || ''))), '/doctor runs Claude Code’s checkup right there, as a step');
 	await type('/usage');
 	check(await until(() => inbox.log(id).some((e) => /^Used: 12% of 5 hours \(resets .+\) · 40% of the week/.test(e.text || ''))), '/usage says how much of your limits you’ve used');
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);

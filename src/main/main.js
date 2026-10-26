@@ -1940,6 +1940,15 @@ app.whenReady().then(async () => {
       pushTalk(id);
       return;
     }
+    // "/doctor" and "/upgrade": Claude Code's own checkup and update
+    // (`claude doctor`, `claude update`), run right there as a step.
+    const own = /^\/(doctor|upgrade|update)\s*$/i.exec(String(text).trim());
+    if (own && sess && !id.startsWith('demo-')) {
+      const bin = owned.findClaude() || owned.shellPath() || 'claude';
+      const q = process.platform === 'win32' ? `"${bin}"` : `'${bin.replace(/'/g, `'\\''`)}'`;
+      const doctor = own[1].toLowerCase() === 'doctor';
+      return runForSession(id, `${q} ${doctor ? 'doctor' : 'update'}`, doctor ? 'Checked Claude Code (claude doctor)' : 'Updated Claude Code (claude update)');
+    }
     // "/login": Claude Code signed in through your browser (see auth.js).
     if (/^\/login\s*$/i.test(String(text).trim())) {
       if (owned.findClaude() || owned.shellPath()) return signIn(id);
@@ -2037,18 +2046,23 @@ app.whenReady().then(async () => {
     return ran.map((r) => `(I ran \`${r.cmd}\` myself${r.code === 0 ? '' : r.code == null ? ' (stopped: it took too long)' : ` (exit code ${r.code})`}. It printed:\n\`\`\`\n${r.out.slice(-3000) || '(nothing)'}\n\`\`\`)`).join('\n\n') + '\n\n' + text;
   }
   // (What you ran with ! in a session's box, for its next message.)
-  function runForSession(id, cmd) {
+  // `as`: what to call it, for one of Claude Code's own (its output is for
+  // you, so it doesn't go along with your next message).
+  function runForSession(id, cmd, as = '') {
     const s = tracker.sessions.get(id);
     if (!s || !s.cwd || !cmd) return;
-    const entry = inbox.add(id, { who: 'step', text: `You ran ${cmd.length > 60 ? cmd.slice(0, 59) + '…' : cmd}`, ok: true, kind: classify('Bash', { command: cmd }), detail: `$ ${cmd}\n…`, cmd: cmd.slice(0, 200), running: true });
+    const entry = inbox.add(id, { who: 'step', text: as || `You ran ${cmd.length > 60 ? cmd.slice(0, 59) + '…' : cmd}`, ok: true, kind: classify('Bash', { command: cmd }), detail: `$ ${cmd}\n…`, cmd: cmd.slice(0, 200), running: true });
     shellRun.run(cmd, s.cwd, (code, out) => {
       const shown = out.replace(/\s+$/, '');
       entry.ok = code === 0;
       entry.running = false;
       entry.detail = `$ ${cmd}\n${shown.length > 4000 ? '…' + shown.slice(-4000) : shown}${code == null ? '\n(stopped: it took over two minutes)' : ''}`;
-      const list = shellRan.get(id) || [];
-      list.push({ cmd, code, out: shown });
-      shellRan.set(id, list.slice(-3));
+      if (as) entry.text = `${as}${code === 0 ? '' : code == null ? ' (stopped)' : ' (failed)'}`;
+      else {
+        const list = shellRan.get(id) || [];
+        list.push({ cmd, code, out: shown });
+        shellRan.set(id, list.slice(-3));
+      }
       inbox.emit('change', id);
     });
   }
