@@ -2272,7 +2272,7 @@ app.whenReady().then(async () => {
       const list = runs.scripts(sess.cwd);
       const names = list.map((x) => x.name).join(', ');
       const sc = toRun[1] && list.find((x) => x.name === toRun[1]);
-      if (!sc) { inbox.add(id, { who: 'note', text: !list.length ? 'It has no scripts to run here (no package.json scripts, Makefile, Cargo.toml or go.mod in its folder)' : toRun[1] ? `It has no script called ${toRun[1].slice(0, 60)}: it has ${names}` : `Its scripts: ${names}. /run ${list[0].name} runs one.` }); return; }
+      if (!sc) { inbox.add(id, { who: 'note', text: !list.length ? 'It has no scripts to run here (no package.json scripts, Makefile, Cargo.toml, go.mod or compose file in its folder)' : toRun[1] ? `It has no script called ${toRun[1].slice(0, 60)}: it has ${names}` : `Its scripts: ${names}. /run ${list[0].name} runs one.` }); return; }
       if (!sc.long) return runForSession(id, sc.command, `Ran ${sc.command}`);
       const r = runs.start(id, sess.cwd, sc.name);
       inbox.add(id, r ? { who: 'note', text: `Started ${sc.command}: it keeps running in the background, with Stop beside it` } : { who: 'note', text: `Couldn’t start ${sc.command}`, error: true });

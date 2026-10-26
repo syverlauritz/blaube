@@ -13,8 +13,10 @@ const LONG = /^(dev|start|serve|preview|watch|storybook)(:|$)|[:-](dev|serve|wat
 const NAME = /^[\w][\w:.@/-]{0,79}$/; // (what goes in the command: nothing a shell reads)
 
 // Its scripts, the usual ones first: [{ name, long, command }], or []:
-// package.json's, then a Makefile's targets, then Cargo's or Go's own.
-const MANIFESTS = ['package.json', 'Makefile', 'makefile', 'Cargo.toml', 'go.mod'];
+// package.json's, then a Makefile's targets, then Cargo's or Go's own, and
+// `docker compose up` beside a compose file.
+const COMPOSE = ['compose.yaml', 'compose.yml', 'docker-compose.yml', 'docker-compose.yaml'];
+const MANIFESTS = ['package.json', 'Makefile', 'makefile', 'Cargo.toml', 'go.mod', ...COMPOSE];
 const seen = new Map(); // cwd -> { mtime, list } (read again only once one of them changes)
 function scripts(cwd) {
   const mtime = MANIFESTS.map((f) => { try { return fs.statSync(path.join(cwd, f)).mtimeMs; } catch { return 0; } }).join();
@@ -32,6 +34,7 @@ function readAll(cwd) {
   for (const mk of ['Makefile', 'makefile']) if (has(mk)) { for (const t of makeTargets(cwd, mk)) add(t, `make ${t}`, LONG.test(t)); break; }
   if (has('Cargo.toml')) { add('run', 'cargo run', true); add('test', 'cargo test', false); add('build', 'cargo build', false); }
   if (has('go.mod')) { add('run', 'go run .', true); add('test', 'go test ./...', false); add('build', 'go build ./...', false); }
+  if (COMPOSE.some(has)) add('up', 'docker compose up', true); // (its containers, kept running; Stop stops them)
   return out;
 }
 // A Makefile's own targets (not its special or pattern ones), in order.

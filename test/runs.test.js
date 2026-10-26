@@ -99,6 +99,9 @@ test('a Makefile’s targets, and Cargo’s and Go’s own, after package.json�
     fs.writeFileSync(path.join(dir, 'go.mod'), 'module x\n');
     assert.equal(runs.scripts(dir)[1].command, 'go test ./...');
     fs.rmSync(path.join(dir, 'go.mod'));
+    fs.writeFileSync(path.join(dir, 'compose.yaml'), 'services: {}\n');
+    assert.deepEqual(runs.scripts(dir).map((s) => `${s.name}${s.long ? '*' : ''} ${s.command}`), ['up* docker compose up']);
+    fs.rmSync(path.join(dir, 'compose.yaml'));
     assert.deepEqual(runs.scripts(dir), []);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
