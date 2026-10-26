@@ -72,7 +72,7 @@ function look(cwd, branch, cb, { run = execFile, bin = findGh(), now = Date.now(
   if (hit && now - hit.at < fresh) return cb(hit.pr);
   if (asking.has(key)) { asking.get(key).push(cb); return; }
   asking.set(key, [cb]);
-  run(bin, ['pr', 'view', '--json', FIELDS], { cwd, timeout: 10000, windowsHide: true, env: Object.assign({}, process.env, { GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' }) }, (err, out) => {
+  const done = (err, out) => {
     const pr = err ? null : parse(out);
     // (No gh, not signed in, no PR: asked again in a while, not every time.)
     cache.set(key, { at: Date.now(), pr });
@@ -80,7 +80,12 @@ function look(cwd, branch, cb, { run = execFile, bin = findGh(), now = Date.now(
     const waiting = asking.get(key) || [];
     asking.delete(key);
     for (const f of waiting) f(pr);
-  });
+  };
+  // (A gh this system can't run, say a script on Windows, throws right
+  // away instead of calling back.)
+  try {
+    run(bin, ['pr', 'view', '--json', FIELDS], { cwd, timeout: 10000, windowsHide: true, env: Object.assign({}, process.env, { GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' }) }, done);
+  } catch (e) { done(e); }
 }
 function known(cwd, branch) { const hit = cache.get(`${cwd}\n${branch}`); return hit ? hit.pr : undefined; }
 function forget(cwd, branch) { cache.delete(`${cwd}\n${branch}`); }

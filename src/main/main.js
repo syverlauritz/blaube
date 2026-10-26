@@ -72,6 +72,9 @@ const PORT = Number(process.env.BLAUBE_PORT) || DEFAULT_PORT;
 // with no tray icon, its own data folder, and none of your real sessions.
 // The script is run with the app's insides once it's up (scripts/e2e).
 const TEST = process.env.BLAUBE_TEST || '';
+// A slip somewhere (a helper program that won't start, say) is logged, not
+// thrown in your face as an error box; Blaube carries on.
+process.on('uncaughtException', (e) => console.error('[blaube] uncaught:', e && e.stack || e));
 if (TEST) { app.setPath('userData', fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'blaube-test-'))); app.setPath('downloads', path.join(app.getPath('userData'), 'Downloads')); fs.mkdirSync(app.getPath('downloads')); }
 
 // When Blaube is started from inside a Claude Code session (e.g. `npm start`
