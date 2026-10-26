@@ -84,8 +84,8 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await type('slow');
 	check(await until(() => tracker.sessions.get(id).state === 'working', 3000), 'a long turn starts');
 	check(await until(() => box(`!document.getElementById('stop').hidden`)), 'with Stop beside its name');
-	await box(`document.getElementById('stop').click()`);
-	check(await until(() => tracker.sessions.get(id).state !== 'working', 3000), 'Stop stops it at once (not at its next step)');
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '.', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
+	check(await until(() => tracker.sessions.get(id).state !== 'working', 3000), 'Stop (⌘.) stops it at once (not at its next step)');
 	await sleep(300);
 	const text = await said();
 	check(/You asked it to stop/.test(text) && !/Something went wrong/.test(text), 'and says you stopped it, not that something went wrong');

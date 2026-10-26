@@ -466,6 +466,7 @@
     $('terminal').style.display = s.demo || s.ended || s.owned ? 'none' : '';
     const stop = $('stop');
     stop.hidden = !(s.stoppable && s.state === 'working' && !s.ended);
+    stop.title = (navigator.platform.startsWith('Mac') ? '⌘.' : 'Ctrl+.') + (s.owned ? ': stop it now' : ': it stops before its next step');
     stop.disabled = !!s.stopping;
     stop.lastChild.textContent = s.stopping ? 'Stopping…' : 'Stop';
     renderMode(s);
@@ -1526,6 +1527,14 @@
   $('close').addEventListener('click', close);
   $('terminal').addEventListener('click', () => api.terminal());
   $('stop').addEventListener('click', () => { if (current && api.stop) { $('stop').disabled = true; api.stop(current.id); } });
+  // ⌘. (Ctrl+. elsewhere) stops it too, as cancelling does on a Mac.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== '.' || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+    const stop = $('stop');
+    if (stop.hidden || stop.disabled) return;
+    e.preventDefault();
+    stop.click();
+  });
   const decide = (choice) => () => {
     if (!askKey) return;
     const ask = current.ask;
