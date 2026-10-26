@@ -56,9 +56,8 @@ test('after failed tests it offers to fix them; nearly full, to compact', () => 
   assert.deepEqual(labels({ stopped: true }), ['Carry on', 'Run tests']);
   assert.deepEqual(labels({ failedTests: 'npm test' }), ['Fix the tests']);
   assert.match(quickActions(st, 'done', { failedTests: 'npm test' })[0].prompt, /`npm test`/);
-  assert.deepEqual(labels({ context: 85, canCompact: true }), ['Compact', 'Run tests']);
-  assert.deepEqual(labels({ context: 85, canCompact: false }), ['Run tests']);
-  assert.deepEqual(labels({ context: 50, canCompact: true }), ['Run tests']);
+  assert.deepEqual(labels({ context: 85 }), ['Compact', 'Run tests']);
+  assert.deepEqual(labels({ context: 50 }), ['Run tests']);
 });
 
 test('a file’s diff loses its headers, and long ones are cut', () => {

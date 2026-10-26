@@ -122,6 +122,12 @@ class Owned extends EventEmitter {
     }
     const s = this.sessions.get(id);
     if (m.type === 'system' && typeof m.permissionMode === 'string') this.emit('mode', id, m.permissionMode);
+    if (m.type === 'system' && m.subtype === 'compact_boundary') this.emit('compacted', id);
+    // Claude Code's own answer to a command (not Claude's): "No messages to compact".
+    if (m.type === 'assistant' && m.message && m.message.model === '<synthetic>' && s) {
+      const c = m.message.content;
+      s.said = Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text).join('\n') : String(c || '');
+    }
     if (m.type === 'control_response' && m.response && s) {
       const answer = s.pending.get(m.response.request_id);
       if (!answer) return;
@@ -131,9 +137,9 @@ class Owned extends EventEmitter {
       return;
     }
     if (m.type === 'result') {
-      const interrupted = !!(s && s.interrupted);
-      if (s) s.interrupted = false;
-      this.emit('result', id, { text: typeof m.result === 'string' ? m.result : '', error: !!m.is_error, subtype: m.subtype || '', interrupted });
+      const interrupted = !!(s && s.interrupted), said = (s && s.said) || '';
+      if (s) { s.interrupted = false; s.said = ''; }
+      this.emit('result', id, { text: typeof m.result === 'string' ? m.result : '', error: !!m.is_error, subtype: m.subtype || '', interrupted, said });
     }
   }
 

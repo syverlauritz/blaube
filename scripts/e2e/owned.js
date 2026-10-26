@@ -25,6 +25,8 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
     if (r.subtype === 'interrupt') { clearTimeout(turn); ok({}); return out({ type: 'result', subtype: 'error_during_execution', is_error: true }); }
     return;
   }
+  if (m.type === 'user' && m.message.content === '/compact') { out({ type: 'system', subtype: 'compact_boundary' }); return out({ type: 'result', subtype: 'success', result: '' }); }
+  if (m.type === 'user' && m.message.content === '/cost') { out({ type: 'assistant', message: { model: '<synthetic>', content: [{ type: 'text', text: 'Error: Nothing to show yet' }] } }); return out({ type: 'result', subtype: 'success', result: '' }); }
   if (m.type === 'user') turn = setTimeout(() => out({ type: 'result', subtype: 'success', result: model + ' here.' }), m.message.content === 'slow' ? 20000 : 50);
 });
 `;
@@ -67,6 +69,11 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await type('/plan');
 	check(await until(async () => /Plan mode: it shows you a plan/.test(await said()) && /^mode plan/.test(await mode())), '/plan puts it in plan mode');
 
+	await type('/compact');
+	check(await until(async () => /Compacted: it carries on from a summary/.test(await said())), '/compact goes straight in, and says when it’s done');
+	await type('/cost');
+	check(await until(async () => /Nothing to show yet/.test(await said())), 'what Claude Code itself answers a command shows');
+	check(await until(() => tracker.sessions.get(id).state === 'done'), 'and the turn ends');
 	await type('slow');
 	check(await until(() => tracker.sessions.get(id).state === 'working', 3000), 'a long turn starts');
 	check(await until(() => box(`!document.getElementById('stop').hidden`)), 'with Stop beside its name');

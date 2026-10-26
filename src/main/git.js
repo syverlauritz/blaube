@@ -37,8 +37,7 @@ const MAIN = /^(main|master|trunk|develop)$/;
 
 // What you might want next, as { label, prompt }: only while it isn't busy.
 // `more`: { stopped: you stopped its last turn, failedTests: the test
-// command that failed in it, context: how full its context is (%),
-// canCompact }.
+// command that failed in it, context: how full its context is (%) }.
 function quickActions(st, state, more = {}) {
   if (state === 'working' || state === 'waiting') return [];
   const out = [];
@@ -54,7 +53,7 @@ function quickActions(st, state, more = {}) {
   if (!more.failedTests) out.push({ label: 'Run tests', prompt: 'Run the tests and tell me what fails, if anything.' });
   if (st && st.behind) out.push({ label: 'Pull', prompt: 'Pull the latest changes into this branch and tell me if anything conflicts.' });
   // Nearly out of room: tidy up before it has to (first, so it's seen).
-  if (more.canCompact && more.context >= 80) out.unshift({ label: 'Compact', prompt: '/compact' });
+  if (more.context >= 80) out.unshift({ label: 'Compact', prompt: '/compact' });
   return out.slice(0, 4);
 }
 

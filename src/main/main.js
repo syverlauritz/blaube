@@ -458,7 +458,6 @@ function pushTalk(id, focusField = false) {
       stopped: stoppedLast(inbox.log(id)),
       failedTests: failedTests(inbox.log(id)),
       context: (() => { const tk = tokens.get(id); return tk && tk.limit && tk.context ? Math.round((tk.context / tk.limit) * 100) : 0; })(),
-      canCompact: !owned.has(id), // (typed into its terminal, or handed over: see talk-send)
     }),
     // Every slime, to switch between them from the box.
     today: attention.today([...inbox.logs.values()]),
@@ -1373,8 +1372,10 @@ app.whenReady().then(async () => {
     pushState();
   });
   owned.on('mode', (id, mode) => tracker.setMode(id, mode));
+  owned.on('compacted', (id) => inbox.add(id, { who: 'note', text: 'Compacted: it carries on from a summary of the conversation so far' }));
   owned.on('result', (id, r) => {
     if (r.interrupted && !r.text) inbox.observe({ session_id: id, hook_event_name: 'Stop' }); // (stopped: nothing went wrong)
+    else if (!r.text && r.said) inbox.add(id, { who: 'note', text: r.said.replace(/^Error:\s*/, '') }); // (Claude Code itself answered a command)
     else if (r.error && !r.text) inbox.add(id, { who: 'note', text: `Something went wrong${r.subtype ? ` (${r.subtype})` : ''}.` });
     else inbox.replied(id, r.text);
     tracker.handle({ session_id: id, hook_event_name: 'Stop', last_assistant_message: r.text }, 'blaube');
