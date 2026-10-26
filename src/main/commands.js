@@ -68,6 +68,7 @@ const ABOUT = {
   compact: 'Frees up its context',
   config: 'Opens your Claude Code settings',
   context: 'What fills its context',
+  cost: 'How many tokens it has used',
   doctor: 'Checks your Claude Code install',
   export: 'Saves the conversation to Downloads',
   effort: 'How hard it thinks',
@@ -75,6 +76,7 @@ const ABOUT = {
   hooks: 'Opens the settings file hooks go in',
   exit: 'Ends it (a session Blaube started)',
   login: 'Signs Claude Code in, in your browser',
+  logout: 'Signs Claude Code out',
   mcp: 'Its MCP servers, and how they are',
   memory: 'Opens the project’s CLAUDE.md',
   model: 'Switches its model',
@@ -168,4 +170,4 @@ function contextNote(r) {
   return { text: `Context: ${pct}% full (${kTokens(used)} of ${kTokens(r.maxTokens)})`, context: { max: r.maxTokens, parts: parts.map((p) => Object.assign(p, { label: `${p.name} ${kTokens(p.tokens)}` })) } };
 }
 
-module.exports = { skills, skillPrompt, slashCommand, commandNames, expand, control, contextNote, EFFORTS };
+module.exports = { skills, skillPrompt, slashCommand, commandNames, expand, control, contextNote, kTokens, EFFORTS };

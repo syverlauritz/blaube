@@ -17,6 +17,7 @@ const A = process.argv.slice(2).join(' '), SIGNED = require('node:path').join(__
 if (A === '--version') { console.log('9.9.9 (Claude Code)'); process.exit(0); }
 if (A === 'doctor') { console.log('Claude Code doctor\\n\\nNo problems found'); process.exit(0); }
 if (A === 'auth status --json') { console.log(JSON.stringify({ loggedIn: require('node:fs').existsSync(SIGNED) })); process.exit(0); }
+if (A === 'auth logout') { try { require('node:fs').unlinkSync(SIGNED); } catch {} console.log('Successfully logged out from your Anthropic account.'); process.exit(0); }
 if (A === 'auth login') { console.log('Opening your browser… https://claude.ai/oauth/authorize?fake=1'); setTimeout(() => { require('node:fs').writeFileSync(SIGNED, ''); console.log('Login successful.'); process.exit(0); }, 300); return; }
 let model = 'claude-opus', turn = null, used = [12, 40], mcpUp = false; const seen = new Set();
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
@@ -325,6 +326,18 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(() => box(`document.getElementById('editing').hidden && document.getElementById('text').value === ''`)), 'and the field is free again');
 	owned.end(FID);
 	fs.rmSync(file, { force: true });
+
+	// /logout: Claude Code signed out (claude auth logout), and the overview knows.
+	const LID = startSession(dir);
+	check(await until(() => talkId() === LID, 8000), 'another session starts');
+	await type('/logout');
+	check(await until(() => inbox.log(LID).some((e) => e.who === 'step' && e.text === 'Signed Claude Code out (claude auth logout)' && !e.running && /logged out/.test(e.detail || ''))), '/logout signs Claude Code out, as a step');
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
+	check(await until(() => box(`document.body.classList.contains('overview') && !!document.querySelector('#overview .signedout')`)), 'and the overview says it’s signed out, with Sign in');
+	await box(`document.querySelector('#overview .signedout button').click()`);
+	check(await until(() => box(`!document.querySelector('#overview .signedout')`)), 'and Sign in there signs it back in');
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
+	owned.end(LID);
 
 	// Install Claude Code from the menu: its official installer (a stand-in here).
 	let ran = null;

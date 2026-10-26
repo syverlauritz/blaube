@@ -350,8 +350,8 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'Its MCP servers (claude mcp list)' && !e.running), 30000), '/mcp in a terminal’s session runs claude mcp list right there');
 	// A command only its terminal can take: Bring it here offered, so it needn't.
 	tracker.sessions.get(ID3).pid = process.pid;
-	await type('/cost');
-	check(await until(() => inbox.log(ID3).some((e) => /^\/cost is for Claude Code itself.*Or bring it here/.test(e.text || '')) && box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Bring it here')`)), 'a command only its terminal can take offers Bring it here');
+	await type('/pr-comments');
+	check(await until(() => inbox.log(ID3).some((e) => /^\/pr-comments is for Claude Code itself.*Or bring it here/.test(e.text || '')) && box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Bring it here')`)), 'a command only its terminal can take offers Bring it here');
 	tracker.sessions.get(ID3).pid = 0;
 	await type('/help');
 	check(await until(() => inbox.log(ID3).some((e) => /^Talk to it as you would in its terminal/.test(e.text || ''))), '/help says what works here');
@@ -365,6 +365,8 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	fs.writeFileSync(path.join(repo, '.claude', 'skills', 'release', 'SKILL.md'), '---\nname: release\ndescription: Tags and ships a release\n---\n');
 	await type('/skills');
 	check(await until(() => inbox.log(ID3).some((e) => /^Skills it can use: release \(Tags and ships a release\)/.test(e.text || ''))), '/skills lists the skills it can use');
+	await type('/cost');
+	check(await until(() => inbox.log(ID3).some((e) => /^It has used 120k tokens \(.+\) · its context is 60% full/.test(e.text || ''))), '/cost says what a terminal’s session has used, from its transcript');
 	await box(`(() => { const t = document.getElementById('text'); t.focus(); t.value = '/rel'; t.setSelectionRange(4, 4); t.dispatchEvent(new Event('input')); })()`);
 	check(await until(() => box(`(() => { const s = document.getElementById('suggest'); return !s.hidden && /release\s*Tags and ships a release/.test(s.textContent); })()`)), 'a skill shows in / suggestions, with what it’s for');
 	await box(`(() => { const t = document.getElementById('text'); t.value = ''; t.dispatchEvent(new Event('input')); })()`);

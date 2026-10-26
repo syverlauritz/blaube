@@ -111,3 +111,12 @@ test('a skill by name: in / suggestions, and asked for in words where only the t
   assert.equal(skillPrompt('/compact', proj, home), '');
   assert.equal(skillPrompt('/nope', proj, home), '');
 });
+
+test('/cost and /logout say what they do here', () => {
+  const { commandNames } = require('../src/main/commands.js');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-cmd-'));
+  const names = commandNames('', '', home);
+  assert.equal(names.find((c) => c.name === 'cost').about, 'How many tokens it has used');
+  assert.equal(names.find((c) => c.name === 'logout').about, 'Signs Claude Code out');
+  assert.equal(require('../src/main/commands').kTokens(120000), '120k');
+});

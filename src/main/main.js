@@ -2047,12 +2047,13 @@ app.whenReady().then(async () => {
     // (`claude doctor`, `claude update`), run right there as a step.
     // ("/mcp" in a terminal's session: `claude mcp list`, its MCP servers
     // and whether they connect; in one Blaube started, its box shows them.)
-    const own = /^\/(doctor|upgrade|update|mcp|plugins?)\s*$/i.exec(String(text).trim());
+    // ("/logout": `claude auth logout`, as the terminal's /logout.)
+    const own = /^\/(doctor|upgrade|update|mcp|plugins?|logout)\s*$/i.exec(String(text).trim());
     if (own && sess && !id.startsWith('demo-') && !(own[1].toLowerCase() === 'mcp' && owned.has(id))) {
       const bin = owned.findClaude() || owned.shellPath() || 'claude';
       const q = process.platform === 'win32' ? `"${bin}"` : `'${bin.replace(/'/g, `'\\''`)}'`;
-      const what = { doctor: ['doctor', 'Checked Claude Code (claude doctor)'], mcp: ['mcp list', 'Its MCP servers (claude mcp list)'], plugin: ['plugin list', 'Your plugins (claude plugin list)'], plugins: ['plugin list', 'Your plugins (claude plugin list)'] }[own[1].toLowerCase()] || ['update', 'Updated Claude Code (claude update)'];
-      return runForSession(id, `${q} ${what[0]}`, what[1]);
+      const what = { doctor: ['doctor', 'Checked Claude Code (claude doctor)'], mcp: ['mcp list', 'Its MCP servers (claude mcp list)'], plugin: ['plugin list', 'Your plugins (claude plugin list)'], plugins: ['plugin list', 'Your plugins (claude plugin list)'], logout: ['auth logout', 'Signed Claude Code out (claude auth logout)'] }[own[1].toLowerCase()] || ['update', 'Updated Claude Code (claude update)'];
+      return runForSession(id, `${q} ${what[0]}`, what[1], () => { if (what[0] === 'auth logout') checkAuth(true); });
     }
     if (own && owned.has(id)) {
       const list = mcpStates.get(id) || [];
@@ -2136,6 +2137,15 @@ app.whenReady().then(async () => {
       const st = gitStates.get(id);
       const list = skillList((st && st.root) || sess.cwd);
       inbox.add(id, { who: 'note', text: list.length ? `Skills it can use: ${list.slice(0, 30).map((k) => `${k.name}${k.about ? ` (${k.about.length > 70 ? k.about.slice(0, 69) + '…' : k.about})` : ''}`).join(' · ')}. Ask for one by name, or it picks one when it fits.` : 'No skills of yours or this project’s (they go in .claude/skills).' });
+      return;
+    }
+    // "/cost" in a terminal's session: what it has used, from its
+    // transcript (one Blaube started asks Claude Code itself).
+    if (/^\/cost\s*$/i.test(String(text).trim()) && sess && !owned.has(id) && !id.startsWith('demo-')) {
+      const u = usage.sessionUsage(transcriptPath(sess));
+      const turns = inbox.log(id).filter((e) => e.who === 'claude' && e.turn);
+      const took = turns.reduce((n, e) => n + (e.turn.took || 0), 0);
+      inbox.add(id, u ? { who: 'note', text: `It has used ${require('./commands').kTokens(u.total)} tokens (new input, cache writes and output, its helpers’ too)${u.context ? ` · its context is ${Math.round(100 * u.context / u.limit)}% full` : ''}${turns.length ? ` · ${turns.length} ${turns.length === 1 ? 'turn' : 'turns'} here, ${Math.max(1, Math.round(took / 60e3))}m working` : ''}` } : { who: 'note', text: 'Nothing to show yet: Claude Code hasn’t saved any of it.' });
       return;
     }
     // Ones only the terminal itself has any use for.
@@ -2304,7 +2314,7 @@ app.whenReady().then(async () => {
   // (What you ran with ! in a session's box, for its next message.)
   // `as`: what to call it, for one of Claude Code's own (its output is for
   // you, so it doesn't go along with your next message).
-  function runForSession(id, cmd, as = '') {
+  function runForSession(id, cmd, as = '', then = () => {}) {
     const s = tracker.sessions.get(id);
     if (!s || !s.cwd || !cmd) return;
     const entry = inbox.add(id, { who: 'step', text: as || `You ran ${cmd.length > 60 ? cmd.slice(0, 59) + '…' : cmd}`, ok: true, kind: classify('Bash', { command: cmd }), detail: `$ ${cmd}\n…`, cmd: cmd.slice(0, 200), running: true });
@@ -2320,6 +2330,7 @@ app.whenReady().then(async () => {
         shellRan.set(id, list.slice(-3));
       }
       inbox.emit('change', id);
+      then(code);
     });
   }
   replyTo = sendMessage;
