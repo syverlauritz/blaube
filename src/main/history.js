@@ -33,12 +33,14 @@ function said(e) {
   const c = e.message.content;
   const text = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text).join('\n') : '';
   if (!text.trim()) return null;
+  const at = Date.parse(e.timestamp);
+  const when = at ? { at } : {}; // (when it was said, if the transcript says)
   if (e.type === 'user') {
     if (Array.isArray(c) && c.some((b) => b && b.type === 'tool_result')) return null;
     if (/^\s*</.test(text)) return null; // <command-name>, <local-command-stdout>, <task-notification>...
-    return { who: 'you', text: text.trim() };
+    return Object.assign({ who: 'you', text: text.trim() }, when);
   }
-  if (e.type === 'assistant') return { who: 'claude', text: text.trim() };
+  if (e.type === 'assistant') return Object.assign({ who: 'claude', text: text.trim() }, when);
   return null;
 }
 
@@ -50,6 +52,19 @@ function recentMessages(file, n = 6) {
   for (const e of lines(slice(file, -(1 << 20), 1 << 20))) {
     const m = said(e);
     if (!m) continue;
+    if (m.who === 'claude' && out.length && out[out.length - 1].who === 'claude') out[out.length - 1] = m;
+    else out.push(m);
+  }
+  return out.slice(-n);
+}
+
+// Up to `n` things said before `before` (a time), oldest first: what came
+// before a talk box's own log. Reads at most the last 8 MB.
+function messagesBefore(file, before, n = 30) {
+  const out = [];
+  for (const e of lines(slice(file, -(8 << 20), 8 << 20))) {
+    const m = said(e);
+    if (!m || !m.at || m.at >= before) continue;
     if (m.who === 'claude' && out.length && out[out.length - 1].who === 'claude') out[out.length - 1] = m;
     else out.push(m);
   }
@@ -115,4 +130,4 @@ function ago(at, now = Date.now()) {
   return d === 1 ? 'yesterday' : `${d} days ago`;
 }
 
-module.exports = { pastSessions, recentMessages, ago, said };
+module.exports = { pastSessions, recentMessages, messagesBefore, ago, said };

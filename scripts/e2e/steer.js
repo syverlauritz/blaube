@@ -214,13 +214,23 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	fs.writeFileSync(path.join(repo, 'src', 'tax.js'), 'x');
 	fs.writeFileSync(path.join(repo, 'notes.md'), 'y');
 	const ID3 = ID + '-c';
-	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'SessionStart' });
+	// (Its transcript has what was said before Blaube saw it.)
+	const tx = path.join(repo, '..', path.basename(repo) + '.jsonl');
+	const long = new Date(Date.now() - 3600e3).toISOString();
+	fs.writeFileSync(tx, [
+		{ type: 'user', timestamp: long, message: { content: 'set up the repo' } },
+		{ type: 'assistant', timestamp: long, message: { content: [{ type: 'text', text: 'The repo is set up with a src folder.' }] } },
+	].map((e) => JSON.stringify(e)).join('\n') + '\n');
+	await hook({ session_id: ID3, cwd: repo, transcript_path: tx, hook_event_name: 'SessionStart' });
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'hi' });
 	await tool({ session_id: ID3, cwd: repo, hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: path.join(repo, 'notes.md') } });
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'Stop', last_assistant_message: 'Hello.' });
 	await until(async () => !!(await page(`!!__blaube.buddies.get(${JSON.stringify(ID3)})`)), 6000);
 	await page(`window.blaube.talk(${JSON.stringify(ID3)}, { x: 300, y: 600, r: 60 })`);
 	check(await until(() => talkId() === ID3 && box(`/feature.tax · 2 changed/.test(document.getElementById('git').textContent)`), 8000), 'in a git repository, its branch and what’s changed show');
+	check(await until(() => box(`!!document.querySelector('#inner .earlierbtn')`)), 'a session whose transcript goes further back offers Earlier messages');
+	await box(`document.querySelector('#inner .earlierbtn').click()`);
+	check(await until(() => box(`(() => { const e = document.querySelector('#inner .earlier'); return !!e && /set up the repo/.test(e.textContent) && /src folder/.test(e.textContent); })()`)), 'tapping it shows what was said before');
 	await box(`document.getElementById('git').click()`);
 	check(await until(() => box(`[...document.querySelectorAll('#gitFiles li > button:first-child')].map((b) => b.textContent).sort().join()`).then((t) => t === 'notes.mdnew,src/tax.jsnew')), 'tapping it lists the files');
 	await box(`[...document.querySelectorAll('#gitFiles li > button:first-child')].find((b) => /tax\\.js/.test(b.textContent)).click()`);

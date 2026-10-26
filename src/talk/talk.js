@@ -95,6 +95,40 @@
     });
   }
 
+  // What was said before this box's own log (from its transcript), on a tap
+  // at the top. Kept per session while Blaube runs.
+  const earlier = new Map(); // session id -> [messages] (empty: nothing earlier)
+  function drawEarlier(s) {
+    if (!s.earlier || !api.earlier) return;
+    const got = earlier.get(s.id);
+    if (got && !got.length) return;
+    if (!got) {
+      const b = document.createElement('button');
+      b.className = 'earlierbtn';
+      b.type = 'button';
+      b.textContent = 'Earlier messages';
+      b.onclick = () => {
+        b.disabled = true;
+        const id = s.id;
+        api.earlier(id).then((list) => {
+          earlier.set(id, list || []);
+          if (!list || !list.length) { b.textContent = 'Nothing earlier'; return; }
+          if (current && current.id === id) { const keep = log.scrollHeight - log.scrollTop; drawn.entries = []; render(current); log.scrollTop = log.scrollHeight - keep; }
+        });
+      };
+      inner.append(b);
+      return;
+    }
+    const box = document.createElement('div');
+    box.className = 'earlier';
+    for (const m of got) box.append(...message(m, false));
+    const line = document.createElement('div');
+    line.className = 'since old';
+    line.textContent = 'Before Blaube was watching';
+    box.append(line);
+    inner.append(box);
+  }
+
   // Web links in a reply ([text](url) or a bare https://…) open in your
   // browser: a PR it opened is a tap away.
   function links(span, text) {
@@ -373,13 +407,14 @@
       if (!extends_) {
         inner.textContent = '';
         ends = [];
+        drawEarlier(s);
         if (!s.log.length && !s.ask && (s.connected || s.typeable || s.owned)) {
           const e = document.createElement('div');
           e.className = 'empty';
           e.textContent = s.owned ? `What should we do in ${s.project}?` : `Say hi to ${s.project}! It hears you even when you’re not at its terminal.`;
           inner.append(e);
         }
-      } else if (from === 0) inner.textContent = '';
+      } else if (from === 0) { inner.textContent = ''; drawEarlier(s); }
       // Where what came in since you last looked begins (when replies did).
       const since = s.lookedAt ? s.log.findIndex((m, i) => i > 0 && m.at > s.lookedAt && s.log[i - 1].at <= s.lookedAt) : -1;
       const sinceShows = since > 0 && s.log.slice(since).some((m) => m.who === 'claude');

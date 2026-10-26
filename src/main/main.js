@@ -434,6 +434,7 @@ function pushTalk(id, focusField = false) {
     // Its git status and what you might ask for next (see git.js).
     git: gitStates.has(id) ? git.summary(gitStates.get(id)) : '',
     gitFiles: gitFiles(id),
+    earlier: !id.startsWith('demo-') && !!transcriptPath(s) && fs.existsSync(transcriptPath(s)), // (its transcript has what came before)
     lookedAt: looked.get(id) || 0, // (when its box was last closed: what's new since shows)
     quick: id.startsWith('demo-') ? [] : git.quickActions(gitStates.get(id) || null, s.state, {
       stopped: stoppedLast(inbox.log(id)),
@@ -1580,6 +1581,14 @@ app.whenReady().then(async () => {
     try { if (!fs.statSync(folder).isDirectory()) return; } catch { hubCache = null; return; }
     hideTalk();
     startSession(folder, extra);
+  });
+  // What was said before the box's own log, from its transcript.
+  ipcMain.handle('talk-earlier', (_e, id) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    const file = s && !id.startsWith('demo-') && transcriptPath(s);
+    if (!file) return [];
+    const first = inbox.log(id).find((e) => e.at);
+    try { return history.messagesBefore(file, first ? first.at : Date.now(), 30); } catch { return []; }
   });
   // One changed file's diff, for the git line's file list.
   ipcMain.handle('talk-diff', (_e, id, file) => new Promise((done) => {
