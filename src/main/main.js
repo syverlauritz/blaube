@@ -1495,6 +1495,14 @@ function trayMenu() {
       const what = ask.detail ? `: ${ask.detail.length > 50 ? ask.detail.slice(0, 49) + '…' : ask.detail}` : '';
       acts.push({ label: `Allow ${ask.tool || 'it'}${what}`, click: () => inbox.decide(o.id, ask.key, 'allow') }, { label: 'Deny', click: () => inbox.decide(o.id, ask.key, 'deny') });
     }
+    // (A question with one pick: its answers; a plan: go ahead with it.)
+    const qs = ask && ask.kind === 'question' && ask.input && Array.isArray(ask.input.questions) ? ask.input.questions : [];
+    if (qs.length === 1 && !qs[0].multiSelect) {
+      const q = String(qs[0].question || '');
+      acts.push({ label: q.length > 60 ? q.slice(0, 59) + '…' : q, enabled: false });
+      for (const opt of (qs[0].options || []).slice(0, 6)) if (opt && opt.label) acts.push({ label: String(opt.label), click: () => inbox.decide(o.id, ask.key, 'allow', { [q]: String(opt.label) }) });
+    }
+    if (ask && ask.kind === 'plan') acts.push({ label: 'Go ahead with the plan', click: () => inbox.decide(o.id, ask.key, 'allow') });
     if (o.state === 'working' && (owned.has(o.id) || inbox.steerable.has(o.id))) {
       acts.push({ label: 'Stop', click: () => {
         const asked = inbox.stop(o.id);
