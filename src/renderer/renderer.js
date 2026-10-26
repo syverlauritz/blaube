@@ -1225,6 +1225,7 @@
       else if (body.lastImpact > 650 && CFG.eyeLife > 0 && time > (b.thumpBlinkAt || 0)) { b.nextBlink = time; b.thumpBlinkAt = time + 0.3; }
       if (body.lastImpact > 650 && CFG.contactJiggle > 0) passJiggle(b, body.lastImpact);
       if (flakes.length) stirFlakes(b, pre);
+      smear(b, pre);
       if (body.lastImpact > CFG.splashSpeed && CFG.splashDrops > 0) splash(b, pre);
       if (b.effort === 'high' && !b.glasses && !b.splitting && !b.merging && !b.dying && body.lastImpact > CFG.glassesSpeed) knockGlasses(b);
       if (b.glasses) stepGlasses(b);
@@ -1571,6 +1572,60 @@
   // Goo: a hard hit flings a few droplets off the skin where it hit. They
   // fall and land like little beads, then roll back to their slime and get
   // soaked up (or, if it's gone, shrink away).
+  // Goo marks on the floor: a wet patch where a slime lands hard, a smear
+  // where one slides along. They dry up in a few seconds.
+  const marks = [];
+  function smear(b, v) {
+    if (CFG.gooTrail <= 0 || b.dying || b.kind === 'home' || b.body.o.radius < 14) return;
+    const body = b.body;
+    if (!body.onFloor()) { b.smearAt = null; return; }
+    const box = body.bbox(), x = (box.minX + box.maxX) / 2, y = box.maxY, hit = body.lastImpact || 0, life = 3 * CFG.gooTrail;
+    if (hit > 600) marks.push({ x0: x, x1: x, y, w: (box.maxX - box.minX) * 0.45 * Math.min(1.4, hit / 1600), born: time, color: b.color, life });
+    if (Math.abs(v.x) > 140) {
+      const at = b.smearAt;
+      if (at && Math.abs(at.y - y) < 6 && Math.abs(x - at.x) > 8) { marks.push({ x0: at.x, x1: x, y, w: 0, h: body.o.radius * 0.07, born: time, color: b.color, life }); b.smearAt = { x, y }; }
+      else if (!at || Math.abs(at.y - y) >= 6) b.smearAt = { x, y };
+    } else b.smearAt = null;
+    if (marks.length > 300) marks.splice(0, marks.length - 300);
+  }
+  // Drawn solid on a layer of their own, then laid down see-through in one
+  // go, so overlapping bits of a smear don't show as darker beads.
+  let markLayer = null;
+  function drawMarks() {
+    for (let i = marks.length - 1; i >= 0; i--) if (time - marks[i].born > marks[i].life) marks.splice(i, 1);
+    if (!marks.length) return;
+    const cw = ctx.canvas.width, ch = ctx.canvas.height;
+    if (!markLayer || markLayer.width !== cw || markLayer.height !== ch) { markLayer = document.createElement('canvas'); markLayer.width = cw; markLayer.height = ch; }
+    // Only the strip they're in is cleared and copied, not the whole screen.
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const m of marks) { x0 = Math.min(x0, m.x0 - m.w, m.x1); x1 = Math.max(x1, m.x0 + m.w, m.x1); y0 = Math.min(y0, m.y); y1 = Math.max(y1, m.y); }
+    const tf = ctx.getTransform(), d = tf.a;
+    const rx = Math.max(0, Math.floor((x0 - 20) * d)), ry = Math.max(0, Math.floor((y0 - 20) * d));
+    const rw = Math.min(cw, Math.ceil((x1 + 20) * d)) - rx, rh = Math.min(ch, Math.ceil((y1 + 4) * d)) - ry;
+    if (rw <= 0 || rh <= 0) return;
+    const m2 = markLayer.getContext('2d');
+    m2.setTransform(1, 0, 0, 1, 0, 0);
+    m2.clearRect(rx, ry, rw, rh);
+    m2.setTransform(tf);
+    m2.lineCap = 'round';
+    for (const m of marks) {
+      const k = 1 - (time - m.born) / m.life;
+      m2.fillStyle = m2.strokeStyle = m.color;
+      if (m.w) { // a wet patch, drying in from its edges
+        m2.beginPath(); m2.ellipse(m.x0, m.y - 2.5 * k - 1, m.w * (0.5 + 0.5 * k), 3.5 * k + 1, 0, 0, Math.PI * 2); m2.fill();
+      } else {
+        const lw = Math.max(1, m.h * 2 * k);
+        m2.lineWidth = lw;
+        m2.beginPath(); m2.moveTo(m.x0, m.y - lw / 2); m2.lineTo(m.x1, m.y - lw / 2); m2.stroke();
+      }
+    }
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 0.42;
+    ctx.drawImage(markLayer, rx, ry, rw, rh, rx, ry, rw, rh);
+    ctx.restore();
+  }
+
   const drops = [];
   function splash(b, v) {
     if (time < (b.splashedAt || 0) || drops.length > 60) return;
@@ -4036,6 +4091,7 @@
     drawDrops();
     drawStrands();
     drawSeason(true);
+    drawMarks();
 
     // Goo bridge while a slime is splitting off.
     for (const b of list) {
