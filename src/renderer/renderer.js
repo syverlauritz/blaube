@@ -2067,6 +2067,25 @@
     if (b.state === 'idle' || b.state === 'done') b.hics = { n: 4 + Math.floor(Math.random() * 4), next: time };
   }
 
+  // You're petting another slime close by: it comes over for some too,
+  // and gives you big eyes.
+  function jealous(b) {
+    if (CFG.jealous <= 0 || b.kind !== 'mother' || b.body.grab || !b.body.onFloor() || b.pendingHop || time < (b.nextJealous || 0)) return;
+    if (b.state !== 'idle' && b.state !== 'done') return;
+    const o = pet.target && pet.target.body && pet.target !== b && time < (pet.target.pettedUntil || 0) ? pet.target : null;
+    if (!o) return;
+    const c = b.body.centroid(), oc = o.body.centroid(), r = b.body.o.radius;
+    const gap = Math.abs(oc.x - c.x) - r - o.body.o.radius;
+    if (gap > r * 10 || Math.abs(oc.y - c.y) > r * 2) return;
+    b.wantsPetsUntil = time + 3;
+    // Over it comes, a hop at a time, then waits its turn.
+    b.nextJealous = time + (gap > r * 0.4 ? 0.9 : 6 / CFG.jealous);
+    if (gap > r * 0.4) {
+      const vy = 400, air = 2 * vy / CFG.gravity;
+      b.hop(Math.sign(oc.x - c.x) * Math.min(600, (gap - r * 0.2) / air), -vy);
+    }
+  }
+
   // A little exclamation ("boo!", "hic!") in a balloon, unless it's
   // already showing something that matters more.
   function quip(b, text, seconds, size) {
@@ -2159,6 +2178,7 @@
     stackPlay(b);
     pounce(b);
     prank(b);
+    jealous(b);
     trick(b);
     hiccup(b);
     // Hanging over the edge of a window: it clings and shuffles back on.
@@ -2272,6 +2292,7 @@
     else if (body.grab || time < (b.surpriseUntil || 0)) { mouth = 'o'; }
     else if (time < (b.booUntil || 0)) { expression = 'normal'; mouth = 'o'; }
     else if (b.sneeze) { expression = 'pained'; mouth = 'o'; } // (about to sneeze)
+    else if (time < (b.wantsPetsUntil || 0) && time > (b.pettedUntil || 0)) { expression = 'normal'; mouth = 'smile'; }
     else if (time - (b.sneezedAt ?? -9) < 0.5) { expression = 'happy'; mouth = 'flat'; }
     else if (b.merging && b.kind === 'child') { expression = 'happy'; mouth = 'smile'; }
     else if (nodding(b)) { expression = 'happy'; mouth = 'smile'; }
@@ -2396,7 +2417,7 @@
     }
     // A big toss: past the top it looks down at what's coming ("uh-oh"),
     // and just before it lands it screws its eyes shut and braces.
-    let wideBy = time < (b.booUntil || 0) ? 1 : 0; // (boo!: big eyes)
+    let wideBy = time < (b.booUntil || 0) ? 1 : time < (b.wantsPetsUntil || 0) && time > (b.pettedUntil || 0) ? 0.5 : 0; // (boo!, or me too!: big eyes)
     if (CFG.eyeLife > 0 && !body.grab && !meditating(b) && expression !== 'dizzy') {
       if (v.y < -900 && !body.onFloor()) b.tossUp = time;
       if (b.tossUp && time - b.tossUp < 2 && !body.onFloor() && v.y > 0) {
