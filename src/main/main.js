@@ -2999,6 +2999,12 @@ app.whenReady().then(async () => {
     if (!s || !s.cwd || id.startsWith('demo-')) return done([]);
     git.branches(s.cwd, done);
   }));
+  // The branches with changes set aside on them (see talk-switch-branch).
+  ipcMain.handle('talk-parked', (_e, id) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    if (!s || !s.cwd || id.startsWith('demo-')) return done([]);
+    git.parked(s.cwd, done);
+  }));
   // What its branch changed since it left main (all of it, to look over
   // before a pull request), and one file's change.
   const branchSeen = new Map(); // id -> its last branchChanges

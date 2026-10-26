@@ -509,7 +509,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await box(`${chip('main')}.click()`);
 	check(await until(() => execFileSync('git', ['branch', '--show-current'], { cwd: repo }).toString().trim() === 'main' && !fs.existsSync(taxFile) && inbox.log(ID3).some((e) => e.text === 'Switched to main; your changes on feature/tax are set aside until you switch back to it'), 10000), 'a tap sets them aside and switches');
 	await box(`document.getElementById('git').click(); document.getElementById('git').click()`);
-	await until(() => box(`(() => { const b = ${chip('feature/tax')}; return !!b && !b.disabled; })()`), 10000);
+	check(await until(() => box(`(() => { const b = ${chip('feature/tax')}; return !!b && !b.disabled && b.classList.contains('parked') && /changes set aside/.test(b.title); })()`), 10000), 'the branch with changes set aside is marked so');
 	await box(`${chip('feature/tax')}.click()`);
 	check(await until(() => execFileSync('git', ['branch', '--show-current'], { cwd: repo }).toString().trim() === 'feature/tax' && fs.readFileSync(taxFile, 'utf8') === taxWas + 'half done\n' && inbox.log(ID3).some((e) => e.text === 'Brought back your changes on feature/tax'), 10000), 'and switching back brings them back');
 	fs.writeFileSync(taxFile, taxWas);

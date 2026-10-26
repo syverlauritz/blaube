@@ -313,6 +313,14 @@ function park(cwd, branch, cb) {
     cb(err ? gitSaid(errOut) || 'git couldn’t set them aside' : '');
   });
 }
+// The branches that have changes set aside: cb([name]).
+function parked(cwd, cb) {
+  execFile('git', ['stash', 'list', '--format=%gs'], { cwd, timeout: 5000, windowsHide: true }, (err, out) => {
+    if (err) return cb([]);
+    const names = String(out).split('\n').map((l) => { const i = l.indexOf(PARKED); return i < 0 ? '' : branchName(l.slice(i + PARKED.length)); }).filter(Boolean);
+    cb([...new Set(names)]);
+  });
+}
 function unpark(cwd, branch, cb) {
   execFile('git', ['stash', 'list', '--format=%gd%x1f%gs'], { cwd, timeout: 5000, windowsHide: true }, (err, out) => {
     const line = !err && String(out).split('\n').find((l) => l.split('\x1f')[1] && l.split('\x1f')[1].endsWith(PARKED + branch));
@@ -327,4 +335,4 @@ function unpark(cwd, branch, cb) {
 }
 const gitSaid = (errOut) => (String(errOut || '').split('\n').find((l) => /^(fatal|error):/.test(l)) || '').replace(/^(fatal|error):\s*/, '');
 
-module.exports = { park, unpark, canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };
+module.exports = { park, parked, unpark, canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };

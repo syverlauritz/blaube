@@ -1294,7 +1294,7 @@
       btn.disabled = false;
       if (err) { said.textContent = err; requestAnimationFrame(fitWindow); }
     };
-    api.branches(s.id).then((names) => {
+    Promise.all([api.branches(s.id), api.parked ? api.parked(s.id) : []]).then(([names, parked]) => {
       if (box.dataset.key !== key) return;
       box.textContent = '';
       // Its pull request, a tap from your browser.
@@ -1318,6 +1318,8 @@
         if (n === on) { b.className = 'on'; b.disabled = true; b.title = 'It’s on this branch'; } else {
           b.disabled = !!why;
           b.title = why || (dirty ? `Switch to ${n}: your changes here are set aside, and come back when you switch back` : `Switch to ${n}`);
+          // (Changes set aside on it: they come back with it.)
+          if (parked.includes(n)) { b.classList.add('parked'); b.title += '\nIt has changes set aside: they come back when you switch to it'; }
           b.onclick = () => switchTo(n, false, b);
         }
         box.append(b);

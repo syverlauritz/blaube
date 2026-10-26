@@ -385,3 +385,20 @@ test('changes set aside on their branch come back with it', async () => {
     assert.deepEqual(await p(park, '-x'), ['It isn’t on a branch']);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('which branches have changes set aside', async () => {
+  const { park, parked } = require('../src/main/git');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-parked-'));
+  const env = Object.assign({}, process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
+  const g = (...a) => execFileSync('git', a, { cwd: dir, env }).toString().trim();
+  try {
+    g('init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(dir, 'a.txt'), '1\n'); g('add', '.'); g('commit', '-qm', 'base');
+    assert.deepEqual(await new Promise((r) => parked(dir, r)), []);
+    fs.writeFileSync(path.join(dir, 'a.txt'), '2\n');
+    await new Promise((r) => park(dir, 'main', r));
+    fs.writeFileSync(path.join(dir, 'a.txt'), '3\n');
+    g('stash', 'push', '-q', '-m', 'mine');
+    assert.deepEqual(await new Promise((r) => parked(dir, r)), ['main'], 'yours aren’t counted');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
