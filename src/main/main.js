@@ -925,12 +925,13 @@ function checkSeededTasks(s) {
 function pushState() {
   if (!win) return;
   const all = tracker.list();
-  win.webContents.send('state', {
+  const send = (state) => { if (TEST) global.__blaubeState = state; win.webContents.send('state', state); };
+  send({
     pending: all.filter((s) => !isReady(s)).length,
     sessions: all.filter(isReady).map((s) => Object.assign({}, s, {
       color: colorOf(s),
       tokens: tokens.get(s.id) || null,
-      info: usage.sessionInfo(transcriptPath(s)),
+      info: Object.assign(usage.sessionInfo(transcriptPath(s)), gitStates.get(s.id) ? { branch: gitLine(s.id) } : {}), // (its git line on hover: branch, changes, its PR)
       todo: (() => { const t = inbox.todos.get(s.id) || []; const done = t.filter((x) => x.status === 'completed').length; return t.length && done < t.length ? { done, of: t.length } : null; })(),
       effort: efforts.get(s.id) || defaultEffort(),
       agents: s.agents.map((a) => Object.assign({}, a, {
@@ -1823,23 +1824,30 @@ app.whenReady().then(async () => {
   const ghBin = TEST ? '' : pulls.findGh();
   setInterval(() => {
     const bin = TEST ? global.__blaubeGh : ghBin; // (tests: a stand-in, never the real gh)
-    if (!bin) return;
+    // (Every session's git status too, box open or not: its slime's hover
+    // says where it stands, and its PR is looked up.)
     for (const o of tracker.list()) {
-      const st = gitStates.get(o.id);
-      if (o.id.startsWith('demo-') || !o.cwd || !st || !st.branch) continue;
-      pulls.look(o.cwd, st.branch, (now) => {
-        const was = prStates.get(o.id);
-        if (JSON.stringify(was || null) === JSON.stringify(now || null)) return;
-        prStates.set(o.id, now);
-        const said = pulls.news(was, now);
-        if (said) {
-          inbox.add(o.id, { who: 'note', text: said });
-          if (win) win.webContents.send('say', { id: o.id, text: said, seconds: 6, status: true, aloud: true });
-          notify(o, 'pr', said); // (only if you can't see its slime)
-        }
-        if (o.id === talkId) pushTalk(o.id);
-        pushState();
-      }, { bin, fresh: TEST ? 500 : 60e3 });
+      if (o.id.startsWith('demo-') || !o.cwd) continue;
+      git.status(o.cwd, (st) => {
+        if (!st) return;
+        const line = gitLine(o.id);
+        gitStates.set(o.id, st);
+        if (gitLine(o.id) !== line) { pushState(); if (o.id === talkId) pushTalk(o.id); }
+        if (!bin || !st.branch) return;
+        pulls.look(o.cwd, st.branch, (now) => {
+          const was = prStates.get(o.id);
+          if (JSON.stringify(was || null) === JSON.stringify(now || null)) return;
+          prStates.set(o.id, now);
+          const said = pulls.news(was, now);
+          if (said) {
+            inbox.add(o.id, { who: 'note', text: said });
+            if (win) win.webContents.send('say', { id: o.id, text: said, seconds: 6, status: true, aloud: true });
+            notify(o, 'pr', said); // (only if you can't see its slime)
+          }
+          if (o.id === talkId) pushTalk(o.id);
+          pushState();
+        }, { bin, fresh: TEST ? 500 : 60e3 });
+      });
     }
   }, TEST ? 1000 : 20e3).unref();
   // Its git line keeps up while the box is open (a commit made elsewhere,
