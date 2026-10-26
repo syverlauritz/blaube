@@ -3,6 +3,7 @@
 // into ~/.local/bin), and says how it went. Only when you ask, after a
 // dialog that says what it runs.
 const { spawn } = require('node:child_process');
+const { claudeEnv } = require('./claudeEnv');
 
 const SCRIPT = { unix: 'https://claude.ai/install.sh', windows: 'https://claude.ai/install.ps1' };
 
@@ -20,7 +21,7 @@ function command(platform = process.platform) {
 function install(cb, { platform = process.platform, run = spawn, timeout = 5 * 60e3 } = {}) {
   const [bin, args] = command(platform);
   let p;
-  try { p = run(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }); } catch (e) { return cb(false, e.message); }
+  try { p = run(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, env: claudeEnv() }); } catch (e) { return cb(false, e.message); }
   let out = '', over = false;
   const finish = (ok) => { if (over) return; over = true; clearTimeout(late); cb(ok, out.trim().split('\n').slice(-6).join('\n')); };
   const keep = (d) => { out = (out + d).slice(-8000); };

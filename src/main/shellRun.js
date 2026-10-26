@@ -2,18 +2,22 @@
 // terminal's bash mode does: a login shell (so your PATH counts), at most
 // two minutes, the last 200 KB of what it printed.
 const { spawn, spawnSync } = require('node:child_process');
+const { claudeEnv } = require('./claudeEnv');
 
 const KEEP = 200 << 10;
 
 // cb(code, output): code null when it was stopped (too long).
-function run(command, cwd, cb, { timeout = 120e3, platform = process.platform, env = null } = {}) {
+// claude: it's Claude Code itself that runs (claude plugin install, say): no
+// API key in its environment (see claudeEnv.js).
+function run(command, cwd, cb, { timeout = 120e3, platform = process.platform, env = null, claude = false } = {}) {
   const win = platform === 'win32';
+  if (claude) env = claudeEnv(process.env, env || {});
   const shell = process.env.SHELL || (platform === 'darwin' ? '/bin/zsh' : '/bin/bash');
   let proc;
   try {
     proc = win
-      ? spawn('cmd.exe', ['/d', '/s', '/c', `"${command}"`], Object.assign({ cwd, windowsHide: true, windowsVerbatimArguments: true }, env ? { env: Object.assign({}, process.env, env) } : {}))
-      : spawn(shell, ['-lc', command], Object.assign({ cwd, detached: true }, env ? { env: Object.assign({}, process.env, env) } : {}));
+      ? spawn('cmd.exe', ['/d', '/s', '/c', `"${command}"`], Object.assign({ cwd, windowsHide: true, windowsVerbatimArguments: true }, env ? { env: claude ? env : Object.assign({}, process.env, env) } : {}))
+      : spawn(shell, ['-lc', command], Object.assign({ cwd, detached: true }, env ? { env: claude ? env : Object.assign({}, process.env, env) } : {}));
   } catch (e) { return cb(1, e.message); }
   let out = '', done = false;
   const keep = (d) => { out += d; if (out.length > KEEP * 2) out = out.slice(-KEEP); };

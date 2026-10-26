@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { EventEmitter } = require('node:events');
+const { claudeEnv } = require('./claudeEnv');
 
 // Where claude is when the usual places don't have it (installed with nvm,
 // bun, a custom npm prefix): ask a login shell, as a terminal would. Asked
@@ -68,8 +69,7 @@ class Owned extends EventEmitter {
       fs.writeFileSync(settingsFile, JSON.stringify(settings));
       args.push('--settings', settingsFile);
     }
-    const env = Object.assign({}, process.env);
-    for (const k of Object.keys(env)) if (k === 'CLAUDECODE' || /^CLAUDE_CODE_(CHILD_SESSION|SESSION_|ENTRYPOINT)/.test(k)) delete env[k];
+    const env = claudeEnv(); // (your Claude login, never an API key: see claudeEnv.js)
     env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING = '1'; // (so a turn's changes can be put back: rewind_files)
     const opts = { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true };
     const viaCmd = process.platform === 'win32' && (!path.isAbsolute(bin) || /\.(cmd|bat)$/i.test(bin));

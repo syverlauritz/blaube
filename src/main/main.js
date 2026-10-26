@@ -26,6 +26,7 @@ const { Notification } = require('electron');
 const { skills: skillList, skillPrompt, slashCommand, commandNames, expand: expandCommand, control: controlFor, contextNote, EFFORTS } = require('./commands');
 const limits = require('./limits');
 const usageProbe = require('./usageProbe');
+const { claudeEnv } = require('./claudeEnv');
 const auth = require('./auth');
 const renamer = require('./rename');
 const branch = require('./branch');
@@ -2320,14 +2321,7 @@ app.whenReady().then(async () => {
       else { usageFailed = true; setTimeout(probeUsage, 61e3).unref(); }
       sendLimits();
     };
-    usageProbe.probe(bin, (r) => {
-      // An ANTHROPIC_API_KEY in Blaube's environment (handed down from
-      // wherever it was started: a terminal, a Claude Code session) wins
-      // over your signed-in subscription, and a key has no plan limits:
-      // asked again without it before saying so.
-      if (r && r.rate_limits_available === false && process.env.ANTHROPIC_API_KEY) return usageProbe.probe(bin, done, { withoutKey: true });
-      done(r);
-    });
+    usageProbe.probe(bin, done); // (always without an API key: see claudeEnv.js)
   };
   // Whether Claude Code is signed in (asked when the overview opens, at
   // most every 5 minutes), and signing it in from the box: Sign in runs
@@ -2965,9 +2959,9 @@ app.whenReady().then(async () => {
       const verb = { i: 'install', remove: 'uninstall', rm: 'remove' }[(plug || market)[1].toLowerCase()] || (plug || market)[1].toLowerCase();
       const name = (plug || market)[2];
       const loaded = () => { if (owned.has(id)) owned.control(id, { subtype: 'reload_plugins' }, () => {}); };
-      if (market) return runForSession(id, `${sq(bin)} plugin marketplace ${verb} ${sq(name)}`, `Marketplace ${name}: ${verb === 'add' ? 'added' : verb === 'update' ? 'updated' : 'removed'} (claude plugin marketplace ${verb})`, (code) => { if (code === 0) loaded(); });
-      if (verb !== 'install') return runForSession(id, `${sq(bin)} plugin ${verb} ${sq(name)}`, `${name}: ${{ uninstall: 'uninstalled', enable: 'turned on', disable: 'turned off', update: 'updated' }[verb]} (claude plugin ${verb})`, (code) => { if (code === 0) loaded(); });
-      const install = (accept) => runForSession(id, `${sq(bin)} plugin install ${sq(name)} --json${accept ? ` --accept-command ${sq(accept)}` : ''}`, `Installed ${name} (claude plugin install)`, (code, out, step) => {
+      if (market) return runClaude(id, `${sq(bin)} plugin marketplace ${verb} ${sq(name)}`, `Marketplace ${name}: ${verb === 'add' ? 'added' : verb === 'update' ? 'updated' : 'removed'} (claude plugin marketplace ${verb})`, (code) => { if (code === 0) loaded(); });
+      if (verb !== 'install') return runClaude(id, `${sq(bin)} plugin ${verb} ${sq(name)}`, `${name}: ${{ uninstall: 'uninstalled', enable: 'turned on', disable: 'turned off', update: 'updated' }[verb]} (claude plugin ${verb})`, (code) => { if (code === 0) loaded(); });
+      const install = (accept) => runClaude(id, `${sq(bin)} plugin install ${sq(name)} --json${accept ? ` --accept-command ${sq(accept)}` : ''}`, `Installed ${name} (claude plugin install)`, (code, out, step) => {
         let r = null;
         for (const line of String(out || '').split('\n').reverse()) { try { r = JSON.parse(line); break; } catch { /* not it */ } }
         if (code === 0) { loaded(); inbox.add(id, { who: 'note', text: owned.has(id) ? `It can use ${name} now` : `${name} is installed: sessions started from now on have it` }); if (win) win.webContents.send('nod', id); return; }
@@ -2999,7 +2993,7 @@ app.whenReady().then(async () => {
       const cmd = mcpRemove ? `${sq(bin)} mcp remove ${sq(name)}`
         : mcpAdd[2] ? `${sq(bin)} mcp add --transport http ${sq(name)} ${sq(mcpAdd[2])}`
         : `${sq(bin)} mcp add ${sq(name)} -- ${mcpAdd[3].trim().split(/\s+/).map(sq).join(' ')}`;
-      return runForSession(id, cmd, mcpRemove ? `Removed ${name} (claude mcp remove)` : `Added ${name} (claude mcp add)`, (code) => {
+      return runClaude(id, cmd, mcpRemove ? `Removed ${name} (claude mcp remove)` : `Added ${name} (claude mcp add)`, (code) => {
         if (code !== 0) return;
         if (owned.has(id)) {
           inbox.add(id, { who: 'note', text: `Claude Code starts again ${mcpRemove ? 'without' : 'with'} ${name}, same conversation${tracker.sessions.get(id) && tracker.sessions.get(id).state === 'working' ? ', once this turn is done' : ''}` });
@@ -3017,7 +3011,7 @@ app.whenReady().then(async () => {
       const bin = owned.findClaude() || owned.shellPath() || 'claude';
       const q = process.platform === 'win32' ? `"${bin}"` : `'${bin.replace(/'/g, `'\\''`)}'`;
       const what = { doctor: ['doctor', 'Checked Claude Code (claude doctor)'], mcp: ['mcp list', 'Its MCP servers (claude mcp list)'], plugin: ['plugin list', 'Your plugins (claude plugin list)'], plugins: ['plugin list', 'Your plugins (claude plugin list)'], logout: ['auth logout', 'Signed Claude Code out (claude auth logout)'] }[own[1].toLowerCase()] || ['update', 'Updated Claude Code (claude update)'];
-      return runForSession(id, `${q} ${what[0]}`, what[1], () => { if (what[0] === 'auth logout') checkAuth(true); });
+      return runClaude(id, `${q} ${what[0]}`, what[1], () => { if (what[0] === 'auth logout') checkAuth(true); });
     }
     if (own && owned.has(id)) {
       const list = mcpStates.get(id) || [];
@@ -3104,7 +3098,7 @@ app.whenReady().then(async () => {
         inbox.add(id, { who: 'note', text: 'Opened a new Claude Code issue in your browser, its version and system filled in' });
       };
       if (!bin) return open('');
-      require('node:child_process').execFile(bin, ['--version'], { timeout: 8000, encoding: 'utf8', windowsHide: true }, (err, out) => open(err ? '' : String(out).trim().split(/\s/)[0]));
+      require('node:child_process').execFile(bin, ['--version'], { timeout: 8000, encoding: 'utf8', windowsHide: true, env: claudeEnv() }, (err, out) => open(err ? '' : String(out).trim().split(/\s/)[0]));
       return;
     }
     // "/exit" in a session Blaube started: it ends (its conversation is
@@ -3332,7 +3326,7 @@ app.whenReady().then(async () => {
   // (What you ran with ! in a session's box, for its next message.)
   // `as`: what to call it, for one of Claude Code's own (its output is for
   // you, so it doesn't go along with your next message).
-  function runForSession(id, cmd, as = '', then = () => {}, env = null, timeout = 120e3) {
+  function runForSession(id, cmd, as = '', then = () => {}, env = null, timeout = 120e3, claude = false) {
     const s = tracker.sessions.get(id);
     if (!s || !s.cwd || !cmd) return;
     const entry = inbox.add(id, { who: 'step', text: as || `You ran ${cmd.length > 60 ? cmd.slice(0, 59) + '…' : cmd}`, ok: true, kind: classify('Bash', { command: cmd }), detail: `$ ${cmd}\n…`, cmd: cmd.slice(0, 200), running: true });
@@ -3349,9 +3343,12 @@ app.whenReady().then(async () => {
       }
       inbox.emit('change', id);
       then(code, shown, entry);
-    }, Object.assign({ timeout }, env ? { env } : {}));
+    }, Object.assign({ timeout, claude }, env ? { env } : {}));
     return entry;
   }
+  // Claude Code's own commands (claude plugin, mcp, doctor, update…), run
+  // the same way, with your Claude login and never an API key (claudeEnv.js).
+  const runClaude = (id, cmd, as, then) => runForSession(id, cmd, as, then, null, 120e3, true);
   replyTo = sendMessage;
   // Push and Pull from its quick actions: git itself, right there (a step
   // with what it printed; no model call). It never waits on a password.

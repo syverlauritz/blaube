@@ -68,6 +68,8 @@ Blaube never calls the Anthropic API. The physics runs locally, and session stat
 - [Claude Code hooks](https://docs.claude.com/en/docs/claude-code/hooks) that `curl` each event to a tiny server Blaube runs on `127.0.0.1:47821`. These give the richest status, including "needs you". If Blaube isn't running, the hooks just do nothing.
 - `claude agents --json`, polled every few seconds, which lists the Claude Code sessions running on this machine as busy or idle. This works even before you connect the hooks.
 
+Every Claude Code that Blaube starts (its own sessions, ones it opens in a terminal, resumed, forked or started on an issue, the usage check, sign-in, the `claude agents` poll) uses **your Claude login** (your subscription), never an API key: an `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` in the environment Blaube was started from is left out of theirs, so it can't quietly bill you by the token instead.
+
 Only sessions running **on your computer** can show up. Chats in the Claude apps and cloud sessions (claude.ai/code, Projects threads) run on Anthropic's servers and can't reach Blaube.
 
 ### Checking the connection
