@@ -1066,6 +1066,7 @@
     }
     collidePets();
     stepDrops();
+    stepSeason();
   }
 
   // --- Effort ---------------------------------------------------------------
@@ -1166,6 +1167,8 @@
     if (b.dying || b.removed) return;
     if (b.pendingHop) crouch(b);
     tingle(b);
+    // Shaking off leaves or snow: a quick side-to-side wobble.
+    if (time < (b.shakeOffUntil || 0) && body.onFloor()) body.lean((Math.sin(time * 70) > 0 ? 1 : -1) * body.o.radius * 2.2 * 60 * DT, DT);
     if (body.grab) { held(b); return; }
     b.stillFor = 0;
     b.wriggling = false;
@@ -1319,6 +1322,125 @@
       ctx.beginPath();
       ctx.ellipse(0, 0, d.r * st * fade, (d.r / Math.sqrt(st)) * fade, 0, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // --- Seasons --------------------------------------------------------------
+  // Autumn leaves (late September to November) and snow (December to
+  // February) drift down now and then. They settle on the slimes' heads and
+  // on the ground; a slime that moves sheds them, and one that's collected a
+  // few gives a little shake to get them off.
+  const flakes = [];
+  let seasonOverride = null; // (dev: force 'leaves', 'snow' or 'none')
+  function season() {
+    if (seasonOverride) return seasonOverride;
+    const d = new Date(), m = d.getMonth(), day = d.getDate();
+    if (m === 11 || m <= 1) return 'snow';
+    if ((m === 8 && day >= 22) || m === 9 || m === 10) return 'leaves';
+    return 'none';
+  }
+  const LEAF_COLORS = ['#d9822b', '#c4572a', '#e0a53a', '#a8643a'];
+
+  function stepSeason() {
+    const kind = CFG.seasons > 0 ? season() : 'none';
+    if (kind !== 'none' && flakes.length < 80) {
+      const rate = CFG.seasons * (kind === 'snow' ? 0.9 : 0.3) * (W / 1600);
+      if (Math.random() < rate * DT) {
+        const snow = kind === 'snow';
+        flakes.push({ kind, x: Math.random() * W, y: -10, vx: 0, vy: snow ? 40 : 60, drift: (Math.random() - 0.5) * 30, sway: Math.random() * 6.28,
+          size: snow ? 2 + Math.random() * 2.5 : 7 + Math.random() * 4, a: Math.random() * 6.28, va: (Math.random() - 0.5) * 3,
+          color: snow ? null : LEAF_COLORS[Math.floor(Math.random() * LEAF_COLORS.length)], on: null, landed: 0 });
+      }
+    }
+    if (!flakes.length) return;
+    const boxes = [...buddies.values()].filter((b) => !b.dying && !b.body.grab).map((b) => [b, b.body.bbox()]);
+    for (let k = flakes.length - 1; k >= 0; k--) {
+      const f = flakes[k];
+      if (f.on) {
+        const b = f.on.b, body = b.body, i = f.on.i;
+        const v = b.vel || { x: 0, y: 0 }, c = body.centroid();
+        // Shed: moving fast, picked up, gone, or rolled round underneath.
+        if (b.dying || b.removed || body.grab || Math.hypot(v.x, v.y) > 380 || body.py[i] > c.y - body.o.radius * 0.2) {
+          f.on = null; f.vx = v.x * 0.6 + (body.px[i] - c.x) * 2; f.vy = Math.min(v.y * 0.6, -60); f.landed = 0; f.loose = time + 0.8;
+          continue;
+        }
+        f.x = body.px[i] + f.on.dx; f.y = body.py[i] - f.size * 0.4;
+        continue;
+      }
+      if (f.landed) {
+        if (time - f.landed > (f.kind === 'snow' ? 8 : 12)) flakes.splice(k, 1);
+        continue;
+      }
+      // Falling: drifting and swaying (leaves see-saw more), easing to their
+      // own slow fall after being knocked off.
+      f.sway += DT * (f.kind === 'snow' ? 1.3 : 2.2);
+      const fall = f.kind === 'snow' ? 45 : 70;
+      f.vy += (fall - f.vy) * 2 * DT;
+      f.vx += (f.drift + Math.sin(f.sway) * (f.kind === 'snow' ? 18 : 55) - f.vx) * (time < (f.loose || 0) ? 0.4 : 2) * DT; // (knocked off: it keeps going a while)
+      f.x += f.vx * DT; f.y += f.vy * DT;
+      f.a += f.va * DT * (f.kind === 'snow' ? 0 : 1 + Math.abs(Math.sin(f.sway)));
+      if (f.x < -20 || f.x > W + 20) { flakes.splice(k, 1); continue; }
+      // On a slime's head: stick to the nearest point of its skin.
+      let stuck = false;
+      for (const [b, box] of boxes) {
+        if (f.vy < 0 || time < (f.loose || 0)) break;
+        const body = b.body;
+        if (f.x < box.minX || f.x > box.maxX || f.y < box.minY - 2 || f.y > box.maxY) continue;
+        if (!body.contains(f.x, f.y + 3)) continue;
+        let best = 0, bd = Infinity;
+        for (let i = 0; i < body.n; i++) { const d = (body.px[i] - f.x) ** 2 + (body.py[i] - f.y) ** 2; if (d < bd) { bd = d; best = i; } }
+        if (body.py[best] > body.centroid().y - body.o.radius * 0.2) continue; // its side: slides past
+        f.on = { b, i: best, dx: (Math.random() - 0.5) * 4 };
+        stuck = true;
+        break;
+      }
+      if (stuck) continue;
+      const floor = floorAt(f.x, f.y);
+      if (f.y >= floor - f.size * 0.3) { f.y = floor - f.size * 0.3; f.landed = time; }
+    }
+    // Collected a few: a shake to get them off.
+    for (const b of buddies.values()) {
+      if (b.dying || !b.body.onFloor() || b.body.grab || time < (b.nextShakeOff || 0)) continue;
+      let n = 0;
+      for (const f of flakes) if (f.on && f.on.b === b) n++;
+      if (n < 4) continue;
+      b.nextShakeOff = time + 3 + Math.random() * 5;
+      if (Math.random() < 0.5) continue;
+      b.shakeOffUntil = time + 0.55;
+      for (const f of flakes) if (f.on && f.on.b === b) { const c = b.body.centroid(); f.on = null; f.vx = (Math.sign(f.x - c.x) || 1) * (110 + Math.random() * 90); f.vy = -90 - Math.random() * 60; f.loose = time + 1.5; }
+    }
+  }
+
+  function drawSeason() {
+    for (const f of flakes) {
+      const fade = f.landed ? Math.max(0, Math.min(1, ((f.kind === 'snow' ? 8 : 12) - (time - f.landed)) / 1.5)) : 1;
+      if (fade <= 0) continue;
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.translate(f.x, f.y);
+      if (f.kind === 'snow') {
+        // White with a faint edge, so it shows on a white desktop too.
+        ctx.fillStyle = '#f7faff';
+        ctx.strokeStyle = 'rgba(60, 80, 110, 0.28)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(0, 0, f.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        ctx.rotate(f.a);
+        ctx.fillStyle = f.color;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, f.size, f.size * 0.48, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(80, 40, 20, 0.35)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(-f.size * 1.25, 0);
+        ctx.lineTo(f.size * 0.8, 0);
+        ctx.stroke();
+      }
       ctx.restore();
     }
   }
@@ -2187,6 +2309,7 @@
       if (b.state === 'waiting') D.drawExclaim(ctx, b.body, time, W, '?');
       else if (b.state === 'done' && unseen(b)) D.drawExclaim(ctx, b.body, time, W);
     }
+    drawSeason();
     drawPets();
     drawHearts();
     for (const b of list) if (b.glasses) D.drawGlasses(ctx, b.glasses.x, b.glasses.y, b.glasses.r, b.glasses.a, CFG);
@@ -2732,6 +2855,8 @@
       typing: (id) => listeners.typing.forEach((f) => f(id)),
       talkRect: (r) => listeners.talkRect.forEach((f) => f(r)),
       sys: () => sys,
+      season: (k) => { seasonOverride = k; },
+      flakes: () => flakes,
       now: () => time,
       idleFor: (seconds) => { mouse.lastMove = performance.now() / 1000 - seconds; },
       buddies: () => buddies,

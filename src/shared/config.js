@@ -125,6 +125,7 @@
       ['rideWobble', 1, 0, 3, 0.05, 'Riding a window you move: it wobbles as the window starts and stops'],
       ['scrollSquish', 1, 0, 3, 0.05, 'Scroll over a slime to squish it flat or pull it tall'],
       ['listen', 1, 0, 2, 0.05, 'Typing to it in its talk box: it watches and bobs along'],
+      ['seasons', 1, 0, 4, 0.05, 'Autumn leaves and winter snow drift down and settle on them (how many)'],
       ['systemLife', 1, 0, 2, 0.05, 'React to the computer: wake up with it, perk up on the charger, tire on low battery'],
       ['awayAfter', 300, 30, 1800, 10, 'You count as away after this long without keyboard or mouse (s)'],
       ['welcomeBack', true, 0, 0, 0, 'Back from away: say what changed while you were gone'],
