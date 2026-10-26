@@ -445,6 +445,7 @@ function pushTalk(id, focusField = false) {
     connected: hooksOk || inbox.reachable.has(id) || inbox.steerable.has(id) || inbox.asks.has(id) || inbox.owned.has(id),
     doing: s.state === 'working' ? doing.get(id) || '' : '',
     mode: s.mode || '', // (its permission mode)
+    canBring: canBringIn(s), // (it could carry on in Blaube instead)
     canMode: owned.has(id), // (one Blaube started can be asked to change it)
     tasks: (s.tasks || []).filter((t) => !t.demo).slice(0, 4).map((t) => ({ id: t.id, label: t.description || t.command, command: t.command })),
     helpers: s.state === 'working' || s.state === 'waiting' ? (s.agents || []).slice(0, 5).map((a) => ({ name: helperName(s, a), doing: helperDoing.get(`${id}/${a.id}`) || '', waiting: a.state === 'waiting' })) : [],
@@ -595,7 +596,37 @@ async function pickUp(p) {
   if (!id) return;
   // (Ended while you watched: the conversation is still here.)
   if (p.file && !inbox.log(id).length) for (const m of history.recentMessages(p.file, 4)) inbox.add(id, m);
-  inbox.add(id, { who: 'note', text: p.at ? `Picked up from ${history.ago(p.at)}` : 'Picked up here' });
+  inbox.add(id, { who: 'note', text: p.note || (p.at ? `Picked up from ${history.ago(p.at)}` : 'Picked up here') });
+}
+
+// "Bring it into Blaube": a session in a terminal ends there and carries on
+// here, its conversation kept (for one that can't hear you, or when you'd
+// rather not go back to the terminal). Only between turns.
+function canBringIn(s) {
+  return !!s && !owned.has(s.id) && !s.id.startsWith('demo-') && !!s.pid && !!s.cwd && (s.state === 'done' || s.state === 'idle');
+}
+async function bringIn(s) {
+  if (!canBringIn(s)) return;
+  if (!TEST) {
+    const { response } = await dialog.showMessageBox({
+      type: 'question', buttons: ['Bring it here', 'Cancel'], defaultId: 0, cancelId: 1,
+      message: `Bring ${s.project} into Blaube?`,
+      detail: 'Claude Code closes in its terminal, and the session carries on here with its whole conversation. You can move it back to a terminal any time.',
+    });
+    if (response !== 0) return;
+  }
+  const p = { id: s.id, cwd: s.cwd, at: 0, title: s.project, file: transcriptPath(s), note: 'Brought here from its terminal' };
+  const alive = () => { try { process.kill(s.pid, 0); return true; } catch { return false; } };
+  try { process.kill(s.pid, 'SIGTERM'); } catch (e) { log(`couldn't close ${s.project} in its terminal: ${e.message}`); return; }
+  // Gone (a moment), then picked up here.
+  let tries = 0;
+  const wait = setInterval(() => {
+    if (alive() && ++tries < 50) return;
+    clearInterval(wait);
+    if (alive()) { inbox.add(p.id, { who: 'note', text: 'It didn’t close in its terminal, so it stays there.' }); return; }
+    if (tracker.sessions.has(p.id)) tracker.handle({ session_id: p.id, hook_event_name: 'SessionEnd' }, 'blaube');
+    pickUp(p);
+  }, 100);
 }
 
 // Past sessions you could pick up (not the ones running now).
@@ -1153,6 +1184,7 @@ function sessionMenu(id) {
     ] : [
       { label: 'Go to its terminal', sublabel: process.platform === 'darwin' ? '⌥-click the slime' : 'Alt-click the slime', enabled: !isDemo, click: () => goToSession(s) },
       { label: 'Resume in a new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
+      { label: 'Bring it into Blaube', enabled: canBringIn(s), click: () => bringIn(s) },
     ]),
     { label: 'Copy resume command', click: () => clipboard.writeText(`cd "${s.cwd}" && ${resumeCommand(s.id)}`) },
     { label: 'Notify me about this one', type: 'checkbox', checked: !muted.has(id), enabled: !isDemo && (prefs.config.notify || 'Behind windows') !== 'Off', click: (item) => { if (item.checked) muted.delete(id); else muted.add(id); } },
@@ -1708,6 +1740,7 @@ app.whenReady().then(async () => {
     hideTalk();
     pickUp({ id, cwd: last.cwd, at: 0, title: last.project, file: null });
   });
+  ipcMain.on('talk-bring', (_e, id) => { const s = id === talkId && tracker.sessions.get(id); if (canBringIn(s)) bringIn(s); });
   ipcMain.on('talk-pickup', (_e, id) => { const p = hubPast.find((x) => x.id === id); if (p) { hubCache = null; hideTalk(); pickUp(p); } });
   // A web link in a reply, opened in your browser (web links only).
   ipcMain.on('talk-link', (_e, url) => {

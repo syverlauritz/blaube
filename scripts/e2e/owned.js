@@ -85,6 +85,32 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Carry on')`)), 'with Carry on a tap away');
 
 	owned.end(id);
+
+	// A session in a terminal (here: a stand-in process) brought into Blaube.
+	const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-term-'));
+	const tx = path.join(dir2, 'session.jsonl');
+	const when = new Date(Date.now() - 60e3).toISOString();
+	fs.writeFileSync(tx, [
+		{ type: 'user', timestamp: when, message: { content: 'rename the tax helper' } },
+		{ type: 'assistant', timestamp: when, message: { content: [{ type: 'text', text: 'Renamed it to taxOf.' }] } },
+	].map((e) => JSON.stringify(e)).join('\n') + '\n');
+	const term = require('node:child_process').spawn('sleep', ['120']);
+	const gone = new Promise((r) => term.on('exit', (code, signal) => r(signal || code)));
+	const BID = '11111111-2222-3333-4444-555555555555';
+	tracker.handle({ session_id: BID, cwd: dir2, transcript_path: tx, hook_event_name: 'SessionStart', _pid: term.pid });
+	tracker.handle({ session_id: BID, cwd: dir2, hook_event_name: 'UserPromptSubmit', _pid: term.pid });
+	tracker.handle({ session_id: BID, cwd: dir2, hook_event_name: 'Stop', last_assistant_message: 'Renamed it to taxOf.', _pid: term.pid });
+	await until(() => win.webContents.executeJavaScript(`!!__blaube.buddies.get(${JSON.stringify(BID)})`), 8000);
+	await win.webContents.executeJavaScript(`window.blaube.talk(${JSON.stringify(BID)}, { x: 300, y: 600, r: 60 })`);
+	check(await until(() => talkId() === BID && box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Bring it here')`), 8000), 'a session that can’t hear Blaube offers to bring it here');
+	await box(`[...document.querySelectorAll('#quick button')].find((b) => b.textContent === 'Bring it here').click()`);
+	check(await Promise.race([gone, sleep(5000).then(() => 'still there')]) === 'SIGTERM', 'it closes in its terminal');
+	check(await until(() => owned.has(BID), 8000), 'and carries on in Blaube, same session');
+	check(await until(async () => talkId() === BID && /Brought here from its terminal/.test(await said()) && /Renamed it to taxOf/.test(await said()), 8000), 'its box says so, with the conversation so far');
+	await type('and the tests?');
+	check(await until(async () => /claude-opus here\./.test(await said())), 'and it answers right here');
+	owned.end(BID);
+
 	console.log(failed ? `\n${failed} failed` : '\nall passed');
 	return failed ? 1 : 0;
 };

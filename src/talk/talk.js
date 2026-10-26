@@ -49,13 +49,13 @@
     if (s.ended) return (s.log.some((m) => m.status === 'unsent') ? `${s.project} has ended, so what you sent last didn’t go in.` : `${s.project} has ended.`) + (s.cwd ? ' Pick it up here to keep going.' : ' Right-click its slime next time to resume it in a new terminal.');
     if (s.owned) return s.log.length ? '' : 'Started by Blaube. Right-click me to end it or move it to a terminal.';
     if (s.ask) return '';
-    if (!s.connected && !s.typeable) return 'Connect Claude Code from Blaube’s menu, then restart this session to talk to it.';
+    if (!s.connected && !s.typeable) return s.canBring ? 'This session can’t hear Blaube. Bring it here to talk to it, or connect Claude Code from Blaube’s menu and restart it.' : 'Connect Claude Code from Blaube’s menu, then restart this session to talk to it.';
     // Queued, nobody waiting, and the turn is over (interrupted, say): it
     // only gets it when it next finishes a turn.
     if (s.queued && s.inbox !== 'ready' && s.state !== 'working' && s.inbox !== 'unknown') return `${s.project} gets this when it next finishes a turn. In a hurry? Go to its terminal.`;
     // Never heard from its inbox: it may not be able to hear you at all.
     if (s.inbox === 'unknown' && s.typeable) return s.queued ? `${s.project} started before Blaube could talk to it, so Blaube will type this into its terminal as soon as it’s free.` : '';
-    if (s.inbox === 'unknown' && (s.queued || s.state !== 'working')) return `Haven’t heard from ${s.project} yet. If it doesn’t pick this up, restart the session.`;
+    if (s.inbox === 'unknown' && (s.queued || s.state !== 'working')) return `Haven’t heard from ${s.project} yet. If it doesn’t pick this up, ${s.canBring ? 'bring it here' : 'restart the session'}.`;
     // Busy needs no words: the header says "working", and anything you
     // send is marked as waiting for the end of the turn.
     return '';
@@ -785,8 +785,12 @@
   function renderQuick(s) {
     const box = $('quick');
     // (One that ended can be picked up right here, without a terminal.)
+    // (One that can't hear you can carry on here instead.)
+    const deaf = s.canBring && api.bringHere && !s.typeable && (s.inbox === 'unknown' || !s.connected);
     const list = s.ended ? (s.cwd && !s.demo && api.continueHere ? [{ label: 'Pick it up here', prompt: 'Keep going with it here, no terminal needed', here: true }] : [])
-      : s.ask || s.demo || !s.log.length || (!s.connected && !s.typeable && !s.owned) ? [] : (s.quick || []);
+      : s.ask || s.demo ? []
+      : [...(deaf ? [{ label: 'Bring it here', prompt: 'It closes in its terminal and carries on here, conversation and all', bring: true }] : []),
+        ...(!s.log.length || (!s.connected && !s.typeable && !s.owned) ? [] : (s.quick || []))].slice(0, 4);
     const key = JSON.stringify(list.map((q) => q.label));
     box.hidden = !list.length;
     if (box.dataset.key === key) return;
@@ -797,7 +801,7 @@
       b.type = 'button';
       b.textContent = q.label;
       b.title = q.prompt;
-      b.onclick = () => { if (!current) return; if (q.here) api.continueHere(current.id); else api.send(current.id, q.prompt); box.hidden = true; };
+      b.onclick = () => { if (!current) return; if (q.here) api.continueHere(current.id); else if (q.bring) api.bringHere(current.id); else api.send(current.id, q.prompt); box.hidden = true; };
       box.append(b);
     }
   }
