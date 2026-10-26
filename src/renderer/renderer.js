@@ -1156,15 +1156,16 @@
     return hc.y < c.y - r && c.y - hc.y < r * 5 && Math.abs(hc.x - c.x) < r * 1.3 ? h : null;
   }
 
-  // The nearest slime whizzing by (flying fast, or flung about), if any is
+  // The nearest slime whizzing by (flying fast, or carried about), if any is
   // close enough to watch: { o, c, d }.
   function spectate(b) {
     if (CFG.spectate <= 0) return null;
     const c = b.body.centroid(), r = b.body.o.radius;
     let best = null;
     for (const o of buddies.values()) {
-      if (o === b || o.dying || !o.vel || o.body.onFloor()) continue;
-      if (Math.hypot(o.vel.x, o.vel.y) < 700) continue;
+      if (o === b || o.dying || !o.vel) continue;
+      // (Flying fast, or being carried about by you: worth watching.)
+      if (!o.body.grab && (o.body.onFloor() || Math.hypot(o.vel.x, o.vel.y) < 700)) continue;
       const oc = o.body.centroid(), d = Math.hypot(oc.x - c.x, oc.y - c.y) - o.body.o.radius;
       if (d < r * 9 && (!best || d < best.d)) best = { o, c: oc, d };
     }
@@ -1223,7 +1224,7 @@
     // ...and a slime flying right at it makes it duck.
     if (CFG.spectate > 0 && time > (b.duckAt || 0)) {
       const s = spectate(b);
-      if (s && s.d < r * 1.2 && s.d > 0) {
+      if (s && s.d < r * 1.2 && s.d > 0 && Math.hypot(s.o.vel.x, s.o.vel.y) > 700) {
         const v = s.o.vel, toward = ((c.x - s.c.x) * v.x + (c.y - s.c.y) * v.y) / Math.max(1, Math.hypot(v.x, v.y) * Math.hypot(c.x - s.c.x, c.y - s.c.y));
         if (toward > 0.3) {
           b.duckAt = time + 1;
