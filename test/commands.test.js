@@ -77,3 +77,11 @@ test('/effort is asked of Claude Code (its flag settings)', () => {
   assert.match(control('/effort').help, /\/effort low, \/effort medium, \/effort high, \/effort xhigh, \/effort max/);
   assert.ok(control('/effort loads').help);
 });
+
+test('built-in commands the box handles itself say what they do', () => {
+  const { commandNames } = require('../src/main/commands.js');
+  const byName = Object.fromEntries(commandNames('', '', require('node:os').tmpdir()).map((c) => [c.name, c]));
+  assert.equal(byName.usage.about, 'How much of your limits you’ve used');
+  assert.equal(byName.rename.mine, false);
+  assert.equal(byName.vim.about, undefined);
+});

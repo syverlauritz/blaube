@@ -44,12 +44,33 @@ function slashCommand(text, cwd = '', home = os.homedir()) {
 
 // Every command you could type, for "/" in the talk box: [{ name, mine,
 // about }] (yours first), the ones starting with `q`.
+// What the box does with the built-in ones it handles itself, in words.
+const ABOUT = {
+  'add-dir': 'Another folder it may work in',
+  agents: 'Opens the project’s agents folder',
+  clear: 'A fresh conversation, same slime',
+  compact: 'Frees up its context',
+  config: 'Opens your Claude Code settings',
+  context: 'What fills its context',
+  doctor: 'Checks your Claude Code install',
+  effort: 'How hard it thinks',
+  hooks: 'Opens the settings file hooks go in',
+  login: 'Signs Claude Code in, in your browser',
+  memory: 'Opens the project’s CLAUDE.md',
+  model: 'Switches its model',
+  permissions: 'What it may do without asking',
+  plan: 'Plans first, before changing anything',
+  rename: 'Names this session',
+  upgrade: 'Updates Claude Code',
+  usage: 'How much of your limits you’ve used',
+};
+
 function commandNames(q = '', cwd = '', home = os.homedir()) {
   q = String(q || '').toLowerCase();
   const mine = yours(cwd, home);
   const about = (f) => { try { const m = /^---\r?\n[\s\S]*?^description:\s*(.+)$/m.exec(fs.readFileSync(f, 'utf8').slice(0, 2000)); return m ? m[1].trim().replace(/^["']|["']$/g, '') : ''; } catch { return ''; } };
   const out = [...mine.keys()].sort().filter((n) => !BUILT_IN.has(n) && n.toLowerCase().startsWith(q)).slice(0, 50).map((name) => ({ name, mine: true, about: about(mine.get(name)) }));
-  for (const name of [...BUILT_IN].sort()) out.push({ name, mine: false });
+  for (const name of [...BUILT_IN].sort()) out.push(Object.assign({ name, mine: false }, ABOUT[name] ? { about: ABOUT[name] } : {}));
   return out.filter((c) => c.name.toLowerCase().startsWith(q));
 }
 
