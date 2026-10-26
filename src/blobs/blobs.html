@@ -6,31 +6,33 @@
 <title>Blobs</title>
 <style>
 	@font-face { font-family: "Nunito"; src: url(../renderer/fonts/Nunito.woff2) format("woff2"); font-weight: 200 1000; }
-	/* Every session and its blob, at a glance: a small flat bubble in the
-	   talk box's style (docs/DESIGN.md): white, ink #1b2440, soft greys for
-	   what you can touch, Nunito, round everything, no outlines or shadows.
-	   Each row's eye is a little blob face in its colour: eyes open, it's
-	   out on the screen; asleep, it's hidden. */
+	/* Every session and its blob, at a glance: a flat bubble in the talk
+	   box's style (docs/DESIGN.md): white, ink #1b2440, soft greys for what
+	   you can touch, Nunito, round everything, no outlines or shadows. A
+	   table: name (helpers tucked in under their session), how it is, what
+	   it's on, and an eye: a little blob face in its colour, eyes open while
+	   it's out on the screen, asleep while it's hidden. */
 	:root {
 		--paper: #fff; --ink: #1b2440; --dim: #5b6270; --faint: #8d94a1; --soft: #f1f2f6; --softer: #f7f8fa; --hover: #e7e9ef;
-		--waitbg: #fde8ec; --waitfg: #b4233f; --asleep: #dfe2ea;
+		--waitbg: #fde8ec; --waitfg: #b4233f; --asleep: #dfe2ea; --lit: #1b2440; --onlit: #fff;
 		--ui: "Nunito", system-ui, sans-serif;
+		--cols: minmax(0, 1.15fr) 132px minmax(0, 1.5fr) 52px;
 	}
 	/* Dark, as the talk box is when its moon is on. */
 	body.dark {
 		--paper: #1e2230; --ink: #eef0f7; --dim: #a6adbd; --faint: #7f8798; --soft: #2a2f3f; --softer: #252a38; --hover: #343a4c;
-		--waitbg: #4a2530; --waitfg: #ff9fb3; --asleep: #3b4154;
+		--waitbg: #4a2530; --waitfg: #ff9fb3; --asleep: #3b4154; --lit: #eef0f7; --onlit: #1e2230;
 		color-scheme: dark;
 	}
 	* { box-sizing: border-box; }
 	html, body { margin: 0; background: transparent; font: 600 14px/1.4 var(--ui); color: var(--ink); overflow: hidden; user-select: none; }
-	button, select { font-family: var(--ui); }
+	button, input { font-family: var(--ui); }
 	[hidden] { display: none !important; }
 	.card { margin: 8px; background: var(--paper); border-radius: 26px; display: flex; flex-direction: column; max-height: calc(100vh - 16px); overflow: hidden; }
 	.card.pop { animation: pop .24s cubic-bezier(.3, 1.5, .5, 1); }
 	@keyframes pop { from { transform: scale(.8); opacity: 0; } to { transform: none; opacity: 1; } }
 
-	header { display: flex; align-items: center; gap: 10px; padding: 16px 14px 8px 22px; -webkit-app-region: drag; }
+	header { display: flex; align-items: center; gap: 10px; padding: 16px 14px 6px 22px; -webkit-app-region: drag; }
 	header .titles { flex: 1; min-width: 0; }
 	h1 { margin: 0; font: 800 20px/1.2 var(--ui); }
 	.sub { color: var(--dim); font: 600 13px/1.3 var(--ui); }
@@ -38,44 +40,80 @@
 	.round:hover { background: var(--hover); color: var(--ink); }
 	.round svg { width: 12px; height: 12px; }
 
-	#rows { list-style: none; margin: 0; padding: 4px 10px; overflow-y: auto; flex: 1 1 auto; min-height: 0; scrollbar-width: thin; }
-	#rows li { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; border-radius: 18px; }
-	#rows li + li { margin-top: 2px; }
-	#rows li:hover { background: var(--softer); }
+	/* The table. */
+	.cols, .row { display: grid; grid-template-columns: var(--cols); gap: 12px; align-items: center; }
+	.cols { padding: 6px 26px 4px 22px; font: 800 11.5px var(--ui); color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+	.cols span:last-child { text-align: center; }
+	#rows { list-style: none; margin: 0; padding: 0 10px 4px; overflow-y: auto; flex: 1 1 auto; min-height: 0; scrollbar-width: thin; }
+	.row { padding: 4px 6px 4px 12px; border-radius: 16px; min-height: 44px; }
+	.row:hover { background: var(--softer); }
+	.row.kid { min-height: 36px; }
+	.cell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+	.fold { flex: none; width: 20px; height: 20px; border: 0; padding: 0; border-radius: 50%; background: none; color: var(--faint); cursor: pointer; display: grid; place-items: center; }
+	.fold:hover { background: var(--hover); color: var(--ink); }
+	.fold svg { width: 10px; height: 10px; transition: transform .15s; }
+	.fold[aria-expanded="false"] svg { transform: rotate(-90deg); }
+	.fold.none { visibility: hidden; }
 	.dot { flex: none; width: 11px; height: 11px; border-radius: 50%; background: var(--c); }
-	.who { flex: 1; min-width: 0; border: 0; background: none; padding: 0; text-align: left; color: inherit; cursor: pointer; }
+	.kid .name { padding-left: 30px; }
+	.kid .dot { width: 8px; height: 8px; opacity: .75; }
+	.who { flex: 1; min-width: 0; border: 0; background: none; padding: 0; text-align: left; color: inherit; cursor: pointer; font: 800 15px/1.3 var(--ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.who:disabled { cursor: default; }
-	.who b { display: block; font: 800 15px/1.3 var(--ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.who:not(:disabled):hover b { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; text-decoration-color: var(--asleep); }
-	.who small { display: block; font: 600 12.5px/1.3 var(--ui); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.who small .wants { color: var(--waitfg); font-weight: 800; }
-	li.off .who b { color: var(--faint); }
-	li.off .dot { opacity: .45; }
+	.who:not(:disabled):hover { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; text-decoration-color: var(--asleep); }
+	.kid .who { font: 700 13.5px/1.3 var(--ui); cursor: default; }
+	.kid .who:hover { text-decoration: none; }
+	.status { font: 700 13px/1.3 var(--ui); color: var(--dim); }
+	.status small { display: block; font: 600 11.5px/1.25 var(--ui); color: var(--faint); overflow: hidden; text-overflow: ellipsis; }
+	.status.wants { color: var(--waitfg); font-weight: 800; }
+	.doing { color: var(--dim); font: 600 13px/1.3 var(--ui); }
+	.row.off .who, .row.off .doing { color: var(--faint); }
+	.row.off .dot { opacity: .4; }
 
 	/* The eye: a little blob face, in its colour while it's out. */
-	.eye { flex: none; width: 50px; height: 36px; border: 0; padding: 0; cursor: pointer; background: var(--c); border-radius: 50% 50% 44% 44% / 58% 58% 42% 42%; display: grid; place-items: center; transition: background .2s; }
-	.eye svg { width: 30px; height: 16px; overflow: visible; }
+	.eye { justify-self: center; flex: none; width: 46px; height: 32px; border: 0; padding: 0; cursor: pointer; background: var(--c); border-radius: 50% 50% 44% 44% / 58% 58% 42% 42%; display: grid; place-items: center; transition: background .2s, opacity .2s; }
+	.kid .eye { width: 36px; height: 25px; }
+	.eye svg { width: 26px; height: 14px; overflow: visible; }
+	.kid .eye svg { width: 20px; height: 11px; }
 	.eye .open { fill: #1b2440; }
 	.eye .shut { fill: none; stroke: var(--faint); stroke-width: 2.2; stroke-linecap: round; display: none; }
 	.eye[aria-pressed="false"] { background: var(--asleep); }
 	.eye[aria-pressed="false"] .open { display: none; }
 	.eye[aria-pressed="false"] .shut { display: inline; }
+	/* (Off with its session: what it'll be when she's back, dimmed.) */
+	.eye.byparent { opacity: .38; }
+	.eye.byparent .open { fill: #1b2440; }
 	.eye:hover { filter: brightness(1.04); }
-	.eye.boing { animation: boing .32s cubic-bezier(.3, 1.6, .5, 1); }
-	@keyframes boing { 30% { transform: scale(1.12, .84); } 65% { transform: scale(.96, 1.06); } }
-	.empty { color: var(--dim); padding: 6px 12px 10px; }
+	.empty { color: var(--dim); padding: 10px 14px 12px; }
 
 	footer { padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
-	.max { display: flex; align-items: center; gap: 10px; padding: 0 4px 0 6px; }
-	.max label { flex: 1; font: 700 14px var(--ui); }
-	select { border: 0; border-radius: 999px; background: var(--soft); color: var(--ink); font: 700 14px var(--ui); height: 32px; padding: 0 12px; cursor: pointer; }
-	select:hover { background: var(--hover); }
-	.hint { color: var(--dim); font: 600 12.5px/1.35 var(--ui); padding: 0 6px; }
-	.note { background: var(--waitbg); color: var(--waitfg); border-radius: 16px; padding: 8px 12px; font: 700 13px/1.35 var(--ui); }
-	.quick { display: flex; gap: 8px; }
-	.tbtn { flex: 1; height: 34px; border: 0; border-radius: 999px; padding: 0 12px; background: var(--soft); color: var(--ink); font: 700 14px var(--ui); cursor: pointer; white-space: nowrap; }
+	.bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+	.bar label { font: 800 14px var(--ui); margin: 0 4px 0 6px; }
+	.stepper { display: inline-flex; align-items: center; gap: 2px; background: var(--soft); border-radius: 999px; padding: 2px; }
+	.stepper button { width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: var(--ink); font: 800 18px/1 var(--ui); cursor: pointer; padding: 0; }
+	.stepper button:hover:not(:disabled) { background: var(--hover); }
+	.stepper button:disabled { color: var(--faint); cursor: default; }
+	.stepper input { width: 42px; height: 30px; border: 0; border-radius: 999px; background: var(--paper); color: var(--ink); font: 800 15px var(--ui); text-align: center; padding: 0; outline: none; }
+	.stepper input::placeholder { color: var(--faint); font-size: 18px; }
+	.stepper input:focus { box-shadow: none; background: var(--paper); }
+	.nolimit { height: 30px; border: 0; border-radius: 999px; padding: 0 12px; background: var(--soft); color: var(--dim); font: 700 13px var(--ui); cursor: pointer; }
+	.nolimit:hover { background: var(--hover); color: var(--ink); }
+	.nolimit.on { background: var(--lit); color: var(--onlit); cursor: default; }
+	.spacer { flex: 1; }
+	.tbtn { height: 32px; border: 0; border-radius: 999px; padding: 0 14px; background: var(--soft); color: var(--ink); font: 700 14px var(--ui); cursor: pointer; white-space: nowrap; }
 	.tbtn:hover { background: var(--hover); }
 	.tbtn:disabled { color: var(--faint); background: var(--softer); cursor: default; }
+	.hint { color: var(--dim); font: 600 12.5px/1.35 var(--ui); padding: 0 6px; }
+	.note { background: var(--waitbg); color: var(--waitfg); border-radius: 16px; padding: 8px 12px; font: 700 13px/1.35 var(--ui); }
+
+	/* Its right edge, bottom edge and corner resize it (the corner with a
+	   few faint dots to say so). */
+	.grip { position: fixed; z-index: 10; }
+	.grip[data-edge="e"] { right: 0; top: 30px; bottom: 30px; width: 12px; cursor: ew-resize; }
+	.grip[data-edge="s"] { bottom: 0; left: 30px; right: 30px; height: 12px; cursor: ns-resize; }
+	.grip[data-edge="se"] { right: 0; bottom: 0; width: 30px; height: 30px; cursor: nwse-resize; }
+	.grip svg { position: absolute; right: 17px; bottom: 17px; width: 9px; height: 9px; fill: var(--asleep); }
+	.grip[data-edge="se"]:hover svg { fill: var(--faint); }
 </style>
 </head>
 <body>
@@ -87,20 +125,26 @@
 			</div>
 			<button class="round" id="close" type="button" title="Close (Esc)" aria-label="Close"><svg viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg></button>
 		</header>
+		<div class="cols" aria-hidden="true"><span>Name</span><span>Status</span><span>Working on</span><span>Shown</span></div>
 		<ul id="rows"></ul>
 		<footer>
-			<div class="max">
+			<div class="bar">
 				<label for="max">Max blobs</label>
-				<select id="max" title="At most this many blobs on the screen; the least busy ones over it are put away"></select>
-			</div>
-			<div class="hint" id="maxHint" hidden>Blobs that need you always show, even over the max.</div>
-			<div class="note" id="note" hidden></div>
-			<div class="quick">
+				<span class="stepper">
+					<button id="less" type="button" title="One fewer" aria-label="One fewer">−</button>
+					<input id="max" type="text" inputmode="numeric" maxlength="2" placeholder="∞" aria-label="Max blobs (empty: no limit)" title="At most this many blobs on the screen (empty: no limit)">
+					<button id="more" type="button" title="One more" aria-label="One more">+</button>
+				</span>
+				<button class="nolimit" id="noLimit" type="button" title="No limit: every blob shows">No limit</button>
+				<span class="spacer"></span>
 				<button class="tbtn" id="showAll" type="button">Show all</button>
 				<button class="tbtn" id="hideIdle" type="button" title="Hides the ones that are done or idle; their sessions carry on">Hide all idle</button>
 			</div>
+			<div class="hint" id="maxHint" hidden>Blobs that need you always show, even over the max.</div>
+			<div class="note" id="note" hidden></div>
 		</footer>
 	</div>
+	<div class="grips"><i class="grip" data-edge="e"></i><i class="grip" data-edge="s"></i><i class="grip" data-edge="se"><svg viewBox="0 0 9 9"><circle cx="7.5" cy="1.5" r="1.3"/><circle cx="7.5" cy="7.5" r="1.3"/><circle cx="1.5" cy="7.5" r="1.3"/><circle cx="4.5" cy="4.5" r="1.3"/></svg></i></div>
 	<script src="blobs.js"></script>
 </body>
 </html>
