@@ -618,6 +618,25 @@
       p.happy = happy;
       // Blinks now and then.
       if (time > p.nextBlink) p.nextBlink = time + 1.5 + Math.random() * 4;
+      // It feels for its slime: rushes over when it's seeing stars, and
+      // bounces along when it's happy.
+      if (m && CFG.petEmpathy > 0 && onFloor && !p.dying) {
+        if (time < m.dizzyUntil && !p.rushed) {
+          p.rushed = true;
+          p.vx = Math.sign(dx) * Math.min(700, Math.abs(dx) * 3 + 150) * CFG.petEmpathy;
+          p.vy = -420;
+          p.va = Math.sign(dx) * 3;
+          p.nextHop = time + 0.8;
+          continue;
+        }
+        if (time >= m.dizzyUntil) p.rushed = false;
+        if (happy && time < m.happyUntil && time > (p.nextCheer || 0)) {
+          p.nextCheer = time + 0.5 + Math.random() * 0.5;
+          p.vy = -260 * CFG.petEmpathy;
+          p.va = (Math.random() - 0.5) * 4;
+          continue;
+        }
+      }
       if (!onFloor || time < p.nextHop || p.dying) continue;
       // Follow its slime: hop after it, at random moments.
       if (m && !happy) {
@@ -2365,6 +2384,7 @@
       setWorld: (w) => listeners.world.forEach((f) => f(w)),
       setLedges: (l) => listeners.ledges.forEach((f) => f(l)),
       buddies: () => buddies,
+      pets: () => pets,
     };
     return {
       setHitAreas() {},
