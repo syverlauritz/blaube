@@ -860,6 +860,42 @@
     ctx.restore();
   }
 
+  // A heart breaking (a helper that couldn't get to its mum): it pops in,
+  // shivers as a zigzag crack opens down the middle, then the two halves
+  // tip apart and fall away, fading. t: seconds since it came (1.6 s in all).
+  function drawBrokenHeart(ctx, x, y, s, t) {
+    const k = Math.min(1, t / 0.25) - 1;
+    const pop = 1 + 2.7 * k * k * k + 1.7 * k * k;
+    const crack = Math.min(1, Math.max(0, (t - 0.3) / 0.2)), u = Math.max(0, t - 0.55);
+    const shiver = t > 0.3 && t < 0.55 ? Math.sin(t * 90) * s * 0.04 : 0;
+    const zig = [[0, -0.35], [-0.2, -0.05], [0.16, 0.22], [-0.12, 0.52], [0, 0.9]];
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, (1.5 - t) / 0.6));
+    ctx.translate(x + shiver, y);
+    ctx.scale(pop, pop);
+    ctx.fillStyle = '#ff4d6d';
+    for (const side of [-1, 1]) {
+      ctx.save();
+      ctx.translate(side * (s * 0.07 * crack + s * 1.5 * u), s * 1.8 * u * u);
+      ctx.rotate(side * 0.7 * u);
+      ctx.beginPath();
+      ctx.moveTo(0, -s * 2);
+      for (const [px, py] of zig) ctx.lineTo(px * s, py * s);
+      ctx.lineTo(0, s * 2);
+      ctx.lineTo(side * s * 2, s * 2);
+      ctx.lineTo(side * s * 2, -s * 2);
+      ctx.closePath();
+      ctx.clip();
+      ctx.beginPath();
+      ctx.moveTo(0, s * 0.9);
+      ctx.bezierCurveTo(-s * 1.4, -s * 0.1, -s * 0.6, -s * 1.1, 0, -s * 0.35);
+      ctx.bezierCurveTo(s * 0.6, -s * 1.1, s * 1.4, -s * 0.1, 0, s * 0.9);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
   // A red flush around the face, like a blush spreading out from it; amount
   // 0..1 makes it stronger and a little wider.
   // s: the flush settings (see the tuning panel); turn: how far the face
@@ -1220,5 +1256,5 @@
     ctx.closePath();
   }
 
-  root.BlaubeDraw = { setFont, setCrowd, drawHeart, drawNote, drawShadow, drawBody, vary, drawFace, drawGlasses, drawDots, drawThinking, drawDream, drawZzz, drawFlush, drawSweat, drawPet, drawExclaim, drawLabel, drawBubble, drawThought, STATE_COLORS };
+  root.BlaubeDraw = { setFont, setCrowd, drawHeart, drawBrokenHeart, drawNote, drawShadow, drawBody, vary, drawFace, drawGlasses, drawDots, drawThinking, drawDream, drawZzz, drawFlush, drawSweat, drawPet, drawExclaim, drawLabel, drawBubble, drawThought, STATE_COLORS };
 })(globalThis);

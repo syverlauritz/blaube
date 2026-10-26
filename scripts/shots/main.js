@@ -268,6 +268,18 @@ const SCENES = {
 		size: [1000, 1000],
 		motion: { frames: 24, every: 100, drop: 0, still: true, hopAt: [], flick: true },
 	},
+	// A helper up on a window it won't jump off, its mother far off below:
+	// it gives up (a sigh, a heart cracking and its halves falling away, a
+	// slump), and sits sad. (Its tries are skipped: it gives up at once.)
+	giveUp: {
+		sessions: [session('gu', 'blaube', 'working', {
+			agents: [{ id: 'h1', type: 'general-purpose', description: 'Fix the hover bubble', state: 'working', activity: 'thinking' }],
+		})],
+		config: { size: 1.2 },
+		wait: 4000,
+		size: [1400, 560],
+		motion: { frames: 24, every: 100, drop: 0, still: true, hopAt: [], strand: true, jsAt: { 2: 'giveUp' } },
+	},
 	// A helper finishes and heads home: happy eyes and a heart on the way.
 	helperHome: {
 		sessions: [session('hh', 'blaube', 'working', {
@@ -951,6 +963,11 @@ async function shootMotion(win, name, m) {
 		await fakeWindow(250, 330);
 		await js(`[...__blaube.buddies.values()].find((b) => b.kind === 'mother').body.teleport(450, 200)`);
 	}
+	if (m.strand) {
+		await fakeWindow(120, 300);
+		await js(`(() => { const l = [...__blaube.buddies.values()]; l.find((b) => b.kind === 'mother').body.teleport(1300, 420); l.find((b) => b.kind === 'child').body.teleport(200, 220); })()`);
+		await sleep(1500);
+	}
 	if (m.ledge) {
 		await fakeWindow(120, 300);
 		await js(`(() => { const l = [...__blaube.buddies.values()]; l[0].body.teleport(300, 120); l[1].body.teleport(800, 420); })()`);
@@ -1009,6 +1026,7 @@ async function shootMotion(win, name, m) {
 			if (m.commandAt && m.commandAt[i]) win.webContents.send('fire', 'command', m.commandAt[i]);
 			// Two slimes stood apart, and the left one going as a ghost.
 			if (m.jsAt && m.jsAt[i] === 'teleport') await js(`(() => { const l = [...__blaube.buddies.values()]; l[0].body.teleport(220, 300); l[1].body.teleport(760, 300); })()`);
+			if (m.jsAt && m.jsAt[i] === 'giveUp') await js(`(() => { const k = [...__blaube.buddies.values()].find((b) => b.kind === 'child'); k.reach = { best: 0, since: -1e9, hops: 9 }; })()`);
 			if (m.jsAt && m.jsAt[i] === 'ghost') await js(`(() => { const l = [...__blaube.buddies.values()]; __blaube.ghost(l[0], l[1]); })()`);
 			if (m.mouseAt && m.mouseAt[i]) {
 				// The cursor, so many radii from the slime's middle.
