@@ -1209,7 +1209,7 @@
       // Pressure alone tops out early, so a full one also holds its round
       // shape harder and its skin goes taut: it barely squashes or sags.
       const firm = b.fill * b.fill * CFG.contextFirm;
-      body.o.shapeStiffness = CFG.shapeStiffness + 0.08 * firm;
+      body.o.shapeStiffness = CFG.shapeStiffness + 0.08 * firm + 0.12 * (b.shapeAmt || 0); // (holding a shape takes some effort; see shapeShift)
       body.o.edgeStiffness = CFG.edgeStiffness + 0.4 * firm;
       liven(b);
       const pre = body.velocity(DT);
@@ -3847,6 +3847,30 @@
     b.nextSkate = time + (200 + Math.random() * 400) / CFG.skating;
     skateNow(b);
   }
+  // Now and then a bored slime that's in a good mood squeezes itself into a
+  // heart for a moment ("ta-da!"), holds it, and lets go back into a blob.
+  function shapeShift(b) {
+    const g = b.shape, body = b.body;
+    if (g) {
+      const t = time - g.at, k = Math.min(1, CFG.shapes);
+      const amt = body.grab || b.dying ? 0 : Math.min(1, t / 0.6) * Math.max(0, Math.min(1, (3.2 - t) / 0.7));
+      body.morph(amt * k * 0.9);
+      b.shapeAmt = amt * k;
+      if (amt > 0 && body.onFloor()) {
+        // Balancing on its point: it keeps itself upright and in place.
+        body.impulse(-body.velocity(DT).x * 0.3, 0, DT);
+        body.spin((-body.angle * 4 - body.angularVelocity(DT)) * 0.3 * amt, DT);
+      }
+      if (t > 0.7 && !g.said) { g.said = true; quip(b, 'ta-da!', 1.2); b.happyUntil = time + 2; hearts.push({ x: body.centroid().x, y: body.bbox().minY - 8, vx: 0, born: time, size: 12 }); }
+      if (amt <= 0 && t > 0.6) { body.morph(0); b.shape = null; b.shapeAmt = 0; }
+      b.nextHop = time + 1;
+      return;
+    }
+    if (CFG.shapes <= 0 || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || b.merging || b.dying || !body.onFloor() || b.pendingHop || b.stackedBy || b.tower || b.frog || b.tag || b.parade || b.trick || b.keepy || b.roll || b.measure || b.tot || b.skate || b.comforting || (b.mood || 0) < 0 || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
+    if (time < (b.nextShape ?? (b.nextShape = time + (200 + Math.random() * 500) / CFG.shapes))) return;
+    b.nextShape = time + (500 + Math.random() * 800) / CFG.shapes;
+    b.shape = { at: time };
+  }
   function skateNow(b) {
     const box = b.body.bbox(), r = b.body.o.radius;
     const dir = W - box.maxX > box.minX ? 1 : -1;
@@ -4280,7 +4304,7 @@
     at(29, () => { const b = big()[1] || big()[0]; if (b && !b.blow) b.blow = { at: time + 0.7, side: 1 }; });
     at(31, () => addFlutter());
     at(17, () => { const b = buddies.get(HOME) || big()[0]; if (b) b.say([{ text: 'While you were away (demo):' }, ...summaryLines()], 6, false, false); });
-    // Part two: a trampoline, a burp, a dream, a somersault, a tumble, leapfrog, a tower, a roly-poly.
+    // Part two: a trampoline, a burp, a dream, a somersault, a tumble, leapfrog, a tower, a roly-poly, a heart.
     at(34, () => {
       const [b, o] = big();
       if (!b || !o || b.body.grab || o.body.grab) return;
@@ -4314,7 +4338,8 @@
       setTimeout(() => { if (!b.dying && !o.dying && !b.tower && !o.tower) towerNow(b, o); }, 900);
     });
     at(73, () => { const b = big()[1] || big()[0]; if (b && !b.roll && !b.tower) rollNow(b); });
-    at(77, () => { seasonOverride = was; showingOff = false; });
+    at(77, () => { const b = big()[0]; if (b && !b.shape) b.shape = { at: time }; });
+    at(81, () => { seasonOverride = was; showingOff = false; });
   }
   let showingOff = false;
 
@@ -4407,6 +4432,7 @@
     tumble(b);
     roll(b);
     skate(b);
+    shapeShift(b);
     if (b.bounceAt && time > b.bounceAt) { // (sprung off a trampoline, see stackPlay)
       b.bounceAt = 0;
       if (!b.body.grab) { const v = b.body.velocity(DT); b.body.impulse((Math.random() - 0.5) * 120 - v.x * 0.5, -b.bounceV - v.y, DT); }

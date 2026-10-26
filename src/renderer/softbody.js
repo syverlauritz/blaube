@@ -225,6 +225,39 @@
       this.restArea = polyArea(this.n, r) * this.o.fullness;
     }
 
+    // Reshapes the rest shape partway (t from 0 to 1) from its circle toward
+    // a heart. Shape matching then pulls the skin over toward it, pressure
+    // keeping it plump; t = 0 is a plain circle again.
+    morph(t) {
+      const n = this.n, r = this.o.radius;
+      if (!this.heart || this.heart.r !== r) {
+        // Points on the classic heart curve, one per vertex in the same order
+        // (from the top, clockwise on screen), centred and scaled to keep
+        // about the same area.
+        const hx = new Float64Array(n), hy = new Float64Array(n);
+        let mx = 0, my = 0;
+        for (let i = 0; i < n; i++) {
+          const u = (i / n) * Math.PI * 2 + Math.PI / 2;
+          hx[i] = 16 * Math.pow(Math.sin(u), 3);
+          hy[i] = -(13 * Math.cos(u) - 5 * Math.cos(2 * u) - 2 * Math.cos(3 * u) - Math.cos(4 * u));
+          mx += hx[i] / n; my += hy[i] / n;
+        }
+        let area = 0, perim = 0;
+        for (let i = 0; i < n; i++) { hx[i] -= mx; hy[i] -= my; }
+        for (let i = 0; i < n; i++) { const j = (i + 1) % n; area += hx[i] * hy[j] - hx[j] * hy[i]; perim += Math.hypot(hx[j] - hx[i], hy[j] - hy[i]); }
+        const k = Math.sqrt(polyArea(n, r) / Math.abs(area / 2));
+        for (let i = 0; i < n; i++) { hx[i] *= k; hy[i] *= k; }
+        this.heart = { r, hx, hy, edge: (perim * k) / n };
+      }
+      const h = this.heart, circle = 2 * r * Math.sin(Math.PI / n);
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        this.rx[i] = Math.cos(a) * r * (1 - t) + h.hx[i] * t;
+        this.ry[i] = Math.sin(a) * r * (1 - t) + h.hy[i] * t;
+      }
+      this.restEdge = circle * (1 - t) + h.edge * t;
+    }
+
     // Grabs the body at (x, y). The grabbed spot is remembered in the body's
     // own frame, and a damped spring pulls it toward the cursor: the force is
     // spread over the skin near that spot, so the rest dangles and swings.

@@ -204,3 +204,18 @@ test('spin turns the body about its middle', () => {
   assert.ok(turned > 0.5, 'turned ' + turned);
   assert.ok([...b.px].every(Number.isFinite));
 });
+
+test('morph reshapes the rest shape into a heart and back to a circle', () => {
+  const b = new SoftBody(500, 300), r = b.o.radius, n = b.n;
+  const rx = [...b.rx], ry = [...b.ry], edge = b.restEdge;
+  b.morph(1);
+  // The top dips in (the vertex at the top sits lower than its neighbours a
+  // quarter-turn away) and the bottom comes to a point.
+  const top = Math.round(n * 0.75), bottom = Math.round(n * 0.25);
+  assert.ok(b.ry[top] > b.ry[(top + 3) % n], 'a dip at the top');
+  assert.ok(b.ry[bottom] > r, 'a point at the bottom');
+  assert.ok(b.restEdge > edge);
+  b.morph(0);
+  assert.ok(b.rx.every((v, i) => Math.abs(v - rx[i]) < 1e-9) && b.ry.every((v, i) => Math.abs(v - ry[i]) < 1e-9));
+  assert.ok(Math.abs(b.restEdge - edge) < 1e-9);
+});
