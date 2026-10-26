@@ -886,9 +886,10 @@
           // that is by then.
           for (let i = 0; i < 7; i++) hearts.push({ from: b, dx: (Math.random() - 0.5) * 1.4, dy: 10 + Math.random() * 30, vx: (Math.random() - 0.5) * 120, rise: 220 + Math.random() * 80, born: time + 0.3 + i * 0.08, size: 9 + Math.random() * 6 });
           b.hop((Math.random() - 0.5) * 100, -CFG.doneHopStrength * 1.5);
+          if (CFG.doneStretch > 0) b.stretchAt = time + 1.8; // ...then a good long stretch
         } else if (wantsAttention(b)) b.hop((Math.random() - 0.5) * 200, -CFG.doneHopStrength * 1.1);
         b.happyUntil = time + 2.5;
-        b.nextHop = time + CFG.doneHopEvery;
+        b.nextHop = time + CFG.doneHopEvery + (b.stretchAt ? 3 : 0); // (room for the stretch)
         cheerOn(b, took > 300);
         break;
       }
@@ -1288,6 +1289,14 @@
     if (!grounded || b.merging || b.splitting || b.pendingHop || drag) return;
     // Talking or singing: the body bobs with its voice, rising a little on
     // each open syllable and settling between them.
+    // A long turn done: up on tiptoe, a yawn, then a sway side to side.
+    if (b.stretchAt && time > b.stretchAt && (b.stretchYawned || Math.hypot(body.velocity(DT).x, body.velocity(DT).y) < 60)) {
+      if (!b.stretchYawned) { b.stretchYawned = true; b.stretchAt = time; b.nextHop = Math.max(b.nextHop || 0, time + 2.2); yawn(b, 1.3, 0); } // (from when it's landed)
+      const t = time - b.stretchAt, k = CFG.doneStretch;
+      if (t < 0.8) body.squashTop(-k * r * 0.6 * 60 * DT * Math.sin(t / 0.8 * Math.PI), DT);
+      else if (t < 1.9) body.lean(Math.sin((t - 0.8) / 1.1 * Math.PI * 2) * k * r * 12 * DT, DT);
+      else { b.stretchAt = 0; b.stretchYawned = false; }
+    }
     if (b.talkOpen && CFG.voiceBob > 0) body.squashTop(-(b.talkOpen - 0.25) * CFG.voiceBob * r * 30 * DT, DT);
     const dx = mouse.x - c.x, dy = mouse.y - c.y, d = Math.hypot(dx, dy);
     // A cursor whizzing past makes it flinch: it ducks and leans away.
