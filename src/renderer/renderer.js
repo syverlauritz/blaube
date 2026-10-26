@@ -1547,30 +1547,18 @@
       if (mouse.y - top > r * 0.1) body.squashTop(-CFG.headPat * r * 0.6 * 60 * DT, DT);
       if (time - b.patSince > 1.5 && !b.patHeart) { b.patHeart = true; spawnHeart({ x: c.x, y: top - 6, vx: 0, born: time, size: 10 }); }
     } else { b.patSince = 0; b.patHeart = false; }
-    // The cursor resting right on its face: it goes shy, blushing and looking
-    // away, peeking back now and then; keep it up and it giggles and squirms.
+    // The cursor resting right on its face: it looks right at you; keep it
+    // up and it giggles and squirms.
     const staring = CFG.shy > 0 && !drag && !b.patted && body.contains(mouse.x, mouse.y) && performance.now() / 1000 - mouse.lastMove > 0.8;
     b.stare = staring ? (b.stare || 0) + DT : Math.max(0, (b.stare || 0) - DT * 2);
-    // (Thanked, it goes bashful the same way for a moment.)
-    // Only a real cause (thanked, hugged) warms its cheeks, and that fades
-    // from a set start, never adding up; the cursor on its face makes it
-    // look away, not blush (cheeks stay as they are while hovered).
-    b.blush = time < (b.blushUntil || 0) ? Math.min(0.9, (b.blushUntil - time) / 1.5) : 0;
-    b.shy = Math.max(ramp(b.stare, 0.6, 2.2) * Math.min(1, CFG.shy), b.blush);
-    if (b.shy > 0.3) {
-      if (time > (b.nextPeek || 0)) {
-        b.peekBack = !b.peekBack;
-        b.nextPeek = time + (b.peekBack ? 0.35 : 0.9 + Math.random() * 0.8);
-        if (!b.peekBack) b.shySide = Math.random() < 0.5 ? -1 : 1;
-      }
-      b.glanceAt = b.peekBack ? 'you' : { spot: { x: c.x + (b.shySide || 1) * r * 3, y: c.y + r * 0.8 } };
-      b.glanceUntil = time + 0.1;
-      if (b.stare > 4.5) {
-        b.stare = 1.6;
-        quip(b, 'hehe', 1);
-        b.squirmUntil = time + 0.8;
-      }
+    if (b.stare > 4.5 / Math.max(0.25, Math.min(1, CFG.shy))) {
+      b.stare = 1.6;
+      quip(b, 'hehe', 1);
+      b.squirmUntil = time + 0.8;
     }
+    // Only a real cause (thanked, hugged) warms its cheeks, and that fades
+    // from a set start, never adding up.
+    b.blush = time < (b.blushUntil || 0) ? Math.min(0.9, (b.blushUntil - time) / 1.5) : 0;
     if (time < (b.squirmUntil || 0)) body.lean(Math.sin(time * 28) * r * 30 * DT, DT);
     // Something held right over it: it hunkers down a little, bracing.
     if (heldOver(b)) body.squashTop(CFG.spectate * r * 0.5 * 60 * DT, DT);
@@ -5115,7 +5103,6 @@
     else if (b.teeter && !body.grab) { expression = 'worried'; mouth = 'o'; } // (on the brink)
     else if (time < (b.sheepishUntil || 0)) { expression = 'worried'; mouth = 'wobble'; } // (told off)
     else if (time < (b.squirmUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
-    else if ((b.shy || 0) > 0.3) { expression = 'normal'; mouth = 'smile'; }
     else if (time < (b.wantsPetsUntil || 0) && time > (b.pettedUntil || 0)) { expression = 'normal'; mouth = 'smile'; }
     else if (time - (b.sneezedAt ?? -9) < 0.5) { expression = 'happy'; mouth = 'flat'; }
     else if (b.merging && b.kind === 'child') { expression = 'happy'; mouth = 'smile'; }
@@ -5153,11 +5140,11 @@
       b.furrowUntil = time + 0.8 + Math.random() * 1.2;
       b.nextFurrow = time + 6 + Math.random() * 10;
     }
-    // Hovered while it works: it looks up at you, eyes opening wide (and
-    // its brows calm) and following the cursor, then goes back to work when
-    // you move on. Eased both ways (see drawFace's peek). Only its everyday
-    // working face does: dizzy, struggling, shy, talking and so on win.
-    const peeking = calmWork && b === hovered && !body.grab;
+    // Cursor over or near it while it works: it looks up at you, eyes opening
+    // wide (and its brows calm) and following the cursor, then goes back to
+    // work when you move on. Eased both ways (see drawFace's peek). Only its
+    // everyday working face does: dizzy, struggling, talking and so on win.
+    const peeking = calmWork && !body.grab && (b === hovered || Math.hypot(mouse.x - body.centroid().x, mouse.y - body.centroid().y) < body.o.radius * 2.2);
     b.peek = (b.peek || 0) + ((peeking ? 1 : 0) - (b.peek || 0)) * ease(0.05);
     if (!peeking && b.peek < 0.01) b.peek = 0;
     const moving = expression === 'concentrate' && time < b.furrowUntil && !peeking;

@@ -369,6 +369,20 @@ const SCENES = {
 		size: [700, 460],
 		motion: { frames: 32, every: 90, drop: 0, still: true, hopAt: [], mouseAt: { 0: [3, -3], 3: [-0.6, 0.1], 9: [0.6, 0.1], 14: [0, -0.45], 19: [3, -3] } },
 	},
+	// The cursor resting on a blob's face, at its left, middle and right: it
+	// looks right at it (idle; the second is a busy one).
+	faceLook: {
+		sessions: [session('lk', 'blaube', 'idle')],
+		wait: 3000,
+		size: [700, 460],
+		motion: { frames: 30, every: 90, drop: 0, still: true, hopAt: [], mouseAt: { 0: [-0.5, 0.1], 10: [0, 0.1], 20: [0.5, 0.1] } },
+	},
+	faceLookWork: {
+		sessions: [session('lk', 'blaube', 'working', { look: 'sprout' })],
+		wait: 3000,
+		size: [700, 460],
+		motion: { frames: 30, every: 90, drop: 0, still: true, hopAt: [], mouseAt: { 0: [-0.5, 0.1], 10: [0, 0.1], 20: [0.5, 0.1] } },
+	},
 	// Halloween: one pulls a sheet over itself, creeps up on the other,
 	// boooo!, and off comes the sheet.
 	ghost: {
