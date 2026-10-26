@@ -2107,6 +2107,34 @@
 
   // Late at night (11 pm to 6 am, your clock) slimes get sleepy: they doze
   // off sooner when left alone and yawn more. 0..1, deepest around 3 am.
+  // Asleep at night, it's wearing a floppy nightcap, its tip swinging as the
+  // body moves.
+  function nightcap(b) {
+    const h = new Date().getHours();
+    const k = CFG.nightcap > 0 && (h >= 22 || h < 7) && b.body.o.radius > 12 && !b.dying ? ramp(b.sleep || 0, 0.5, 0.85) : 0;
+    if (k <= 0) { b.capSwing = 0; return; }
+    const body = b.body, r = body.o.radius;
+    let top = 0;
+    for (let i = 0; i < body.n; i++) if (body.py[i] < body.py[top]) top = i;
+    const x = body.px[top], y = body.py[top], side = b.key.length % 2 ? 1 : -1;
+    // The tip lags behind the head: a little spring on how far it's swung.
+    const v = body.velocity(DT);
+    b.capSwing = (b.capSwing || 0) + (-v.x * 0.0015 - (b.capSwing || 0)) * 0.08;
+    const w = r * 0.95 * k, ht = r * 0.75 * k, tipX = x + side * w * 0.55 + b.capSwing * r, tipY = y - ht * 0.75;
+    ctx.save();
+    ctx.fillStyle = '#5f6fd6';
+    ctx.beginPath();
+    ctx.moveTo(x - side * w / 2, y + ht * 0.12);
+    ctx.quadraticCurveTo(x - side * w * 0.2, y - ht * 1.05, tipX, tipY);
+    ctx.quadraticCurveTo(x + side * w * 0.15, y - ht * 0.45, x + side * w / 2, y + ht * 0.12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#f4f1ea';
+    ctx.beginPath(); ctx.ellipse(x, y + ht * 0.12, w * 0.55, ht * 0.14, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(tipX, tipY, r * 0.09 * k + 1, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
   function lateness() {
     if (CFG.nightSleepy <= 0) return 0;
     const d = new Date(), h = d.getHours() + d.getMinutes() / 60;
@@ -3250,6 +3278,7 @@
       if (b.body.o.radius > 12) D.drawFace(ctx, b.body, face);
       b.faceTurn = { x: face.turnX || 0, y: face.turnY || 0 };
       if (face.expression === 'sleepy' && face.mouth !== 'yawn') D.drawZzz(ctx, b.body, time);
+      nightcap(b);
       const sweat = ramp(b.fill || 0, CFG.sweatAt, 1);
       if (sweat > 0) D.drawSweat(ctx, b.body, time, sweat);
       if (b.merging && b.kind === 'child' && !b.dying) {
