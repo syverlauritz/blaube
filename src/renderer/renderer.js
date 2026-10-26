@@ -1176,6 +1176,22 @@
     if (b.dying || b.removed) return;
     if (b.pendingHop) crouch(b);
     tingle(b);
+    // A sneeze: it breathes in (stretching up), then "achoo!", which knocks
+    // everything off its head and rocks it back.
+    if (b.sneeze) {
+      const r = body.o.radius;
+      if (time < b.sneeze.at) { if (body.onFloor()) body.squashTop(-r * 0.12 * 60 * DT * 60 * DT, DT); }
+      else {
+        const dir = (Math.random() < 0.5 ? -1 : 1);
+        body.squashTop(r * 9, DT);
+        body.lean(dir * r * 3, DT);
+        body.impulse(-dir * 40, 0, DT);
+        b.sneeze = null;
+        b.sneezedAt = time;
+        b.say([{ text: 'achoo!' }], 1, false, false);
+        for (const f of flakes) if (f.on && f.on.b === b) { f.on = null; f.vx = dir * (150 + Math.random() * 120); f.vy = -120 - Math.random() * 80; f.loose = time + 1.5; }
+      }
+    }
     // Shaking off leaves or snow: a quick side-to-side wobble.
     if (time < (b.shakeOffUntil || 0) && body.onFloor()) body.lean((Math.sin(time * 70) > 0 ? 1 : -1) * body.o.radius * 2.2 * 60 * DT, DT);
     if (body.grab) { held(b); return; }
@@ -1404,6 +1420,11 @@
         for (let i = 0; i < body.n; i++) { const d = (body.px[i] - f.x) ** 2 + (body.py[i] - f.y) ** 2; if (d < bd) { bd = d; best = i; } }
         if (body.py[best] > body.centroid().y - body.o.radius * 0.2) continue; // its side: slides past
         f.on = { b, i: best, dx: (Math.random() - 0.5) * 4 };
+        // A leaf on the nose now and then makes it sneeze; snow, shiver.
+        if (Math.random() < 0.08 * CFG.seasons && !b.sneeze && time > (b.shakeOffUntil || 0) + 2) {
+          if (f.kind === 'snow') b.shakeOffUntil = time + 0.4;
+          else b.sneeze = { at: time + 0.7 };
+        }
         stuck = true;
         break;
       }
@@ -2158,6 +2179,8 @@
     else if (body.grab && b.wriggling) { expression = 'worried'; mouth = 'wobble'; }
     else if (body.grab || time < (b.surpriseUntil || 0)) { mouth = 'o'; }
     else if (time < (b.booUntil || 0)) { expression = 'normal'; mouth = 'o'; }
+    else if (b.sneeze) { expression = 'pained'; mouth = 'o'; } // (about to sneeze)
+    else if (time - (b.sneezedAt ?? -9) < 0.5) { expression = 'happy'; mouth = 'flat'; }
     else if (b.merging && b.kind === 'child') { expression = 'happy'; mouth = 'smile'; }
     else if (nodding(b)) { expression = 'happy'; mouth = 'smile'; }
     else if (time < (b.pettedUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
