@@ -567,7 +567,10 @@
     syncPets(sessions);
     // Finished sessions and subagents head back in.
     for (const b of buddies.values()) {
-      if (b.kind !== 'home' && !live.has(b.key) && !b.merging && !b.dying) b.merging = { since: time };
+      if (b.kind !== 'home' && !live.has(b.key) && !b.merging && !b.dying) {
+        b.merging = { since: time };
+        if (b.kind === 'mother') farewell(b);
+      }
     }
     // With no sessions left, the biggest one stays behind as the home slime.
     if (!sessions.length && !pending && !buddies.has(HOME)) {
@@ -957,6 +960,26 @@
         if (big && o.body.onFloor() && Math.random() < 0.7 * CFG.cheerOthers) o.hop(0, -(300 + Math.random() * 120) * Math.min(1.5, CFG.cheerOthers));
       }, 300 + i++ * 140 + Math.random() * 200);
     }
+  }
+
+  // A session ends and its slime heads off: the others turn to watch it go,
+  // a little deflated, and the nearest one says bye.
+  function farewell(b) {
+    if (CFG.farewell <= 0) return;
+    const c = b.body.centroid();
+    const others = [...buddies.values()].filter((o) => o !== b && !o.dying && !o.merging && o.mother !== b);
+    others.sort((p, q) => { const pc = p.body.centroid(), qc = q.body.centroid(); return Math.hypot(pc.x - c.x, pc.y - c.y) - Math.hypot(qc.x - c.x, qc.y - c.y); });
+    others.forEach((o, i) => setTimeout(() => {
+      if (o.dying || o.merging) return;
+      o.glanceAt = b;
+      o.glanceUntil = time + 1.6 + Math.random() * 0.6;
+      if (o.state === 'working' || o.body.grab) return;
+      o.droopUntil = time + 1.2 * CFG.farewell;
+      if (i === 0 && Math.random() < 0.8) {
+        quip(o, Math.random() < 0.5 ? 'bye!' : 'bye bye', 1.6);
+        if (o.body.onFloor()) o.hop(0, -180 * Math.min(1.5, CFG.farewell));
+      }
+    }, 250 + i * 160 + Math.random() * 200));
   }
 
   function label(b) {

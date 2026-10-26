@@ -2,7 +2,8 @@
 // tokens: sessions are driven through fake hooks, and it checks the bodies
 // stay healthy, a turn's end is said out loud once (not twice, cut off),
 // stopping the choir leaves no mouth still miming the song, and they
-// react to the computer (away and back, the charger, a low battery).
+// react to the computer (away and back, the charger, a low battery), and
+// see a finished session's slime off.
 //
 //   npm run e2e:life
 //
@@ -86,6 +87,13 @@ module.exports = async function run({ win, tracker }) {
 	await js(`__blaube.sys.battery = { level: 0.05, charging: false }`);
 	check(await until(() => js(`__blaube.sys.low > 0.3`), 4000), 'low battery: they get tired');
 	await js(`__blaube.sys.battery = { level: 0.05, charging: true }`);
+	await sleep(1500);
+	// A session ends: the others watch it go.
+	ev('s3', 'SessionStart');
+	check(await until(() => js(`__blaube.buddies.has('s3')`), 3000), 'a third session slime');
+	await sleep(2500);
+	ev('s3', 'SessionEnd');
+	check(await until(() => js(`(() => { const g = __blaube.buddies.get('s3'); return g && ['s1', 's2'].some((k) => __blaube.buddies.get(k).glanceAt === g); })()`), 2500), 'a session ends, the others watch its slime go');
 	await sleep(1500);
 	check(await js(`[...__blaube.buddies.values()].every((b) => [...b.body.px].every(Number.isFinite))`), 'bodies still finite after all that');
 	check(errs.length === 0, 'no renderer errors ' + errs.slice(0, 3).join(' | '));
