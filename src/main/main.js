@@ -1,6 +1,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
-const { app, BrowserWindow, Tray, Menu, Notification, nativeImage, screen, ipcMain, dialog, shell, clipboard, globalShortcut, systemPreferences } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, shell, clipboard, globalShortcut, systemPreferences } = require('electron');
+const { Notification } = require('electron');
 const { SessionTracker } = require('./sessions');
 const { Inbox, STYLE, failedTests, stoppedLast } = require('./inbox');
 const { classify } = require('../shared/actions');
