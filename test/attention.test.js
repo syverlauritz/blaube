@@ -37,3 +37,15 @@ test('the overview says how much happened since you last looked', () => {
   assert.equal(glance({ state: 'done', lastReply: 'Ok.', unread: 3, git: 'main' }).meta, '3 new replies since you looked · main');
   assert.equal(glance({ state: 'done', unread: 1 }).meta, '1 new reply since you looked');
 });
+
+test('the day so far, across sessions', () => {
+  const { today } = require('../src/main/attention.js');
+  const now = new Date(2026, 9, 26, 15, 0).getTime();
+  const yesterday = new Date(2026, 9, 25, 23, 0).getTime();
+  const logs = [
+    [{ who: 'claude', at: yesterday, turn: { took: 3600e3, files: ['/old.js'] } }, { who: 'claude', at: now - 1e3, turn: { took: 90 * 60e3, files: ['/a.js', '/b.js'] } }],
+    [{ who: 'you', at: now }, { who: 'claude', at: now, turn: { took: 40 * 60e3, files: ['/a.js'] } }, { who: 'claude', at: now }],
+  ];
+  assert.equal(today(logs, now), 'Today: 3 replies · 2h 10m of work · 2 files changed');
+  assert.equal(today([[{ who: 'claude', at: yesterday }]], now), '');
+});

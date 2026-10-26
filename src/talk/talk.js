@@ -212,6 +212,15 @@
         b.title = `${f}\nShow it in ${navigator.platform.startsWith('Mac') ? 'Finder' : 'its folder'}`;
         b.onclick = () => api.reveal && api.reveal(current.id, f);
         t.append(b);
+        // Not what you wanted? Ask for that file's change back.
+        const undo = document.createElement('button');
+        undo.className = 'undo';
+        undo.type = 'button';
+        undo.dataset.label = 'undo';
+        undo.title = `Ask Claude to undo what it changed in ${b.textContent}`;
+        undo.setAttribute('aria-label', undo.title);
+        undo.onclick = () => { if (current && !undo.disabled) { undo.disabled = true; api.send(current.id, `Undo the changes you made to ${f} in that last turn, and tell me what you put back.`); } };
+        t.append(undo);
       });
       if (files.length > 4) t.append(` +${files.length - 4}`);
       if (bits.length || files.length) out.push(t);
@@ -440,6 +449,7 @@
     const box = $('overview');
     const scroll = box.scrollTop;
     box.textContent = '';
+    if (s.today) { const t = document.createElement('div'); t.className = 'today'; t.textContent = s.today; box.append(t); }
     for (const o of s.others || []) {
       const row = document.createElement('button');
       row.className = 'row' + (o.id === s.id ? ' here' : '') + (o.state === 'waiting' ? ' wants' : '');

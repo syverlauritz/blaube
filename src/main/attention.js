@@ -36,4 +36,24 @@ function glance({ state, doing = '', message = '', lastReply = '', todo = null, 
   return { status, meta };
 }
 
-module.exports = { mostWanted, notification, glance };
+// The day so far, across every session's log: replies, time Claude spent
+// working on them, files changed. "Today" starts at local midnight.
+function today(logs, now = Date.now()) {
+  const d = new Date(now);
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  let replies = 0, worked = 0;
+  const files = new Set();
+  for (const log of logs) {
+    for (const e of log) {
+      if (e.who !== 'claude' || e.at < start) continue;
+      replies++;
+      if (e.turn) { worked += e.turn.took || 0; for (const f of e.turn.files || []) files.add(f); }
+    }
+  }
+  if (!replies) return '';
+  const m = Math.round(worked / 60e3);
+  const time = m < 1 ? '' : m < 60 ? `${m}m of work` : `${Math.floor(m / 60)}h ${m % 60}m of work`;
+  return ['Today: ' + `${replies} repl${replies === 1 ? 'y' : 'ies'}`, time, files.size ? `${files.size} file${files.size === 1 ? '' : 's'} changed` : ''].filter(Boolean).join(' · ');
+}
+
+module.exports = { mostWanted, notification, glance, today };

@@ -429,6 +429,7 @@ function pushTalk(id, focusField = false) {
     git: gitStates.has(id) ? git.summary(gitStates.get(id)) : '',
     quick: id.startsWith('demo-') ? [] : git.quickActions(gitStates.get(id) || null, s.state),
     // Every slime, to switch between them from the box.
+    today: attention.today([...inbox.logs.values()]),
     others: tracker.list().filter(isReady).map((o) => Object.assign({ id: o.id, project: o.project, color: colorOf(o) || prefs.config.color || '#D97757', state: o.state }, glanceAt(o))),
   }, inbox.view(id)));
   if (s.cwd && !id.startsWith('demo-')) {

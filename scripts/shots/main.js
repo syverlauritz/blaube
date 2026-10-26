@@ -365,7 +365,7 @@ const SCENES = {
 		bg: '#f2f0ec',
 		wait: 3500,
 		size: [1000, 640],
-		talk: { key: 'tc', inbox: 'ready', git: 'feature/login · 3 changed', quick: [{ label: 'Commit', prompt: 'Commit' }, { label: 'Open a PR', prompt: 'PR' }, { label: 'Run tests', prompt: 'Tests' }],
+		talk: { key: 'tc', inbox: 'ready', today: 'Today: 14 replies · 2h 10m of work · 23 files changed', git: 'feature/login · 3 changed', quick: [{ label: 'Commit', prompt: 'Commit' }, { label: 'Open a PR', prompt: 'PR' }, { label: 'Run tests', prompt: 'Tests' }],
 			others: [{ id: 'tc', project: 'vergence', color: '#D97757', state: 'done', status: 'Done: Committed as f3a91c2 “Fix flaky e2e timeout”.', meta: 'feature/login · 3 changed' },
 				{ id: 'tc2', project: 'kalkis', color: '#5B8DEF', state: 'waiting', status: 'Needs you: Claude needs your permission to use Bash', meta: '62% context · main' },
 				{ id: 'tc3', project: 'web', color: '#E07BA8', state: 'working', status: 'Editing Hero.tsx · 4m', meta: '2 of 5 on its list · main · 7 changed' }], log: [

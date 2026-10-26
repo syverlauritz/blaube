@@ -165,6 +165,12 @@
   .msg.claude:hover .copyreply, .msg .copyreply:focus-visible { opacity: 1; }
   .filelink { border: 0; background: none; padding: 0; font: inherit; color: var(--dim); cursor: pointer; text-decoration: underline; text-decoration-color: #dfe2ea; text-underline-offset: 3px; }
   .filelink:hover { color: var(--ink); }
+  .turnmeta .undo { border: 0; background: none; padding: 0 0 0 3px; font: inherit; color: var(--faint); cursor: pointer; opacity: 0; transition: opacity .15s; }
+  .turnmeta .undo::after { content: attr(data-label); }
+  .turnmeta:hover .undo, .turnmeta .undo:focus-visible { opacity: 1; }
+  .turnmeta .undo:hover { color: var(--ink); }
+  .turnmeta .undo:disabled { opacity: 0; cursor: default; }
+  .glance .today { margin: 2px 12px 6px; font: 700 14px var(--ui); color: var(--dim); }
   .msg.folded { max-height: 15.5em; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); }
   .more { align-self: flex-start; border: 0; background: none; padding: 0; margin-top: -4px; font: 600 14px var(--ui); color: var(--dim); cursor: pointer; }
   .more:hover { color: var(--ink); }
