@@ -1337,7 +1337,7 @@ function send(cmd) {
 }
 
 function appMenu() {
-  return Menu.buildFromTemplate(appMenuTemplate());
+  return Menu.buildFromTemplate(appMenuTemplate({ colour: true }));
 }
 
 // Claude Code's own defaults for new sessions (its settings file), picked
@@ -1385,8 +1385,10 @@ function soundItems({ voice = true, choir = true } = {}) {
 // Blaube's menu, most used first: getting set up (until it is) and starting
 // a session; the sound; the toys and how it looks and behaves; then the
 // setup you rarely touch; quitting last. nested: it's the Blaube submenu of
-// a slime's menu, which has the voice settings already.
-function appMenuTemplate({ nested = false } = {}) {
+// a slime's menu, which has the voice settings already. colour: it's the
+// menu of Blaube itself, with no sessions, so its own colour (the main
+// one) is in it; elsewhere colour is each slime's, in its own menu.
+function appMenuTemplate({ nested = false, colour = false } = {}) {
   const installed = claudeHooks.isInstalled(undefined, PORT);
   const noClaude = !claudeFound();
   return [
@@ -1405,7 +1407,7 @@ function appMenuTemplate({ nested = false } = {}) {
     ] },
     { label: 'Stay in front of other windows', type: 'checkbox', checked: prefs.config.onTop !== 'Off', click: (i) => setConfig(Object.assign({}, prefs.config, { onTop: i.checked ? 'On' : 'Off' })) },
     { label: 'Notifications', submenu: ['Behind windows', 'Always', 'Off'].map((m) => ({ label: m === 'Behind windows' ? 'When they’re behind windows' : m, type: 'radio', checked: (prefs.config.notify || 'Behind windows') === m, click: () => setConfig(Object.assign({}, prefs.config, { notify: m })) })) },
-    { label: 'Colour', submenu: colorMenu(prefs.config.color, (hex) => setConfig(Object.assign({}, prefs.config, { color: hex }))) },
+    ...(colour ? [{ label: 'Colour', submenu: colorMenu(prefs.config.color, (hex) => setConfig(Object.assign({}, prefs.config, { color: hex }))) }] : []),
     { label: 'Settings…', click: openSettings },
     { type: 'separator' },
     ...(noClaude ? [] : [claudeCodeMenu(installed)]),
@@ -1428,20 +1430,30 @@ const claudeFound = () => !!(findClaude() || owned.shellPath() || TEST);
 // A slime's menu, most used first: talking to it, getting to its terminal
 // and files; then moving or copying the session (the rarer bits under
 // More); its sound and colour; Blaube's own menu; and last what takes the
-// slime away.
+// slime away. tray: it's that slime's submenu in the tray, under a row
+// that already says its name and how it is, beside the tray's own sound
+// and Blaube items; quick: the tray's quick actions for it, first.
+const stateWord = { working: 'Working', waiting: 'Needs you', done: 'Done', idle: 'Idle' };
 function sessionMenu(id) {
+  const items = sessionMenuTemplate(id);
+  return items && Menu.buildFromTemplate(items);
+}
+function sessionMenuTemplate(id, { tray = false, quick = [] } = {}) {
   const s = tracker.sessions.get(id);
   if (!s) return null;
-  const word = { working: 'Working', waiting: 'Needs you', done: 'Done', idle: 'Idle' }[s.state] || s.state;
+  const word = stateWord[s.state] || s.state;
   const effort = { low: 'Low effort', medium: 'Medium effort', high: 'High effort', xhigh: 'Extra high effort', max: 'Max effort' }[efforts.get(id) || defaultEffort()];
   const isDemo = id.startsWith('demo-');
   const mine = owned.has(id);
-  return Menu.buildFromTemplate([
-    { label: shownOf(s).full, enabled: false },
-    { label: `${word}${s.message && s.state === 'waiting' ? ': ' + s.message : ''}`, enabled: false },
-    ...(effort ? [{ label: effort, enabled: false }] : []),
-    { type: 'separator' },
-    { label: 'Talk', enabled: !isDemo, click: () => win && win.webContents.send('open-talk', id) },
+  const talk = () => { if (!win) return; if (tray && process.platform === 'darwin') app.focus({ steal: true }); win.webContents.send('open-talk', id); };
+  return [
+    ...(quick.length ? [...quick, { type: 'separator' }] : []),
+    ...(tray ? [] : [
+      { label: shownOf(s).full, enabled: false },
+      { label: `${word}${s.message && s.state === 'waiting' ? ': ' + s.message : ''}`, enabled: false },
+    ]),
+    ...(effort ? [{ label: effort, enabled: false }, { type: 'separator' }] : tray ? [] : [{ type: 'separator' }]),
+    { label: 'Talk', enabled: !isDemo, click: talk },
     ...(mine ? [
       { label: 'Continue in terminal', click: () => continueInTerminal(s) },
     ] : [
@@ -1461,13 +1473,13 @@ function sessionMenu(id) {
       { label: 'Copy resume command', click: () => clipboard.writeText(`cd "${s.cwd}" && ${resumeCommand(s.id)}`) },
     ] },
     { type: 'separator' },
-    ...soundItems({ choir: false }),
+    ...(tray ? [] : soundItems({ choir: false })),
     { label: 'Colour', submenu: colorMenu(colorOf(s) || prefs.config.color, (hex) => { prefs.colors[colorKey(s)] = hex; savePrefs(); pushState(); }) },
-    { label: 'Blaube', submenu: appMenuTemplate({ nested: true }) },
+    ...(tray ? [] : [{ label: 'Blaube', submenu: appMenuTemplate({ nested: true }) }]),
     { type: 'separator' },
     { label: 'Hide this blob', toolTip: 'Until its session ends', click: () => tracker.dismiss(id) },
     ...(mine ? [{ label: 'End session', click: () => endOwned(s) }] : []),
-  ]);
+  ];
 }
 
 // A copy of its conversation in a new session (a new slime), to try
@@ -1643,9 +1655,9 @@ function trayMenu() {
   const mark = { waiting: '❓', working: '⏳', done: '✅', idle: '💤' };
   const rows = live.map((o) => {
     const g = glanceAt(o);
-    // (Only macOS shows a sublabel: elsewhere the status goes on the line.)
-    const row = { label: `${mark[o.state] || '•'}  ${shownOf(o).full}${process.platform === 'darwin' || !g.status ? '' : `  ·  ${g.status.length > 40 ? g.status.slice(0, 39) + "…" : g.status}`}`, sublabel: g.status, toolTip: g.meta };
-    const open = () => { if (!win) return; if (process.platform === 'darwin') app.focus({ steal: true }); win.webContents.send('open-talk', o.id); };
+    // Its name and how it is, once; its own menu (as right-clicking it) under it.
+    const status = g.status || stateWord[o.state] || o.state;
+    const label = `${mark[o.state] || '•'}  ${shownOf(o).full} — ${status.length > 40 ? status.slice(0, 39) + '…' : status}`;
     // Answered or stopped right from the menu bar, without opening anything.
     const ask = o.state === 'waiting' ? (inbox.asks.get(o.id) || [])[0] : null;
     const acts = [];
@@ -1671,7 +1683,7 @@ function trayMenu() {
     if ((o.state === 'done' || o.state === 'idle') && doQuick) {
       for (const q of quickFor(o.id, o).filter((x) => !x.here && !x.signIn && !x.bring && !x.sure && !('later' in x))) acts.push({ label: q.label, toolTip: q.prompt, click: () => doQuick(o.id, q) });
     }
-    return acts.length ? Object.assign(row, { submenu: [{ label: 'Open', click: open }, { type: 'separator' }, ...acts] }) : Object.assign(row, { click: open });
+    return { label, toolTip: g.meta, submenu: sessionMenuTemplate(o.id, { tray: true, quick: acts }) };
   });
   // (And your usage limits, as /usage says them, once Blaube has heard.)
   const used = limits.line(usageLimits).replace(/^Usage: /, '');
