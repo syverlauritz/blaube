@@ -56,4 +56,29 @@ function today(logs, now = Date.now()) {
   return ['Today: ' + `${replies} repl${replies === 1 ? 'y' : 'ies'}`, time, files.size ? `${files.size} file${files.size === 1 ? '' : 's'} changed` : ''].filter(Boolean).join(' · ');
 }
 
-module.exports = { mostWanted, notification, glance, today };
+// Finding something said in any session (⌘F in the overview): each
+// session that has it, most hits first, with a snippet round the newest.
+// sessions: [{ id, project, log }].
+function search(sessions, q) {
+  q = String(q || '').trim().toLowerCase();
+  if (q.length < 2) return [];
+  const out = [];
+  for (const s of sessions) {
+    let hits = 0, snippet = '';
+    for (let i = s.log.length - 1; i >= 0; i--) {
+      const e = s.log[i];
+      const text = [e.text, e.detail].filter(Boolean).join('\n');
+      const at = text.toLowerCase().indexOf(q);
+      if (at < 0) continue;
+      hits++;
+      if (!snippet) {
+        const from = Math.max(0, at - 30);
+        snippet = (from ? '…' : '') + text.slice(from, at + q.length + 50).replace(/\s+/g, ' ').trim() + (at + q.length + 50 < text.length ? '…' : '');
+      }
+    }
+    if (hits) out.push({ id: s.id, project: s.project, hits, snippet });
+  }
+  return out.sort((a, b) => b.hits - a.hits);
+}
+
+module.exports = { mostWanted, notification, glance, today, search };

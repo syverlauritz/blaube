@@ -49,3 +49,17 @@ test('the day so far, across sessions', () => {
   assert.equal(today(logs, now), 'Today: 3 replies · 2h 10m of work · 2 files changed');
   assert.equal(today([[{ who: 'claude', at: yesterday }]], now), '');
 });
+
+test('search finds what was said in any session, most hits first, with a snippet', () => {
+  const { search } = require('../src/main/attention.js');
+  const sessions = [
+    { id: 'a', project: 'kalkis', log: [{ who: 'you', text: 'add the tax brackets' }, { who: 'claude', text: 'The brackets for 2027 are in src/tax.js now.' }] },
+    { id: 'b', project: 'website', log: [{ who: 'step', text: 'Ran npm test', detail: '$ npm test\nbrackets.test.js failed' }, { who: 'claude', text: 'Fixed the footer.' }] },
+    { id: 'c', project: 'other', log: [{ who: 'claude', text: 'Nothing here.' }] },
+  ];
+  const r = search(sessions, 'Brackets');
+  assert.deepEqual(r.map((x) => [x.id, x.hits]), [['a', 2], ['b', 1]]);
+  assert.equal(r[0].snippet, 'The brackets for 2027 are in src/tax.js now.');
+  assert.match(r[1].snippet, /brackets\.test\.js failed/);
+  assert.deepEqual(search(sessions, 'x'), [], 'too short');
+});

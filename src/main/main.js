@@ -1567,6 +1567,8 @@ app.whenReady().then(async () => {
     hideTalk();
     startSession(folder);
   });
+  // ⌘F in the overview: what every session said.
+  ipcMain.handle('talk-search', (_e, q) => attention.search(tracker.list().filter(isReady).filter((o) => !o.id.startsWith('demo-')).map((o) => ({ id: o.id, project: o.project, log: inbox.log(o.id) })), typeof q === 'string' ? q.slice(0, 200) : '').slice(0, 10));
   // A session that ended while its box was open, picked up right there.
   ipcMain.on('talk-continue', (_e, id) => {
     const last = talkLast && talkLast.id === id ? talkLast : null;

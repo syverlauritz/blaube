@@ -188,6 +188,20 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await key('[', mod);
 	check(await until(() => talkId() === ID), '⌘[ goes to the one before');
 
+	// ⌘F in the overview looks through every session.
+	await key('0', mod);
+	await until(() => box(`document.body.classList.contains('overview')`));
+	await key('f', mod);
+	await box(`(() => { const f = document.getElementById('find'); f.value = 'footer'; f.dispatchEvent(new Event('input')); })()`);
+	check(await until(() => box(`(() => { const r = [...document.querySelectorAll('#overview .row.hit')]; return r.length === 1 && /website/.test(r[0].textContent) && /fix the footer/.test(r[0].textContent); })()`)), '⌘F in the overview finds which session said it');
+	await sleep(1500);
+	await shot('searchall');
+	await box(`document.querySelector('#overview .row.hit').click()`);
+	check(await until(() => talkId() === ID2), 'tapping it goes there');
+	check(await until(() => box(`!document.getElementById('findBar').hidden && document.getElementById('find').value === 'footer' && /1 found/.test(document.getElementById('findCount').textContent)`)), 'with the same words found in its conversation');
+	await page(`window.blaube.talk(${JSON.stringify(ID)}, { x: 300, y: 600, r: 60 })`);
+	await until(() => talkId() === ID);
+
 	// In a git repository: the git line, and the files it changed a tap away.
 	const repo = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'blaube-repo-'));
 	const { execFileSync } = require('node:child_process');

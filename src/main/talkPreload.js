@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   paste: (id, bytes, type) => ipcRenderer.invoke('talk-paste', id, bytes, type),
   pathOf: (file) => { try { return webUtils.getPathForFile(file); } catch { return ''; } },
   hub: () => ipcRenderer.invoke('talk-hub'),
+  searchAll: (q) => ipcRenderer.invoke('talk-search', q),
   newIn: (folder) => ipcRenderer.send('talk-new', folder),
   pickUp: (id) => ipcRenderer.send('talk-pickup', id),
   continueHere: (id) => ipcRenderer.send('talk-continue', id),

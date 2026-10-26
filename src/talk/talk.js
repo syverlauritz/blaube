@@ -448,7 +448,10 @@
   // Every session at a glance: what it's up to, and the small print. A tap
   // goes to its box. (Redrawn with every update while it's open.)
   function showOverview(on) {
+    const was = document.body.classList.contains('overview');
     document.body.classList.toggle('overview', !!(on && current && !current.demo));
+    // (Find means something else in each: start it afresh.)
+    if (was !== document.body.classList.contains('overview') && !$('findBar').hidden) { $('find').value = ''; $('findBar').hidden = true; allQuery = ''; allHits = []; find(''); }
     if (on) { drawOverview(current); loadHub(); }
     requestAnimationFrame(fitWindow);
   }
@@ -496,6 +499,7 @@
     const box = $('overview');
     const scroll = box.scrollTop;
     box.textContent = '';
+    if (!$('findBar').hidden && allQuery) { drawHits(box); box.scrollTop = scroll; requestAnimationFrame(fitWindow); return; }
     if (s.today) { const t = document.createElement('div'); t.className = 'today'; t.textContent = s.today; box.append(t); }
     for (const o of s.others || []) {
       const row = document.createElement('button');
@@ -544,12 +548,55 @@
     $('findCount').textContent = q ? (hits ? `${hits} found` : 'nothing found') : '';
     requestAnimationFrame(fitWindow);
   }
-  $('find').addEventListener('input', () => find($('find').value));
+  $('find').addEventListener('input', () => {
+    if (document.body.classList.contains('overview')) searchAll($('find').value);
+    else find($('find').value);
+  });
+  // In the overview, ⌘F looks through every session: the ones that said it,
+  // with a snippet; a tap goes there with the same words found.
+  let allQuery = '', allHits = [], pendingFind = '';
+  function searchAll(q) {
+    allQuery = String(q || '').trim();
+    if (!api.searchAll || allQuery.length < 2) { allHits = []; if (current) drawOverview(current); return; }
+    const asked = allQuery;
+    api.searchAll(asked).then((r) => { if (asked !== allQuery) return; allHits = r || []; if (current && document.body.classList.contains('overview')) drawOverview(current); });
+  }
+  function drawHits(box) {
+    if (!allHits.length) { const n = document.createElement('div'); n.className = 'today'; n.textContent = allQuery.length < 2 ? 'Type a little more…' : 'Nothing found'; box.append(n); return; }
+    for (const h of allHits) {
+      const row = document.createElement('button');
+      row.className = 'row hit';
+      const o = (current.others || []).find((x) => x.id === h.id);
+      row.style.setProperty('--c', o ? o.color : 'var(--faint)');
+      const name = document.createElement('b');
+      name.textContent = h.project;
+      const status = document.createElement('span');
+      status.className = 'status';
+      status.textContent = h.snippet;
+      const m = document.createElement('small');
+      m.textContent = `${h.hits} found`;
+      row.append(name, status, m);
+      row.onclick = () => {
+        const q = allQuery;
+        showOverview(false);
+        if (h.id === current.id) openFind(q);
+        else { pendingFind = q; api.switchTo(h.id); }
+      };
+      box.append(row);
+    }
+  }
+  function openFind(q) {
+    $('findBar').hidden = false;
+    $('find').value = q;
+    find(q);
+    $('find').focus();
+    requestAnimationFrame(fitWindow);
+  }
   $('find').addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { e.stopPropagation(); $('find').value = ''; find(''); $('findBar').hidden = true; text.focus(); }
+    if (e.key === 'Escape') { e.stopPropagation(); $('find').value = ''; find(''); $('findBar').hidden = true; allQuery = ''; allHits = []; if (document.body.classList.contains('overview') && current) drawOverview(current); text.focus(); }
   });
   document.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'f' && current && !document.body.classList.contains('overview')) {
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'f' && current) {
       e.preventDefault();
       $('findBar').hidden = false;
       $('find').focus();
@@ -951,7 +998,10 @@
     // The overview: as tall as its rows.
     if (document.body.classList.contains('overview')) {
       const ov = $('overview');
-      api.setHeight(current.id, Math.ceil(bubble.offsetHeight - ov.offsetHeight + ov.scrollHeight + 24 + 1));
+      // (Measured to its last row, so it shrinks too: a search, a session gone.)
+      const last = ov.lastElementChild;
+      const content = last ? last.getBoundingClientRect().bottom - ov.getBoundingClientRect().top + ov.scrollTop + 16 : 0;
+      api.setHeight(current.id, Math.ceil(bubble.offsetHeight - ov.offsetHeight + content + 24 + 1));
       return;
     }
     const chrome = bubble.offsetHeight - log.offsetHeight; // everything but the log
@@ -988,6 +1038,7 @@
     if (first) { seen = s.log.length; text.value = drafts.get(s.id) || ''; if (files.length) { files = []; drawFiles(); } } // before the card reads it
     render(s);
     if (first) { fit(); send.disabled = text.disabled || (!text.value.trim() && !files.length); }
+    if (first && pendingFind) { const q = pendingFind; pendingFind = ''; openFind(q); }
     if (s.focus) {
       const w = $('wrap');
       w.classList.remove('pop'); void w.offsetWidth; w.classList.add('pop');
