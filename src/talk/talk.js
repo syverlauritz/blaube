@@ -155,7 +155,8 @@
     if (m.detail) {
       const pre = document.createElement('pre');
       pre.className = 'stepout';
-      pre.textContent = m.detail;
+      // (An edit's − and + lines are tinted, like a diff.)
+      if (/^[−+] /.test(m.detail)) { pre.classList.add('diff'); colorDiff(pre, m.detail); } else pre.textContent = m.detail;
       const shown = () => openSteps.has(m.n);
       pre.hidden = !shown();
       e.classList.toggle('open', shown());
@@ -723,7 +724,7 @@
     pre.textContent = '';
     for (const line of String(text).split('\n')) {
       const l = document.createElement('span');
-      l.className = /^\+/.test(line) ? 'add' : /^-/.test(line) ? 'del' : /^@@/.test(line) ? 'hunk' : '';
+      l.className = /^\+/.test(line) ? 'add' : /^[-−]/.test(line) ? 'del' : /^@@/.test(line) ? 'hunk' : '';
       l.textContent = line + '\n';
       pre.append(l);
     }
