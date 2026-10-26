@@ -521,6 +521,9 @@
     $('dot').style.background = DOTS[s.state] || DOTS.idle;
     // A long name in a display font gets hard to read: plain font then.
     $('name').classList.toggle('plain', s.project.length > 16);
+    // Its name beside the folder's (double-click either to rename it).
+    $('subname').hidden = !s.title || s.title === s.project;
+    $('subname').textContent = s.title || '';
     const root = document.documentElement.style;
     const color = s.color || '#d97757';
     root.setProperty('--color', color);
@@ -997,6 +1000,16 @@
       box.append(b);
     }
   }
+
+  // Double-click its name to rename it: /rename, ready in the field.
+  for (const el of [$('name'), $('subname')]) el.addEventListener('dblclick', () => {
+    if (!current || current.demo || current.ended) return;
+    const t = $('text');
+    t.value = '/rename ' + (current.title || '');
+    t.dispatchEvent(new Event('input'));
+    t.focus();
+    t.setSelectionRange(8, t.value.length);
+  });
 
   // Tap the git line for the files it's changed; tap one to see it.
   let gitOpen = false;

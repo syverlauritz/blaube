@@ -332,6 +332,10 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await type('/rename Tax rewrite');
 	check(await until(() => /"type":"custom-title","customTitle":"Tax rewrite","sessionId":"[^"]+-c"/.test(fs.readFileSync(tx, 'utf8'))), '/rename names it in its transcript, as Claude Code does');
 	check(await until(() => box(`[...document.querySelectorAll('#inner .note')].some((n) => n.textContent === 'Named it “Tax rewrite”')`)), 'and says so');
+	check(await until(() => box(`(() => { const n = document.getElementById('subname'); return !n.hidden && n.textContent === 'Tax rewrite'; })()`)), 'its name shows beside the folder’s');
+	await box(`document.getElementById('subname').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
+	check(await until(() => box(`document.getElementById('text').value === '/rename Tax rewrite' && document.activeElement.id === 'text'`)), 'and double-clicking it puts /rename in the field, to rename it');
+	await box(`(() => { const t = document.getElementById('text'); t.value = ''; t.dispatchEvent(new Event('input')); })()`);
 	await box(`document.getElementById('git').click()`);
 	check(await until(() => box(`[...document.querySelectorAll('#gitFiles li > button:first-child')].map((b) => b.textContent).sort().join()`).then((t) => t === 'notes.mdnew,src/tax.jsnew')), 'tapping it lists the files');
 	await box(`[...document.querySelectorAll('#gitFiles li > button:first-child')].find((b) => /tax\\.js/.test(b.textContent)).click()`);

@@ -40,6 +40,8 @@
   /* Display fonts that come in one weight are drawn at it (a faked bold smudges). */
   .name.plain { font-family: var(--ui); --nameWeight: 800; }
   .name { font: var(--nameWeight, 700) 18px var(--name); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+  /* Its name, if it has one (Claude's title or yours, from /rename). */
+  .subname { font: 600 14px var(--ui); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 4em; flex: 0 2 auto; cursor: text; }
   /* The slime's face says how it is: no state words up here. */
   .state { display: none; }
   .spacer { flex: 1; min-width: 12px; }
@@ -409,6 +411,7 @@
   <div class="bubble">
     <header>
       <span class="name" id="name"></span>
+      <span class="subname" id="subname" hidden title="Its name (double-click to rename it)"></span>
       <span class="state"><i id="dot"></i><span id="state"></span></span>
       <button class="stop" id="stop" hidden title="It stops before its next step" aria-label="Stop it before its next step"><i></i><span>Stop</span></button>
       <span class="spacer"></span>

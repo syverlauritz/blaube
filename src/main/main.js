@@ -443,6 +443,7 @@ function pushTalk(id, focusField = false) {
   talkWin.webContents.send('talk-state', Object.assign({
     id,
     project: s.project,
+    title: id.startsWith('demo-') ? '' : usage.sessionInfo(transcriptPath(s)).title, // (its name: Claude's title, or yours from /rename)
     state: s.state,
     color: colorOf(s) || prefs.config.color || '#D97757',
     font: prefs.config.font,
@@ -1936,6 +1937,7 @@ app.whenReady().then(async () => {
       try { inbox.add(id, { who: 'note', text: `Named it “${renamer.rename(transcriptPath(sess), id, newName)}”` }); } catch (e) { inbox.add(id, { who: 'note', text: `Couldn’t name it: ${e.message}`, error: true }); }
       hubCache = null;
       refreshTray();
+      pushTalk(id);
       return;
     }
     // "/login": Claude Code signed in through your browser (see auth.js).
