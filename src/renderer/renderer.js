@@ -1353,6 +1353,26 @@
       if (mouse.y - top > r * 0.1) body.squashTop(-CFG.headPat * r * 0.6 * 60 * DT, DT);
       if (time - b.patSince > 1.5 && !b.patHeart) { b.patHeart = true; hearts.push({ x: c.x, y: top - 6, vx: 0, born: time, size: 10 }); }
     } else { b.patSince = 0; b.patHeart = false; }
+    // The cursor resting right on its face: it goes shy, blushing and looking
+    // away, peeking back now and then; keep it up and it giggles and squirms.
+    const staring = CFG.shy > 0 && !drag && !b.patted && body.contains(mouse.x, mouse.y) && performance.now() / 1000 - mouse.lastMove > 0.8;
+    b.stare = staring ? (b.stare || 0) + DT : Math.max(0, (b.stare || 0) - DT * 2);
+    b.shy = ramp(b.stare, 0.6, 2.2) * Math.min(1, CFG.shy);
+    if (b.shy > 0.3) {
+      if (time > (b.nextPeek || 0)) {
+        b.peekBack = !b.peekBack;
+        b.nextPeek = time + (b.peekBack ? 0.35 : 0.9 + Math.random() * 0.8);
+        if (!b.peekBack) b.shySide = Math.random() < 0.5 ? -1 : 1;
+      }
+      b.glanceAt = b.peekBack ? 'you' : { spot: { x: c.x + (b.shySide || 1) * r * 3, y: c.y + r * 0.8 } };
+      b.glanceUntil = time + 0.1;
+      if (b.stare > 4.5) {
+        b.stare = 1.6;
+        quip(b, 'hehe', 1);
+        b.squirmUntil = time + 0.8;
+      }
+    }
+    if (time < (b.squirmUntil || 0)) body.lean(Math.sin(time * 28) * r * 30 * DT, DT);
     // Something held right over it: it hunkers down a little, bracing.
     if (heldOver(b)) body.squashTop(CFG.spectate * r * 0.5 * 60 * DT, DT);
     // ...and a slime flying right at it makes it duck.
@@ -2974,6 +2994,8 @@
     else if (b.blow && time > b.blow.at) { expression = 'normal'; mouth = 'o'; } // (blowing a bubble)
     else if (b.nibbling) { expression = 'happy'; mouth = time - b.nibbling.at < 0.5 ? 'o' : Math.round((time - b.nibbling.at) / 0.18) % 2 ? 'grin' : 'flat'; } // (chomp chomp)
     else if (b.patted) { expression = 'happy'; mouth = 'smile'; }
+    else if (time < (b.squirmUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
+    else if ((b.shy || 0) > 0.3) { expression = 'normal'; mouth = 'smile'; }
     else if (time < (b.wantsPetsUntil || 0) && time > (b.pettedUntil || 0)) { expression = 'normal'; mouth = 'smile'; }
     else if (time - (b.sneezedAt ?? -9) < 0.5) { expression = 'happy'; mouth = 'flat'; }
     else if (b.merging && b.kind === 'child') { expression = 'happy'; mouth = 'smile'; }
@@ -3124,7 +3146,7 @@
     }
     // Startled (poked, flinching): eyes go wide for a moment.
     const wide = CFG.eyeLife * Math.max(wideBy, wideSeen, over ? 0.5 : 0, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
-    return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.6 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: CFG, bodyColor: b.color,
+    return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.6 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: b.shy > 0 ? { ...CFG, cheeks: Math.min(0.95, CFG.cheeks + b.shy * 0.55) } : CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal',
     };
   }

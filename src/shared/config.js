@@ -109,6 +109,7 @@
       ['wriggle', 1, 0, 3, 0.05, 'Wriggle when held still'],
       ['wriggleAfter', 1.4, 0.3, 5, 0.1, 'Starts wriggling after held still (s)'],
       ['shakeDizzy', 5, 0, 12, 1, 'Shakes that make it dizzy (0 = never)'],
+      ['shy', 1, 0, 1, 0.05, 'Rest the cursor on its face and it goes shy: blushes, looks away, peeks back, then giggles'],
       ['scrollSquish', 1, 0, 3, 0.05, 'Scroll over a slime to squish it flat or pull it tall'],
       ['headPat', 1, 0, 3, 0.05, 'Rest the cursor on its head: it pushes up into it like a cat'],
       ['listen', 1, 0, 2, 0.05, 'Typing to it in its talk box: it watches and bobs along'],
