@@ -90,7 +90,7 @@
     ctx.translate(c.x, c.y);
     // The face leans with the body, but only so far: a face lying on its
     // side after a tumble looks broken, not cute.
-    ctx.rotate(Math.max(-0.18, Math.min(0.18, b.angle)));
+    ctx.rotate(face.fullTurn ? b.angle : Math.max(-0.18, Math.min(0.18, b.angle)));
     const ref = (face.style && face.style.mainRadius) || r;
     const fs = (face.scale || 1) * Math.max(0.75, Math.min(1.5, Math.sqrt(ref / r)));
     ctx.scale(Math.min(1.4, st.x) * fs, Math.min(1.4, st.y) * fs);

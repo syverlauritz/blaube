@@ -137,6 +137,8 @@
 	// where the crown should be; then the nearest spot that isn't.
 	const REACH = 0.4;
 	function spotFor(body, off) {
+		// Mid-somersault it goes all the way round with the body.
+		if (body.fullTurn) return rayAt(body, -Math.PI / 2 + body.angle + off);
 		const p = skinAt(body, topOfHead(body) + off);
 		const c = body.centroid();
 		const want = -Math.PI / 2 + Math.max(-LEAN, Math.min(LEAN, body.angle)) + off;

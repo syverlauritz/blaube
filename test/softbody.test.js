@@ -194,3 +194,13 @@ test('a poke dents the skin where it lands', () => {
   for (let t = 0; t < 0.5; t += DT) { b.step(DT); least = Math.min(least, b.px[j] - b.centroid().x); }
   assert.ok(x0 - least > 8, `dent ${x0 - least}`);
 });
+
+test('spin turns the body about its middle', () => {
+  const b = new SoftBody(500, 300);
+  b.spin(6, DT);
+  assert.ok(Math.abs(b.angularVelocity(DT) - 6) < 0.5, 'spins at ' + b.angularVelocity(DT));
+  let turned = 0, last = b.angle;
+  for (let i = 0; i < 30; i++) { b.step(DT); let d = b.angle - last; if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI; turned += d; last = b.angle; }
+  assert.ok(turned > 0.5, 'turned ' + turned);
+  assert.ok([...b.px].every(Number.isFinite));
+});

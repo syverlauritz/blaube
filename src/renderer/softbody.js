@@ -136,6 +136,29 @@
       }
     }
 
+    // Sets it turning: adds a spin of omega (radians/s) about its middle.
+    spin(omega, dt) {
+      const c = this.centroid();
+      for (let i = 0; i < this.n; i++) {
+        this.ox[i] += (this.py[i] - c.y) * omega * dt;
+        this.oy[i] -= (this.px[i] - c.x) * omega * dt;
+      }
+    }
+
+    // How fast it's turning (radians/s), from how its skin is moving round
+    // its middle.
+    angularVelocity(dt) {
+      const c = this.centroid();
+      let num = 0, den = 0;
+      for (let i = 0; i < this.n; i++) {
+        const qx = this.px[i] - c.x, qy = this.py[i] - c.y;
+        const vx = (this.px[i] - this.ox[i]) / dt, vy = (this.py[i] - this.oy[i]) / dt;
+        num += qx * vy - qy * vx;
+        den += qx * qx + qy * qy;
+      }
+      return den ? num / den : 0;
+    }
+
     // Adds a velocity (px/s) to the skin around (x, y), fading out over
     // 'spread' px: a poke, a dent, a nudge in one place.
     pushAt(x, y, vx, vy, spread, dt) {

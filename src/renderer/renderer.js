@@ -2859,6 +2859,8 @@
       b.trick.up = false;
       const vx = (Math.random() - 0.5) * 40, vy = -(240 + b.trick.n * 130) * Math.min(1.4, CFG.tricks);
       b.hop(vx, vy);
+      // Now and then the last one's a somersault.
+      if (b.trick.n === 3 && Math.random() < 0.45 * CFG.flips) b.flip = { dir: Math.random() < 0.5 ? -1 : 1, vy, at: time };
       const o = b.trick.copy;
       if (o && o.copy) o.copy.hops.push({ at: time + 0.45, vx, vy, n: b.trick.n });
       b.trick.next = time + 0.12;
@@ -3212,6 +3214,27 @@
     if (time - g.heart > 0.7) {
       g.heart = time;
       hearts.push({ x: (oc.x + bc.x) / 2 + (Math.random() - 0.5) * 12, y: Math.min(b.body.bbox().minY, o.body.bbox().minY) - 6, vx: (Math.random() - 0.5) * 30, born: time, size: 10 + Math.random() * 4 });
+    }
+  }
+
+  // A somersault: once off the ground, a spin to go once round in the air;
+  // landed, "ta-da!".
+  function somersault(b) {
+    const f = b.flip;
+    if (!f) return;
+    if (b.body.grab || time - f.at > 4) { b.flip = null; return; }
+    if (!f.spun) {
+      if (b.pendingHop || b.body.onFloor()) return;
+      f.spun = time;
+      const air = (2 * Math.abs(f.vy)) / CFG.gravity; // (time it'll be up)
+      b.body.spin(f.dir * (Math.PI * 2 / air) * 1.5, DT);
+      return;
+    }
+    if (time - f.spun > 0.2 && b.body.onFloor()) {
+      b.body.spin(-b.body.angularVelocity(DT) * 0.9, DT); // (it sticks the landing rather than rolling on)
+      b.flip = null;
+      b.happyUntil = time + 1.5;
+      quip(b, 'ta-da!', 1.2);
     }
   }
 
@@ -3700,6 +3723,7 @@
     }
     sulk(b);
     burp(b);
+    somersault(b);
     if (b.bounceAt && time > b.bounceAt) { // (sprung off a trampoline, see stackPlay)
       b.bounceAt = 0;
       if (!b.body.grab) { const v = b.body.velocity(DT); b.body.impulse((Math.random() - 0.5) * 120 - v.x * 0.5, -b.bounceV - v.y, DT); }
@@ -4042,6 +4066,7 @@
     const wide = CFG.eyeLife * Math.max(wideBy, wideSeen, over ? 0.5 : 0, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
     return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.6 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: b.shy > 0 ? { ...CFG, cheeks: Math.min(0.95, CFG.cheeks + b.shy * 0.55) } : CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal',
+      fullTurn: (body.fullTurn = !!(b.flip && b.flip.spun)), // (mid-somersault the face, and what it wears, go all the way round)
     };
   }
 
