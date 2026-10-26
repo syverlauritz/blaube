@@ -6,7 +6,7 @@ const { SessionTracker } = require('./sessions');
 const { Inbox, STYLE } = require('./inbox');
 const { classify } = require('../shared/actions');
 const { SONGS } = require('../shared/songs');
-const { placeTalk, resizeTalk, moveTalk } = require('./talkPlace');
+const { placeTalk, resizeTalk, moveTalk, PAD } = require('./talkPlace');
 const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
 const { toneOf } = require('./tone');
@@ -178,12 +178,22 @@ function savePrefs() {
 }
 
 // In front of every window (the default), or behind them like the desktop,
-// when you need to see all of a window. The talk box always opens in front.
+// when you need to see all of a window. The talk box always opens in front
+// of other apps; in front, the slimes are in front of the talk boxes too (a
+// slime over one, or sitting on it, is seen whole). On macOS that's a level
+// above theirs; on Windows, where the last one raised is on top, the slimes'
+// window is raised again whenever a box comes up (raiseStage). It never
+// takes the focus, and clicks still go through it to the box, except on a
+// slime. Behind, the boxes are in front of it.
 function applyOnTop() {
   if (!win) return;
   const front = prefs.config.onTop !== 'Off';
-  win.setAlwaysOnTop(front, 'floating');
+  win.setAlwaysOnTop(front, 'floating', front ? 1 : 0);
   if (!front) win.blur();
+  else raiseStage();
+}
+function raiseStage() {
+  if (win && !win.isDestroyed() && prefs.config.onTop !== 'Off') win.moveTop();
 }
 
 function applyTalkKey() {
@@ -382,14 +392,49 @@ function talkFrom(sender) {
 const openTalks = () => [...pinnedTalks.keys()].concat(isOpen(talkId) && !pinnedTalks.has(talkId) ? [talkId] : []);
 function pushTalks() { for (const id of openTalks()) pushTalk(id); }
 
+// The boxes up on screen (not one shrinking shut).
+function shownTalks() {
+  const recs = [...pinnedTalks.values()];
+  if (talkWin && !talkWin.isDestroyed() && talkWin.isVisible() && talkBox) recs.push(transientTalk);
+  return recs.filter((r) => r.box && !r.closing && !r.win.isDestroyed() && r.win.isVisible());
+}
+
 // Where the bubbles are, for the slime's layer to draw their tails to.
 function sendTalkRect() {
   if (!win) return;
   const wb = win.getBounds();
-  const recs = [...pinnedTalks.values()];
-  if (talkWin && !talkWin.isDestroyed() && talkWin.isVisible() && talkBox) recs.push(transientTalk);
-  win.webContents.send('talk-rect', recs.filter((r) => r.box && !r.closing && !r.win.isDestroyed() && r.win.isVisible())
+  win.webContents.send('talk-rect', shownTalks()
     .map((r) => ({ id: r.id, x: r.box.x - wb.x, y: r.box.y - wb.y, w: r.box.w, h: r.box.h, pinned: !!r.pinned, dark: !!prefs.talkDark })));
+  sendLedges();
+}
+
+// Ledges for the slime's layer: the tops of other apps' windows (as last
+// seen: see watchWindows) and of the talk boxes, which are in front of them
+// all. A box's ledge is the flat of its bubble's top: not its clear margin
+// (PAD), nor its rounded corners. It's sent the moment a box opens, moves,
+// changes size or goes, so a slime on one rides along, or falls off.
+const TALK_CORNER = 30; // (the bubble's corner radius: talk.html)
+// How far each box has been moved sideways (by its header): a ledge's wx
+// says how far its window moved, so riders go with it. Resizing a box from
+// its left edge moves its left side, but must not carry them.
+const talkSlid = new WeakMap(); // box window -> px
+let otherWindows = { list: [], at: 0 }; // (screen coordinates, front to back)
+let lastLedges = '';
+function sendLedges() {
+  if (!win || win.isDestroyed()) return;
+  const area = currentDisplay().workArea, wb = win.getBounds();
+  const boxes = shownTalks().map((r) => ({ id: `talk:${r.id}`, talk: r.id, slid: talkSlid.get(r.win) || 0, x: r.box.x + PAD, y: r.box.y + PAD, width: r.box.w - PAD * 2, height: r.box.h - PAD * 2 }));
+  const out = [];
+  for (const l of ledges(boxes.concat(otherWindows.list), area)) {
+    const box = boxes.find((b) => b.id === l.id);
+    if (!box) { out.push({ id: l.id, x0: l.x0 - wb.x, x1: l.x1 - wb.x, y: l.y - wb.y, wx: l.wx - wb.x, at: otherWindows.at }); continue; }
+    const x0 = Math.max(l.x0, box.x + TALK_CORNER), x1 = Math.min(l.x1, box.x + box.width - TALK_CORNER);
+    if (x1 - x0 >= 30) out.push({ id: l.id, talk: box.talk, x0: x0 - wb.x, x1: x1 - wb.x, y: l.y - wb.y, wx: box.slid });
+  }
+  const json = JSON.stringify(out);
+  if (json === lastLedges) return;
+  lastLedges = json;
+  win.webContents.send('ledges', out);
 }
 
 // Pins the box (it becomes one of the boxes that stay) or unpins it (it
@@ -433,7 +478,7 @@ function openTalk(id, at) {
   if (talkHiddenId === id && Date.now() - talkHiddenAt < 350) { if (!TEST) activateApp(talkBefore); return; }
   // Pinned: it's open already; to the front with it.
   const kept = pinnedTalks.get(id);
-  if (kept) { kept.win.show(); if (!TEST) kept.win.focus(); return; }
+  if (kept) { kept.win.show(); if (!TEST) kept.win.focus(); raiseStage(); return; }
   makeTalkWin();
   if (talkWin.isVisible() && talkId === id) { hideTalk(); return; }
   if (talkWin.isVisible()) hideTalk(true); // another slime's: it switches over
@@ -483,6 +528,10 @@ function makeTalkWin() {
     talkHiddenAt = Date.now(); // a click on its slime right now means "close"
     talkHiddenId = talkId;
   });
+  // Shown or clicked into, it comes to the front: the slimes go in front of
+  // it again (when they're in front of everything).
+  w.on('show', raiseStage);
+  w.on('focus', raiseStage);
   w.on('closed', () => {
     if (w === talkWin) { talkWin = null; talkId = null; return; }
     for (const r of pinnedTalks.values()) if (r.win === w) { pinnedTalks.delete(r.id); sendTalkRect(); }
@@ -2322,20 +2371,17 @@ app.whenReady().then(async () => {
   refreshDock();
   setInterval(refreshDock, 4 * 1000); // the Dock grows and shrinks as apps open and quit
 
-  // The tops of other apps' windows are ledges a slime can land on.
-  let lastLedges = '';
+  // The tops of other apps' windows are ledges a slime can land on (with
+  // the talk boxes': see sendLedges).
   if (!TEST) watchWindows(process.pid, (list, at) => {
     if (!win || win.isDestroyed()) return;
-    const area = currentDisplay().workArea, wb = win.getBounds();
     // Windows reports physical pixels; macOS already reports points.
     const dip = process.platform === 'win32' ? list.map((w) => Object.assign({ id: w.id }, screen.screenToDipRect(null, w))) : list;
-    const out = ledges(dip, area).map((l) => ({ id: l.id, x0: l.x0 - wb.x, x1: l.x1 - wb.x, y: l.y - wb.y, wx: l.wx - wb.x, at }));
-    const json = JSON.stringify(out);
-    if (json === lastLedges) return;
-    lastLedges = json;
-    if (out.length !== (watchWindows.count || 0)) log(`window ledges: ${out.length} (from ${list.length} windows)`);
-    watchWindows.count = out.length;
-    win.webContents.send('ledges', out);
+    otherWindows = { list: dip, at };
+    const n = ledges(dip, currentDisplay().workArea).length;
+    if (n !== (watchWindows.count || 0)) log(`window ledges: ${n} (from ${list.length} windows)`);
+    watchWindows.count = n;
+    sendLedges();
   });
 
   if (!TEST) startAgentsPoller(
@@ -3605,7 +3651,9 @@ app.whenReady().then(async () => {
     if (!m || m.rec.win !== rec.win) return;
     if (m.edge === 'move') {
       const area = screen.getDisplayNearestPoint({ x: Math.round(sx), y: Math.round(sy) }).workArea;
+      const was = rec.box.x;
       rec.box = moveTalk(m.box, sx - m.x, sy - m.y, area);
+      talkSlid.set(rec.win, (talkSlid.get(rec.win) || 0) + rec.box.x - was);
     } else {
       const area = screen.getDisplayMatching({ x: m.box.x, y: m.box.y, width: m.box.w, height: m.box.h }).workArea;
       rec.box = resizeTalk(m.box, m.edge, sx - m.x, sy - m.y, area, TALK_RESIZE_MIN);
