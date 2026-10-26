@@ -1793,6 +1793,22 @@ app.whenReady().then(async () => {
     });
   }
   replyTo = sendMessage;
+  // Stops a background task of a session Blaube started, asked of Claude
+  // Code itself (stop_task); false: the box asks Claude instead.
+  ipcMain.handle('talk-stop-task', (_e, id, taskId) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    const t = s && (s.tasks || []).find((x) => x.id === taskId);
+    if (!t || !owned.has(id)) return done(false);
+    owned.control(id, { subtype: 'stop_task', task_id: taskId }, (ok, r) => {
+      log(`stop task ${taskId}: ${ok ? 'ok' : r}`);
+      if (!ok) return done(false);
+      const cur = tracker.sessions.get(id);
+      if (cur) tracker.handleTask(cur, { hook_event_name: 'PreToolUse', tool_name: 'KillShell', tool_input: { shell_id: taskId } });
+      inbox.add(id, { who: 'note', text: `Stopped ${t.description || t.command}` });
+      pushState();
+      done(true);
+    });
+  }));
   ipcMain.on('talk-stop', (_e, id) => {
     if (!id || id !== talkId || !tracker.sessions.has(id)) return;
     const asked = inbox.stop(id);

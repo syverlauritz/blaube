@@ -22,6 +22,7 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
     const r = m.request, ok = (response) => out({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response } });
     if (r.subtype === 'set_model') { model = r.model.startsWith('claude-') ? r.model : 'claude-' + r.model; return ok({ model }); }
     if (r.subtype === 'set_permission_mode') { ok({ mode: r.mode }); return out({ type: 'system', subtype: 'status', permissionMode: r.mode }); }
+    if (r.subtype === 'stop_task') return ok({});
     if (r.subtype === 'interrupt') { clearTimeout(turn); ok({}); return out({ type: 'result', subtype: 'error_during_execution', is_error: true }); }
     return;
   }
@@ -32,7 +33,7 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
 });
 `;
 
-module.exports = async function run({ win, owned, startSession, talk, talkId, tracker, inbox }) {
+module.exports = async function run({ win, owned, startSession, talk, talkId, tracker, inbox, PORT }) {
 	let failed = 0;
 	const check = (ok, what) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) failed++; };
 	const until = async (fn, ms = 6000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return true; await sleep(100); } return false; };
@@ -82,6 +83,15 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await type('thoughts?');
 	check(await until(() => inbox.log(id).some((e) => e.who === 'you' && /^\(I ran `echo hi there` myself\. It printed:\n```\nhi there\n```\)\n\nthoughts\?$/.test(e.text))), 'which then carries it');
 	await until(() => tracker.sessions.get(id).state === 'done');
+	// A background task it started stops at once, asked of Claude Code itself.
+	await new Promise((done) => {
+		const req = require('node:http').request({ host: '127.0.0.1', port: PORT, path: '/blaube/hook', method: 'POST', headers: { 'content-type': 'application/json', 'x-blaube-entry': 'cli' } }, (res) => { res.resume(); res.on('end', done); });
+		req.end(JSON.stringify({ session_id: id, cwd: dir, hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_use_id: 'tu9', tool_input: { command: 'npm run dev', description: 'Dev server', run_in_background: true }, tool_response: { backgroundTaskId: 'b9' } }));
+	});
+	check(await until(() => box(`!document.getElementById('bg').hidden`)), 'a background task it started shows');
+	await box(`[...document.querySelectorAll('#bg button')].find((b) => b.textContent === 'Stop').click()`);
+	check(await until(() => box(`document.getElementById('bg').hidden`)), 'its Stop stops it right away');
+	check(inbox.log(id).some((e) => e.who === 'note' && e.text === 'Stopped Dev server') && !inbox.log(id).some((e) => e.who === 'you' && /Stop the background task/.test(e.text)), 'without asking Claude');
 	// What /usage says, without it: how much of your limits you've used.
 	await type('busy week');
 	check(await until(() => box(`/82% of the week used/.test(document.getElementById('mode').textContent)`)), 'close to a usage limit, the box says so under the field');

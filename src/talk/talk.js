@@ -981,8 +981,15 @@
       const stop = document.createElement('button');
       stop.type = 'button';
       stop.textContent = 'Stop';
-      stop.title = `Ask Claude to stop ${t.command}`;
-      stop.onclick = () => { if (!current) return; stop.disabled = true; api.send(current.id, `Stop the background task “${t.label}” (id ${t.id}, \`${t.command}\`).`); };
+      stop.title = s.owned ? `Stop ${t.command}` : `Ask Claude to stop ${t.command}`;
+      // (A session Blaube started stops it itself; any other is asked to.)
+      stop.onclick = async () => {
+        if (!current) return;
+        stop.disabled = true;
+        const id = current.id;
+        if (api.stopTask && await api.stopTask(id, t.id)) return;
+        api.send(id, `Stop the background task “${t.label}” (id ${t.id}, \`${t.command}\`).`);
+      };
       // (And what it has printed lately: read from its file, live while
       // it's open, or else asked of Claude.)
       const peek = document.createElement('button');
