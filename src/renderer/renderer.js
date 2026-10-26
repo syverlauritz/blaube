@@ -890,7 +890,7 @@
       // jitters, worst while it's held.)
       // Dozing (idle, nobody around for two minutes): it slumps, softer and
       // flatter. When you come back it wakes with a big stretch up.
-      const asleep = b.state === 'idle' && performance.now() / 1000 - mouse.lastMove > 120 && !body.grab;
+      const asleep = b.state === 'idle' && performance.now() / 1000 - mouse.lastMove > dozeAfter() && !body.grab;
       b.sleep = (b.sleep || 0) + ((asleep ? 1 : 0) - (b.sleep || 0)) * (asleep ? 0.002 : 0.05);
       if (!asleep && b.sleep > 0.5 && !b.woke && body.onFloor()) { b.woke = true; body.squashTop(-CFG.sleepSlump * body.o.radius * 90, DT); b.nextBlink = time; }
       if (asleep) b.woke = false;
@@ -1293,6 +1293,18 @@
     return true;
   }
 
+  // Late at night (11 pm to 6 am, your clock) slimes get sleepy: they doze
+  // off sooner when left alone and yawn more. 0..1, deepest around 3 am.
+  function lateness() {
+    if (CFG.nightSleepy <= 0) return 0;
+    const d = new Date(), h = d.getHours() + d.getMinutes() / 60;
+    const fromMid = h >= 23 ? h - 24 : h; // -1 at 23:00 ... 6 at 06:00
+    if (fromMid < -1 || fromMid > 6) return 0;
+    return CFG.nightSleepy * Math.max(0, 1 - Math.abs(fromMid - 3) / 4);
+  }
+  // How long without the mouse before an idle slime dozes off (s).
+  const dozeAfter = () => 120 - 75 * Math.min(1, lateness());
+
   // Each slime is its own character: from its key it gets a little more or
   // less of some traits (bouncy, curious, fidgety, blinky, firm), so two
   // slimes never quite move alike. 'personality' sets how different.
@@ -1536,9 +1548,9 @@
       b.nextYawn = time + 20 + Math.random() * 30;
     }
     // Left alone for a couple of minutes, idle slimes doze off and yawn.
-    if (b.kind !== 'home' && b.state === 'idle' && performance.now() / 1000 - mouse.lastMove > 120 && time > (b.nextIdleYawn || 0)) {
+    if (b.kind !== 'home' && b.state === 'idle' && performance.now() / 1000 - mouse.lastMove > dozeAfter() && time > (b.nextIdleYawn || 0)) {
       if (b.nextIdleYawn) yawn(b, 1.6, 0.5);
-      b.nextIdleYawn = time + 25 + Math.random() * 40;
+      b.nextIdleYawn = time + (25 + Math.random() * 40) / (1 + lateness());
     }
     // Yawns are catching.
     if (b.catchYawnAt && time > b.catchYawnAt) {
@@ -1667,7 +1679,7 @@
     else if (b.pain > 0.05) { expression = 'pained'; mouth = 'wobble'; }
     else if (st === 'done' && unseen(b)) { expression = 'happy'; mouth = 'grin'; }
     else if (st === 'working') { expression = 'concentrate'; mouth = 'flat'; }
-    else if (st === 'idle' && performance.now() / 1000 - mouse.lastMove > 120) { expression = 'sleepy'; mouth = 'flat'; }
+    else if (st === 'idle' && performance.now() / 1000 - mouse.lastMove > dozeAfter()) { expression = 'sleepy'; mouth = 'flat'; }
     // Saying something by itself (a status bubble): eyes open to tell you.
     // Just hovering doesn't wake it from its work.
     if (b.bubble && (expression === 'concentrate' || expression === 'sleepy')) { expression = 'normal'; mouth = 'smile'; }
