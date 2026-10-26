@@ -59,8 +59,9 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
   if (m.type === 'user' && m.message.content === 'nearly out') used = [93, 82];
   if (m.type === 'user' && m.message.content === 'busy week') out({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', rateLimitType: 'seven_day', utilization: 0.82, resetsAt: Math.round(Date.now() / 1000) + 3 * 86400, unifiedWindows: { five_hour: { utilization: 0.3, resetsAt: Math.round(Date.now() / 1000) + 3600, status: 'allowed' }, seven_day: { utilization: 0.82, resetsAt: Math.round(Date.now() / 1000) + 3 * 86400, status: 'allowed' } } } });
   if (m.type === 'user' && m.message.content === 'need linear') linear = 'needs-auth';
+  if (m.type === 'user' && m.message.content === 'flaky') { out({ type: 'system', subtype: 'api_retry', attempt: 2, max_retries: 10, retry_delay_ms: 4000, error_status: 529, error: 'overloaded' }); out({ type: 'system', subtype: 'model_fallback', content: 'Opus is overloaded, so this turn uses Sonnet.', originalModel: 'claude-opus', fallbackModel: 'claude-sonnet' }); }
   if (m.type === 'user' && m.message.content === 'signed out') return out({ type: 'result', subtype: 'success', is_error: true, result: 'Not logged in · Please run /login' });
-  if (m.type === 'user') turn = setTimeout(() => out({ type: 'result', subtype: 'success', result: model + ' here.' }), m.message.content === 'slow' ? 20000 : m.message.content === 'edit two' ? 1500 : m.message.content === 'start the server' ? 6000 : 50);
+  if (m.type === 'user') turn = setTimeout(() => out({ type: 'result', subtype: 'success', result: model + ' here.' }), m.message.content === 'slow' ? 20000 : m.message.content === 'edit two' || m.message.content === 'flaky' ? 1500 : m.message.content === 'start the server' ? 6000 : 50);
 });
 `;
 
@@ -144,6 +145,11 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(() => inbox.log(id).some((e) => /^Its MCP servers: .*linear \(turned off\)/.test(e.text || ''))), 'and /mcp says so');
 	await type('/mcp enable linear');
 	check(await until(() => inbox.log(id).some((e) => e.text === 'Turned linear on')), 'and /mcp enable turns it back on');
+	// Claude's servers busy: the box says it's trying again, not just dots.
+	await type('flaky');
+	check(await until(() => box(`/Claude’s servers are overloaded: trying again in 4s \\(2 of 10\\)/.test(document.getElementById('inner').textContent)`), 3000), 'while Claude Code tries again, the box says why (api_retry)');
+	check(await until(() => inbox.log(id).some((e) => e.text === 'Opus is overloaded, so this turn uses Sonnet.')), 'and when it falls back to another model, says so (model_fallback)');
+	await until(() => tracker.sessions.get(id).state === 'done');
 	// Plugins from the box: Claude Code's own plugin commands, as steps.
 	await type('/plugin marketplace add acme/plugins');
 	check(await until(() => inbox.log(id).some((e) => e.who === 'step' && e.text === 'Marketplace acme/plugins: added (claude plugin marketplace add)' && !e.running)), '/plugin marketplace add adds a marketplace');

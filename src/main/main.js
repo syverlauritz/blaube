@@ -1811,6 +1811,17 @@ app.whenReady().then(async () => {
     }, 30e3);
   }));
   setInterval(askUsage, 5 * 60e3).unref();
+  // While Claude Code waits to try again, the box says so, not just dots.
+  owned.on('retry', (id, r) => {
+    const why = r.status === 429 || /rate/i.test(r.error) ? 'busy (rate limited)' : r.status === 529 || /overload/i.test(r.error) ? 'overloaded' : r.status ? `answering ${r.status}` : 'not answering';
+    const secs = Math.round(r.delay / 1000);
+    const said = `Claude’s servers are ${why}: trying again${secs >= 2 ? ` in ${secs}s` : ''}${r.attempt && r.max ? ` (${r.attempt} of ${r.max})` : ''}`;
+    doing.set(id, said);
+    setTimeout(() => { if (doing.get(id) === said) { doing.delete(id); if (talkId === id) pushTalk(id); } }, r.delay + 5000).unref(); // (it went through)
+    pushState();
+    if (talkId === id) pushTalk(id);
+  });
+  owned.on('fallback', (id, f) => inbox.add(id, { who: 'note', text: f.text ? f.text.replace(/\s+/g, ' ').trim().slice(0, 300) : `It switched to ${modelName(f.to) || f.to}${f.from ? `, as ${modelName(f.from) || f.from} couldn’t answer` : ''}` }));
   owned.on('compacted', (id) => inbox.add(id, { who: 'note', text: 'Compacted: it carries on from a summary of the conversation so far' }));
   owned.on('result', (id, r) => {
     pickedModel.delete(id); // (its transcript says now)
