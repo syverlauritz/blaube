@@ -1572,6 +1572,15 @@ app.whenReady().then(async () => {
   // Your usage limits, as Claude Code tells a session Blaube started.
   const setLimits = (l) => {
     if (!l) return;
+    // (Getting to 90%, or running out: a notification, once per window.)
+    const told = new Set(prefs.limitsTold || []);
+    const news = limits.news(l, told);
+    if (news) {
+      prefs.limitsTold = [...told].slice(-12);
+      savePrefs();
+      if (TEST) global.__blaubeLimitNews = news;
+      else if (Notification.isSupported() && (prefs.config.notify || 'Behind windows') !== 'Off') new Notification({ title: news.title, body: news.body }).show();
+    }
     const before = JSON.stringify(usageLimits);
     usageLimits = l;
     if (JSON.stringify(usageLimits) !== before && talkId) pushTalk(talkId);

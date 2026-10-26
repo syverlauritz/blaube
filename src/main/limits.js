@@ -81,4 +81,23 @@ function liftsAt(lim, text, now = Date.now()) {
   return d.getTime();
 }
 
-module.exports = { read, fromUsage, line, warn, when, liftsAt };
+// Worth a notification: a limit that just got to 90%, or ran out. Once per
+// window, per level (`told`: what's been said, kept by the caller). Returns
+// { title, body } or null.
+function news(lim, told, now = Date.now()) {
+  for (const w of live(lim, now)) {
+    const out = w.status === 'rejected' || w.used >= 1;
+    if (!out && w.used < 0.9) continue;
+    const key = `${w.kind}@${w.resetsAt}@${out ? 'out' : '90'}`;
+    if (told.has(key)) continue;
+    told.add(key);
+    const name = w.kind === 'five_hour' ? '5-hour' : WINDOWS[w.kind] && w.kind !== 'seven_day' ? `weekly (${WINDOWS[w.kind].replace(/.*\((.*)\)/, '$1')})` : 'weekly';
+    const resets = w.resetsAt ? `It resets ${when(w.resetsAt, now)}.` : '';
+    return out
+      ? { title: `Your ${name} limit is used up`, body: `${resets} Sessions can carry on by themselves then (Carry on at… in their box).`.trim() }
+      : { title: `${Math.round(w.used * 100)}% of your ${name} limit used`, body: resets || 'Your sessions stop when it runs out.' };
+  }
+  return null;
+}
+
+module.exports = { read, fromUsage, line, warn, when, liftsAt, news };

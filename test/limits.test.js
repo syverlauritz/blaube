@@ -59,3 +59,17 @@ test('reads get_usage’s rate_limits too (percentages, ISO times)', () => {
   assert.equal(limits.fromUsage(null), null);
   assert.equal(limits.fromUsage({ five_hour: null }), null);
 });
+
+test('a limit getting to 90%, or running out, is news once', () => {
+  const now = new Date(2026, 9, 26, 12, 0).getTime();
+  const at = new Date(2026, 9, 26, 15, 0).getTime();
+  const lim = (used, kind = 'five_hour', status = 'allowed') => ({ status, windows: [{ kind, used, resetsAt: at, status }] });
+  const told = new Set();
+  assert.equal(limits.news(lim(0.5), told, now), null);
+  assert.deepEqual(limits.news(lim(0.91), told, now), { title: '91% of your 5-hour limit used', body: 'It resets 3pm.' });
+  assert.equal(limits.news(lim(0.95), told, now), null, 'said already');
+  assert.equal(limits.news(lim(1, 'five_hour', 'rejected'), told, now).title, 'Your 5-hour limit is used up');
+  assert.equal(limits.news(lim(1, 'five_hour', 'rejected'), told, now), null);
+  assert.equal(limits.news(lim(0.92, 'seven_day_opus'), told, now).title, '92% of your weekly (Opus) limit used');
+  assert.equal(limits.news(lim(0.92, 'seven_day'), told, at + 1), null, 'one that has reset is no news');
+});
