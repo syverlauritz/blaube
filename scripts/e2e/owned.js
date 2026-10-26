@@ -401,6 +401,16 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
 	owned.end(LID);
 
+	// Claude Code's own defaults for new sessions, from Blaube's menu.
+	global.__blaubeCcHome = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-cchome-'));
+	const ccMenu = () => global.__blaubeTrayMenu().items.find((i) => i.label === 'Claude Code defaults');
+	check(!!ccMenu() && ccMenu().submenu.items.find((i) => i.label === 'Default').checked && ccMenu().submenu.items.find((i) => i.label === 'Ask before acting').checked, 'the menu has Claude Code’s defaults for new sessions');
+	ccMenu().submenu.items.find((i) => i.label === 'Haiku').click();
+	ccMenu().submenu.items.find((i) => i.label === 'Accept edits').click();
+	const ccFile = path.join(global.__blaubeCcHome, '.claude', 'settings.json');
+	check(JSON.stringify(JSON.parse(fs.readFileSync(ccFile, 'utf8'))) === JSON.stringify({ model: 'haiku', permissions: { defaultMode: 'acceptEdits' } }), 'picking a model and a mode there writes them to its settings file');
+	check(ccMenu().submenu.items.find((i) => i.label === 'Haiku').checked && ccMenu().submenu.items.find((i) => i.label === 'Accept edits').checked, 'and the menu shows them');
+
 	// Install Claude Code from the menu: its official installer (a stand-in here).
 	let ran = null;
 	global.__blaubeInstallRun = (bin, args) => {

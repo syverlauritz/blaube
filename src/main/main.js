@@ -26,6 +26,7 @@ const usageProbe = require('./usageProbe');
 const auth = require('./auth');
 const renamer = require('./rename');
 const branch = require('./branch');
+const ccDefaults = require('./ccDefaults');
 const installer = require('./installer');
 const away = require('./away');
 const taskOutput = require('./taskOutput');
@@ -1243,6 +1244,26 @@ function appMenu() {
 
 // Blaube's menu: what you came for first (connecting, a new session), then
 // the toys, then how it looks and behaves, then quitting.
+// Claude Code's own defaults for new sessions (its settings file), picked
+// here instead of edited in a terminal.
+function ccDefaultsMenu() {
+  const home = (TEST && global.__blaubeCcHome) || undefined; // (tests: never your own settings)
+  const now = ccDefaults.read(home);
+  const models = (prefs.models && prefs.models.length ? prefs.models : [{ value: 'default', displayName: 'Default' }, { value: 'opus', displayName: 'Opus' }, { value: 'sonnet', displayName: 'Sonnet' }, { value: 'haiku', displayName: 'Haiku' }]);
+  const set = (change) => { if (!ccDefaults.write(change, home) && !TEST) dialog.showMessageBox({ type: 'warning', message: 'Blaube can’t change your Claude Code settings', detail: `${ccDefaults.fileOf()} isn’t plain JSON, so Blaube leaves it alone.` }); };
+  const known = models.some((m) => m.value === now.model || (!now.model && m.value === 'default'));
+  return { label: 'Claude Code defaults', submenu: [
+    { label: 'New sessions start on', enabled: false },
+    ...models.map((m) => ({ label: String(m.displayName || m.value).replace(/\s*\(recommended\)/i, ''), type: 'radio', checked: m.value === 'default' ? !now.model : now.model === m.value, click: () => set({ model: m.value === 'default' ? '' : m.value }) })),
+    ...(known ? [] : [{ label: now.model, type: 'radio', checked: true, enabled: false }]),
+    { type: 'separator' },
+    { label: 'And before acting they', enabled: false },
+    ...ccDefaults.MODES.map(([mode, label]) => ({ label, type: 'radio', checked: (now.mode || 'default') === mode, click: () => set({ mode: mode === 'default' ? '' : mode }) })),
+    { type: 'separator' },
+    { label: 'Open the settings file', click: () => { const f = ccDefaults.fileOf(home); if (!fs.existsSync(f)) ccDefaults.write({}, home); if (!TEST) shell.openPath(f); } },
+  ] };
+}
+
 function appMenuTemplate() {
   const installed = claudeHooks.isInstalled(undefined, PORT);
   const noClaude = !claudeFound();
@@ -1252,6 +1273,7 @@ function appMenuTemplate() {
     ...(noClaude ? [{ label: installing ? 'Installing Claude Code…' : 'Install Claude Code…', enabled: !installing, click: installClaude }]
       : installed ? [] : [{ label: claudeHooks.hasAnyBlaubeHooks() ? 'Update Claude Code connection…' : 'Connect Claude Code…', click: installHooks }]),
     ...newSessionMenu(),
+    ...(noClaude ? [] : [ccDefaultsMenu()]),
     { type: 'separator' },
     { label: 'Play', submenu: [
       { label: 'Come here', click: () => send('come-here') },
