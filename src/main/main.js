@@ -1974,11 +1974,29 @@ app.whenReady().then(async () => {
     });
   });
   // "@" and "/" in the box: the session's files, and the commands you could type.
+  // The models a session Blaube started can switch to, asked of its Claude
+  // Code (list_models) once.
+  const modelLists = new Map(); // id -> [{ value, displayName, description }]
+  function modelsFor(id, cb) {
+    if (!owned.has(id)) return cb([]);
+    if (modelLists.has(id)) return cb(modelLists.get(id));
+    owned.control(id, { subtype: 'list_models' }, (ok, r) => {
+      const list = ok && r && Array.isArray(r.models) ? r.models.filter((m) => m && typeof m.value === 'string').map((m) => ({ value: m.value, displayName: String(m.displayName || m.value), description: String(m.description || '') })) : [];
+      if (list.length) modelLists.set(id, list);
+      cb(list);
+    });
+  }
+  owned.on('exit', (id) => modelLists.delete(id));
   ipcMain.handle('talk-complete', (_e, id, kind, q) => new Promise((resolve) => {
     const s = id === talkId && tracker.sessions.get(id);
     q = typeof q === 'string' ? q.slice(0, 200) : '';
     if (!s || !s.cwd || id.startsWith('demo-')) return resolve([]);
     if (kind === 'command') return resolve(commandNames(q, s.cwd).slice(0, 8).map((c) => ({ insert: '/' + c.name + ' ', label: '/' + c.name, about: c.about || '' })));
+    if (kind === 'model') return modelsFor(id, (models) => {
+      const want = q.toLowerCase();
+      resolve(models.filter((m) => !want || m.value.toLowerCase().startsWith(want) || m.displayName.toLowerCase().startsWith(want)).slice(0, 8)
+        .map((m) => ({ insert: m.value, label: m.value, about: m.description || m.displayName })));
+    });
     if (kind !== 'file') return resolve([]);
     projectFiles.list(s.cwd, (all) => resolve(projectFiles.match(all, q).map((p) => ({ insert: '@' + p + ' ', label: p, about: '' }))));
   }));

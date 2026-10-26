@@ -23,6 +23,7 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
     if (r.subtype === 'set_model') { model = r.model.startsWith('claude-') ? r.model : 'claude-' + r.model; return ok({ model }); }
     if (r.subtype === 'set_permission_mode') { ok({ mode: r.mode }); return out({ type: 'system', subtype: 'status', permissionMode: r.mode }); }
     if (r.subtype === 'stop_task') return ok({});
+    if (r.subtype === 'list_models') return ok({ models: [{ value: 'default', displayName: 'Default (recommended)', description: 'Sonnet 5.5 · Efficient for routine tasks' }, { value: 'opus', displayName: 'Opus', description: 'Opus 5.5 · Best for everyday, complex tasks' }, { value: 'haiku', displayName: 'Haiku', description: 'Haiku 5.5 · Fastest for quick answers' }] });
     if (r.subtype === 'get_context_usage') return ok({ categories: [{ name: 'System tools', tokens: 29000, kind: 'used' }, { name: 'Messages', tokens: 61000, kind: 'used' }, { name: 'Free space', tokens: 410000, kind: 'free' }], totalTokens: 90000, maxTokens: 500000, percentage: 18 });
     if (r.subtype === 'rewind_files') return ok(seen.has(r.user_message_id) ? (r.dry_run ? { canRewind: true, filesChanged: ['/x/a.js', '/x/b.js'], insertions: 3, deletions: 1 } : { canRewind: true }) : { canRewind: false, error: 'No file checkpoint found for this message.' });
     if (r.subtype === 'mcp_status') return ok({ mcpServers: [{ name: 'github', status: mcpUp ? 'connected' : 'failed', error: 'ENOENT: no such file' }, { name: 'linear', status: 'connected' }] });
@@ -58,6 +59,12 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	const id = startSession(dir);
 	check(await until(() => talk() && talk().isVisible() && talkId() === id, 8000), 'a session starts, its box open');
 
+	// "/model " suggests the models it can switch to, asked of Claude Code.
+	await box(`(() => { const t = document.getElementById('text'); t.focus(); t.value = '/model o'; t.setSelectionRange(8, 8); t.dispatchEvent(new Event('input')); })()`);
+	check(await until(() => box(`(() => { const s = document.getElementById('suggest'); return !s.hidden && /^opus/.test(s.textContent) && /Opus 5\.5 · Best for everyday/.test(s.textContent) && !/haiku/.test(s.textContent); })()`)), '/model suggests the models it can switch to');
+	await box(`document.getElementById('text').dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))`);
+	check(await until(() => box(`document.getElementById('text').value === '/model opus'`)), 'and Tab puts one in');
+	await box(`(() => { const t = document.getElementById('text'); t.value = ''; t.dispatchEvent(new Event('input')); })()`);
 	await type('/model claude-sonnet-5-5');
 	check(await until(async () => /Now using Sonnet 5\.5/.test(await said())), '/model switches its model, no terminal');
 	check(await until(() => box(`document.querySelector('#mode .model') && document.querySelector('#mode .model').textContent === 'Sonnet 5.5 · '`)), 'and the box says which model it is now');

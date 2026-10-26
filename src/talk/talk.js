@@ -1474,6 +1474,9 @@
     if (m) return { kind: 'file', q: m[2], from: c - m[2].length - 1 };
     m = /^\/([\w:-]*)$/.exec(before);
     if (m) return { kind: 'command', q: m[1], from: 0 };
+    // (/model in a session Blaube started: the models it can switch to.)
+    m = /^\/model\s+([\w.[\]-]*)$/i.exec(before);
+    if (m && current.owned) return { kind: 'model', q: m[1], from: c - m[1].length };
     return null;
   }
   async function suggest() {
