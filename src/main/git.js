@@ -29,9 +29,12 @@ function summary(st) {
 const MAIN = /^(main|master|trunk|develop)$/;
 
 // What you might want next, as { label, prompt }: only while it isn't busy.
-function quickActions(st, state) {
+// `more`: { failedTests: the test command that failed last turn,
+// context: how full its context is, in %, canCompact }.
+function quickActions(st, state, more = {}) {
   if (state === 'working' || state === 'waiting') return [];
   const out = [];
+  if (more.failedTests) out.push({ label: 'Fix the tests', prompt: `The tests failed (\`${more.failedTests}\`). Fix them, then run them again and tell me what was wrong.` });
   const n = st ? st.changed + st.untracked : 0;
   if (st && st.conflicts) out.push({ label: 'Fix conflicts', prompt: 'There are merge conflicts. Resolve them, keeping both sides’ intent, then tell me what you chose.' });
   if (n) out.push({ label: 'Commit', prompt: 'Commit the current changes with a clear message (split them into a few commits if they are unrelated).' });
@@ -39,8 +42,10 @@ function quickActions(st, state) {
   const unpushed = st && st.branch && !st.upstream && !MAIN.test(st.branch);
   if (st && !n && (st.ahead || unpushed)) out.push({ label: 'Push', prompt: unpushed ? 'Push this branch and set its upstream.' : 'Push this branch.' });
   if (st && st.branch && !MAIN.test(st.branch)) out.push({ label: 'Open a PR', prompt: 'Open a pull request for this branch (commit and push first if needed) and give me the link.' });
-  out.push({ label: 'Run tests', prompt: 'Run the tests and tell me what fails, if anything.' });
+  if (!more.failedTests) out.push({ label: 'Run tests', prompt: 'Run the tests and tell me what fails, if anything.' });
   if (st && st.behind) out.push({ label: 'Pull', prompt: 'Pull the latest changes into this branch and tell me if anything conflicts.' });
+  // Nearly out of room: tidy up before it has to (first, so it's seen).
+  if (more.canCompact && more.context >= 80) out.unshift({ label: 'Compact', prompt: '/compact' });
   return out.slice(0, 4);
 }
 

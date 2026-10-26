@@ -268,7 +268,8 @@ class Inbox extends EventEmitter {
       const text = stepText(payload.tool_name, payload.tool_input);
       const i = payload.tool_input || {};
       const file = /^(Edit|MultiEdit|Write|NotebookEdit|Read)$/.test(payload.tool_name) ? String(i.file_path || i.notebook_path || '') : '';
-      if (text) this.add(id, Object.assign({ who: 'step', text, ok: event === 'PostToolUse', kind: classify(payload.tool_name, payload.tool_input), detail: stepDetail(payload) }, file ? { file } : {}));
+      const cmd = (payload.tool_name === 'Bash' || payload.tool_name === 'PowerShell') && payload.tool_input && typeof payload.tool_input.command === 'string' ? payload.tool_input.command.slice(0, 200) : '';
+      if (text) this.add(id, Object.assign({ who: 'step', text, ok: event === 'PostToolUse', kind: classify(payload.tool_name, payload.tool_input), detail: stepDetail(payload) }, file ? { file } : {}, cmd ? { cmd } : {}));
     }
     // A session Blaube started tells its own story (say/replied).
     if (this.owned.has(id) && (event === 'UserPromptSubmit' || event === 'Stop')) return;
@@ -417,6 +418,18 @@ function turnOf(log, now) {
   return { took: Math.max(0, now - (log[start].sentAt || log[start].at)), steps: steps.length, files }; // (from when it went in, not when it was typed)
 }
 
+// The test command its last turn ran and that failed (its last run of
+// tests, so tests fixed later in the turn don't count), or ''.
+const TESTS = /\b(?:(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test|npx\s+(?:jest|vitest|mocha|playwright\s+test)|pytest|jest|vitest|mocha|rspec|go\s+test|cargo\s+test|node\s+--test|make\s+test|dotnet\s+test|mvn\s+test|gradlew?\s+test)\b/;
+function failedTests(log) {
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if (e.who === 'you' && !e.midTurn && e.status !== 'queued') break;
+    if (e.who === 'step' && e.cmd && TESTS.test(e.cmd)) return e.ok === false ? e.cmd : '';
+  }
+  return '';
+}
+
 // Keeps a session's to-do list up to date from TodoWrite (the whole list
 // each time) or the task tools (one item at a time). True if it changed.
 function todo(all, id, p) {
@@ -525,4 +538,4 @@ function alwaysLabel(updates, max = 70) {
   return text.length > max ? text.slice(0, max - 2) + '…' : text;
 }
 
-module.exports = { Inbox, frame, describe, toolName, alwaysLabel, stepText, stepDetail, turnOf, STYLE };
+module.exports = { Inbox, frame, describe, toolName, alwaysLabel, stepText, stepDetail, turnOf, failedTests, STYLE };

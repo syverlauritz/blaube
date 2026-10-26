@@ -45,3 +45,14 @@ test('status reads a real repository', async (t) => {
   const none = await new Promise((r) => status(os.tmpdir() + '/no-such-folder-blaube', r));
   assert.equal(none, null);
 });
+
+test('after failed tests it offers to fix them; nearly full, to compact', () => {
+  const st = { branch: 'main', changed: 0, untracked: 0, ahead: 0, behind: 0, conflicts: 0, upstream: 'origin/main' };
+  const labels = (more) => quickActions(st, 'done', more).map((q) => q.label);
+  assert.deepEqual(labels({}), ['Run tests']);
+  assert.deepEqual(labels({ failedTests: 'npm test' }), ['Fix the tests']);
+  assert.match(quickActions(st, 'done', { failedTests: 'npm test' })[0].prompt, /`npm test`/);
+  assert.deepEqual(labels({ context: 85, canCompact: true }), ['Compact', 'Run tests']);
+  assert.deepEqual(labels({ context: 85, canCompact: false }), ['Run tests']);
+  assert.deepEqual(labels({ context: 50, canCompact: true }), ['Run tests']);
+});

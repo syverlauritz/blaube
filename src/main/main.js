@@ -2,7 +2,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { app, BrowserWindow, Tray, Menu, Notification, nativeImage, screen, ipcMain, dialog, shell, clipboard, globalShortcut, systemPreferences } = require('electron');
 const { SessionTracker } = require('./sessions');
-const { Inbox, STYLE } = require('./inbox');
+const { Inbox, STYLE, failedTests } = require('./inbox');
 const { classify } = require('../shared/actions');
 const { SONGS } = require('../shared/songs');
 const { placeTalk } = require('./talkPlace');
@@ -428,7 +428,11 @@ function pushTalk(id, focusField = false) {
     focus: focusField,
     // Its git status and what you might ask for next (see git.js).
     git: gitStates.has(id) ? git.summary(gitStates.get(id)) : '',
-    quick: id.startsWith('demo-') ? [] : git.quickActions(gitStates.get(id) || null, s.state),
+    quick: id.startsWith('demo-') ? [] : git.quickActions(gitStates.get(id) || null, s.state, {
+      failedTests: failedTests(inbox.log(id)),
+      context: (() => { const tk = tokens.get(id); return tk && tk.limit && tk.context ? Math.round((tk.context / tk.limit) * 100) : 0; })(),
+      canCompact: !owned.has(id), // (typed into its terminal, or handed over: see talk-send)
+    }),
     // Every slime, to switch between them from the box.
     today: attention.today([...inbox.logs.values()]),
     others: tracker.list().filter(isReady).map((o) => Object.assign({ id: o.id, project: o.project, color: colorOf(o) || prefs.config.color || '#D97757', state: o.state }, glanceAt(o))),

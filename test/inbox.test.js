@@ -547,3 +547,20 @@ test('a forgotten session leaves nothing behind, unless it’s still waiting on 
   inbox.wait('s2', () => true);
   assert.equal(inbox.forget('s2'), false, 'its inbox hook is still waiting');
 });
+
+test('it knows when its last turn’s tests failed (and not when they passed after)', () => {
+  const { failedTests } = require('../src/main/inbox.js');
+  const inbox = new Inbox();
+  const run = (command, failed) => inbox.observe({ session_id: 's1', hook_event_name: failed ? 'PostToolUseFailure' : 'PostToolUse', tool_name: 'Bash', tool_input: { command }, tool_response: {}, error: failed ? 'exit 1' : undefined });
+  inbox.observe({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: 'go' });
+  run('npm test', true);
+  run('ls', false);
+  assert.equal(failedTests(inbox.log('s1')), 'npm test');
+  run('npm test -- --grep tax', false);
+  assert.equal(failedTests(inbox.log('s1')), '', 'fixed later in the turn');
+  run('pytest -q', true);
+  inbox.observe({ session_id: 's1', hook_event_name: 'Stop', last_assistant_message: 'Tests fail.' });
+  assert.equal(failedTests(inbox.log('s1')), 'pytest -q');
+  inbox.observe({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: 'something else' });
+  assert.equal(failedTests(inbox.log('s1')), '', 'a new turn starts clean');
+});
