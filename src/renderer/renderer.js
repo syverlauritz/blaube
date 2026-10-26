@@ -2870,9 +2870,25 @@
     }
   }
 
+  // Bowling: one you've thrown that knocks into two or more others on its
+  // way is very pleased with itself ("strike!").
+  function bowl(f, o) {
+    if (CFG.bowling <= 0 || !f.thrownAt || time - f.thrownAt > 2 || f.kind === 'home' || o.kind === 'home' || (f.catching && f.catching.f === o) || (o.catching && o.catching.f === f)) return;
+    const vf = f.body.velocity(DT), vo = o.body.velocity(DT);
+    if (Math.hypot(vf.x, vf.y) < Math.hypot(vo.x, vo.y) || Math.hypot(vf.x - vo.x, vf.y - vo.y) < 350) return;
+    if (f.bowled !== f.thrownAt) { f.bowled = f.thrownAt; f.pins = new Set(); }
+    f.pins.add(o);
+    o.dizzyUntil = Math.max(o.dizzyUntil || 0, time + 0.8);
+    if (f.pins.size === 2) {
+      f.cheerUntil = time + 1.8;
+      quip(f, 'strike!', 1.3);
+      hearts.push({ x: f.body.centroid().x, y: f.body.bbox().minY - 8, vx: 0, born: time, size: 13 });
+    }
+  }
   // Two slimes hit each other: if they met fast enough, the one that got
   // hit (the slower one) sees stars for a moment.
   function bump(a, b) {
+    bowl(a, b); bowl(b, a);
     if (time < (a.bumpedAt || 0) + 0.6 || time < (b.bumpedAt || 0) + 0.6) return;
     const va = a.body.velocity(DT), vb = b.body.velocity(DT);
     const rel = Math.hypot(va.x - vb.x, va.y - vb.y);

@@ -126,6 +126,7 @@
       ['circleDizzy', 3, 0, 10, 0.5, 'Run the cursor round a slime this many times and it gets dizzy; its eyes follow it round (0 = off)'],
       ['hugs', 1, 0, 1.5, 0.05, 'Hold a slime you carry gently against another for a moment and they hug, hearts and all'],
       ['catching', 1, 0, 1.5, 0.05, 'Throw a slime at a calm one and it may brace and catch it (and how hard a throw it can take)'],
+      ['bowling', 1, 0, 1, 1, 'Throw a slime into two or more others and it cheers ("strike!")'],
       ['reach', 1, 0, 3, 0.05, 'Hold the cursor still just above its head: it stretches up to reach it, then hops to boop it'],
       ['headPat', 1, 0, 3, 0.05, 'Rest the cursor on its head: it pushes up into it like a cat'],
       ['patDoze', 1, 0, 3, 0.05, 'Keep the cursor resting on its head and it nods off under it, purring'],
