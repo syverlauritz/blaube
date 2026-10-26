@@ -1306,8 +1306,11 @@ while ($true) {
   }
   Start-Sleep -Milliseconds 12
 }`;
+  let child = null, quitting = false;
+  app.on('will-quit', () => { quitting = true; if (child) child.kill(); });
   const start = () => {
-    const child = require('node:child_process').spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    if (quitting) return;
+    child = require('node:child_process').spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
     let buf = '';
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk) => {
@@ -1319,8 +1322,8 @@ while ($true) {
         if (b === 0 || b === 2) onButton(b, d === 1, a === 1);
       }
     });
-    child.on('exit', () => setTimeout(start, 2000));
-    app.on('will-quit', () => child.kill());
+    child.on('error', () => { /* (couldn't start PowerShell: not an uncaught error dialog) */ });
+    child.on('exit', () => { if (!quitting) setTimeout(start, 2000); }); // (one 'will-quit' above, not one per restart)
   };
   start();
 }
