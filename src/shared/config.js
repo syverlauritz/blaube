@@ -127,6 +127,7 @@
       ['scrollSquish', 1, 0, 3, 0.05, 'Scroll over a slime to squish it flat or pull it tall'],
       ['listen', 1, 0, 2, 0.05, 'Typing to it in its talk box: it watches and bobs along'],
       ['quirks', 1, 0, 10, 0.1, 'Rare little quirks, like a fit of hiccups (how often)'],
+      ['headPat', 1, 0, 3, 0.05, 'Rest the cursor on its head: it pushes up into it like a cat'],
       ['jealous', 1, 0, 3, 0.05, 'Petting one: another comes over for some too'],
       ['tricks', 1, 0, 5, 0.05, 'Bored but awake, it amuses itself now and then (three hops, each higher)'],
       ['pranks', 1, 0, 5, 0.05, 'Now and then one sneaks up on another: boo! (more on Halloween)'],

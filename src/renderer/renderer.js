@@ -1210,6 +1210,7 @@
   function liven(b) {
     const body = b.body;
     if (b.dying || b.removed) return;
+    b.patted = false; // (see below)
     if (b.pendingHop) crouch(b);
     tingle(b);
     // A sneeze: it breathes in (stretching up), then "achoo!", which knocks
@@ -1254,6 +1255,15 @@
       body.lean(-(Math.sign(dx) || 1) * CFG.flinch * r * 3.2, DT);
       body.squashTop(CFG.flinch * r * 2.2, DT);
     }
+    // The cursor resting on top of its head: like a cat, it pushes up into
+    // your hand and shuts its eyes.
+    if (CFG.headPat > 0 && !drag && body.contains(mouse.x, mouse.y) && mouse.y < c.y - r * 0.35 && performance.now() / 1000 - mouse.lastMove > 0.7) {
+      b.patted = true;
+      if (!b.patSince) b.patSince = time;
+      const top = body.bbox().minY;
+      if (mouse.y - top > r * 0.1) body.squashTop(-CFG.headPat * r * 0.6 * 60 * DT, DT);
+      if (time - b.patSince > 1.5 && !b.patHeart) { b.patHeart = true; hearts.push({ x: c.x, y: top - 6, vx: 0, born: time, size: 10 }); }
+    } else { b.patSince = 0; b.patHeart = false; }
     // Something held right over it: it hunkers down a little, bracing.
     if (heldOver(b)) body.squashTop(CFG.spectate * r * 0.5 * 60 * DT, DT);
     // ...and a slime flying right at it makes it duck.
@@ -2297,6 +2307,7 @@
     else if (body.grab || time < (b.surpriseUntil || 0)) { mouth = 'o'; }
     else if (time < (b.booUntil || 0)) { expression = 'normal'; mouth = 'o'; }
     else if (b.sneeze) { expression = 'pained'; mouth = 'o'; } // (about to sneeze)
+    else if (b.patted) { expression = 'happy'; mouth = 'smile'; }
     else if (time < (b.wantsPetsUntil || 0) && time > (b.pettedUntil || 0)) { expression = 'normal'; mouth = 'smile'; }
     else if (time - (b.sneezedAt ?? -9) < 0.5) { expression = 'happy'; mouth = 'flat'; }
     else if (b.merging && b.kind === 'child') { expression = 'happy'; mouth = 'smile'; }
