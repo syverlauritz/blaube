@@ -32,7 +32,7 @@ test('bigger slimes have lower voices', () => {
   assert.ok(V.pitchFor(160) < V.pitchFor(78));
   assert.ok(V.pitchFor(78) < V.pitchFor(45));
   assert.ok(V.pitchFor(78, true) > V.pitchFor(78), 'a helper is higher than a mother its size');
-  assert.ok(V.pitchFor(5000) >= 120 && V.pitchFor(1) <= 760, 'within a voice');
+  assert.ok(V.pitchFor(5000) >= 150 && V.pitchFor(1) <= 960, 'within a voice');
 });
 
 test('the mouth opens during a syllable and is shut between and after', () => {

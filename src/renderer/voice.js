@@ -106,11 +106,12 @@
     return out;
   }
 
-  // The voice for a slime of radius r (px at size 1). About 330 Hz for a
-  // usual one, an octave lower for a big one, higher for a small one.
+  // The voice for a slime of radius r (px at size 1). About 415 Hz for a
+  // usual one (bright and cute), an octave lower for a big one, higher for
+  // a small one.
   function pitchFor(r, small) {
-    const f = 330 * Math.pow(78 / Math.max(20, r), 0.9) * (small ? 1.2 : 1);
-    return Math.max(120, Math.min(760, f));
+    const f = 415 * Math.pow(78 / Math.max(20, r), 0.9) * (small ? 1.2 : 1);
+    return Math.max(150, Math.min(960, f));
   }
 
   let noiseBuf = null;
@@ -224,7 +225,7 @@
     const wahOpen = Math.min(4500, 1800 + base * 2.5) * formantShift;
     saw.connect(sawGain).connect(wah); tri.connect(triGain).connect(wah);
     // The mouth: three resonances that glide between vowels.
-    const mouth = [['f1', 5, 1], ['f2', 8, 0.6], ['f3', 10, 0.25]].map(([k, q, g]) => {
+    const mouth = [['f1', 5, 1], ['f2', 8, 0.6], ['f3', 10, 0.35]].map(([k, q, g]) => {
       const bp = ctx.createBiquadFilter();
       bp.type = 'bandpass'; bp.Q.value = q;
       const gain = ctx.createGain(); gain.gain.value = g;
@@ -233,7 +234,7 @@
     });
     const tone = ctx.createBiquadFilter();
     tone.type = 'lowpass';
-    tone.frequency.value = Math.min(5000, 1800 + base * 4); // a big voice is darker
+    tone.frequency.value = Math.min(6000, 2200 + base * 4); // a big voice is darker
     amp.connect(tone).connect(bus).connect(o.out || ctx.destination);
     // stop(): cut it short with a quick fade (for a new line over it).
     const stop = () => { const now = ctx.currentTime; bus.gain.cancelScheduledValues(now); bus.gain.setTargetAtTime(0, now, 0.015); };
