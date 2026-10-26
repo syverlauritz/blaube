@@ -15,6 +15,7 @@ const FORGET_MS = 6 * 60 * 60 * 1000;
 const HOOKED_GONE_MS = 60 * 1000;
 const TASK_GRACE_MS = 5000; // a new task may not show up as a process right away
 const KILL_TOOLS = new Set(['KillShell', 'KillBash', 'TaskStop']);
+const LATE_MS = 10 * 1000; // a helper's tool hooks can arrive just after its SubagentStop
 
 // A helper (subagent) running in its own git worktree works in a folder
 // named after it. Its events don't always carry its agent_id, so the
@@ -48,6 +49,11 @@ class SessionTracker extends EventEmitter {
     }
 
     if (prev && this.handleAgent(prev, payload)) return;
+    // A helper she waited for came back with its answer: it's done.
+    const res = payload.tool_response;
+    if (prev && event === 'PostToolUse' && (payload.tool_name === 'Agent' || payload.tool_name === 'Task') && res && typeof res === 'object' && res.agentId && res.status === 'completed') {
+      this.handleAgent(prev, { hook_event_name: 'SubagentStop', agent_id: String(res.agentId) });
+    }
     if (prev && this.handleTask(prev, payload)) this.emit('change', { session: prev, from: prev.state, to: prev.state });
 
     const next = nextState(prev ? prev.state : 'idle', payload);
@@ -78,6 +84,9 @@ class SessionTracker extends EventEmitter {
       // `claude agents` poller leaves it alone.
       hooked: source === 'hook' || !!(prev && prev.hooked),
       agents: prev ? prev.agents : [],
+      // Helpers that have finished (id -> when), so a straggling hook can't
+      // bring one back.
+      ended: prev ? prev.ended : {},
       tasks: prev ? prev.tasks : [],
       tasksSeeded: !!(prev && prev.tasksSeeded),
       // Its todo list (see plan.js); a finished one is put away at the next prompt.
@@ -114,14 +123,21 @@ class SessionTracker extends EventEmitter {
     const event = p.hook_event_name;
     // (A session that itself runs in such a folder isn't its own helper.)
     const wt = worktreeAgentId(p.cwd);
-    const agentId = p.agent_id ? String(p.agent_id) : wt && wt !== worktreeAgentId(session.cwd) ? wt : '';
+    const ended = session.ended || (session.ended = {});
+    // (Not a finished helper's old folder, though: that's someone else in
+    // there now, its mother say, and it mustn't bring the helper back.)
+    const agentId = p.agent_id ? String(p.agent_id) : wt && wt !== worktreeAgentId(session.cwd) && !ended[wt] ? wt : '';
     if (event === 'SubagentStart' || event === 'SubagentStop') {
       if (!agentId) return true;
       const had = session.agents.some((a) => a.id === agentId);
       if (event === 'SubagentStop') {
         if (had) session.agents = session.agents.filter((a) => a.id !== agentId);
-      } else if (!had) {
-        session.agents = [...session.agents, { id: agentId, type: String(p.agent_type || 'agent'), state: 'working', updatedAt: this.now(), startedAt: this.now() }];
+        ended[agentId] = this.now();
+        const ids = Object.keys(ended);
+        if (ids.length > 200) delete ended[ids[0]];
+      } else {
+        delete ended[agentId];
+        if (!had) session.agents = [...session.agents, { id: agentId, type: String(p.agent_type || 'agent'), state: 'working', updatedAt: this.now(), startedAt: this.now() }];
       }
       session.updatedAt = this.now();
       if (had !== (event === 'SubagentStart')) this.emit('change', { session, from: session.state, to: session.state });
@@ -131,6 +147,12 @@ class SessionTracker extends EventEmitter {
     const agentState = event === 'Notification' ? 'waiting' : event === 'PreToolUse' || event === 'PostToolUse' || event === 'PostToolUseFailure' ? 'working' : null;
     if (!agentState) return false;
     let agent = session.agents.find((a) => a.id === agentId);
+    // A hook straggling in just after it finished is ignored; later on it's
+    // the helper carrying on (sent another message: same id).
+    if (!agent && ended[agentId]) {
+      if (this.now() - ended[agentId] < LATE_MS) return event !== 'Notification';
+      delete ended[agentId];
+    }
     const changed = !agent || agent.state !== agentState;
     if (!agent) {
       agent = { id: agentId, type: String(p.agent_type || 'agent'), state: agentState, updatedAt: 0, startedAt: this.now() }; // (begun before we heard: timed from now)
