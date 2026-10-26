@@ -96,9 +96,19 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	const asking = spawn('sh', ['-c', permissionCommand(PORT)], { env: Object.assign({}, process.env, { CLAUDE_CODE_ENTRYPOINT: 'cli' }) });
 	asking.stdin.end(JSON.stringify({ session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'Edit', tool_input: { file_path: '/tmp/kalkis/src/tax.js', old_string: 'rate = 0.22', new_string: 'rate = 0.23' } }));
 	check(await until(() => box(`(() => { const d = document.getElementById('askDetail'); return !document.getElementById('ask').hidden && !!d.querySelector('.del') && /0\\.23/.test(d.querySelector('.add').textContent); })()`)), 'a permission card for an edit shows the change, tinted');
-	await sleep(500);
-	await box(`document.getElementById('deny').click()`);
+	let askOut = '';
+	asking.stdout.on('data', (d) => { askOut += d; });
+	await sleep(600);
+	// Typing while it asks means "no, and do this instead", as in the terminal.
+	await box(`(() => { const t = document.getElementById('text'); t.value = 'make it 0.25'; t.dispatchEvent(new Event('input')); })()`);
+	check(await until(async () => (await box(`document.getElementById('deny').textContent`)) === 'Deny and say'), 'typing on a permission card turns Deny into Deny and say');
+	await box(`document.getElementById('form').requestSubmit()`);
 	await new Promise((r) => { asking.on('exit', r); setTimeout(r, 3000); });
+	let said = null;
+	try { said = JSON.parse(askOut).hookSpecificOutput.decision; } catch { /* checked below */ }
+	check(said && said.behavior === 'deny' && /make it 0\.25/.test(said.message), 'Enter denies it with what to do instead');
+	check(await until(() => box(`[...document.querySelectorAll('#inner .note')].some((e) => /Denied Edit[\\s\\S]*make it 0\.25/.test(e.textContent))`)), 'and the box notes what you said');
+	check(!(inbox.queue.get(ID) || []).length, 'without also queueing it as a message');
 	await until(() => box(`document.getElementById('ask').hidden`));
 
 	// Tapping a step shows what it did.

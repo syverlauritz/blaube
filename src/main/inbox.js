@@ -134,10 +134,14 @@ class Inbox extends EventEmitter {
         : Object.assign({ behavior: 'allow', updatedInput: a.input }, always);
       note = choice === 'deny' ? (change ? `Kept planning: ${change}` : 'Kept planning') : choice === 'always' ? 'Approved the plan, auto-accepting edits' : 'Approved the plan';
     } else {
+      // Denied with a note, as "No, and tell Claude what to do differently".
+      const say = choice === 'deny' && answers && answers.message ? String(answers.message).trim() : '';
       decision = choice === 'deny'
-        ? { behavior: 'deny', message: 'The user denied this from Blaube, their desktop buddy.' }
+        ? { behavior: 'deny', message: say
+          ? `The user denied this from Blaube, their desktop buddy, and said what to do instead: ${say}`
+          : 'The user denied this from Blaube, their desktop buddy.' }
         : Object.assign({ behavior: 'allow' }, always);
-      note = `${choice === 'deny' ? 'Denied' : choice === 'always' ? 'Always allowed' : 'Allowed'} ${a.tool}${a.detail ? ': ' + a.detail : ''}`;
+      note = `${choice === 'deny' ? 'Denied' : choice === 'always' ? 'Always allowed' : 'Allowed'} ${a.tool}${a.detail ? ': ' + a.detail : ''}${say ? ` · “${say}”` : ''}`;
     }
     a.reply(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision } }));
     this.add(id, { who: 'note', text: note });

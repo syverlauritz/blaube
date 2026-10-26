@@ -1073,12 +1073,12 @@
           if (askKey !== ask.key) return;
           for (const b of card.querySelectorAll('button')) b.disabled = false;
           updateSend(ask);
-          if (ask.kind === 'plan') planButtons();
+          if (ask.kind !== 'question') planButtons();
           focusCard();
         }, 450);
       } else { updateSend(ask); focusCard(); }
     }
-    if (ask.kind === 'plan') planButtons();
+    if (ask.kind !== 'question') planButtons();
     $('askMore').textContent = count > 1 ? `+${count - 1} more after this` : '';
     $('always').textContent = ask.always || '';
     $('always').title = ask.alwaysFull || '';
@@ -1092,8 +1092,10 @@
 
   // On a plan, a note you've typed means changes first: Go ahead waits
   // until the note is sent (Send changes) or cleared.
+  // On a permission ask, a note turns Deny into "no, do this instead".
   function planButtons() {
     const typed = typedForCard();
+    if (current.ask.kind === 'tool') { $('deny').textContent = typed ? 'Deny and say' : 'Deny'; return; }
     $('deny').textContent = typed ? 'Send changes' : 'Keep planning';
     if (Date.now() - cardAt > 450) { $('allow').disabled = typed; $('always').disabled = typed; }
   }
@@ -1134,7 +1136,7 @@
     $('allow').textContent = kind === 'plan' ? 'Go ahead' : kind === 'question' ? 'Send' : 'Allow';
     $('deny').hidden = kind === 'question';
     const oneTap = kind === 'question' && ask.questions.length === 1 && !ask.questions[0].multiSelect;
-    $('askNote').textContent = kind === 'plan' ? 'Want changes? Type them below.' : '';
+    $('askNote').textContent = kind === 'plan' ? 'Want changes? Type them below.' : kind === 'tool' ? 'Or type what to do instead.' : '';
     // Several questions (or picking several): everything happens on the card.
     document.body.classList.toggle('carding', kind === 'question' && !oneTap);
     if (kind !== 'question') { $('askRow').hidden = false; return; }
@@ -1329,6 +1331,7 @@
   text.addEventListener('input', () => {
     if (askKey && current.ask && current.ask.kind === 'plan') planButtons();
     fit(); send.disabled = !current || current.demo || (!text.value.trim() && !files.length); requestAnimationFrame(fitWindow); });
+  text.addEventListener('input', () => { if (askKey && current.ask && current.ask.kind === 'tool') planButtons(); });
   // Its permission mode under the field, as the terminal shows it; ⇧⇥ (or
   // a tap) changes it in a session Blaube started.
   const MODES = { default: 'Asks before edits', acceptEdits: '⏵⏵ Accepting edits', plan: '⏸ Plan first', bypassPermissions: 'Bypassing permissions', dontAsk: 'Not asking first', auto: 'Auto mode' };
@@ -1460,6 +1463,10 @@
       text.value = ''; fit(); drafts.delete(current.id);
       return finish('deny', { message: v }); // what to change
     }
+    if (forCard && ask.kind === 'tool') {
+      text.value = ''; fit(); drafts.delete(current.id);
+      return finish('deny', { message: v }); // no, and do this instead
+    }
     if (forCard && ask.kind === 'question' && ask.questions.length === 1) {
       const p = picks[ask.questions[0].question] || (picks[ask.questions[0].question] = { labels: new Set(), other: '' });
       p.other = v; // added to any picks, not instead of them
@@ -1558,6 +1565,11 @@
     if (ask && ask.kind === 'question') return answer(ask);
     // On a plan, what you typed after it came is what to change (the go-ahead
     // buttons wait while there's a note).
+    if (ask && ask.kind === 'tool' && choice === 'deny' && typedForCard()) {
+      const note = text.value.trim();
+      text.value = ''; fit(); drafts.delete(current.id);
+      return finish('deny', { message: note });
+    }
     if (ask && ask.kind === 'plan' && typedForCard()) {
       if (choice !== 'deny') return;
       const note = text.value.trim();

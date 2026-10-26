@@ -88,6 +88,11 @@ test('a permission prompt is answered from the slime: allow, always or deny', ()
   inbox.decide('s1', inbox.view('s1').ask.key, 'deny');
   assert.equal(got[2].hookSpecificOutput.decision.behavior, 'deny');
   assert.deepEqual(inbox.log('s1').map((e) => e.text), ['Allowed Bash: npm test', 'Always allowed Bash: npm test', 'Denied Bash: npm test']);
+  ask();
+  inbox.decide('s1', inbox.view('s1').ask.key, 'deny', { message: 'run only tax.test.js' });
+  assert.equal(got[3].hookSpecificOutput.decision.behavior, 'deny');
+  assert.match(got[3].hookSpecificOutput.decision.message, /do instead: run only tax\.test\.js$/);
+  assert.equal(inbox.log('s1').at(-1).text, 'Denied Bash: npm test · “run only tax.test.js”');
 });
 
 test('answering in the terminal takes the prompt off the slime', () => {

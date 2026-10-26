@@ -351,6 +351,8 @@ function makeTalkWin() {
   talkWin.webContents.on('will-navigate', (e) => e.preventDefault());
   talkWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   if (TEST) talkWin.setOpacity(0);
+  // Tests print the talk box's own errors, so a broken handler can't hide.
+  if (TEST) talkWin.webContents.on('console-message', (e) => { if (e.level === 'error') console.log('[talk error]', e.message, e.sourceId ? `${path.basename(e.sourceId)}:${e.lineNumber}` : ''); });
   talkWin.on('blur', () => {
     if (!talkWin || !talkWin.isVisible() || talkWin.webContents.isDevToolsFocused() || talkPicking) return;
     hideTalk();
