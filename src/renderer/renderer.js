@@ -894,6 +894,7 @@
       // A good thump makes it blink (a hard one makes it dizzy, above).
       else if (body.lastImpact > 650 && CFG.eyeLife > 0 && time > (b.thumpBlinkAt || 0)) { b.nextBlink = time; b.thumpBlinkAt = time + 0.3; }
       if (body.lastImpact > 650 && CFG.contactJiggle > 0) passJiggle(b, body.lastImpact);
+      if (body.lastImpact > CFG.splashSpeed && CFG.splashDrops > 0) splash(b, pre);
       if (b.effort === 'high' && !b.glasses && !b.splitting && !b.merging && !b.dying && body.lastImpact > CFG.glassesSpeed) knockGlasses(b);
       if (b.glasses) stepGlasses(b);
       if (meditating(b)) levitate(b);
@@ -938,6 +939,7 @@
       }
     }
     collidePets();
+    stepDrops();
   }
 
   // --- Effort ---------------------------------------------------------------
@@ -1106,6 +1108,64 @@
       return true;
     }
     return false;
+  }
+
+  // Goo: a hard hit flings a few droplets off the skin where it hit. They
+  // fall and land like little beads, then roll back to their slime and get
+  // soaked up (or, if it's gone, shrink away).
+  const drops = [];
+  function splash(b, v) {
+    if (time < (b.splashedAt || 0) || drops.length > 60) return;
+    b.splashedAt = time + 0.35;
+    const body = b.body, c = body.centroid(), sp = Math.hypot(v.x, v.y) || 1, ux = v.x / sp, uy = v.y / sp;
+    // Where it hit: the skin furthest along the way it was going.
+    let j = 0, best = -Infinity;
+    for (let i = 0; i < body.n; i++) { const d = (body.px[i] - c.x) * ux + (body.py[i] - c.y) * uy; if (d > best) { best = d; j = i; } }
+    const n = Math.round((2 + Math.random() * 3) * CFG.splashDrops * Math.min(1.5, body.lastImpact / 2500));
+    for (let k = 0; k < n; k++) {
+      const a = Math.atan2(-uy, -ux) + (Math.random() - 0.5) * 2.2, s = (0.15 + Math.random() * 0.3) * Math.min(sp, 3000);
+      drops.push({ owner: b, x: body.px[j] - ux * 4, y: body.py[j] - uy * 4, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 150, r: body.o.radius * (0.05 + Math.random() * 0.06), born: time, landed: 0 });
+    }
+  }
+  function stepDrops() {
+    for (let i = drops.length - 1; i >= 0; i--) {
+      const d = drops[i], age = time - d.born;
+      const home = d.owner && !d.owner.dying && !d.owner.removed ? d.owner : null;
+      if (age > 6 || (home && age > 0.3 && home.body.contains(d.x, d.y))) { drops.splice(i, 1); continue; }
+      const was = d.y;
+      d.vy += CFG.gravity * DT;
+      d.x += d.vx * DT; d.y += d.vy * DT;
+      if (d.x < d.r) { d.x = d.r; d.vx = Math.abs(d.vx) * 0.4; }
+      if (d.x > W - d.r) { d.x = W - d.r; d.vx = -Math.abs(d.vx) * 0.4; }
+      if (d.y < d.r) { d.y = d.r; d.vy = Math.abs(d.vy) * 0.3; }
+      const floor = floorAt(d.x, was + d.r) - d.r; // window tops catch them too
+      if (d.y >= floor) {
+        d.y = floor;
+        d.vy = d.vy > 300 ? -d.vy * 0.25 : 0;
+        if (!d.landed) d.landed = time;
+        // Rolls back home after a moment.
+        const hx = home ? home.body.centroid().x - d.x : 0;
+        d.vx = time - d.landed > 0.4 && home ? d.vx + (Math.sign(hx) * 220 - d.vx) * 0.08 : d.vx * 0.9;
+      }
+    }
+  }
+  function drawDrops() {
+    for (const d of drops) {
+      const age = time - d.born;
+      const k = d.owner && !d.owner.dying ? 1 : Math.max(0, 1 - (time - (d.owner.dying || d.born)) / 0.5);
+      const fade = Math.min(1, (6 - age) / 0.5) * k;
+      if (fade <= 0) continue;
+      // Stretched a little along the way it's flying.
+      const sp = Math.hypot(d.vx, d.vy), st = Math.min(1.8, 1 + sp / 1500);
+      ctx.save();
+      ctx.fillStyle = d.owner.color;
+      ctx.translate(d.x, d.y);
+      ctx.rotate(Math.atan2(d.vy, d.vx));
+      ctx.beginPath();
+      ctx.ellipse(0, 0, d.r * st * fade, (d.r / Math.sqrt(st)) * fade, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
   }
 
   // A thump travels: a slime landing hard sets any slime it's touching
@@ -1760,6 +1820,7 @@
     const list = drawOrder();
     if (CFG.shadow) for (const b of list) D.drawShadow(ctx, b.body, floorAt(b.body.centroid().x, b.body.bbox().maxY));
     drawTalkTail();
+    drawDrops();
 
     // Goo bridge while a slime is splitting off.
     for (const b of list) {
