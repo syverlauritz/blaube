@@ -118,6 +118,7 @@
       ['personality', 0.6, 0, 1, 0.05, 'How different each slime\'s character is'],
       ['idleFidget', 1, 0, 3, 0.05, 'Idle fidgets (weight shifts, settling)'],
       ['tricks', 1, 0, 5, 0.05, 'Bored but awake, it amuses itself now and then (three hops, each higher)'],
+      ['snoreBubble', 1, 0, 2, 0.05, 'Fast asleep, it blows a bubble that swells and shrinks with each breath, and pops when it wakes'],
       ['bubbles', 1, 0, 2, 0.05, 'A bored slime now and then blows a goo bubble; touch it with the cursor to pop it'],
       ['quirks', 1, 0, 10, 0.1, 'Rare little quirks, like a fit of hiccups (how often)'],
       ['sleepSlump', 0.1, 0, 0.3, 0.01, 'Slumps while dozing (and stretches on waking)'],

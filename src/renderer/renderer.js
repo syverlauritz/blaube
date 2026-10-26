@@ -1051,6 +1051,12 @@
       const asleep = b.state === 'idle' && idleFor() > dozeAfter() && !body.grab;
       b.sleep = (b.sleep || 0) + ((asleep ? 1 : 0) - (b.sleep || 0)) * (asleep ? 0.002 : 0.05);
       if (!asleep && b.sleep > 0.5 && !b.woke && body.onFloor()) { b.woke = true; body.squashTop(-CFG.sleepSlump * body.o.radius * 90, DT); b.nextBlink = time; }
+      // Waking pops the bubble it was snoring, with a start.
+      if (b.snore && !asleep) {
+        pops.push({ x: b.snore.x, y: b.snore.y, r: b.snore.r, born: time, color: b.color });
+        b.snore = null;
+        b.startleUntil = time + 0.5; b.surpriseUntil = time + 0.5;
+      }
       if (asleep) b.woke = false;
       body.areaScale *= 1 - CFG.sleepSlump * b.sleep;
       // Just gulped a helper back in: a swell that wobbles down.
@@ -1523,6 +1529,26 @@
     for (let i = pops.length - 1; i >= 0; i--) if (time - pops[i].born > 0.3) pops.splice(i, 1);
   }
   function drawBubbles() {
+    // Fast asleep, it blows a bubble at its mouth that swells and shrinks
+    // with each breath.
+    for (const b of buddies.values()) {
+      const deep = CFG.snoreBubble > 0 && !b.dying && !b.body.grab && b.body.o.radius > 12 ? ramp(b.sleep || 0, 0.6, 0.9) : 0;
+      if (deep <= 0) { if (b.snore && (b.sleep || 0) < 0.6) b.snore = null; continue; }
+      const c = b.body.centroid(), r = b.body.o.radius, side = b.key.length % 2 ? 1 : -1;
+      const breath = 0.5 + 0.5 * Math.sin(time * b.breathRate + b.breathPhase);
+      const u = b.snore = { x: c.x + (b.faceTurn ? b.faceTurn.x : 0) + side * r * 0.16, y: c.y + r * 0.08, r: r * 0.17 * CFG.snoreBubble * deep * (0.3 + 0.7 * breath) };
+      u.x += side * u.r * 0.8;
+      ctx.save();
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = b.color;
+      ctx.beginPath(); ctx.arc(u.x, u.y, u.r, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath(); ctx.ellipse(u.x - u.r * 0.38, u.y - u.r * 0.4, u.r * 0.2, u.r * 0.12, -0.6, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
     for (const u of bubbles) {
       if (u.popped) continue;
       const wob = Math.sin((time - u.born) * 6 + u.size) * 0.06;
