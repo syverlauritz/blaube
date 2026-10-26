@@ -1430,8 +1430,13 @@
       }
       if (f.landed) {
         if (time - f.landed > (f.kind === 'snow' ? 8 : 12)) flakes.splice(k, 1);
-        // On a window that's moved away from under it: it falls on.
-        else if (floorAt(f.x, f.y) > f.y + f.size) { f.landed = 0; f.vy = 0; }
+        else if (f.ledge) {
+          // Lying on a window: it rides along, and falls when the window goes.
+          let l = null;
+          for (const m of ledges) if (m.id === f.ledge.id && (!l || Math.abs(m.y - f.y) < Math.abs(l.y - f.y))) l = m;
+          if (!l || Math.abs(l.y - f.size * 0.3 - f.y) > 40) { f.landed = 0; f.vy = 0; f.ledge = null; }
+          else { f.x = l.x0 + f.ledge.dx; f.y = l.y - f.size * 0.3; }
+        } else if (floorAt(f.x, f.y) > f.y + f.size) { f.landed = 0; f.vy = 0; }
         continue;
       }
       // Falling: drifting and swaying (leaves see-saw more), easing to their
@@ -1465,7 +1470,11 @@
       }
       if (stuck) continue;
       const floor = floorAt(f.x, f.y);
-      if (f.y >= floor - f.size * 0.3) { f.y = floor - f.size * 0.3; f.landed = time; }
+      if (f.y >= floor - f.size * 0.3) {
+        f.y = floor - f.size * 0.3; f.landed = time;
+        const l = ledges.find((m) => m.y === floor && f.x >= m.x0 && f.x <= m.x1);
+        f.ledge = l ? { id: l.id, dx: f.x - l.x0 } : null;
+      }
     }
     // Collected a few: a shake to get them off.
     for (const b of buddies.values()) {
