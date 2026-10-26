@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('blaube', {
 	onLimits: on('limits'),
 	onJarSpot: on('jar-spot'),
 	setJarSpot: () => {},
+	onCaret: on('caret'),
 });
 
 ipcRenderer.on('fire', (_e, name, value) => { if (handlers[name]) handlers[name](value); });

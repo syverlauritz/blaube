@@ -79,4 +79,5 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   closing: () => ipcRenderer.send('talk-closing'),
   terminal: () => ipcRenderer.send('talk-terminal'),
   typing: (id) => ipcRenderer.send('talk-typing', id),
+	caret: (id, x, y, burst) => ipcRenderer.send('talk-caret', id, x, y, burst),
 });

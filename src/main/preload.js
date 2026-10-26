@@ -33,4 +33,5 @@ contextBridge.exposeInMainWorld('blaube', {
   onLimits: (cb) => ipcRenderer.on('limits', (_e, m) => cb(m)),
   onJarSpot: (cb) => ipcRenderer.on('jar-spot', (_e, spot) => cb(spot)),
   setJarSpot: (spot) => ipcRenderer.send('jar-spot', spot),
+	onCaret: (cb) => ipcRenderer.on('caret', (_e, c) => cb(c)),
 });

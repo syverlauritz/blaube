@@ -5797,6 +5797,28 @@
     g.y += g.vy * DT;
   }
 
+	// You're typing to it in its talk box, the caret moved a moment ago
+	// (and a couple of seconds more).
+	const CARET_HOLD = 2.2;
+	const watchingCaret = (b) => CFG.listen > 0 && !!b.caret && time - b.caret.at < CARET_HOLD;
+	// Watching you type, now and then it gets a little excited: an "ooh!"
+	// for most of a second, every 6 to 15 s of typing, or sooner for a new
+	// line, a long word or a fast burst (but never within 6 s of typing of
+	// the last). True while it's oohing.
+	function oohOf(b, since) {
+		if (time < (b.oohUntil || 0)) return true;
+		if (time - (b.listenAt ?? -9) < 1) b.typedFor = (b.typedFor || 0) + since;
+		if (b.oohAfter === undefined) b.oohAfter = 6 + Math.random() * 9;
+		const due = b.typedFor >= b.oohAfter || (b.oohWant && b.typedFor >= 6);
+		b.oohWant = false;
+		if (!due) return false;
+		b.oohUntil = time + 0.6 + Math.random() * 0.4;
+		b.oohs = (b.oohs || 0) + 1;
+		b.typedFor = 0;
+		b.oohAfter = 6 + Math.random() * 9;
+		return true;
+	}
+
   // Two quick dips of the face, the second smaller: a nod. 0 when still.
   const NOD_TIME = 0.8;
   function nodOf(b) {
@@ -5912,7 +5934,7 @@
     b.peek = (b.peek || 0) + ((peeking ? 1 : 0) - (b.peek || 0)) * ease(0.05);
     if (!peeking && b.peek < 0.01) b.peek = 0;
     const moving = expression === 'concentrate' && time < b.furrowUntil && !peeking;
-    const wantFurrow = moving && b.browMove === 'furrow' ? 1 : 0, wantRaise = moving && b.browMove === 'raise' ? 1 : 0;
+    const wantFurrow = moving && b.browMove === 'furrow' ? 1 : 0, wantRaise = (moving && b.browMove === 'raise') || time < (b.oohUntil || 0) ? 1 : 0; // (and, watching you type, an "ooh!")
     b.furrow = (b.furrow || 0) + (wantFurrow - (b.furrow || 0)) * ease(0.15);
     b.raise = (b.raise || 0) + (wantRaise - (b.raise || 0)) * ease(0.15);
     // Only calm, awake slimes look at the mouse: idle, or done and already
@@ -5954,7 +5976,7 @@
       if (f) { b.glanceAt = { spot: f }; b.glanceUntil = time + 2 + Math.random() * 1.5; b.lookedAt = b.glanceUntil; }
     }
     // Listening to you type: eyes on the talk box, attentive.
-    const listening = CFG.listen > 0 && time - (b.listenAt ?? -9) < 1.2 && talkRect && !body.grab;
+    const listening = CFG.listen > 0 && time - (b.listenAt ?? -9) < 1.2 && talkRect && !body.grab && !watchingCaret(b);
     if (listening) {
       b.glanceAt = { spot: { x: talkRect.x + talkRect.w / 2, y: talkRect.y + talkRect.h * 0.7 } };
       b.glanceUntil = time + 0.1;
@@ -6009,6 +6031,16 @@
       b.gazeTarget = { x: b.keepy.pet.x, y: b.keepy.pet.y };
       wantLook = Math.max(wantLook, 1);
     }
+	// Watching you type to it: its eyes follow the caret along the line,
+	// open and attentive, as long as you type and a couple of seconds after
+	// (see onCaret); now and then, a little "ooh!" (see oohOf).
+	const watching = watchingCaret(b) && !glaring && !over && !b.keepy && !body.grab && (expression === 'normal' || expression === 'concentrate' || expression === 'sleepy' || expression === 'peek');
+	if (watching) {
+		b.gazeTarget = { x: b.caret.x, y: b.caret.y };
+		wantLook = Math.max(wantLook, 1);
+		if (expression !== 'normal') { expression = 'normal'; mouth = 'smile'; }
+		if (oohOf(b, since)) mouth = 'o';
+	}
     // On the brink of a window: eyes down over the drop.
     if (b.teeter && !body.grab && !glaring) {
       const c = body.centroid(), r = body.o.radius;
@@ -6056,6 +6088,7 @@
     // A big toss: past the top it looks down at what's coming ("uh-oh"),
     // and just before it lands it screws its eyes shut and braces.
     let wideBy = time < (b.booUntil || 0) ? 1 : time < (b.wantsPetsUntil || 0) && time > (b.pettedUntil || 0) ? 0.5 : 0; // (boo!, or me too!: big eyes)
+	if (watching && time < (b.oohUntil || 0)) wideBy = Math.max(wideBy, 0.35); // (ooh!)
 		if (b.balloon && !b.gulping && (b.balloon.stage === 'full' || b.balloon.stage === 'float')) wideBy = 0.45; // (full to bursting: round eyes)
     if (CFG.eyeLife > 0 && !body.grab && !meditating(b) && expression !== 'dizzy') {
       if (v.y < -900 && !body.onFloor() && !b.balloon) b.tossUp = time;
@@ -6080,7 +6113,7 @@
     // Startled (poked, flinching): eyes go wide for a moment.
     const wide = CFG.eyeLife * Math.max(wideBy, wideSeen, over ? 0.5 : 0, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
     return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, b.cheekStrain || 0, time < (b.strainUntil || 0) ? 0.35 * Math.min(1, CFG.strain) : 0), puffed: b.cheekPuff || 0, nod: nodOf(b), scale: CFG.faceScale, style: b.blush > 0 ? { ...CFG, cheeks: Math.min(0.95, CFG.cheeks + b.blush * 0.55) } : CFG, bodyColor: b.color,
-      effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal' && !b.peek, peek: b.peek,
+      effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal' && !b.peek && !watching, peek: b.peek,
       fullTurn: (body.fullTurn = !!((b.flip && b.flip.spun) || b.tumble || b.roll)), // (mid-somersault the face, and what it wears, go all the way round)
     };
   }
@@ -7110,11 +7143,20 @@
     const b = buddies.get(id);
     if (!b || CFG.listen <= 0) return;
     b.listenAt = time;
-    if (time > (b.nextMmhm || 0) && b.body.onFloor() && !b.body.grab) {
+    if (time > (b.nextMmhm || 0) && time > (b.oohUntil || 0) + 0.6 && b.body.onFloor() && !b.body.grab) { // (not on top of an "ooh!")
       b.nextMmhm = time + 0.5 + Math.random() * 0.9;
       b.body.squashTop(CFG.listen * b.body.o.radius * 2.5, DT);
     }
   });
+	// Where the caret is in its talk box (in this layer's pixels), as you
+	// type: its eyes follow it (see faceFor's watching). A new line, a long
+	// word or typing fast is something to get excited about (see oohOf).
+	if (api.onCaret) api.onCaret((c) => {
+		const b = buddies.get(c && c.id);
+		if (!b || !Number.isFinite(c.x) || !Number.isFinite(c.y)) return;
+		b.caret = { x: c.x, y: c.y, at: time };
+		if (c.burst) b.oohWant = true;
+	});
   if (api.onTalking) api.onTalking((id) => { talkingTo = id; });
   // The app wants a slime's talk box open (a session you just started).
   if (api.onOpenTalk) api.onOpenTalk((id) => {
@@ -7200,7 +7242,7 @@
 
   // Lets the renderer run in a plain browser for development and screenshots.
   function devShim() {
-    const listeners = { state: [], command: [], config: [], world: [], ledges: [], system: [], typing: [], talkRect: [], react: [] };
+    const listeners = { state: [], command: [], config: [], world: [], ledges: [], system: [], typing: [], caret: [], talkRect: [], react: [] };
     window.__blaube = {
       setState: (s) => listeners.state.forEach((f) => f(s)),
       command: (c) => listeners.command.forEach((f) => f(c)),
@@ -7209,6 +7251,7 @@
       setLedges: (l) => listeners.ledges.forEach((f) => f(l)),
       system: (m) => listeners.system.forEach((f) => f(m)),
       typing: (id) => listeners.typing.forEach((f) => f(id)),
+			caret: (c) => listeners.caret.forEach((f) => f(c)),
       react: (m) => listeners.react.forEach((f) => f(m)),
       talkRect: (r) => listeners.talkRect.forEach((f) => f(r)),
       sys: () => sys,
@@ -7237,6 +7280,7 @@
       onLedges: (f) => listeners.ledges.push(f),
       onSystem: (f) => listeners.system.push(f),
       onTyping: (f) => listeners.typing.push(f),
+			onCaret: (f) => listeners.caret.push(f),
       onReact: (f) => listeners.react.push(f),
       onTalkRect: (f) => listeners.talkRect.push(f),
       onState: (f) => listeners.state.push(f),

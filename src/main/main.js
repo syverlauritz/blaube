@@ -3925,6 +3925,14 @@ app.whenReady().then(async () => {
   ipcMain.on('talk-switch', (_e, id) => { if (id && id !== talkId && tracker.sessions.has(id) && win) askTalk(id); });
   ipcMain.on('talk-unsend', (_e, id, n) => { if (id && isOpen(id)) inbox.unsend(id, n); });
   ipcMain.on('talk-typing', (_e, id) => { if (win && isOpen(id)) win.webContents.send('typing', id); });
+	// Where the caret is in a box's field (in the box's own pixels): put on
+	// the screen, then on the slimes' layer, for that box's slime to watch.
+	ipcMain.on('talk-caret', (e, id, x, y, burst) => {
+		const rec = talkFrom(e.sender);
+		if (!win || !rec || rec.id !== id || !Number.isFinite(x) || !Number.isFinite(y)) return;
+		const at = rec.win.getContentBounds(), wb = win.getBounds();
+		win.webContents.send('caret', { id, x: at.x + x - wb.x, y: at.y + y - wb.y, burst: typeof burst === 'string' ? burst : null });
+	});
   // ✕ (or Esc, unpinned): a pinned box closes for good, the other one hides.
   ipcMain.on('talk-close', (e) => {
     const rec = talkFrom(e.sender);

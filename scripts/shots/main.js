@@ -533,6 +533,12 @@ const SCENES = {
 			{ who: 'you', text: 'and keep it quiet, small text', via: 'blaube', status: 'queued', n: 8 },
 		] },
 	},
+	// Typing to it: its eyes follow the caret, at the start of a long line,
+	// at its end, and once with an "ooh!" (the rig draws the caret in: an
+	// unfocused box doesn't show its own).
+	talkCaretLeft: { sessions: [session('tw', 'blaube', 'idle')], bg: '#f2f0ec', wait: 2500, size: [1000, 640], talk: { key: 'tw', x: 500, inbox: 'ready', log: [{ who: 'claude', text: 'Sure! What should the new tagline say?' }], caret: 0 } },
+	talkCaretRight: { sessions: [session('tw', 'blaube', 'idle')], bg: '#f2f0ec', wait: 2500, size: [1000, 640], talk: { key: 'tw', x: 500, inbox: 'ready', log: [{ who: 'claude', text: 'Sure! What should the new tagline say?' }], caret: -1 } },
+	talkCaretOoh: { sessions: [session('tw', 'blaube', 'idle')], bg: '#f2f0ec', wait: 2500, size: [1000, 640], talk: { key: 'tw', x: 500, inbox: 'ready', log: [{ who: 'claude', text: 'Sure! What should the new tagline say?' }], caret: 38, ooh: true } },
 	talkLong: {
 		sessions: [session('tl', 'blaube', 'done', { look: 'horns' })],
 		wait: 3500,
@@ -1005,6 +1011,20 @@ async function addTalk(win, scene, name) {
 	tw.setContentSize(TW, place.h);
 	await sleep(400);
 	ipcMain.removeListener('talk-height', onHeight);
+	// (talk.caret: a long line typed, the caret at that many letters in, or the end)
+	let caretAt = null;
+	if (t.caret !== undefined) {
+		caretAt = await tw.webContents.executeJavaScript(`(() => {
+			const f = document.getElementById('text');
+			f.value = 'Squishy little friends that keep an eye on your work';
+			f.dispatchEvent(new Event('input'));
+			f.focus();
+			const at = ${t.caret} < 0 ? f.value.length : ${t.caret};
+			f.setSelectionRange(at, at);
+			return BlaubeCaret.measure(f);
+		})()`);
+		await sleep(300);
+	}
 	const fgImage = await tw.webContents.capturePage();
 	const fg = fgImage.toDataURL();
 	fs.writeFileSync(path.join(OUT, `${name}-box.png`), fgImage.toPNG()); // (the box by itself, too)
@@ -1024,6 +1044,13 @@ async function addTalk(win, scene, name) {
 	// The slime's layer draws each tail from under its bubble to its head.
 	win.webContents.send('fire', 'talk-rect', boxes.map(({ id, x, y, w: bw, h: bh }) => ({ id, x, y, w: bw, h: bh, dark: !!t.dark })));
 	await sleep(500); // (the tail grows out first)
+	if (caretAt) {
+		// Typing along: the caret, there, for its eyes to settle on.
+		const p = { id: t.key, x: place.x + caretAt.x, y: place.y + caretAt.y };
+		for (let i = 0; i < 14; i++) { win.webContents.send('fire', 'caret', p); await sleep(100); }
+		if (t.ooh) { await win.webContents.executeJavaScript(`(() => { const b = __blaube.buddies.get(${JSON.stringify(t.key)}); b.oohUntil = __blaube.now() + 1; })()`); await sleep(250); }
+		boxes[0].caret = { x: place.x + caretAt.x, y: place.y + caretAt.y };
+	}
 	if (t.hold) {
 		// Picks the slime up and carries it there (the page's own mouse handlers).
 		await win.webContents.executeJavaScript(`(async () => {
@@ -1048,7 +1075,10 @@ async function addTalk(win, scene, name) {
 		c.width = b.width; c.height = b.height;
 		const g = c.getContext('2d');
 		g.drawImage(b, 0, 0);
-		for (const x of ${JSON.stringify(boxes)}) g.drawImage(await load(x.fg), x.x * k, x.y * k, x.w * k, x.h * k);
+		for (const x of ${JSON.stringify(boxes)}) {
+			g.drawImage(await load(x.fg), x.x * k, x.y * k, x.w * k, x.h * k);
+			if (x.caret) { g.fillStyle = '#2b2b33'; g.fillRect((x.caret.x - 1) * k, (x.caret.y - 11) * k, 2 * k, 22 * k); } // (the caret)
+		}
 		return c.toDataURL('image/png');
 	})()`);
 	cw.destroy();
