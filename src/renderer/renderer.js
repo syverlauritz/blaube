@@ -208,7 +208,7 @@
   }
 
   // How its mouth is shaped right now, while it talks (null when quiet).
-  function talkMouth(b) {
+  function talkMouth(b, ease = (k) => k) {
     if (!b.speech || !audio) return null;
     let m = BlaubeVoice.mouthAt(b.speech.line, audio.ctx.currentTime - b.speech.at);
     // Done: it eases shut before it lets go.
@@ -218,7 +218,7 @@
     }
     // Eased, so the jaw moves instead of popping open and shut.
     const was = b.mouth || { open: 0, wide: m.wide, round: m.round };
-    b.mouth = { open: was.open + (m.open - was.open) * 0.4, wide: was.wide + (m.wide - was.wide) * 0.3, round: was.round + (m.round - was.round) * 0.3 };
+    b.mouth = { open: was.open + (m.open - was.open) * ease(0.4), wide: was.wide + (m.wide - was.wide) * ease(0.3), round: was.round + (m.round - was.round) * ease(0.3) };
     return b.mouth;
   }
 
@@ -314,7 +314,7 @@
       const s = seen.get(m.id);
       m.vx = s.vx; m.vy = s.vy; m.t = t;
     }
-    for (const id of seen.keys()) if (!done.has(id)) { seen.delete(id); shook.delete(id); }
+    for (const id of seen.keys()) if (!done.has(id)) { seen.delete(id); shook.delete(id); ridden.delete(id); }
     noticeWindows(next, done);
     // Riders: keep them with where their window really is (only ever lifting
     // them: if it's lower, they're in the air above it).
@@ -1551,7 +1551,7 @@
     strain(b, r);
     tapFoot(b, r);
     typeAway(b, r);
-    const calm = (b.state === 'idle' || b.state === 'done') && !meditating(b) && !b.stackedBy && time > (b.pounceUntil || 0);
+    const calm = (b.state === 'idle' || b.state === 'done') && !meditating(b) && !b.stackedBy && time > (b.pounceUntil || 0) && !playing(b);
     if (!calm) return;
     // A cursor close by: it leans over toward it, curious. Not when you're
     // on it (that's petting), and not if it's been sitting still a while.
@@ -1592,12 +1592,15 @@
   // Two calm slimes sitting together now and then have a little chat: they
   // look at each other and take turns, the one talking bobbing and leaning
   // in, the other leaning in a little to listen.
+  // In the middle of a game or a trick (which moves it itself): no chatting,
+  // leaning over to the cursor or fidgeting then.
+  const playing = (o) => !!(o.rope || o.seek || o.pile || o.tower || o.frog || o.tag || o.parade || o.trick || o.keepy || o.measure || o.roll || o.skate || o.balloon || o.shape || o.tot || o.snow || o.comforting || o.prank);
   function chat(b, r, c) {
     if (CFG.socialize <= 0) return false;
     const ch = b.chat;
     if (ch) {
       const o = ch.a === b ? ch.b : ch.a;
-      if (time > ch.until || o.dying || o.body.grab || !o.body.onFloor() || o.chat !== ch) { b.chat = null; return false; }
+      if (time > ch.until || o.dying || o.body.grab || !o.body.onFloor() || o.chat !== ch || playing(o)) { b.chat = null; return false; }
       const side = Math.sign(o.body.centroid().x - c.x) || 1;
       const speaker = Math.floor((time - ch.from) / ch.turn) % 2 === (ch.a === b ? 0 : 1);
       const k = CFG.socialize * r * DT;
@@ -1612,7 +1615,7 @@
     b.nextChat = time + (6 + Math.random() * 10) / CFG.socialize;
     if (Math.random() > 0.4 * trait(b, 'curious')) return false;
     for (const o of buddies.values()) {
-      if (o === b || o.dying || o.chat || o.body.grab || !o.body.onFloor() || !(o.state === 'idle' || o.state === 'done')) continue;
+      if (o === b || o.dying || o.chat || o.body.grab || !o.body.onFloor() || !(o.state === 'idle' || o.state === 'done') || playing(o)) continue;
       const oc = o.body.centroid();
       if (Math.hypot(oc.x - c.x, oc.y - c.y) > (r + o.body.o.radius) * 1.7) continue;
       b.chat = o.chat = { a: b, b: o, from: time, until: time + 3 + Math.random() * 3, turn: 0.7 + Math.random() * 0.5 };
@@ -1651,7 +1654,7 @@
         if (t > 0.5) {
           b.body.squashTop(-r * 5 * Math.min(1.5, CFG.keepy), DT);
           p.ride = null; p.rideOn = b; p.rideAt = time;
-          p.vy = -(560 + Math.random() * 140); p.vx = (b.body.centroid().x - p.x) * 2 + (Math.random() - 0.5) * 40 + (Math.random() < 0.12 ? (Math.random() < 0.5 ? -1 : 1) * (200 + Math.random() * 100) : 0); // (now and then one goes wild) p.va = (Math.random() - 0.5) * 8;
+          p.vy = -(560 + Math.random() * 140); p.vx = (b.body.centroid().x - p.x) * 2 + (Math.random() - 0.5) * 40 + (Math.random() < 0.12 ? (Math.random() < 0.5 ? -1 : 1) * (200 + Math.random() * 100) : 0); p.va = (Math.random() - 0.5) * 8; // (now and then one goes wild)
           p.nextHop = time + 1.5;
           k.n++; k.caughtAt = 0; k.crouched = false;
         }
@@ -4058,7 +4061,7 @@
       if (Math.abs(body.angle) < 0.08 || time - g.over > 2) done();
       return;
     }
-    if (CFG.rolls <= 0 || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || b.merging || b.dying || !body.onFloor() || b.pendingHop || b.stackedBy || b.tower || b.frog || b.tag || b.parade || b.trick || b.keepy || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
+    if (CFG.rolls <= 0 || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || b.merging || b.dying || !body.onFloor() || b.pendingHop || b.stackedBy || b.tower || b.frog || b.tag || b.parade || b.trick || b.keepy || b.measure || b.rope || b.seek || b.pile || b.balloon || b.shape || b.tot || b.skate || b.snow || b.comforting || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
     if (time < (b.nextRoll ?? (b.nextRoll = time + (150 + Math.random() * 350) / CFG.rolls))) return;
     b.nextRoll = time + (300 + Math.random() * 600) / CFG.rolls;
     rollNow(b);
@@ -4094,7 +4097,7 @@
       if ((Math.abs(v.x) < 40 || Math.abs(g.v0) * Math.exp(-(time - g.off) / 1.6) < 40) && time - g.off > 0.4) { done(); if (!g.brace) b.cheerUntil = time + 1; }
       return;
     }
-    if (CFG.skating <= 0 || season() !== 'snow' || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || b.merging || b.dying || !body.onFloor() || b.pendingHop || b.stackedBy || b.tower || b.frog || b.tag || b.parade || b.trick || b.keepy || b.roll || b.measure || b.snow || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
+    if (CFG.skating <= 0 || season() !== 'snow' || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || b.merging || b.dying || !body.onFloor() || b.pendingHop || b.stackedBy || b.tower || b.frog || b.tag || b.parade || b.trick || b.keepy || b.roll || b.measure || b.snow || b.rope || b.seek || b.pile || b.balloon || b.shape || b.tot || b.comforting || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
     if (time < (b.nextSkate ?? (b.nextSkate = time + (90 + Math.random() * 240) / CFG.skating))) return;
     b.nextSkate = time + (200 + Math.random() * 400) / CFG.skating;
     skateNow(b);
@@ -4398,8 +4401,11 @@
       if (!cl) continue;
       const box = b.body.bbox(), r = b.body.o.radius;
       const tx = (box.minX + box.maxX) / 2, ty = box.minY - r * 1.1 - 14;
-      cl.x += (tx - cl.x) * Math.min(1, DT * 3);
-      cl.y += (ty - cl.y) * Math.min(1, DT * 3);
+      // (Only moved when drawn, so eased by the time since it last was.)
+      const follow = 1 - Math.exp(-3 * Math.min(0.1, Math.max(0, time - (cl.drawnAt ?? time))));
+      cl.drawnAt = time;
+      cl.x += (tx - cl.x) * follow;
+      cl.y += (ty - cl.y) * follow;
       const k = cl.gone ? 1 - (time - cl.gone) / 0.6 : Math.min(1, (time - cl.born) / 1.5);
       if (k <= 0) continue;
       const w = r * (cl.gone ? 1 + (time - cl.gone) : 1), x = cl.x, y = cl.y;
@@ -4451,8 +4457,8 @@
   function leafPile(b) {
     if (CFG.play <= 0 || b.kind === 'child' || b.dying || !flakes.length) return;
     const ok = (b.state === 'idle' || b.state === 'done') && !b.body.grab && b.body.onFloor() && !b.tag && !b.prank && !b.trick && !b.blow && !b.nibbling && (b.sleep || 0) < 0.1 && idleFor() < 60;
-    if (!ok || time < (b.nextPile ?? (b.nextPile = time + (90 + Math.random() * 200) / CFG.play))) return;
-    b.nextPile = time + (180 + Math.random() * 360) / CFG.play;
+    if (!ok || time < (b.nextLeafPile ?? (b.nextLeafPile = time + (90 + Math.random() * 200) / CFG.play))) return;
+    b.nextLeafPile = time + (180 + Math.random() * 360) / CFG.play;
     const c = b.body.centroid(), r = b.body.o.radius, bot = b.body.bbox().maxY;
     const ground = flakes.filter((f) => f.landed && !f.on && !f.ledge && !f.eaten && Math.abs(f.y - bot) < 24 && Math.abs(f.x - c.x) > r * 1.2 && Math.abs(f.x - c.x) < r * 7);
     let best = null, most = 3;
@@ -4583,12 +4589,12 @@
 
   // Fond of you (petted lately): it tags along after your cursor for a bit.
   function tagAlong(b) {
-    if ((b.mood || 0) < 0.75 || b.kind === 'child' || b.body.grab || !b.body.onFloor() || b.pendingHop || time < (b.nextTag || 0)) return;
+    if ((b.mood || 0) < 0.75 || b.kind === 'child' || b.body.grab || !b.body.onFloor() || b.pendingHop || time < (b.nextTagAlong || 0)) return;
     if (b.state !== 'idle' && b.state !== 'done') return;
     if (performance.now() / 1000 - mouse.lastMove > 3 || mouse.x < 0 || mouse.x > W) return;
     const c = b.body.centroid(), r = b.body.o.radius, dx = mouse.x - c.x;
     if (Math.abs(dx) < r * 3) return;
-    b.nextTag = time + 1.2 + Math.random() * 1.5;
+    b.nextTagAlong = time + 1.2 + Math.random() * 1.5;
     b.happyUntil = time + 1;
     b.hop(Math.sign(dx) * Math.min(480, (Math.abs(dx) - r * 2) * 1.2), -330);
   }
@@ -4716,16 +4722,17 @@
   }
 
   function behave(b) {
-    // Blinking.
+    // Blinking (shut in about 70 ms, open again in 80, so a blink still
+    // shows when frames are drawn only 30 times a second).
     if (time > b.nextBlink) {
-      b.blink = Math.min(1, b.blink + 0.25);
+      b.blink = Math.min(1, b.blink + 15 * DT);
       if (b.blink >= 1) {
         // Now and then a quick second blink right after.
         const again = !b.doubled && Math.random() < 0.18 * CFG.eyeLife;
         b.doubled = again;
         b.nextBlink = time + (again ? 0.16 : (2 + Math.random() * 4) / trait(b, 'blinky'));
       }
-    } else b.blink = Math.max(0, b.blink - 0.2);
+    } else b.blink = Math.max(0, b.blink - 12 * DT);
 
     if (b.bubble && time > b.bubble.until) b.bubble = null;
     if (b.pulse) {
@@ -4901,6 +4908,12 @@
   const nodding = (b) => b.nodAt >= 0 && time - b.nodAt < NOD_TIME + 0.2;
 
   function faceFor(b) {
+    // Only called when a frame is drawn (30-72 times a second, see
+    // paintNow), so its easing goes by the time since the last one: tuned
+    // as so much per refresh of a 144 Hz screen.
+    const since = Math.min(0.1, Math.max(0, time - (b.faceAt ?? time)));
+    b.faceAt = time;
+    const ease = (k) => 1 - Math.pow(1 - k, since * 144);
     const st = b.state;
     const body = b.body;
     const v = body.velocity(DT);
@@ -4977,8 +4990,8 @@
     if (peeking) { expression = 'peek'; mouth = 'flat'; }
     const moving = expression === 'concentrate' && time < b.furrowUntil;
     const wantFurrow = moving && b.browMove === 'furrow' ? 1 : 0, wantRaise = moving && b.browMove === 'raise' ? 1 : 0;
-    b.furrow = (b.furrow || 0) + (wantFurrow - (b.furrow || 0)) * 0.15;
-    b.raise = (b.raise || 0) + (wantRaise - (b.raise || 0)) * 0.15;
+    b.furrow = (b.furrow || 0) + (wantFurrow - (b.furrow || 0)) * ease(0.15);
+    b.raise = (b.raise || 0) + (wantRaise - (b.raise || 0)) * ease(0.15);
     // Only calm, awake slimes look at the mouse: idle, or done and already
     // seen. Busy ones mind their work. Eased, so the face glides back
     // instead of snapping.
@@ -5084,7 +5097,7 @@
         wantLook = k;
       }
     }
-    b.lookAmount = (b.lookAmount ?? wantLook) + (wantLook - (b.lookAmount ?? wantLook)) * 0.08;
+    b.lookAmount = (b.lookAmount ?? wantLook) + (wantLook - (b.lookAmount ?? wantLook)) * ease(0.08);
     // While the face isn't turning (working, not looking at anything), its
     // gaze waits right on what it would look at, so a glance turns straight
     // there (it used to start from wherever the mouse was, often the
@@ -5095,7 +5108,7 @@
     }
     // Talking: the mouth follows its babble (not mid-yawn or seeing stars).
     // Shut between syllables, it's its own mouth (a smile, mostly).
-    const talk = talkMouth(b);
+    const talk = talkMouth(b, ease);
     b.talkOpen = talk ? talk.open : 0; // the body bobs along (see liven)
     if (b.singing && expression !== 'dizzy') expression = 'happy'; // eyes shut, singing its heart out
     if (talk && mouth !== 'yawn' && expression !== 'dizzy') {
@@ -5116,7 +5129,7 @@
       // Needing you, with you right there: big pleading eyes, on you.
       if (st === 'waiting' && !body.grab) {
         const c = body.centroid();
-        if (Math.hypot(mouse.x - c.x, mouse.y - c.y) < body.o.radius * 3) { wideBy = 0.5; b.lookAmount += (1 - b.lookAmount) * 0.1; b.gazeTarget = null; }
+        if (Math.hypot(mouse.x - c.x, mouse.y - c.y) < body.o.radius * 3) { wideBy = 0.5; b.lookAmount += (1 - b.lookAmount) * ease(0.1); b.gazeTarget = null; }
       }
     }
     // Startled (poked, flinching): eyes go wide for a moment.
@@ -5521,21 +5534,30 @@
 
   function frame() {
     const now = performance.now() / 1000;
-    const fdt = Math.max(0.004, now - last);
     acc += Math.min(0.05, now - last);
     last = now;
     // How fast the cursor is going (a jump onto the screen doesn't count).
-    const mdx = mouse.x - mouse.px, mdy = mouse.y - mouse.py;
-    const jump = Math.abs(mdx) > 1500 || Math.abs(mdy) > 1500;
-    mouse.vx += ((jump ? 0 : mdx / fdt) - mouse.vx) * 0.5;
-    mouse.vy += ((jump ? 0 : mdy / fdt) - mouse.vy) * 0.5;
-    mouse.px = mouse.x; mouse.py = mouse.y;
+    // Worked out when it has moved (or has been still a moment), over the
+    // time since the last time: the cursor is reported about 60 times a
+    // second, so per refresh of a faster screen it would read as still,
+    // then twice as fast.
+    const mdx = mouse.x - mouse.px, mdy = mouse.y - mouse.py, since = now - (mouse.vAt ?? now - 1 / 60);
+    if (mdx || mdy || since > 0.05) {
+      const jump = Math.abs(mdx) > 1500 || Math.abs(mdy) > 1500, mdt = Math.max(0.004, Math.min(0.1, since));
+      mouse.vx += ((jump ? 0 : mdx / mdt) - mouse.vx) * 0.5;
+      mouse.vy += ((jump ? 0 : mdy / mdt) - mouse.vy) * 0.5;
+      mouse.px = mouse.x; mouse.py = mouse.y; mouse.vAt = now;
+    }
+    // What the slimes get up to runs with the physics, a fixed 120 times a
+    // second: its pushes (impulses, leans, squashes) are each one step's
+    // worth, so once per screen refresh they were twice as strong on a
+    // 240 Hz screen as on a 120 Hz one, and half as strong at 60 Hz.
     while (acc >= DT) {
       step();
       time += DT;
       acc -= DT;
+      for (const b of buddies.values()) behave(b);
     }
-    for (const b of buddies.values()) behave(b);
     checkPetting();
     if (paintNow(now)) draw();
     updateIgnore();
@@ -5671,8 +5693,9 @@
   }
 
   // On Windows the app reports presses (see main.js); elsewhere, and in the
-  // shots script, the window's own mouse events drive the same handlers.
-  const fromApp = !!(api.usesPointer && api.onPointer);
+  // shots script and the e2e tests (?debug, which send their own clicks), the
+  // window's own mouse events drive the same handlers.
+  const fromApp = !!(api.usesPointer && api.onPointer) && !new URLSearchParams(location.search).has('debug');
   if (fromApp) {
     api.onPointer((p) => {
       const e = { button: p.button, clientX: p.x, clientY: p.y, altKey: p.alt };

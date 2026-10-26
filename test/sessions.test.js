@@ -148,6 +148,16 @@ test('a helper in its own worktree keeps working without making the session look
   assert.deepStrictEqual(s.agents.map((a) => a.id), ['ac9ab22488de0f5e6']);
 });
 
+test('a session started inside a helper’s worktree is not its own helper', () => {
+  const t = new SessionTracker();
+  const cwd = '/Users/me/code/blaube/.claude/worktrees/agent-ac9ab22488de0f5e6';
+  t.handle(ev('UserPromptSubmit', { cwd }));
+  t.handle(ev('PreToolUse', { tool_name: 'Bash', cwd }));
+  const s = t.sessions.get('s1');
+  assert.strictEqual(s.activity, 'tool');
+  assert.deepStrictEqual(s.agents, []);
+});
+
 test('tells thinking and running a tool apart', () => {
   const t = new SessionTracker();
   const act = () => t.sessions.get('s1').activity;

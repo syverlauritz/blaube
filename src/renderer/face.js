@@ -511,6 +511,7 @@
     if (!s || now - s.t > 0.5) s = body.balloon = { x: cx, y: cy, vx: 0, vy: 0, t: now, puffs: null };
     const dt = Math.min(0.05, now - s.t);
     s.t = now;
+    s.dt = dt;
     s.vx += (150 * (cx - s.x) - 15 * s.vx) * dt;
     s.vy += (150 * (cy - s.y) - 15 * s.vy) * dt;
     s.x += s.vx * dt;
@@ -550,7 +551,8 @@
       const ideal = [[high, 6, 0.4, 10], [low, 3.8, 1, 22]].map(([py, r, k, down]) => ({
         x: mx + dir * down + bend * k * 0.3, y: py, r,
       }));
-      if (s && s.puffs) s.puffs.forEach((q, i) => { q.x += (ideal[i].x - q.x) * 0.25; q.y += (ideal[i].y - q.y) * 0.25; });
+      const follow = 1 - Math.pow(0.75, (s ? s.dt || 0 : 0) * 144); // (a quarter of the way per 144 Hz frame, however often it's drawn)
+      if (s && s.puffs) s.puffs.forEach((q, i) => { q.x += (ideal[i].x - q.x) * follow; q.y += (ideal[i].y - q.y) * follow; });
       else if (s) s.puffs = ideal.map((q) => ({ x: q.x, y: q.y }));
       const puffs = s ? s.puffs : ideal;
       puffs.forEach((q, i) => {

@@ -1306,8 +1306,11 @@ while ($true) {
   }
   Start-Sleep -Milliseconds 12
 }`;
+  let child = null, quitting = false;
+  app.on('will-quit', () => { quitting = true; if (child) child.kill(); });
   const start = () => {
-    const child = require('node:child_process').spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    if (quitting) return;
+    child = require('node:child_process').spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
     let buf = '';
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk) => {
@@ -1319,8 +1322,8 @@ while ($true) {
         if (b === 0 || b === 2) onButton(b, d === 1, a === 1);
       }
     });
-    child.on('exit', () => setTimeout(start, 2000));
-    app.on('will-quit', () => child.kill());
+    child.on('error', () => { /* (couldn't start PowerShell: not an uncaught error dialog) */ });
+    child.on('exit', () => { if (!quitting) setTimeout(start, 2000); }); // (one 'will-quit' above, not one per restart)
   };
   start();
 }
@@ -2112,7 +2115,8 @@ app.whenReady().then(async () => {
     inbox.observe({ session_id: id, hook_event_name: 'SessionEnd' });
     inbox.owned.delete(id);
   });
-  setInterval(() => { if (tracker.prune()) { pushState(); refreshTray(); } }, 30 * 1000);
+  // (Sessions forgotten here never said SessionEnd: tidy up after them too.)
+  setInterval(() => { if (tracker.prune()) { pushState(); refreshTray(); sweepSoon(); } }, 30 * 1000);
   setInterval(refreshUsage, 3000);
   setInterval(() => {
     const live = tracker.allTasks().filter((t) => !t.demo);
@@ -2198,7 +2202,7 @@ app.whenReady().then(async () => {
   // are watched here and passed on. A press counts if it starts over a
   // slime; its release always follows it.
   const pressed = { 0: false, 2: false };
-  startButtonWatcher((button, down, alt) => {
+  if (!TEST) startButtonWatcher((button, down, alt) => { // (tests click the page themselves, never with your mouse)
     if (!win || win.isDestroyed()) return;
     const { x, y, over } = cursorInWindow();
     if (down && (over || holding)) {
@@ -2226,7 +2230,7 @@ app.whenReady().then(async () => {
       clickable = over;
       applied = now;
     }
-    if (x !== cursorX || y !== cursorY) {
+    if (!TEST && (x !== cursorX || y !== cursorY)) { // (tests move their own mouse)
       cursorX = x; cursorY = y;
       win.webContents.send('cursor', { x, y });
     }
@@ -2884,7 +2888,7 @@ app.whenReady().then(async () => {
     pushTalk(id);
   }
   // A quick action from the menu bar, as a tap on it in the box would.
-  doQuick = (id, q) => (q.run ? gitRunFor(id, q.run) : q.install ? installFor(id) : q.env ? envFor(id) : sendMessage(id, q.prompt));
+  doQuick = (id, q) => !tracker.sessions.has(id) ? undefined : (q.run ? gitRunFor(id, q.run) : q.install ? installFor(id) : q.env ? envFor(id) : sendMessage(id, q.prompt)); // (a tray item can outlive its session)
   // Stops a background task: in a session Blaube started, asked of Claude
   // Code itself (stop_task); in a terminal's, the processes writing its
   // output (its own, under its claude process). false: the box asks Claude.

@@ -95,6 +95,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 			return c.toDataURL('image/png');
 		})()`);
 		cw.destroy();
+		fs.mkdirSync(OUT, { recursive: true });
 		fs.writeFileSync(path.join(OUT, `e2e-${name}.png`), Buffer.from(png.split(',')[1], 'base64'));
 	};
 
