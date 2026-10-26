@@ -519,3 +519,19 @@ test('a reply says what its turn came to: time, steps, files changed', () => {
   inbox2.observe({ session_id: 's2', hook_event_name: 'Stop', last_assistant_message: 'Hi.' });
   assert.equal(inbox2.log('s2')[0].turn, undefined);
 });
+
+test('a message added mid-turn doesn’t start a new turn: the reply counts every step', () => {
+  let t = 1000;
+  const inbox = new Inbox(() => t);
+  inbox.observe({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: 'add 2027' });
+  const post = (tool_name, tool_input) => { const p = { session_id: 's1', hook_event_name: 'PostToolUse', tool_name, tool_input }; inbox.observe(p); return inbox.step(p, true); };
+  post('Edit', { file_path: '/w/tax.js', old_string: 'a', new_string: 'b' });
+  t += 60e3;
+  inbox.send('s1', 'and 2028');
+  assert.match(post('Bash', { command: 'npm test' }), /2028/);
+  post('Edit', { file_path: '/w/tax.test.js', old_string: 'a', new_string: 'b' });
+  t += 60e3;
+  inbox.observe({ session_id: 's1', hook_event_name: 'Stop', last_assistant_message: 'Both in.' });
+  const reply = inbox.log('s1').find((e) => e.who === 'claude');
+  assert.deepEqual(reply.turn, { took: 120e3, steps: 3, files: ['/w/tax.js', '/w/tax.test.js'] });
+});

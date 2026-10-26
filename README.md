@@ -152,6 +152,7 @@ BLAUBE_DEMO=1 npm start  # run with fake sessions
 npm run dist:mac         # build a .dmg (on macOS; ad-hoc signed, never uses your keychain)
 npm run build:mac:local  # just build dist/mac-*/Blaube.app
 npm run dist:win         # build an installer (on Windows)
+BLAUBE_TEST=scripts/e2e/steer.js BLAUBE_PORT=47873 npx electron .  # the real app, invisible: steps, Stop, mid-turn messages, slash commands, the overview (no tokens)
 node scripts/make-icons.js  # re-render the icons (needs playwright)
 ```
 

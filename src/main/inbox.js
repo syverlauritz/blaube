@@ -69,7 +69,7 @@ class Inbox extends EventEmitter {
     const q = this.queue.get(id);
     if (!q || !q.length) return '';
     this.queue.delete(id);
-    for (const e of q) { e.status = 'sent'; e.sentAt = this.now(); }
+    for (const e of q) { e.status = 'sent'; e.sentAt = this.now(); e.midTurn = true; } // (part of the turn it's in, not a new one)
     this.emit('heard', id);
     this.emit('change', id);
     return JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: frame(q.map((e) => e.text).join('\n\n')) } });
@@ -400,7 +400,9 @@ function turnOf(log, now) {
   for (let i = log.length - 1; i >= 0; i--) {
     const e = log[i];
     if (e.who === 'claude') break;
-    if (e.who === 'you' && e.status !== 'queued' && e.status !== 'delivering') { start = i; break; }
+    if (e.who !== 'you' || e.status === 'queued' || e.status === 'delivering') continue;
+    start = i;
+    if (!e.midTurn) break; // (a message added mid-turn: the turn began before it)
   }
   if (start < 0) return null;
   const steps = log.slice(start + 1).filter((e) => e.who === 'step');

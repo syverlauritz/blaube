@@ -422,7 +422,7 @@ function pushTalk(id, focusField = false) {
     demo: id.startsWith('demo-'),
     // Connected if the settings say so, or if this session's hooks already
     // reached us (it was started with them, whatever the file says now).
-    connected: hooksOk || inbox.reachable.has(id) || inbox.asks.has(id) || inbox.owned.has(id),
+    connected: hooksOk || inbox.reachable.has(id) || inbox.steerable.has(id) || inbox.asks.has(id) || inbox.owned.has(id),
     doing: s.state === 'working' ? doing.get(id) || '' : '',
     focus: focusField,
     // Its git status and what you might ask for next (see git.js).
