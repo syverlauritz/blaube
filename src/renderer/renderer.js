@@ -895,6 +895,8 @@
       if (!asleep && b.sleep > 0.5 && !b.woke && body.onFloor()) { b.woke = true; body.squashTop(-CFG.sleepSlump * body.o.radius * 90, DT); b.nextBlink = time; }
       if (asleep) b.woke = false;
       body.areaScale *= 1 - CFG.sleepSlump * b.sleep;
+      // Just gulped a helper back in: a swell that wobbles down.
+      if (b.gulpAt && time - b.gulpAt < 1.2) { const t = time - b.gulpAt; body.areaScale *= 1 + 0.1 * CFG.gulp * Math.sin(t * 9) * Math.exp(-t * 3); }
       body.o.pressure = Math.min(0.85, CFG.pressure * trait(b, 'firm') * (1 + CFG.contextTighten * b.fill)) * (1 - 0.5 * b.droop) * (1 - 2 * CFG.sleepSlump * b.sleep);
       // Pressure alone tops out early, so a full one also holds its round
       // shape harder and its skin goes taut: it barely squashes or sags.
@@ -939,6 +941,12 @@
             b.dying = time;
             b.targetR = 2;
             m.happyUntil = time + 1.2;
+            // Gulp: the skin where it went in dips, and she swells a little.
+            if (CFG.gulp > 0 && !m.body.grab) {
+              const mr = m.body.o.radius, ux = dx / (Math.hypot(dx, dy) || 1), uy = dy / (Math.hypot(dx, dy) || 1);
+              m.body.pushAt(mc.x - ux * mr, mc.y - uy * mr, ux * mr * 6 * CFG.gulp, uy * mr * 6 * CFG.gulp, mr * 0.6, DT);
+              m.gulpAt = time;
+            }
           } else if (body.onFloor() && !body.grab && time - (b.merging.lastHop || 0) > 0.6) {
             b.merging.lastHop = time;
             b.hop(Math.sign(dx) * Math.min(700, Math.abs(dx) * 2.2 + 120), -520 - Math.max(0, -dy) * 1.5);

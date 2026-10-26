@@ -114,6 +114,7 @@
       ['splashDrops', 1, 0, 3, 0.05, 'Goo droplets fly off on hard hits'],
       ['splashSpeed', 1500, 500, 6000, 50, 'Splashes when it hits faster than (px/s)'],
       ['petEmpathy', 1, 0, 2, 0.05, 'Task pets rush to a dizzy slime and cheer when it\'s happy'],
+      ['gulp', 1, 0, 3, 0.05, 'A mother gulps a helper back in (ripple and swell)'],
     ]],
     ['World', [
       ['dockCollision', true, 0, 0, 0, 'Collide with the Dock / taskbar'],
