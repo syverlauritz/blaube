@@ -1221,6 +1221,8 @@
   function wantsAttention(b) {
     const m = b.kind === 'child' ? b.mother : b;
     if (!unseen(m)) return false;
+    // Its talk box is open (or opening): it has your attention.
+    if (talkingTo === m.key || tails.has(m.key) || time < (m.talkHold || 0)) return false;
     return b.state === 'waiting' || (b.state === 'done' && b.kind !== 'child');
   }
 
@@ -5807,24 +5809,31 @@
     const c = b.body.centroid(), r = b.body.o.radius;
     return { x: c.x, y: Math.min(b.body.lookTop ?? Infinity, c.y - r), r };
   }
-  // Opens a slime's talk box over where its head is at rest: the box opens
-  // there and never moves after, so a slime clicked mid-hop (it lands, and
-  // stays put while you talk to it), or just landing and wobbling, gets its
-  // box once it's down (at most a moment later), over its head's settled
-  // height, not up in the air or down over its head. `pressed`: that height
-  // from just before you pressed on it, if it was down then (the press
-  // squishes it).
+  // Opens a slime's talk box at once, over where its head is at rest: the
+  // box never moves after it opens, so a slime clicked mid-hop (it lands,
+  // and stays put while you talk to it), or just landing and wobbling, gets
+  // its box over where its head will settle on what's under it, not up in
+  // the air or down over its head. `pressed`: that, from just before you
+  // pressed on it (the press squishes it).
   function openTalkOver(id, b, pressed) {
     b.talkHold = time + 1.5;
-    if (pressed) { api.talk(id, pressed); return; }
-    const t0 = time;
-    const go = () => {
-      if (!buddies.has(b.key)) return;
-      b.pendingHop = null; // (no new hop for attention: it's getting it)
-      if (standing(b) || b.body.grab || time - t0 > 0.8) api.talk(id, standing(b) ? restingHead(b) : headTop(b));
-      else setTimeout(go, 16);
-    };
-    go();
+    b.pendingHop = null; // (no hop for attention: it has it)
+    api.talk(id, pressed || landedHead(b));
+  }
+  // Where its head will be once it's standing on what's under it: how tall
+  // it stands (learnt while it rests, see noteResting) up from the floor or
+  // ledge below it.
+  let standK = 0; // (how tall slimes stand, in radii: any slime's, for one not yet seen resting)
+  function landedHead(b) {
+    if (standing(b)) return restingHead(b);
+    const at = headTop(b), body = b.body;
+    if (body.grab) return at;
+    const box = body.bbox();
+    const floor = floorAt((box.minX + box.maxX) / 2, box.maxY);
+    const standH = b.standH || (standK ? standK * body.o.radius : 0);
+    if (standH) at.y = floor - standH;
+    else if (floor > box.maxY) at.y += floor - box.maxY;
+    return at;
   }
   // Down: on something for a moment and not crouching for a hop, with its
   // head's height smoothed over its wobble and breath (see noteResting).
@@ -5838,6 +5847,12 @@
       const h = headTop(b);
       if (!b.restHead) b.restHead = h;
       else { b.restHead.y += (h.y - b.restHead.y) * 0.06; b.restHead.r = h.r; }
+      // How tall it stands, from what it stands on to its settled head.
+      if (time - b.downSince > 0.3) {
+        const stand = body.bbox().maxY - b.restHead.y;
+        b.standH = b.standH ? b.standH + (stand - b.standH) * 0.06 : stand;
+        standK = b.standH / body.o.radius;
+      }
     }
   }
 
@@ -6007,7 +6022,7 @@
     const b = buddyAt(e.clientX, e.clientY);
     if (!b) return;
     drag = { buddy: b, x0: e.clientX, y0: e.clientY, t0: time, moved: false };
-    b.pressedHead = standing(b) ? restingHead(b) : null; // (before the press squishes it: where its talk box goes, for a click)
+    b.pressedHead = landedHead(b); // (before the press squishes it: where its talk box goes, for a click)
     pickUp(b);
     b.body.startGrab(e.clientX, e.clientY);
     // Pressed: the skin under the cursor gives in, and it springs back.
