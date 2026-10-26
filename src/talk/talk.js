@@ -133,10 +133,12 @@
       const shown = () => openSteps.has(m.n);
       pre.hidden = !shown();
       e.classList.toggle('open', shown());
+      e.setAttribute('aria-expanded', String(shown()));
       e.onclick = () => {
         if (shown()) openSteps.delete(m.n); else openSteps.add(m.n);
         pre.hidden = !shown();
         e.classList.toggle('open', shown());
+        e.setAttribute('aria-expanded', String(shown()));
         // Opening one shows it, even from the folded part of a run.
         if (shown() && e.classList.contains('early')) { run.classList.add('open'); openRuns.add(Number(run.dataset.first)); run.relabel(); }
       };
@@ -441,6 +443,7 @@
     $('todoNow').textContent = now ? now.doing : done === list.length ? 'All done' : 'Next: ' + (list.find((t) => t.status !== 'completed') || list[0]).text;
     $('todoCount').textContent = `${done} of ${list.length}`;
     $('todoHead').title = todoOpen ? 'Hide the list' : 'Show the whole list';
+    $('todoHead').setAttribute('aria-expanded', String(todoOpen));
     const ul = $('todoList');
     ul.hidden = !todoOpen;
     ul.textContent = '';
@@ -877,6 +880,25 @@
     const b = document.querySelector(`#askQuestions .opt[data-n="${e.key}"]`);
     if (b && !b.disabled) { e.preventDefault(); b.click(); }
   });
+  // The card from the keyboard: ⌘↩ allows (or goes ahead), ⇧⌘↩ always,
+  // ⌘⌫ denies (or keeps planning). Arrow keys move between options.
+  document.addEventListener('keydown', (e) => {
+    if (!askKey || !current || !current.ask || $('ask').hidden || e.isComposing) return;
+    const mod = e.metaKey || e.ctrlKey;
+    const press = (id) => { const b = $(id); if (b && !b.hidden && !b.disabled) { e.preventDefault(); b.click(); } };
+    if (mod && e.key === 'Enter' && current.ask.kind !== 'question') return press(e.shiftKey ? 'always' : 'allow');
+    if (mod && e.key === 'Backspace' && current.ask.kind !== 'question' && !(document.activeElement === text && text.value)) return press('deny');
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && document.activeElement && document.activeElement.classList.contains('opt')) {
+      const all = [...document.querySelectorAll('#askQuestions .opt:not(:disabled)')];
+      const at = all.indexOf(document.activeElement);
+      const next = all[at + (e.key === 'ArrowDown' ? 1 : -1)];
+      if (next) { e.preventDefault(); next.focus(); }
+    }
+  });
+  const mac = navigator.platform.startsWith('Mac');
+  $('allow').title = mac ? '⌘↩' : 'Ctrl+Enter';
+  $('deny').title = mac ? '⌘⌫' : 'Ctrl+Backspace';
+  $('always').title += mac ? ' (⇧⌘↩)' : ' (Ctrl+Shift+Enter)';
   $('allow').addEventListener('click', decide('allow'));
   $('deny').addEventListener('click', decide('deny'));
   $('always').addEventListener('click', decide('always'));

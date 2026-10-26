@@ -246,6 +246,11 @@
   form button svg { width: 18px; height: 18px; }
   form button:disabled { background: var(--soft); color: var(--faint); cursor: default; }
   form button:not(:disabled):active { transform: scale(.88); }
+  /* Less motion when the system asks for it (the box, not the slimes:
+     their physics is how they talk). */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -254,7 +259,7 @@
     <header>
       <span class="name" id="name"></span>
       <span class="state"><i id="dot"></i><span id="state"></span></span>
-      <button class="stop" id="stop" hidden title="It stops before its next step"><i></i><span>Stop</span></button>
+      <button class="stop" id="stop" hidden title="It stops before its next step" aria-label="Stop it before its next step"><i></i><span>Stop</span></button>
       <span class="spacer"></span>
       <span class="others" id="others"></span>
       <button class="round" id="terminal" title="Go to its terminal (or Alt-click the slime)" aria-label="Go to its terminal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7l5 5-5 5M12 17h7"/></svg></button>
@@ -266,10 +271,10 @@
       <button id="todoHead"><span class="bar"><i id="todoFill"></i></span><span id="todoNow"></span><span id="todoCount"></span></button>
       <ul id="todoList" hidden></ul>
     </div>
-    <div id="log"><div id="inner"></div></div>
+    <div id="log" role="log" aria-live="polite" aria-label="Conversation"><div id="inner"></div></div>
     <div class="glance" id="overview"></div>
-    <div class="ask" id="ask" hidden>
-      <div class="what"><b id="askWhat"></b><span id="askMore"></span></div>
+    <div class="ask" id="ask" role="group" aria-labelledby="askWhat" hidden>
+      <div class="what"><b id="askWhat" aria-live="assertive"></b><span id="askMore"></span></div>
       <code id="askDetail"></code>
       <div id="askQuestions"></div>
       <div class="plan msg" id="askPlan" hidden></div>
@@ -284,7 +289,7 @@
     <div class="quick" id="quick" hidden></div>
     <div class="files" id="files" hidden></div>
     <form id="form">
-      <textarea id="text" rows="1" placeholder="Say something…"></textarea>
+      <textarea id="text" rows="1" placeholder="Say something…" aria-label="Message"></textarea>
       <button id="send" type="submit" disabled aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
     </form>
   </div>
