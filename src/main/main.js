@@ -460,7 +460,7 @@ function pushTalk(id, focusField = false) {
     mcp: (mcpStates.get(id) || []).filter((m) => m.status === 'failed' || m.status === 'needs-auth'), // (MCP servers that aren't there)
     usage: limits.line(usageLimits),
     canMode: owned.has(id), // (one Blaube started can be asked to change it)
-    tasks: (s.tasks || []).filter((t) => !t.demo).slice(0, 4).map((t) => ({ id: t.id, label: t.description || t.command, command: t.command })),
+    tasks: (s.tasks || []).filter((t) => !t.demo).slice(0, 4).map((t) => ({ id: t.id, label: t.description || t.command, command: t.command, url: taskUrls.get(`${id}/${t.id}`) || '' })),
     helpers: s.state === 'working' || s.state === 'waiting' ? (s.agents || []).slice(0, 5).map((a) => ({ name: helperName(s, a), doing: helperDoing.get(`${id}/${a.id}`) || '', waiting: a.state === 'waiting' })) : [],
     focus: focusField,
     // Its git status and what you might ask for next (see git.js).
@@ -491,6 +491,7 @@ let usageLimits = null; // (see limits.js)
 const mcpStates = new Map(); // id -> its MCP servers, for a session Blaube started
 const rewound = new Map(); // id -> what Claude should hear about files you put back
 const endedTasks = new Set(); // `${session}/${task}` whose ending was seen (or caused)
+const taskUrls = new Map(); // `${session}/${task}` -> the local address it said it's on
 const foreground = new Map(); // id -> { tool, at, what }: a command it's waiting on, in a session Blaube started
 // Sessions that hit a usage limit and carry on by themselves once it lifts.
 const carryLater = new Map(); // id -> when
@@ -1776,6 +1777,11 @@ app.whenReady().then(async () => {
         const key = `${s.id}/${t.id}`;
         if (endedTasks.has(key) || t.demo) continue;
         const file = taskOutput.find(s.id, t.id);
+        // (A dev server: where it says it's on, to open with a tap.)
+        if (file && !taskUrls.has(key)) {
+          const u = taskOutput.url(file);
+          if (u) { taskUrls.set(key, u); if (taskUrls.size > 200) taskUrls.delete(taskUrls.keys().next().value); if (talkId === s.id) pushTalk(s.id); }
+        }
         const r = file && taskOutput.tail(file, 4096);
         if (!r || r.exited == null) continue;
         endedTasks.add(key);

@@ -38,3 +38,13 @@ test('looks in Claude Code’s own temp folder first', () => {
   const r = taskOutput.roots({ CLAUDE_CODE_TMPDIR: '/x/tmp' });
   assert.ok(r[0].startsWith(path.join('/x/tmp', 'claude')));
 });
+
+test('the local address a dev server says it’s on', () => {
+  fs.writeFileSync(file, '\x1b[32m  VITE v5 ready\x1b[0m\n  ➜  Local:   \x1b[36mhttp://localhost:\x1b[1m5173\x1b[22m/\x1b[39m\n  ➜  Network: use --host\n');
+  assert.equal(taskOutput.url(file), 'http://localhost:5173/');
+  fs.writeFileSync(file, 'Server listening on http://0.0.0.0:3000.\n');
+  assert.equal(taskOutput.url(file), 'http://localhost:3000');
+  fs.writeFileSync(file, 'see https://github.com/x/y for docs\nbuilt in 2s\n');
+  assert.equal(taskOutput.url(file), '', 'not someone else’s site');
+  assert.equal(taskOutput.url(path.join(root, 'missing')), '');
+});

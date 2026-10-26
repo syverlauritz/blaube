@@ -50,4 +50,19 @@ function tail(file, max = 16 * 1024) {
   } catch { return null; } finally { if (fd != null) fs.closeSync(fd); }
 }
 
-module.exports = { find, tail, roots };
+// The local address a dev server it runs says it's on (from the start of
+// its output, where servers say so): "http://localhost:5173/", or ''.
+const LOCAL = /\bhttps?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]|[\w-]+\.local)(?::\d{2,5})?(?:\/[^\s'"<>()[\]{}]*)?/i;
+function url(file, max = 16 * 1024) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const buf = Buffer.alloc(max);
+    const n = fs.readSync(fd, buf, 0, max, 0);
+    const text = buf.subarray(0, n).toString('utf8').replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '');
+    const m = LOCAL.exec(text);
+    return m ? m[0].replace(/[.,;:]+$/, '').replace('//0.0.0.0', '//localhost') : '';
+  } catch { return ''; } finally { if (fd != null) fs.closeSync(fd); }
+}
+
+module.exports = { find, tail, url, roots };

@@ -1016,10 +1016,11 @@
 
   // What it left running in the background, each with a Stop (asked of
   // Claude, which started it: no terminal needed).
+  const bgOpen = new Set(); // tasks whose output is open
   function renderTasks(s) {
     const box = $('bg');
     const list = s.ended || s.demo ? [] : (s.tasks || []);
-    const key = JSON.stringify(list.map((t) => t.id)) + s.id;
+    const key = JSON.stringify(list.map((t) => [t.id, t.url])) + s.id;
     box.hidden = !list.length;
     if (box.dataset.key === key) return;
     box.dataset.key = key;
@@ -1062,16 +1063,24 @@
       };
       peek.onclick = async () => {
         if (!current) return;
-        if (!out.hidden) { out.hidden = true; clearInterval(out.timer); peek.setAttribute('aria-expanded', 'false'); requestAnimationFrame(fitWindow); return; }
+        if (!out.hidden) { out.hidden = true; bgOpen.delete(t.id); clearInterval(out.timer); peek.setAttribute('aria-expanded', 'false'); requestAnimationFrame(fitWindow); return; }
         if (!(await show())) return ask();
+        bgOpen.add(t.id);
         out.hidden = false;
         peek.setAttribute('aria-expanded', 'true');
         out.scrollTop = out.scrollHeight;
         out.timer = setInterval(() => { if (!out.isConnected || out.hidden) return clearInterval(out.timer); show(); }, 1500);
         requestAnimationFrame(fitWindow);
       };
-      li.append(name, peek, stop, out);
+      // (A dev server: open where it says it's on.)
+      const go = document.createElement('button');
+      go.type = 'button';
+      go.textContent = 'Open';
+      go.title = t.url;
+      go.onclick = () => api.openLink(t.url);
+      li.append(name, ...(t.url ? [go] : []), peek, stop, out);
       box.append(li);
+      if (bgOpen.has(t.id)) peek.onclick(); // (still open from before it was redrawn)
     }
     requestAnimationFrame(fitWindow);
   }

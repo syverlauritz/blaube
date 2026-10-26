@@ -96,6 +96,8 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await box(`[...document.querySelectorAll('#bg button')].find((b) => b.textContent === 'Output').click()`);
 	check(await until(() => box(`(() => { const o = document.querySelector('#bg .bgout'); return !!o && !o.hidden && /VITE ready on http:\\/\\/localhost:5173/.test(o.textContent) && !/\\x1b/.test(o.textContent); })()`)), 'Output shows what a background task printed, read from its file');
 	check((inbox.queue.get(ID) || []).length === queuedBefore, 'without asking Claude');
+	global.__blaubeCheckTasks();
+	check(await until(() => box(`[...document.querySelectorAll('#bg li')].some((li) => /Dev server/.test(li.textContent) && [...li.querySelectorAll('button')].some((b) => b.textContent === 'Open' && b.title === 'http://localhost:5173'))`)), 'a dev server gets Open, for where it says it’s on');
 	fs.appendFileSync(path.join(outDir, 'bash_7.output'), 'GET / 500\n');
 	check(await until(() => box(`(() => { const o = document.querySelector('#bg .bgout'); return /GET \\/ 500$/.test(o.textContent); })()`)), 'and keeps up with it while open');
 	await box(`[...document.querySelectorAll('#bg button')].find((b) => b.textContent === 'Output').click()`);
