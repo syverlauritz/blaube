@@ -1941,6 +1941,27 @@
     b.hop((tx - c.x) / air * 0.8, -vy);
   }
 
+  // Bored but awake (idle, you're around): now and then it amuses itself
+  // with a little trick, three hops, each higher than the last.
+  function trick(b) {
+    if (CFG.tricks <= 0 || b.kind === 'child') return;
+    const ok = b.state === 'idle' && !b.body.grab && !b.merging && !b.prank && (b.sleep || 0) < 0.1 && idleFor() < 30 && b !== buddies.get(talkingTo);
+    if (b.trick) {
+      if (!ok) { b.trick = null; return; }
+      if (!b.body.onFloor()) { b.trick.up = true; return; }
+      if (b.pendingHop || time < b.trick.next || (b.trick.n && !b.trick.up)) return; // (each from the ground)
+      if (b.trick.n >= 3) { b.trick = null; b.happyUntil = time + 1.5; return; }
+      b.trick.n++;
+      b.trick.up = false;
+      b.hop((Math.random() - 0.5) * 40, -(240 + b.trick.n * 130) * Math.min(1.4, CFG.tricks));
+      b.trick.next = time + 0.12;
+      return;
+    }
+    if (!ok || !b.body.onFloor() || time < (b.nextTrick ?? (b.nextTrick = time + (120 + Math.random() * 240) / CFG.tricks))) return;
+    b.nextTrick = time + (180 + Math.random() * 300) / CFG.tricks;
+    b.trick = { n: 0, next: time };
+  }
+
   function pounce(b) {
     if (time < (b.pounceUntil || 0)) {
       if (!b.caught && b.body.contains(mouse.x, mouse.y)) {
@@ -2026,6 +2047,7 @@
     stackPlay(b);
     pounce(b);
     prank(b);
+    trick(b);
     // Hanging over the edge of a window: it clings and shuffles back on.
     const l = b.body.onLedge;
     if (l && !b.body.grab) {
