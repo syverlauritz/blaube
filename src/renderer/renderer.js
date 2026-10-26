@@ -349,6 +349,26 @@
     });
   }
 
+  // A window swept along fast stirs the air: leaves (and snow) near it get
+  // blown along, and a slime right by its leading edge leans out of the way.
+  function gust(l) {
+    if (CFG.gust <= 0) return;
+    const lead = l.vx > 0 ? l.x1 : l.x0, dir = Math.sign(l.vx), push = l.vx * 0.6 * CFG.gust;
+    for (const f of flakes) {
+      if (f.on || f.y < l.y - 200 || f.x < l.x0 - 140 || f.x > l.x1 + 140) continue;
+      if (f.landed) { if (Math.abs(f.x - lead) > 120) continue; f.landed = 0; f.vy = -60 - Math.random() * 80; }
+      f.loose = time + 0.5;
+      f.vx += (push - f.vx) * 0.08;
+    }
+    for (const b of buddies.values()) {
+      if (b.dying || b.body.grab || b.body.onLedge === l || !b.body.onFloor()) continue;
+      const c = b.body.centroid(), r = b.body.o.radius, ahead = (c.x - lead) * dir;
+      if (ahead < -r || ahead > r * 2.5 || c.y < l.y - r) continue;
+      b.body.lean(dir * Math.min(600, Math.abs(l.vx)) * 0.02 * CFG.gust * 60 * DT, DT);
+      if (time > (b.gustBlink || 0)) { b.gustBlink = time + 1; b.startleUntil = time + 0.3; }
+    }
+  }
+
   // Every physics step: moving window tops glide on, carrying their riders.
   function glideLedges() {
     const t = performance.now() / 1000;
@@ -373,6 +393,7 @@
       l.up = Math.max(window, (l.up ?? window) - CFG.gravity * DT);
       // A window that starts or stops moving leaves its riders' tops behind
       // for a moment: they wobble like jelly on a plate.
+      if (!fast && Math.abs(l.vx) > 300) gust(l);
       const was = ridden.get(l.id) ?? 0, kick = fast ? 0 : (l.vx - was) * CFG.rideWobble;
       ridden.set(l.id, fast ? 0 : l.vx);
       if (l.up <= 0 && !l.vx && !l.vy && !kick) { l.up = 0; continue; }

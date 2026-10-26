@@ -122,6 +122,7 @@
       ['cheerOthers', 1, 0, 2, 0.05, 'When one finishes, the others look over and nearby ones are pleased for it'],
       ['waitNudge', 3, 0, 30, 0.5, 'Needing you this many minutes: it reminds you, once (0 = never)'],
       ['fullWarning', 0.85, 0, 1, 0.01, 'Says so when its context gets this full (0 = never)'],
+      ['gust', 1, 0, 3, 0.05, 'A window swept past fast blows leaves along and makes slimes lean away'],
       ['rideWobble', 1, 0, 3, 0.05, 'Riding a window you move: it wobbles as the window starts and stops'],
       ['scrollSquish', 1, 0, 3, 0.05, 'Scroll over a slime to squish it flat or pull it tall'],
       ['listen', 1, 0, 2, 0.05, 'Typing to it in its talk box: it watches and bobs along'],
