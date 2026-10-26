@@ -788,7 +788,7 @@
       for (const e of inner.querySelectorAll('.msg.claude:not([data-measured])')) {
         e.dataset.measured = '1';
         const at = Number(e.dataset.at);
-        if (e.offsetHeight < 280 || open.has(at)) continue;
+        if (e.offsetHeight < 560 || open.has(at)) continue; // (taller than most of the box)
         e.classList.add('folded');
         const more = document.createElement('button');
         more.className = 'more';
