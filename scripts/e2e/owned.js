@@ -50,7 +50,7 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(() => talk() && talk().isVisible() && talkId() === id, 8000), 'a session starts, its box open');
 
 	await type('/model claude-sonnet-5-5');
-	check(await until(async () => /Now using claude-sonnet-5-5/.test(await said())), '/model switches its model, no terminal');
+	check(await until(async () => /Now using Sonnet 5\.5/.test(await said())), '/model switches its model, no terminal');
 	check(await until(() => box(`document.querySelector('#mode .model') && document.querySelector('#mode .model').textContent === 'Sonnet 5.5 · '`)), 'and the box says which model it is now');
 	await type('hello');
 	check(await until(async () => /claude-sonnet-5-5 here\./.test(await said())), 'and it answers as that model');
@@ -70,11 +70,17 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await type('/plan');
 	check(await until(async () => /Plan mode: it shows you a plan/.test(await said()) && /^mode plan/.test(await mode())), '/plan puts it in plan mode');
 
+	await type('!echo hi there');
+	check(await until(() => inbox.log(id).some((e) => e.who === 'step' && e.text === 'You ran echo hi there' && /hi there/.test(e.detail) && !e.running)), '!echo runs right here');
 	await type('/compact');
 	check(await until(async () => /Compacted: it carries on from a summary/.test(await said())), '/compact goes straight in, and says when it’s done');
+	check(inbox.log(id).some((e) => e.who === 'you' && e.text === '/compact'), 'a command stays a command, with what you ran held for the next message');
 	await type('/cost');
 	check(await until(async () => /Nothing to show yet/.test(await said())), 'what Claude Code itself answers a command shows');
 	check(await until(() => tracker.sessions.get(id).state === 'done'), 'and the turn ends');
+	await type('thoughts?');
+	check(await until(() => inbox.log(id).some((e) => e.who === 'you' && /^\(I ran `echo hi there` myself\. It printed:\n```\nhi there\n```\)\n\nthoughts\?$/.test(e.text))), 'which then carries it');
+	await until(() => tracker.sessions.get(id).state === 'done');
 	await type('slow');
 	check(await until(() => tracker.sessions.get(id).state === 'working', 3000), 'a long turn starts');
 	check(await until(() => box(`!document.getElementById('stop').hidden`)), 'with Stop beside its name');

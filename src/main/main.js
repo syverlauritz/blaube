@@ -1603,11 +1603,6 @@ app.whenReady().then(async () => {
     // "!git log": run right here, in its folder, as the terminal's bash
     // mode does; what it printed goes along with your next message.
     if (/^!\S/.test(String(text).trim())) return runForSession(id, String(text).trim().slice(1).trim());
-    const ran = shellRan.get(id);
-    if (ran && ran.length) {
-      shellRan.delete(id);
-      text = ran.map((r) => `(I ran \`${r.cmd}\` myself${r.code === 0 ? '' : r.code == null ? ' (stopped: it took too long)' : ` (exit code ${r.code})`}. It printed:\n\`\`\`\n${r.out.slice(-3000) || '(nothing)'}\n\`\`\`)`).join('\n\n') + '\n\n' + text;
-    }
     // One of your own commands (/deploy staging) is only a prompt: it goes
     // as a message, so it needs no terminal.
     const prompt = expandCommand(text, (tracker.sessions.get(id) || {}).cwd);
@@ -1620,7 +1615,7 @@ app.whenReady().then(async () => {
       if (c) {
         inbox.add(id, { who: 'you', text: String(text).trim(), via: 'blaube', status: 'sent' });
         owned.control(id, c.request, (ok, r) => {
-          const what = c.request.subtype === 'set_model' ? (ok ? `Now using ${r.model || c.request.model}` : `Couldn’t switch to ${c.request.model}: ${r}`)
+          const what = c.request.subtype === 'set_model' ? (ok ? `Now using ${modelName(r.model) || r.model || c.request.model}` : `Couldn’t switch to ${c.request.model}: ${r}`)
             : ok ? 'Plan mode: it shows you a plan before it changes anything' : `Couldn’t switch to plan mode: ${r}`;
           if (ok && c.request.mode) tracker.setMode(id, r.mode || c.request.mode);
           if (ok && r.model) pickedModel.set(id, r.model);
@@ -1629,6 +1624,7 @@ app.whenReady().then(async () => {
         });
         return;
       }
+      if (!slashCommand(text, (tracker.sessions.get(id) || {}).cwd)) text = withWhatYouRan(id, text);
       if (!owned.send(id, text)) { inbox.add(id, { who: 'you', text: String(text), via: 'blaube', status: 'unsent' }); return; }
       inbox.say(id, text);
       tracker.handle({ session_id: id, hook_event_name: 'UserPromptSubmit' }, 'blaube');
@@ -1652,9 +1648,17 @@ app.whenReady().then(async () => {
       });
       return;
     }
-    const how = inbox.send(id, text);
+    const how = inbox.send(id, withWhatYouRan(id, text));
     log(`message for ${tracker.sessions.get(id).project}: ${how} (inbox ${inbox.view(id).inbox})`);
     setTimeout(() => typeQueued(id), 1500); // a moment for its inbox hook to ask first
+  }
+  // A message, with what you ran with ! since the last one ahead of it
+  // (as the terminal's bash mode adds it to the conversation).
+  function withWhatYouRan(id, text) {
+    const ran = shellRan.get(id);
+    if (!ran || !ran.length) return text;
+    shellRan.delete(id);
+    return ran.map((r) => `(I ran \`${r.cmd}\` myself${r.code === 0 ? '' : r.code == null ? ' (stopped: it took too long)' : ` (exit code ${r.code})`}. It printed:\n\`\`\`\n${r.out.slice(-3000) || '(nothing)'}\n\`\`\`)`).join('\n\n') + '\n\n' + text;
   }
   // (What you ran with ! in a session's box, for its next message.)
   function runForSession(id, cmd) {
