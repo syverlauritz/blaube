@@ -3217,21 +3217,56 @@
     }
   }
 
+  // Thrown hard, it tumbles head over heels through the air, the way it was
+  // flung; too many turns and it lands dizzy.
+  function throwSpin(b) {
+    const v = b.body.velocity(DT), r = b.body.o.radius;
+    if (CFG.tumble <= 0 || Math.hypot(v.x, v.y) < 900 || Math.abs(v.x) < 250 || b.splat) return;
+    b.body.spin(Math.sign(v.x) * Math.min(24, (Math.abs(v.x) / r) * 0.9 * CFG.tumble), DT);
+    b.tumble = { at: time, turned: 0, last: b.body.angle };
+    b.body.o.upright = CFG.upright * 0.08; // (free to turn over in the air; see tumble)
+  }
+  function tumble(b) {
+    const t = b.tumble;
+    if (!t) return;
+    let d = b.body.angle - t.last;
+    if (d > Math.PI) d -= Math.PI * 2; else if (d < -Math.PI) d += Math.PI * 2;
+    t.last = b.body.angle;
+    t.turned += Math.abs(d);
+    if (b.body.grab || b.splat || time - t.at > 6) { b.tumble = null; b.body.o.upright = CFG.upright; return; }
+    if (!t.landed && time - t.at > 0.15 && b.body.onFloor()) {
+      t.landed = time;
+      b.body.o.upright = CFG.upright;
+      b.body.spin(-b.body.angularVelocity(DT) * 0.6, DT); // (the floor grabs it)
+      if (t.turned > Math.PI * 4) { b.dizzyUntil = Math.max(b.dizzyUntil, time + 2); quip(b, 'whoa…', 1.2); }
+    }
+    // Landed upside down or on its side: after a moment it flops back over.
+    if (t.landed && !t.flop && time - t.landed > 0.7 && Math.abs(b.body.angle) > 0.5 && b.body.onFloor()) {
+      t.flop = time;
+      b.body.impulse(0, -280, DT);
+      b.body.spin(-b.body.angle * 4.5 - b.body.angularVelocity(DT), DT);
+    }
+    // Back the right way up (or near enough), its face stops going round.
+    if (t.landed && (Math.abs(b.body.angle) < 0.25 || time - t.landed > 3)) { b.tumble = null; b.body.o.upright = CFG.upright; }
+  }
+
   // A somersault: once off the ground, a spin to go once round in the air;
   // landed, "ta-da!".
   function somersault(b) {
     const f = b.flip;
     if (!f) return;
-    if (b.body.grab || time - f.at > 4) { b.flip = null; return; }
+    if (b.body.grab || time - f.at > 4) { b.flip = null; b.body.o.upright = CFG.upright; return; }
     if (!f.spun) {
       if (b.pendingHop || b.body.onFloor()) return;
       f.spun = time;
+      b.body.o.upright = CFG.upright * 0.08;
       const air = (2 * Math.abs(f.vy)) / CFG.gravity; // (time it'll be up)
       b.body.spin(f.dir * (Math.PI * 2 / air) * 1.5, DT);
       return;
     }
     if (time - f.spun > 0.2 && b.body.onFloor()) {
       b.body.spin(-b.body.angularVelocity(DT) * 0.9, DT); // (it sticks the landing rather than rolling on)
+      b.body.o.upright = CFG.upright;
       b.flip = null;
       b.happyUntil = time + 1.5;
       quip(b, 'ta-da!', 1.2);
@@ -3724,6 +3759,7 @@
     sulk(b);
     burp(b);
     somersault(b);
+    tumble(b);
     if (b.bounceAt && time > b.bounceAt) { // (sprung off a trampoline, see stackPlay)
       b.bounceAt = 0;
       if (!b.body.grab) { const v = b.body.velocity(DT); b.body.impulse((Math.random() - 0.5) * 120 - v.x * 0.5, -b.bounceV - v.y, DT); }
@@ -4066,7 +4102,7 @@
     const wide = CFG.eyeLife * Math.max(wideBy, wideSeen, over ? 0.5 : 0, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
     return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.6 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: b.shy > 0 ? { ...CFG, cheeks: Math.min(0.95, CFG.cheeks + b.shy * 0.55) } : CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal',
-      fullTurn: (body.fullTurn = !!(b.flip && b.flip.spun)), // (mid-somersault the face, and what it wears, go all the way round)
+      fullTurn: (body.fullTurn = !!((b.flip && b.flip.spun) || b.tumble)), // (mid-somersault the face, and what it wears, go all the way round)
     };
   }
 
@@ -4540,6 +4576,7 @@
     } else {
       drag.buddy.body.endGrab();
       if (tap) click(drag.buddy, e);
+      else throwSpin(drag.buddy);
     }
     drag = null;
     updateIgnore();
