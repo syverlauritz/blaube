@@ -3647,6 +3647,48 @@
     b.nextRoll = time + (300 + Math.random() * 600) / CFG.rolls;
     rollNow(b);
   }
+  // Snowy weather: a bored slime now and then takes a run-up and slides
+  // along the icy floor ("wheee!"), leaning back, wobbling to keep its
+  // balance, until it slows to a stop (or braces at the edge of the screen).
+  function skate(b) {
+    const g = b.skate, body = b.body, r = body.o.radius;
+    if (g) {
+      const done = () => { b.skate = null; body.o.friction = g.friction; };
+      if (body.grab || b.merging || time - g.at > 6) { done(); return; }
+      b.nextHop = time + 1;
+      const v = body.velocity(DT), c = body.centroid();
+      if (!g.off) {
+        if (time - g.at < 0.25) { body.squashTop(r * 0.9 * 60 * DT, DT); return; } // (a crouch for the push-off)
+        g.off = time;
+        body.o.friction = 0.015;
+        g.v0 = g.dir * (480 + Math.random() * 160) * Math.min(1.5, CFG.skating);
+        body.impulse(g.v0 - v.x, -60, DT);
+        quip(b, 'wheee!', 1.2);
+        return;
+      }
+      // Gliding: the ice barely slows it (other grips on the floor don't
+      // hold it either).
+      if (!g.brace) body.impulse((g.v0 * Math.exp(-(time - g.off) / 1.6) - v.x) * 0.5, 0, DT);
+      // Leaning back against the slide, with a little wobble for balance.
+      body.lean((-g.dir * 0.8 + Math.sin((time - g.off) * 9) * 0.5) * r * 3 * DT, DT);
+      b.happyUntil = time + 0.3;
+      // The edge of the screen coming up: it braces, digging in.
+      const ahead = g.dir > 0 ? W - body.bbox().maxX : body.bbox().minX;
+      if (ahead < r * 1.5 && !g.brace) { g.brace = true; body.o.friction = g.friction; b.surpriseUntil = time + 0.5; quip(b, 'whoa!', 0.8); }
+      if ((Math.abs(v.x) < 40 || Math.abs(g.v0) * Math.exp(-(time - g.off) / 1.6) < 40) && time - g.off > 0.4) { done(); if (!g.brace) b.cheerUntil = time + 1; }
+      return;
+    }
+    if (CFG.skating <= 0 || season() !== 'snow' || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || b.merging || b.dying || !body.onFloor() || b.pendingHop || b.stackedBy || b.tower || b.frog || b.tag || b.parade || b.trick || b.keepy || b.roll || b.measure || b.snow || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
+    if (time < (b.nextSkate ?? (b.nextSkate = time + (90 + Math.random() * 240) / CFG.skating))) return;
+    b.nextSkate = time + (200 + Math.random() * 400) / CFG.skating;
+    skateNow(b);
+  }
+  function skateNow(b) {
+    const box = b.body.bbox(), r = b.body.o.radius;
+    const dir = W - box.maxX > box.minX ? 1 : -1;
+    if ((dir > 0 ? W - box.maxX : box.minX) < r * 5) return;
+    b.skate = { dir, at: time, friction: b.body.o.friction };
+  }
   function rollNow(b) {
     const box = b.body.bbox(), r = b.body.o.radius;
     const dir = W - box.maxX > box.minX ? 1 : -1;
@@ -4200,6 +4242,7 @@
     somersault(b);
     tumble(b);
     roll(b);
+    skate(b);
     if (b.bounceAt && time > b.bounceAt) { // (sprung off a trampoline, see stackPlay)
       b.bounceAt = 0;
       if (!b.body.grab) { const v = b.body.velocity(DT); b.body.impulse((Math.random() - 0.5) * 120 - v.x * 0.5, -b.bounceV - v.y, DT); }

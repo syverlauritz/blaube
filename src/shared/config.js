@@ -182,6 +182,7 @@
       ['seasons', 1, 0, 4, 0.05, 'Spring petals, summer butterflies, autumn leaves and winter snow (how many)'],
       ['nibble', 1, 0, 3, 0.05, 'Now and then a bored slime eats a leaf (or petal, or bit of snow) lying beside it'],
       ['snowballs', 1, 0, 2, 0.05, 'In snowy weather two bored slimes now and then have a snowball fight'],
+      ['skating', 1, 0, 2, 0.05, 'In snowy weather a bored slime now and then takes a run-up and slides along the icy floor'],
       ['systemLife', 1, 0, 2, 0.05, 'React to the computer: wake up with it, perk up on the charger, tire on low battery'],
       ['awayAfter', 300, 30, 1800, 10, 'You count as away after this long without keyboard or mouse (s)'],
       ['welcomeBack', true, 0, 0, 0, 'Back from away: say what changed while you were gone'],
