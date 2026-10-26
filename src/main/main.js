@@ -2105,6 +2105,49 @@ app.whenReady().then(async () => {
       pushTalk(id);
       return;
     }
+    // "/mcp disable linear" (or enable), in a session Blaube started: turned
+    // off or on right away, as /mcp does in the terminal (mcp_toggle).
+    const toggle = /^\/mcp\s+(enable|disable|on|off)\s+(\S{1,200})\s*$/i.exec(String(text).trim());
+    if (toggle && sess) {
+      const on = /^(enable|on)$/i.test(toggle[1]), name = toggle[2];
+      if (!owned.has(id)) { inbox.add(id, { who: 'note', text: `Turning an MCP server ${on ? 'on' : 'off'} works in a session Blaube started; in its terminal, /mcp does it.` }); return; }
+      if (!(mcpStates.get(id) || []).some((m) => m.name === name)) { inbox.add(id, { who: 'note', text: `It has no MCP server called ${name}`, error: true }); return; }
+      owned.control(id, { subtype: 'mcp_toggle', serverName: name, enabled: on }, (ok, r) => {
+        inbox.add(id, ok ? { who: 'note', text: `Turned ${name} ${on ? 'on' : 'off'}` } : { who: 'note', text: `Couldn’t turn ${name} ${on ? 'on' : 'off'}: ${r}`, error: true });
+        askMcp(id);
+      }, 15e3);
+      return;
+    }
+    // "/plugin install x", enable, disable, uninstall, update, and
+    // "/plugin marketplace add owner/repo": Claude Code's own plugin
+    // commands, run right there as a step. One that installs by running a
+    // command of its own shows you that command first.
+    const plug = /^\/plugins?\s+(install|i|uninstall|remove|enable|disable|update)\s+([\w.@\/:+-]{1,200})\s*$/i.exec(String(text).trim());
+    const market = !plug && /^\/plugins?\s+marketplace\s+(add|remove|rm|update)\s+(\S{1,300})\s*$/i.exec(String(text).trim());
+    if ((plug || market) && sess && !id.startsWith('demo-')) {
+      const bin = owned.findClaude() || owned.shellPath() || 'claude';
+      const sq = (a) => (process.platform === 'win32' ? `"${a.replace(/"/g, '')}"` : `'${a.replace(/'/g, `'\\''`)}'`);
+      const verb = { i: 'install', remove: 'uninstall', rm: 'remove' }[(plug || market)[1].toLowerCase()] || (plug || market)[1].toLowerCase();
+      const name = (plug || market)[2];
+      const loaded = () => { if (owned.has(id)) owned.control(id, { subtype: 'reload_plugins' }, () => {}); };
+      if (market) return runForSession(id, `${sq(bin)} plugin marketplace ${verb} ${sq(name)}`, `Marketplace ${name}: ${verb === 'add' ? 'added' : verb === 'update' ? 'updated' : 'removed'} (claude plugin marketplace ${verb})`, (code) => { if (code === 0) loaded(); });
+      if (verb !== 'install') return runForSession(id, `${sq(bin)} plugin ${verb} ${sq(name)}`, `${name}: ${{ uninstall: 'uninstalled', enable: 'turned on', disable: 'turned off', update: 'updated' }[verb]} (claude plugin ${verb})`, (code) => { if (code === 0) loaded(); });
+      const install = (accept) => runForSession(id, `${sq(bin)} plugin install ${sq(name)} --json${accept ? ` --accept-command ${sq(accept)}` : ''}`, `Installed ${name} (claude plugin install)`, (code, out) => {
+        let r = null;
+        for (const line of String(out || '').split('\n').reverse()) { try { r = JSON.parse(line); break; } catch { /* not it */ } }
+        if (code === 0) { loaded(); inbox.add(id, { who: 'note', text: owned.has(id) ? `It can use ${name} now` : `${name} is installed: sessions started from now on have it` }); return; }
+        const sc = r && r.shownCommand;
+        if (!accept && sc && /^[0-9a-f]{16,128}$/i.test(String(sc.sha256 || ''))) {
+          const what = String(sc.command || sc.text || '').slice(0, 2000);
+          const go = () => install(String(sc.sha256));
+          if (TEST) { global.__blaubePluginCommand = what; if (global.__blaubeAcceptPluginCommand) go(); return; }
+          dialog.showMessageBox({ type: 'warning', buttons: ['Run it and install', 'Cancel'], defaultId: 1, cancelId: 1, message: `${name} installs by running this command:`, detail: `${what}\n\nOnly go ahead if you trust where this plugin comes from.` }).then(({ response }) => { if (response === 0) go(); else inbox.add(id, { who: 'note', text: `Didn’t install ${name}` }); });
+          return;
+        }
+        if (r && r.message) inbox.add(id, { who: 'note', text: `Couldn’t install ${name}: ${String(r.message).slice(0, 300)}`, error: true });
+      });
+      return install('');
+    }
     // "/doctor" and "/upgrade": Claude Code's own checkup and update
     // (`claude doctor`, `claude update`), run right there as a step.
     // ("/mcp" in a terminal's session: `claude mcp list`, its MCP servers
@@ -2119,7 +2162,7 @@ app.whenReady().then(async () => {
     }
     if (own && owned.has(id)) {
       const list = mcpStates.get(id) || [];
-      inbox.add(id, { who: 'note', text: list.length ? `Its MCP servers: ${list.map((m) => `${m.name} (${m.status === 'connected' ? 'connected' : m.status === 'needs-auth' ? 'needs you to sign in' : m.status === 'failed' ? 'couldn’t connect' : m.status})`).join(' · ')}` : 'It has no MCP servers.' });
+      inbox.add(id, { who: 'note', text: list.length ? `Its MCP servers: ${list.map((m) => `${m.name} (${m.status === 'connected' ? 'connected' : m.status === 'needs-auth' ? 'needs you to sign in' : m.status === 'failed' ? 'couldn’t connect' : m.status === 'disabled' ? 'turned off' : m.status})`).join(' · ')}` : 'It has no MCP servers.' });
       askMcp(id);
       return;
     }
@@ -2429,7 +2472,7 @@ app.whenReady().then(async () => {
         shellRan.set(id, list.slice(-3));
       }
       inbox.emit('change', id);
-      then(code);
+      then(code, shown);
     });
   }
   replyTo = sendMessage;

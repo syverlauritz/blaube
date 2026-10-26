@@ -17,6 +17,11 @@ const A = process.argv.slice(2).join(' '), SIGNED = require('node:path').join(__
 if (A === '--version') { console.log('9.9.9 (Claude Code)'); process.exit(0); }
 if (A === 'doctor') { console.log('Claude Code doctor\\n\\nNo problems found'); process.exit(0); }
 if (A === 'auth status --json') { console.log(JSON.stringify({ loggedIn: require('node:fs').existsSync(SIGNED) })); process.exit(0); }
+if (A === 'plugin install demo --json') { console.log(JSON.stringify({ command: 'install', outcome: 'failed', plugin: 'demo', message: 'Confirm the command first', shownCommand: { command: 'npx demo-setup --yes', sha256: 'abcdef0123456789' } })); process.exit(1); }
+if (A === 'plugin install demo --json --accept-command abcdef0123456789') { console.log(JSON.stringify({ command: 'install', outcome: 'installed', plugin: 'demo' })); process.exit(0); }
+if (A === 'plugin install nope --json') { console.log(JSON.stringify({ command: 'install', outcome: 'failed', plugin: 'nope', message: 'Plugin "nope" not found in any configured marketplace', failureCode: 'not_found' })); process.exit(1); }
+if (A === 'plugin disable demo') { console.log('✔ Disabled demo'); process.exit(0); }
+if (A === 'plugin marketplace add acme/plugins') { console.log('✔ Added marketplace acme'); process.exit(0); }
 if (A === 'auth logout') { try { require('node:fs').unlinkSync(SIGNED); } catch {} console.log('Successfully logged out from your Anthropic account.'); process.exit(0); }
 if (A === 'auth login') { console.log('Opening your browser… https://claude.ai/oauth/authorize?fake=1'); setTimeout(() => { require('node:fs').writeFileSync(SIGNED, ''); console.log('Login successful.'); process.exit(0); }, 300); return; }
 let model = 'claude-opus', turn = null, used = [12, 40], mcpUp = false, linear = 'connected'; const seen = new Set();
@@ -38,6 +43,8 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
     if (r.subtype === 'mcp_status') return ok({ mcpServers: [{ name: 'github', status: mcpUp ? 'connected' : 'failed', error: 'ENOENT: no such file' }, { name: 'linear', status: linear }] });
     if (r.subtype === 'mcp_authenticate') { setTimeout(() => { linear = 'connected'; }, 400); return ok({ authUrl: 'https://mcp.linear.app/authorize?state=fake', requiresUserAction: true, callbackExpected: true }); }
     if (r.subtype === 'side_question') return setTimeout(() => ok({ response: 'It runs on **port 3000**.', synthetic: false }), 300);
+    if (r.subtype === 'mcp_toggle') { if (r.serverName === 'linear') linear = r.enabled ? 'connected' : 'disabled'; return ok({}); }
+    if (r.subtype === 'reload_plugins') { require('node:fs').writeFileSync(require('node:path').join(__dirname, 'reloaded'), ''); return ok({}); }
     if (r.subtype === 'get_session_cost') return ok({ text: 'Total cost:            $0.0123\\nTotal duration (API):  4s\\nTotal duration (wall): 1m 2s\\nTotal code changes:    3 lines added, 1 line removed' });
     if (r.subtype === 'mcp_reconnect') { mcpUp = r.serverName === 'github'; return ok({}); }
     if (r.subtype === 'get_usage') return ok({ session: {}, rate_limits_available: true, rate_limits: { five_hour: { utilization: used[0], resets_at: new Date(Date.now() + 7200e3).toISOString() }, seven_day: { utilization: used[1], resets_at: new Date(Date.now() + 4 * 86400e3).toISOString() } } });
@@ -130,6 +137,23 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await until(() => tracker.sessions.get(id).state === 'done');
 	await type('/cost');
 	check(await until(() => inbox.log(id).some((e) => e.text === 'Total cost: $0.0123 · Total duration (API): 4s · Total duration (wall): 1m 2s · Total code changes: 3 lines added, 1 line removed')), '/cost says what it has cost, asked of Claude Code (get_session_cost)');
+	await type('/mcp disable linear');
+	check(await until(() => inbox.log(id).some((e) => e.text === 'Turned linear off')), '/mcp disable turns an MCP server off (mcp_toggle)');
+	await type('/mcp');
+	check(await until(() => inbox.log(id).some((e) => /^Its MCP servers: .*linear \(turned off\)/.test(e.text || ''))), 'and /mcp says so');
+	await type('/mcp enable linear');
+	check(await until(() => inbox.log(id).some((e) => e.text === 'Turned linear on')), 'and /mcp enable turns it back on');
+	// Plugins from the box: Claude Code's own plugin commands, as steps.
+	await type('/plugin marketplace add acme/plugins');
+	check(await until(() => inbox.log(id).some((e) => e.who === 'step' && e.text === 'Marketplace acme/plugins: added (claude plugin marketplace add)' && !e.running)), '/plugin marketplace add adds a marketplace');
+	global.__blaubeAcceptPluginCommand = true;
+	await type('/plugin install demo');
+	check(await until(() => global.__blaubePluginCommand === 'npx demo-setup --yes'), '/plugin install shows the command a plugin installs by running, before it runs');
+	check(await until(() => inbox.log(id).some((e) => e.text === 'It can use demo now') && fs.existsSync(path.join(dir, 'reloaded'))), 'and once you say yes, installs it and loads it (reload_plugins)');
+	await type('/plugin install nope');
+	check(await until(() => inbox.log(id).some((e) => e.error && e.text === 'Couldn’t install nope: Plugin "nope" not found in any configured marketplace')), 'and says why when it can’t');
+	await type('/plugin disable demo');
+	check(await until(() => inbox.log(id).some((e) => e.who === 'step' && e.text === 'demo: turned off (claude plugin disable)' && !e.running)), '/plugin disable turns one off');
 	await type('slow');
 	await until(() => tracker.sessions.get(id).state === 'working', 3000);
 	await type('/btw what port?');
