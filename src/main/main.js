@@ -486,6 +486,7 @@ function pushTalk(id, focusField = false) {
       apiError: erredLast(inbox.log(id)),
       carryAt: carryFor(id),
       failedTests: failedTests(inbox.log(id)),
+      gitFailed: gitFailed(inbox.log(id)),
       context: contextOf(id),
     }),
     // Every slime, to switch between them from the box.
@@ -592,6 +593,15 @@ function sessionFile(id, rel) {
 }
 
 // The files git says a session's folder has changed, as full paths.
+// What git last failed at from Push or Pull, if the last of those failed
+// (since Claude last replied: after that, git gets another go).
+function gitFailed(log) {
+  for (let i = log.length - 1; i >= 0; i--) {
+    if (log[i].who === 'claude') return '';
+    if (log[i].gitRun && !log[i].running) return log[i].ok ? '' : log[i].gitRun;
+  }
+  return '';
+}
 function gitFiles(id) {
   const st = gitStates.get(id);
   return st && st.root ? st.files.map((f) => ({ path: path.join(st.root, f.path), name: f.path, how: f.how })) : [];
@@ -1760,6 +1770,14 @@ app.whenReady().then(async () => {
   setInterval(() => checkAway(), 30e3).unref();
   // (The box's "4m" and "waiting 5m" keep up even when nothing else happens.)
   setInterval(() => { if (talkWin && talkWin.isVisible() && talkId && tracker.list().some((o) => o.state === 'waiting' || o.state === 'working')) pushTalk(talkId); }, 30e3).unref();
+  // Its git line keeps up while the box is open (a commit made elsewhere,
+  // a push): git status every few seconds, the box only told of a change.
+  setInterval(() => {
+    const s = talkWin && talkWin.isVisible() && talkId && !talkId.startsWith('demo-') && tracker.sessions.get(talkId);
+    if (!s || !s.cwd) return;
+    const id = talkId;
+    git.status(s.cwd, (st) => { if (JSON.stringify(st) === JSON.stringify(gitStates.get(id) || null)) return; gitStates.set(id, st); pushTalk(id); });
+  }, 5e3).unref();
   if (TEST) global.__blaubeCheckAway = checkAway;
   setTimeout(probeUsage, 20e3).unref();
   setInterval(probeUsage, 15 * 60e3).unref();
@@ -2522,7 +2540,7 @@ app.whenReady().then(async () => {
   // (What you ran with ! in a session's box, for its next message.)
   // `as`: what to call it, for one of Claude Code's own (its output is for
   // you, so it doesn't go along with your next message).
-  function runForSession(id, cmd, as = '', then = () => {}) {
+  function runForSession(id, cmd, as = '', then = () => {}, env = null) {
     const s = tracker.sessions.get(id);
     if (!s || !s.cwd || !cmd) return;
     const entry = inbox.add(id, { who: 'step', text: as || `You ran ${cmd.length > 60 ? cmd.slice(0, 59) + '…' : cmd}`, ok: true, kind: classify('Bash', { command: cmd }), detail: `$ ${cmd}\n…`, cmd: cmd.slice(0, 200), running: true });
@@ -2539,10 +2557,25 @@ app.whenReady().then(async () => {
       }
       inbox.emit('change', id);
       then(code, shown, entry);
-    });
+    }, env ? { env } : {});
     return entry;
   }
   replyTo = sendMessage;
+  // Push and Pull from its quick actions: git itself, right there (a step
+  // with what it printed; no model call). It never waits on a password.
+  ipcMain.on('talk-git-run', (_e, id, run) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    const st = gitStates.get(id);
+    const cmd = s && st && s.state !== 'working' && s.state !== 'waiting' && git.command(run, st);
+    if (!cmd) return;
+    const as = run === 'push' ? `Pushed ${st.branch || 'it'}` : `Pulled into ${st.branch || 'it'}`;
+    const entry = runForSession(id, cmd, as, (code) => {
+      if (code !== 0) entry.text = run === 'push' ? 'git couldn’t push (tap for why); Push again asks Claude to' : 'git couldn’t pull without a merge (tap for why); Pull again asks Claude to';
+      git.forget(s.cwd);
+      git.status(s.cwd, (now) => { gitStates.set(id, now); pushTalk(id); });
+    }, { GIT_TERMINAL_PROMPT: '0' });
+    if (entry) entry.gitRun = run;
+  });
   // Stops a background task: in a session Blaube started, asked of Claude
   // Code itself (stop_task); in a terminal's, the processes writing its
   // output (its own, under its claude process). false: the box asks Claude.

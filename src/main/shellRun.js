@@ -6,14 +6,14 @@ const { spawn, spawnSync } = require('node:child_process');
 const KEEP = 200 << 10;
 
 // cb(code, output): code null when it was stopped (too long).
-function run(command, cwd, cb, { timeout = 120e3, platform = process.platform } = {}) {
+function run(command, cwd, cb, { timeout = 120e3, platform = process.platform, env = null } = {}) {
   const win = platform === 'win32';
   const shell = process.env.SHELL || (platform === 'darwin' ? '/bin/zsh' : '/bin/bash');
   let proc;
   try {
     proc = win
-      ? spawn('cmd.exe', ['/d', '/s', '/c', `"${command}"`], { cwd, windowsHide: true, windowsVerbatimArguments: true })
-      : spawn(shell, ['-lc', command], { cwd, detached: true });
+      ? spawn('cmd.exe', ['/d', '/s', '/c', `"${command}"`], Object.assign({ cwd, windowsHide: true, windowsVerbatimArguments: true }, env ? { env: Object.assign({}, process.env, env) } : {}))
+      : spawn(shell, ['-lc', command], Object.assign({ cwd, detached: true }, env ? { env: Object.assign({}, process.env, env) } : {}));
   } catch (e) { return cb(1, e.message); }
   let out = '', done = false;
   const keep = (d) => { out += d; if (out.length > KEEP * 2) out = out.slice(-KEEP); };

@@ -411,6 +411,22 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await shot('branches');
 	await box(`[...document.querySelectorAll('#branches > button')].find((b) => b.textContent === 'feature/tax').click()`);
 	check(await until(() => execFileSync('git', ['branch', '--show-current'], { cwd: repo }).toString().trim() === 'feature/tax' && inbox.log(ID3).some((e) => e.text === 'Switched to feature/tax')), 'tapping another branch switches to it');
+	// Push from its quick actions: git itself, right there.
+	const bare = repo + '-remote.git';
+	execFileSync('git', ['init', '-q', '--bare', bare]);
+	execFileSync('git', ['remote', 'add', 'origin', bare], { cwd: repo });
+	execFileSync('git', ['add', '-A'], { cwd: repo });
+	execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'tax'], { cwd: repo });
+	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Push' && /git push/.test(b.title))`), 10000), 'with nothing to commit and nothing pushed, Push runs git itself');
+	await box(`[...document.querySelectorAll('#quick button')].find((b) => b.textContent === 'Push').click()`);
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'Pushed feature/tax' && e.ok && !e.running) && execFileSync('git', ['rev-parse', 'feature/tax'], { cwd: bare }).toString() === execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo }).toString(), 15000), 'Push pushes it, a step in the box, no model call');
+	execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'more'], { cwd: repo });
+	execFileSync('git', ['remote', 'set-url', 'origin', bare + '-gone'], { cwd: repo });
+	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Push' && /git push/.test(b.title))`), 10000), 'one more commit: Push again');
+	await box(`[...document.querySelectorAll('#quick button')].find((b) => b.textContent === 'Push').click()`);
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && /^git couldn’t push/.test(e.text) && !e.ok), 15000), 'when git can’t push, the box says so');
+	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Push' && b.title === 'Push this branch.')`), 10000), 'and Push then asks Claude instead');
+	execFileSync('git', ['remote', 'set-url', 'origin', bare], { cwd: repo });
 	// Files named in a reply open right in the box; a long reply's rest is a tap away.
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'what did you change?' });
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'Stop', last_assistant_message: 'I changed `src/tax.js:1` and [the notes](notes.md#L1), not `nope.js` or `console.log`.\n\n' + 'All of it. '.repeat(500) + 'THE END' });

@@ -39,7 +39,8 @@ const MAIN = /^(main|master|trunk|develop)$/;
 // What you might want next, as { label, prompt }: only while it isn't busy.
 // `more`: { stopped: you stopped its last turn, failedTests: the test
 // command that failed in it, context: how full its context is (%),
-// apiError: its last turn ended on an API error; carryAt: { at, label, set }
+// apiError: its last turn ended on an API error; gitFailed: 'push' or
+// 'pull' when that's what git last failed at here; carryAt: { at, label, set }
 // when that was a usage limit that lifts then (set: it'll carry on by itself) }.
 function quickActions(st, state, more = {}) {
   if (state === 'working' || state === 'waiting') return [];
@@ -61,10 +62,13 @@ function quickActions(st, state, more = {}) {
   if (n) out.push({ label: 'Commit', prompt: 'Commit the current changes with a clear message (split them into a few commits if they are unrelated).' });
   // (A branch that was never pushed has no upstream to count from.)
   const unpushed = st && st.branch && !st.upstream && !MAIN.test(st.branch);
-  if (st && !n && (st.ahead || unpushed)) out.push({ label: 'Push', prompt: unpushed ? 'Push this branch and set its upstream.' : 'Push this branch.' });
+  // Push and Pull run git right there (no model call); if git couldn't
+  // (`more.gitFailed`), the next tap asks Claude to sort it out instead.
+  const direct = (run) => (more.gitFailed === run ? {} : { run });
+  if (st && !n && (st.ahead || unpushed)) out.push(Object.assign({ label: 'Push', prompt: unpushed ? 'Push this branch and set its upstream.' : 'Push this branch.' }, direct('push')));
   if (st && st.branch && !MAIN.test(st.branch)) out.push({ label: 'Open a PR', prompt: 'Open a pull request for this branch (commit and push first if needed) and give me the link.' });
   if (!more.failedTests) out.push({ label: 'Run tests', prompt: 'Run the tests and tell me what fails, if anything.' });
-  if (st && st.behind) out.push({ label: 'Pull', prompt: 'Pull the latest changes into this branch and tell me if anything conflicts.' });
+  if (st && st.behind) out.push(Object.assign({ label: 'Pull', prompt: 'Pull the latest changes into this branch and tell me if anything conflicts.' }, n ? {} : direct('pull')));
   // Nearly out of room: tidy up before it has to (first, so it's seen).
   if (more.context >= 80) out.unshift({ label: 'Compact', prompt: '/compact' });
   return out.slice(0, 4);
@@ -121,6 +125,16 @@ function diff(root, rel, how, cb) {
   execFile('git', ['diff', 'HEAD', '--no-color', '--no-ext-diff', '--', rel], { cwd: root, timeout: 4000, maxBuffer: 4e6, windowsHide: true }, (err, out) => cb(err ? '' : compactDiff(out) || '(no changes in the text)'));
 }
 
+// What Push and Pull run (fixed commands: nothing of yours in them). A
+// branch that was never pushed goes up to origin under its own name.
+function command(run, st) {
+  if (run === 'push') return st && !st.upstream ? 'git push --set-upstream origin HEAD' : 'git push';
+  if (run === 'pull') return 'git pull --ff-only';
+  return '';
+}
+// Forgets what it read (something just changed it).
+function forget(cwd) { cache.delete(cwd); }
+
 // Branches, from the git line: which there are, and switching to one (or a
 // new one) without a terminal. Names are checked here as git would (no
 // leading -, no .., no spaces...), and git runs without a shell.
@@ -151,4 +165,4 @@ function switchTo(cwd, name, create, cb) {
   });
 }
 
-module.exports = { parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo };
+module.exports = { parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget };

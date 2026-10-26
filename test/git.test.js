@@ -130,3 +130,38 @@ test('branches are listed and switched to (and made) in a real repository', asyn
     assert.deepEqual(await new Promise((r) => branches(path.join(dir, 'missing'), r)), []);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('Push and Pull run git right there, until git fails at one: then Claude is asked', () => {
+  const { command } = require('../src/main/git');
+  const ahead = parseStatus('# branch.head main\n# branch.upstream origin/main\n# branch.ab +1 -2\n');
+  const pick = (more) => quickActions(ahead, 'done', more).filter((a) => a.label === 'Push' || a.label === 'Pull').map((a) => a.label + ':' + (a.run || 'claude'));
+  assert.deepEqual(pick({}), ['Push:push', 'Pull:pull']);
+  assert.deepEqual(pick({ gitFailed: 'pull' }), ['Push:push', 'Pull:claude']);
+  assert.deepEqual(pick({ gitFailed: 'push' }), ['Push:claude', 'Pull:pull']);
+  const dirty = parseStatus('# branch.head main\n# branch.upstream origin/main\n# branch.ab +0 -2\n1 .M N... 100644 100644 100644 a b x.js\n');
+  assert.equal(quickActions(dirty, 'done').find((a) => a.label === 'Pull').run, undefined, 'with changes, pulling is Claude’s');
+  assert.equal(command('push', ahead), 'git push');
+  assert.equal(command('push', parseStatus('# branch.head feature/x\n')), 'git push --set-upstream origin HEAD');
+  assert.equal(command('pull', ahead), 'git pull --ff-only');
+  assert.equal(command('rm -rf', ahead), '');
+});
+
+test('the Push command really pushes a never-pushed branch, with no prompt', async () => {
+  const { command } = require('../src/main/git');
+  const shellRun = require('../src/main/shellRun');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-push-'));
+  const env = Object.assign({}, process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
+  const g = (cwd, ...a) => execFileSync('git', a, { cwd, env }).toString().trim();
+  try {
+    const bare = path.join(root, 'remote.git'), work = path.join(root, 'work');
+    g(root, 'init', '-q', '--bare', bare);
+    g(root, 'init', '-q', '-b', 'topic', work);
+    g(work, 'remote', 'add', 'origin', bare);
+    g(work, 'commit', '-q', '--allow-empty', '-m', 'one');
+    const st = parseStatus(g(work, 'status', '--porcelain=v2', '--branch'));
+    const [code, out] = await new Promise((r) => shellRun.run(command('push', st), work, (c, o) => r([c, o]), { env: Object.assign({}, env, { GIT_TERMINAL_PROMPT: '0' }) }));
+    assert.equal(code, 0, out);
+    assert.equal(g(bare, 'rev-parse', 'topic'), g(work, 'rev-parse', 'HEAD'));
+    assert.equal(g(work, 'rev-parse', '--abbrev-ref', '@{u}'), 'origin/topic');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

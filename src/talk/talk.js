@@ -1092,7 +1092,7 @@
       : s.ask || s.demo ? []
       : [...(deaf ? [{ label: 'Bring it here', prompt: 'It closes in its terminal and carries on here, conversation and all', bring: true }] : []),
         ...(!s.log.length || (!s.connected && !s.typeable && !s.owned) ? [] : (s.quick || []))].slice(0, 4);
-    const key = JSON.stringify(list.map((q) => q.label));
+    const key = JSON.stringify(list.map((q) => q.label + (q.run || '')));
     box.hidden = !list.length;
     if (box.dataset.key === key) return;
     box.dataset.key = key;
@@ -1101,8 +1101,8 @@
       const b = document.createElement('button');
       b.type = 'button';
       b.textContent = q.label;
-      b.title = q.prompt;
-      b.onclick = () => { if (!current) return; if (q.here) api.continueHere(current.id); else if (q.signIn) api.signIn(current.id); else if (q.bring) api.bringHere(current.id); else if ('later' in q) api.later(current.id, q.later); else api.send(current.id, q.prompt); box.hidden = true; };
+      b.title = q.run ? (q.run === 'push' ? 'Runs git push right here' : 'Runs git pull right here (only if it needs no merge)') : q.prompt;
+      b.onclick = () => { if (!current) return; if (q.here) api.continueHere(current.id); else if (q.signIn) api.signIn(current.id); else if (q.bring) api.bringHere(current.id); else if ('later' in q) api.later(current.id, q.later); else if (q.run && api.gitRun) api.gitRun(current.id, q.run); else api.send(current.id, q.prompt); box.hidden = true; };
       box.append(b);
     }
   }
