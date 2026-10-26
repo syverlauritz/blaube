@@ -19,6 +19,7 @@ const { Notification } = require('electron');
 const { slashCommand, commandNames, expand: expandCommand, control: controlFor } = require('./commands');
 const limits = require('./limits');
 const taskOutput = require('./taskOutput');
+const permRules = require('./permRules');
 const { openResumeTerminal, resumeCommand, focusSessionApp, typeIntoSession } = require('./terminal');
 const { startAgentsPoller, listAgents, findClaude } = require('./agents');
 const { Owned } = require('./owned');
@@ -1249,12 +1250,38 @@ function sessionMenu(id) {
     { label: 'Notify me about this one', type: 'checkbox', checked: !muted.has(id), enabled: !isDemo && (prefs.config.notify || 'Behind windows') !== 'Off', click: (item) => { if (item.checked) muted.delete(id); else muted.add(id); } },
     { label: 'Save conversation as Markdown', enabled: !isDemo && inbox.log(id).length > 0, click: () => { const f = saveConversation(id); if (f) shell.showItemInFolder(f); } },
     { label: 'Open project folder', enabled: !!s.cwd, click: () => shell.openPath(s.cwd) },
+    ...(isDemo || !s.cwd ? [] : [allowedMenu(s)]),
     { type: 'separator' },
     { label: 'Colour', submenu: colorMenu(colorOf(s) || prefs.config.color, (hex) => { prefs.colors[colorKey(s)] = hex; savePrefs(); pushState(); }) },
     { label: 'Blaube', submenu: appMenuTemplate() },
     { type: 'separator' },
     { label: 'Hide this slime', toolTip: 'Until its session ends', click: () => tracker.dismiss(id) },
   ]);
+}
+
+// What it may do without asking (its "Always allow" rules), each a tap
+// from being taken back, as /permissions does in the terminal.
+function allowedMenu(s) {
+  const st = gitStates.get(s.id);
+  const list = permRules.list([s.cwd, st && st.root]);
+  return {
+    label: 'Allowed without asking',
+    enabled: list.length > 0,
+    submenu: list.length ? list.slice(0, 30).map((r) => ({ label: permRules.label(r.rule), sublabel: r.scope, toolTip: `${r.rule} in ${r.file}`, click: () => disallow(s, r) })) : [{ label: 'Nothing', enabled: false }],
+  };
+}
+async function disallow(s, r) {
+  if (!TEST) {
+    const { response } = await dialog.showMessageBox({
+      type: 'question', buttons: ['Ask first', 'Cancel'], defaultId: 0, cancelId: 1,
+      message: `Ask before “${permRules.label(r.rule)}” again?`,
+      detail: `Takes ${r.rule} out of ${r.file} (${r.scope.toLowerCase()}).`,
+    });
+    if (response !== 0) return;
+  }
+  try {
+    if (permRules.remove(r.file, r.rule)) inbox.add(s.id, { who: 'note', text: `It asks first again before: ${permRules.label(r.rule)}` });
+  } catch (e) { log(`couldn't change ${r.file}: ${e.message}`); }
 }
 
 async function askDockAccess() {
@@ -1681,6 +1708,7 @@ app.whenReady().then(async () => {
   }
   setInterval(() => carryTick(), 30e3).unref();
   if (TEST) global.__blaubeCarryTick = carryTick;
+  if (TEST) global.__blaubeSessionMenu = sessionMenu;
   ipcMain.on('talk-send', (_e, id, text) => {
     if (!id || id !== talkId || !tracker.sessions.has(id) || id.startsWith('demo-')) return;
     sendMessage(id, text);
