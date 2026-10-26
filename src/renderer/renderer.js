@@ -77,7 +77,7 @@
       if (this.body.grab) return;
       // Low on battery: tired, smaller hops.
       if (sys.low > 0) { vx *= 1 - 0.3 * sys.low; vy *= 1 - 0.3 * sys.low; }
-      if (talkingTo && buddies.get(talkingTo) === this) return; // stays put while you talk to it
+      if ((talkingTo && buddies.get(talkingTo) === this) || time < (this.talkHold || 0)) return; // stays put while you talk to it (and while its box opens)
       // Up on a window it minds the edge: a hop that would land past it
       // turns back (mothers wander off now and then; helpers never).
       const l = this.body.onLedge;
@@ -5562,7 +5562,7 @@
       reach += Math.max(0, top - (body.lookTop ?? top)) * e.ny;
     }
     const len = e.out - reach - GAP;
-    tailNow = { edge: { x: e.x, y: e.y }, nx: e.nx, ny: e.ny, len: Math.max(0, len) };
+    tailNow = { edge: { x: e.x, y: e.y }, nx: e.nx, ny: e.ny, len: Math.max(0, len), aim: { x: c.x, y: c.y } };
     if (len <= 0) return; // up against the bubble, or under it
     // Close to the bubble it gets shorter and thinner, down to nothing.
     const thin = Math.min(1, len / 30);
@@ -5618,6 +5618,39 @@
   function headTop(b) {
     const c = b.body.centroid(), r = b.body.o.radius;
     return { x: c.x, y: Math.min(b.body.lookTop ?? Infinity, c.y - r), r };
+  }
+  // Opens a slime's talk box over where its head is at rest: the box opens
+  // there and never moves after, so a slime clicked mid-hop (it lands, and
+  // stays put while you talk to it), or just landing and wobbling, gets its
+  // box once it's down (at most a moment later), over its head's settled
+  // height, not up in the air or down over its head. `pressed`: that height
+  // from just before you pressed on it, if it was down then (the press
+  // squishes it).
+  function openTalkOver(id, b, pressed) {
+    b.talkHold = time + 1.5;
+    if (pressed) { api.talk(id, pressed); return; }
+    const t0 = time;
+    const go = () => {
+      if (!buddies.has(b.key)) return;
+      b.pendingHop = null; // (no new hop for attention: it's getting it)
+      if (standing(b) || b.body.grab || time - t0 > 0.8) api.talk(id, standing(b) ? restingHead(b) : headTop(b));
+      else setTimeout(go, 16);
+    };
+    go();
+  }
+  // Down: on something for a moment and not crouching for a hop, with its
+  // head's height smoothed over its wobble and breath (see noteResting).
+  const standing = (b) => b.downSince != null && time - b.downSince > 0.3;
+  const restingHead = (b) => Object.assign({}, b.restHead, { x: b.body.centroid().x });
+  function noteResting() {
+    for (const b of buddies.values()) {
+      const body = b.body;
+      if (!body.onFloor() || body.grab || b.dying || b.pendingHop) { b.downSince = null; b.restHead = null; continue; }
+      if (b.downSince == null) b.downSince = time;
+      const h = headTop(b);
+      if (!b.restHead) b.restHead = h;
+      else { b.restHead.y += (h.y - b.restHead.y) * 0.06; b.restHead.r = h.r; }
+    }
   }
 
   // Drawing is what costs the GPU (every frame shown costs about the same,
@@ -5710,6 +5743,7 @@
     checkPetting();
     if (paintNow(now)) draw();
     updateIgnore();
+    noteResting();
     followTalk();
     requestAnimationFrame(frame);
   }
@@ -5785,6 +5819,7 @@
     const b = buddyAt(e.clientX, e.clientY);
     if (!b) return;
     drag = { buddy: b, x0: e.clientX, y0: e.clientY, t0: time, moved: false };
+    b.pressedHead = standing(b) ? restingHead(b) : null; // (before the press squishes it: where its talk box goes, for a click)
     pickUp(b);
     b.body.startGrab(e.clientX, e.clientY);
     // Pressed: the skin under the cursor gives in, and it springs back.
@@ -5882,7 +5917,7 @@
       // Alt-click goes to its terminal instead.
       api.acknowledge(s.id);
       if ((e && e.altKey) || !api.talk) api.openSession(s.id);
-      else api.talk(s.id, headTop(buddies.get(s.id) || b));
+      else { const t = buddies.get(s.id) || b; openTalkOver(s.id, t, t === b ? b.pressedHead : null); }
     } else {
       b.say(summaryLines(), 5);
       api.acknowledge(null);
@@ -6012,7 +6047,7 @@
   // The app wants a slime's talk box open (a session you just started).
   if (api.onOpenTalk) api.onOpenTalk((id) => {
     let tries = 0;
-    const go = () => { const b = buddies.get(id); if (b && api.talk) api.talk(id, headTop(b)); else if (++tries < 30) setTimeout(go, 100); };
+    const go = () => { const b = buddies.get(id); if (b && api.talk) openTalkOver(id, b); else if (++tries < 30) setTimeout(go, 100); };
     go();
   });
   if (api.onSay) api.onSay((m) => {

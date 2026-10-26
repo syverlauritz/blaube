@@ -66,13 +66,14 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 		for (let i = 0; i < 60; i++) {
 			await sleep(100);
 			const b = await slime();
-			if (Math.hypot(b.x - a.x, b.y - a.y) < 1) { a = b; break; }
+			// (Its own clock has to have moved on: a page between frames looks still too.)
+			if (b.at > a.at && b.floor && Math.abs(b.vy) < 40 && Math.abs(b.r - a.r) < 0.5 && Math.hypot(b.x - a.x, b.y - a.y) < 1) { a = b; break; }
 			a = b;
 		}
 		last = a;
 		await click(a.x, a.y);
 	};
-	const slime = () => page(`(() => { const b = __blaube.buddies.get(${JSON.stringify(ID)}); if (!b) return null; const c = b.body.centroid(), r = b.body.o.radius; return { x: c.x, y: c.y, r, top: Math.min(b.body.lookTop ?? Infinity, c.y - r) }; })()`);
+	const slime = () => page(`(() => { const b = __blaube.buddies.get(${JSON.stringify(ID)}); if (!b) return null; const c = b.body.centroid(), r = b.body.o.radius; return { x: c.x, y: c.y, r, look: b.body.lookTop, minY: b.body.bbox().minY, top: Math.min(b.body.lookTop ?? Infinity, c.y - r), floor: b.body.onFloor(), vy: b.body.velocity(1 / 120).y, at: __blaube.now() }; })()`);
 	const shot = async (name) => {
 		const wb = win.getBounds(), tw = talk(), shown = tw && tw.isVisible();
 		const bg = (await win.webContents.capturePage()).toDataURL();
@@ -113,7 +114,9 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	// After a turn its inbox hook waits for a message, as in Claude Code.
 	const waiting = runHook(inboxCommand(PORT), { session_id: ID, hook_event_name: 'Stop' });
 	check(await until(async () => !!(await slime()), 6000), 'its slime appears');
-	await sleep(2500); // landed
+	// Landed, and grown to its full size.
+	for (let i = 0, a = await slime(); i < 100; i++) { await sleep(100); const b = await slime(); if (b.at - a.at > 0.05 && b.floor && Math.abs(b.r - a.r) < 0.2) break; a = b; }
+	await sleep(500);
 	last = await slime();
 
 	// Click it: the talk box opens above it, tail pointing at it.
@@ -154,7 +157,9 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await hook({ hook_event_name: 'Stop', last_assistant_message: 'A longer answer, so the box has to grow.\n\nIt keeps going for a few lines.\nAnd a few more.\nAnd one more.' });
 	let lowest = -Infinity;
 	for (let i = 0; i < 30; i++) { const b = talk().getBounds(); lowest = Math.max(lowest, b.y + b.height - 12); await sleep(40); }
-	const head2 = win.getBounds().y + (await slime()).top;
+	const heads = [];
+	for (let i = 0; i < 10; i++) { heads.push((await slime()).top); await sleep(100); }
+	const head2 = win.getBounds().y + heads.sort((a, b) => a - b)[5]; // (the middle: it breathes)
 	check(lowest < head2 - 10, `growing, it never covers the head (closest ${Math.round(head2 - lowest)} px above)`);
 	const texts = await box(`[...document.querySelectorAll('#inner .msg')].map((e) => e.textContent)`);
 	check(texts.length === 3 && /2027 brackets/.test(texts[1]), 'it shows the conversation so far');
@@ -328,7 +333,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await sleep(500);
 	const ob = win.getBounds();
 	console.log(`     (the slimes' window: ${JSON.stringify(ob)})`);
-	await page(`window.blaube.talk(${JSON.stringify(ID)}, { x: ${Math.round(ob.width / 2)}, y: ${Math.round(ob.height - 260)}, r: 60 })`);
+	await page(`window.blaube.talk(${JSON.stringify(ID)}, { x: ${Math.round(ob.width / 2)}, y: ${Math.round(ob.height - 330)}, r: 60 })`);
 	check(await until(() => talk().isVisible()), 'it opens again, low in the middle');
 	await sleep(500);
 	const still = talk().getBounds();
@@ -338,11 +343,11 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 		const box = { x: tb.x - wb.x + 12, y: tb.y - wb.y + 12, w: tb.width - 24, h: tb.height - 24 };
 		const clampX = (x) => Math.max(90, Math.min(wb.width - 90, x)), clampY = (y) => Math.max(90, Math.min(wb.height - 90, y));
 		const spots = {
-			below: [box.x + box.w * 0.4, box.y + box.h + 130],
-			left: [box.x - 130, box.y + box.h * 0.5],
-			right: [box.x + box.w + 130, box.y + box.h * 0.4],
+			below: [box.x + box.w * 0.4, box.y + box.h + 200],
+			left: [box.x - 160, box.y + box.h * 0.5],
+			right: [box.x + box.w + 160, box.y + box.h * 0.4],
 			aboveLeft: [box.x - 100, box.y - 100],
-			above: [box.x + box.w * 0.6, box.y - 120],
+			above: [box.x + box.w * 0.6, box.y - 170],
 		};
 		B.ownMouse = true;
 		let c = b.body.centroid();
@@ -351,8 +356,10 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 		for (const [name, [x, y]] of Object.entries(spots)) {
 			const to = { x: clampX(x), y: clampY(y) }, from = { x: c.x, y: c.y };
 			for (let i = 1; i <= 30; i++) { c = { x: from.x + (to.x - from.x) * i / 30, y: from.y + (to.y - from.y) * i / 30 }; B.input.move({ clientX: c.x, clientY: c.y }); await raf(); }
-			for (let i = 0; i < 30; i++) { B.input.move({ clientX: to.x, clientY: to.y }); await raf(); }
-			const t = B.talkTail(), at = b.body.centroid();
+			let held = 0, t0 = B.now();
+			for (; held < 600; held++) { B.input.move({ clientX: to.x, clientY: to.y }); await raf(); const p = b.body.centroid(); if (held >= 20 && Math.hypot(p.x - to.x, p.y - to.y) < 50) break; }
+			const tookS = B.now() - t0;
+			const t = B.talkTail(), at = t ? t.aim : b.body.centroid(); // (where the slime was when the tail was drawn)
 			// How far the tail's start is from the rounded outline (30 px corners).
 			let off = null;
 			if (t) {
@@ -360,7 +367,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 				off = Math.abs(Math.hypot(t.edge.x - qx, t.edge.y - qy) - R);
 			}
 			const ax = at.x - (t ? t.edge.x : 0), ay = at.y - (t ? t.edge.y : 0), al = Math.hypot(ax, ay) || 1;
-			out[name] = t && { off, facing: (t.nx * ax + t.ny * ay) / al, nx: t.nx, ny: t.ny, len: t.len, clamped: to.x !== x || to.y !== y };
+			out[name] = t && { held, tookS, grab: b.body.grab ? [Math.round(b.body.grab.x), Math.round(b.body.grab.y)] : null, at: [Math.round(at.x), Math.round(at.y)], to: [Math.round(to.x), Math.round(to.y)], box, off, facing: (t.nx * ax + t.ny * ay) / al, nx: t.nx, ny: t.ny, len: t.len, clamped: to.x !== x || to.y !== y };
 		}
 		B.input.up({ button: 0, clientX: c.x, clientY: c.y });
 		B.ownMouse = false;
@@ -368,7 +375,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	})()`);
 	const want = { below: [0, 1], left: [-1, 0], right: [1, 0], aboveLeft: [-1, -1], above: [0, -1] };
 	for (const [name, t] of Object.entries(around)) {
-		check(t && t.off < 1.5 && t.facing > 0.97 && t.len > 0, `carried ${name}, the tail leaves from the bubble’s edge and points at it (${t ? `${t.off.toFixed(1)} px off the edge, facing ${t.facing.toFixed(2)}` : 'no tail'})`);
+		check(t && t.off < 1.5 && t.facing > 0.97 && t.len > 0, `carried ${name}, the tail leaves from the bubble’s edge and points at it (${t ? `${t.off.toFixed(1)} px off the edge, facing ${t.facing.toFixed(2)}, ${Math.round(t.len)} px long` : 'no tail'})`);
 		const [wx, wy] = want[name];
 		if (t && !t.clamped) check(Math.sign(Math.round(t.nx * 3)) === wx && Math.sign(Math.round(t.ny * 3)) === wy, `  from the ${name === 'aboveLeft' ? 'top left corner' : name === 'below' ? 'bottom' : name === 'above' ? 'top' : name + ' side'} (${t.nx.toFixed(2)}, ${t.ny.toFixed(2)})`);
 	}
