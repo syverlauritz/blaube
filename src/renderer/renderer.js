@@ -933,9 +933,56 @@
         b.happyUntil = time + 2.5;
         b.nextHop = time + CFG.doneHopEvery + (b.stretchAt ? 3 : 0); // (room for the stretch)
         cheerOn(b, took > 300);
-        if (b.kind === 'mother') setTimeout(allDone, 1500);
+        if (b.kind === 'mother') {
+          setTimeout(allDone, 1500);
+          // Another session finished just now too: a high five.
+          b.doneAt = time;
+          const pal = CFG.highFive > 0 && [...buddies.values()].find((o) => o !== b && o.kind === 'mother' && o.state === 'done' && !o.dying && time - (o.doneAt ?? -99) < 20 && !o.five);
+          if (pal) setTimeout(() => highFive(b, pal), 4200); // (after any "all done!")
+        }
         break;
       }
+    }
+  }
+
+  // Two sessions that finish close together jump up and bump in the air
+  // between them: "high five!".
+  function highFive(a, o, tries = 0) {
+    const ok = (x) => !x.dying && !x.body.grab && !x.merging && x.state === 'done' && x.body.onFloor() && !x.pendingHop && x !== buddies.get(talkingTo);
+    if (!ok(a) || !ok(o) || a.five || o.five) return;
+    const ca = a.body.centroid(), co = o.body.centroid(), ra = a.body.o.radius, ro = o.body.o.radius;
+    const dx = co.x - ca.x, gap = Math.abs(dx) - (ra + ro) * 0.85;
+    if (gap < 0 || gap > (ra + ro) * 8 || Math.abs(co.y - ca.y) > Math.max(ra, ro)) return;
+    if (gap > (ra + ro) * 1.2) {
+      // Too far apart: they hop over to each other first.
+      if (tries > 3) return;
+      const step = Math.min(gap / 2 - (ra + ro) * 0.3, (ra + ro) * 1.5);
+      a.hop(Math.sign(dx) * step * 1.6, -330);
+      o.hop(-Math.sign(dx) * step * 1.6, -330);
+      a.nextHop = o.nextHop = time + 2;
+      setTimeout(() => highFive(a, o, tries + 1), 1100);
+      return;
+    }
+    // Both take off together and meet at the top of the jump.
+    const t = 0.36, vy = -CFG.gravity * t, k = Math.min(1.4, CFG.highFive), vx = Math.sign(dx) * (gap / 2) / t;
+    const five = { a, o, until: time + 2, hit: false };
+    a.five = o.five = five;
+    a.hop(vx, vy * k);
+    o.hop(-vx, vy * k);
+    a.glanceAt = o; o.glanceAt = a; a.glanceUntil = o.glanceUntil = time + 1.5;
+  }
+  function stepFive(b) {
+    const f = b.five;
+    if (!f || f.a !== b) return;
+    if (time > f.until || f.o.dying || b.dying) { f.a.five = f.o.five = null; return; }
+    if (f.hit) return;
+    const m = f.a.body.bbox(), n = f.o.body.bbox();
+    if (Math.max(n.minX - m.maxX, m.minX - n.maxX) < 4 && !f.a.body.onFloor() && !f.o.body.onFloor()) {
+      f.hit = true;
+      const x = (Math.max(m.minX, n.minX) + Math.min(m.maxX, n.maxX)) / 2, y = Math.max(m.minY, n.minY) + 6;
+      quip(f.a, 'high five!', 1.4);
+      pops.push({ x, y, r: 10, born: time, color: '#ffd166', life: 0.5 }, { x, y, r: 20, born: time + 0.06, color: '#ffd166', life: 0.5 });
+      f.a.happyUntil = f.o.happyUntil = time + 2;
     }
   }
 
@@ -3278,6 +3325,7 @@
       b.say([{ text: `Still waiting on you (${mins} min)` }, ...(what ? [{ text: what, size: 12 }] : [])], 6, false, false);
     }
     sulk(b);
+    stepFive(b);
     if (b.kind !== 'home' && b.state === 'idle' && idleFor() > dozeAfter() && time > (b.nextIdleYawn || 0)) {
       if (b.nextIdleYawn) yawn(b, 1.6, 0.5);
       b.nextIdleYawn = time + (25 + Math.random() * 40) / (1 + lateness());

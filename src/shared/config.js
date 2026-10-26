@@ -144,6 +144,7 @@
       ['fetch', 1, 0, 2, 0.05, 'Throw a slime\'s task pet and it chases after it, then brings it back to you'],
       ['greetNew', 1, 0, 2, 0.05, 'A new session\'s slime lands and the nearest calm one hops over to say hi'],
       ['allDoneWave', 1, 0, 2, 0.05, 'When the last busy session finishes, they do a wave of hops along the row: all done!'],
+      ['highFive', 1, 0, 2, 0.05, 'Two sessions that finish close together jump up and bump in the air: high five!'],
       ['copycat', 0.6, 0, 1, 0.05, 'Chance a calm slime nearby copies another\'s trick, hop for hop'],
       ['farewell', 1, 0, 2, 0.05, 'When a session ends, the others watch its slime go, a little deflated, and the nearest says bye'],
       ['jealous', 1, 0, 3, 0.05, 'Petting one: another comes over for some too'],
