@@ -1739,7 +1739,7 @@
   // "3!"), until it misses or decides that's a record.
   function keepy(b) {
     if (CFG.keepy <= 0 || b.kind !== 'mother') return;
-    const k = b.keepy, ok = (b.state === 'idle' || b.state === 'done') && !b.body.grab && !b.merging && !b.dying && !b.tower && !b.frog && !b.tag && !b.parade && !b.trick && (b.sleep || 0) < 0.1 && b !== buddies.get(talkingTo);
+    const k = b.keepy, ok = (b.state === 'idle' || b.state === 'done') && !b.body.grab && !b.merging && !b.dying && !b.tower && !b.tug && !b.frog && !b.tag && !b.parade && !b.trick && (b.sleep || 0) < 0.1 && b !== buddies.get(talkingTo);
     if (k) {
       const p = k.pet;
       const stop = (word) => { b.keepy = null; if (p.ride === b) p.rideUntil = time + 1; p.rideOn = null; if (word) quip(b, word, 1.2); };
@@ -2803,7 +2803,7 @@
     if (time < (a.bumpedAt || 0) + 0.6 || time < (b.bumpedAt || 0) + 0.6) return;
     const va = a.body.velocity(DT), vb = b.body.velocity(DT);
     const rel = Math.hypot(va.x - vb.x, va.y - vb.y);
-    if (rel < 300 || (a.tower && a.tower === b.tower)) return; // (a tower partner climbing up is expected)
+    if (rel < 300 || (a.tower && a.tower === b.tower) || (a.tug && a.tug === b.tug)) return; // (a tower partner climbing up is expected)
     a.bumpedAt = b.bumpedAt = time;
     const aFaster = Math.hypot(va.x, va.y) > Math.hypot(vb.x, vb.y);
     const hit = aFaster ? b : a, by = aFaster ? a : b;
@@ -2850,16 +2850,16 @@
       if (t.a.dying || t.a.removed || (t.b && (t.b.dying || t.b.removed))) { strands.splice(i, 1); continue; }
       const ax = A.px[t.ia], ay = A.py[t.ia], bx = B ? B.px[t.ib] : t.fx, by = B ? B.py[t.ib] : t.fy;
       const dx = bx - ax, dy = by - ay, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d;
-      const max = (A.o.radius + (B ? B.o.radius : A.o.radius * 0.2)) * 1.3 * CFG.gooStrands, age = time - t.born;
+      const max = t.tug ? (A.o.radius + B.o.radius) * 2.2 : (A.o.radius + (B ? B.o.radius : A.o.radius * 0.2)) * 1.3 * CFG.gooStrands, age = time - t.born;
       t.d = d; t.max = max;
-      if (d > max || age > (B ? 3 : 2.5)) {
+      if (t.tug ? t.snap : d > max || age > (B ? 3 : 2.5)) {
         // Snap: what's left of it flies back to each side.
         strands.splice(i, 1);
         if (d > 12) for (const [o, x, y, sx, sy] of [[t.a, ax, ay, ux, uy], [t.b || t.a, bx, by, -ux, -uy]]) drops.push({ owner: o, x: x + sx * 6, y: y + sy * 6, vx: -sx * 260, vy: -sy * 260 - 80, r: o.body.o.radius * 0.07, born: time, landed: 0 });
         continue;
       }
       // Stretched, it pulls: hardest at the spot it's stuck to.
-      const pull = Math.max(0, d - 6) * 26 * CFG.gooStrands * DT;
+      const pull = Math.max(0, d - 6) * (t.tug ? 6 : 26 * CFG.gooStrands) * DT;
       A.pushAt(ax, ay, ux * pull, uy * pull, A.o.radius * 0.45, DT);
       if (B) B.pushAt(bx, by, -ux * pull, -uy * pull, B.o.radius * 0.45, DT);
     }
@@ -3007,7 +3007,7 @@
   // it pops up tall, "boo!".
   function trickTreat(b) {
     if (CFG.trickTreat <= 0 || b.kind !== 'mother') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.frog && !o.tower && !o.keepy && !o.measure && !o.roll && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.frog && !o.tower && !o.tug && !o.keepy && !o.measure && !o.roll && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.tot;
     if (g) {
       const o = g.o, end = () => { b.tot = null; o.totBy = null; };
@@ -3122,7 +3122,7 @@
   // its last one falls a little short, and the first one says "copycat!".
   function trick(b) {
     if (CFG.tricks <= 0 || b.kind === 'child') return;
-    const ok = b.state === 'idle' && !b.body.grab && !b.merging && !b.prank && !b.tag && !b.snow && !b.parade && !b.frog && !b.tower && (b.sleep || 0) < 0.1 && (idleFor() < 30 || showingOff) && b !== buddies.get(talkingTo);
+    const ok = b.state === 'idle' && !b.body.grab && !b.merging && !b.prank && !b.tag && !b.snow && !b.parade && !b.frog && !b.tower && !b.tug && (b.sleep || 0) < 0.1 && (idleFor() < 30 || showingOff) && b !== buddies.get(talkingTo);
     const c = b.copy;
     if (c) {
       if (!ok || c.lead.dying || time - c.start > 12) { b.copy = null; return; }
@@ -3175,7 +3175,7 @@
   // rounds, then they're done.
   function tag(b) {
     if (CFG.play <= 0 || b.kind === 'child') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.snow && !o.parade && !o.frog && !o.tower && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.snow && !o.parade && !o.frog && !o.tower && !o.tug && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.tag;
     if (g) {
       if (g.p !== b) return; // (one of the pair runs the game)
@@ -3221,7 +3221,7 @@
   // each other along the floor, the one underneath ducking down for it.
   function leapfrog(b) {
     if (CFG.leapfrog <= 0 || b.kind !== 'mother') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.tower && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.tower && !o.tug && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.frog;
     if (g) {
       if (g.p !== b) return; // (one of the pair runs the game)
@@ -3355,7 +3355,7 @@
     if (!free(b) || b.stackedBy || !b.body.onFloor() || idleFor() > 60 || time < (b.nextTower ?? (b.nextTower = time + (250 + Math.random() * 450) / CFG.tower))) return;
     b.nextTower = time + (500 + Math.random() * 700) / CFG.tower;
     const c = b.body.centroid(), r = b.body.o.radius;
-    const o = [...buddies.values()].find((o) => o !== b && o.kind === 'mother' && !o.tower && free(o) && !o.stackedBy && o.body.onFloor() && Math.abs(o.body.centroid().y - c.y) < r && Math.abs(o.body.centroid().x - c.x) < r * 4);
+    const o = [...buddies.values()].find((o) => o !== b && o.kind === 'mother' && !o.tower && !o.tug && free(o) && !o.stackedBy && o.body.onFloor() && Math.abs(o.body.centroid().y - c.y) < r && Math.abs(o.body.centroid().x - c.x) < r * 4);
     if (o) towerNow(b, o);
   }
   // "Who's taller?": two bored slimes side by side stand back to back and
@@ -3363,7 +3363,7 @@
   // and then the shorter one cheats with a little hop ("ha!").
   function measure(b) {
     if (CFG.measure <= 0 || b.kind !== 'mother') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.frog && !o.tower && !o.keepy && !o.roll && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.frog && !o.tower && !o.tug && !o.keepy && !o.roll && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.measure;
     if (g) {
       if (g.p !== b) return;
@@ -3426,6 +3426,89 @@
     o.glanceAt = b; o.glanceUntil = time + 0.6;
   }
 
+  // Tug of war: two bored slimes side by side stick together with a strand
+  // of goo, back off and heave against each other, leaning back with their
+  // feet dug in, until the strand snaps and they both sit down hard. The
+  // stronger one has been inching the other over all along and gloats.
+  function tug(b) {
+    if (CFG.tug <= 0 || b.kind !== 'mother') return;
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.frog && !o.tower && !o.tug && !o.keepy && !o.measure && !o.roll && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const g = b.tug;
+    if (g) {
+      if (g.p !== b) return;
+      const both = [g.p, g.q], end = () => { g.p.tug = g.q.tug = null; const i = strands.indexOf(g.strand); if (i >= 0) strands.splice(i, 1); };
+      if (both.some((o) => o.dying || o.body.grab || o.merging || (o !== g.p && o !== g.q)) || time - g.start > 12) { end(); return; }
+      for (const o of both) o.nextHop = time + 1;
+      const t = time - g.start, k = Math.min(1.5, CFG.tug);
+      const pc = g.p.body.centroid(), qc = g.q.body.centroid(), side = Math.sign(qc.x - pc.x) || 1;
+      const away = (o) => (o === g.p ? -side : side);
+      for (const o of both) { o.glanceAt = o === g.p ? g.q : g.p; o.glanceUntil = time + 0.2; }
+      if (g.stage === 'grab' && t > 0.7) {
+        // Touching now: a dab of goo where they meet.
+        stick(g.p, g.q);
+        g.strand = strands[strands.length - 1];
+        if (!g.strand || g.strand.a !== g.p) { end(); return; }
+        g.strand.tug = g;
+        g.stage = 'pull'; g.at = time;
+        quip(g.p, 'tug of war!', 1.4);
+        return;
+      }
+      if (g.stage === 'pull') {
+        const tp = time - g.at, gap = Math.abs(qc.x - pc.x), want = (g.p.body.o.radius + g.q.body.o.radius) * 1.45;
+        // Heave, heave: a pull every 0.8 s or so, each its own rhythm.
+        for (const o of both) {
+          const r = o.body.o.radius, s = away(o), heave = 0.6 + 0.4 * Math.max(0, Math.sin((tp + (o === g.p ? 0 : 0.4)) * Math.PI * 2 / 0.8));
+          o.body.lean(s * k * r * 50 * heave * DT, DT); // (leaning back, top first)
+          o.strainUntil = time + 0.15;
+          if (!o.body.onFloor()) continue;
+          o.body.squashTop(k * r * 0.25 * DT * 60, DT); // (sitting back into it)
+          // Back off until the strand's taut, then the stronger one slowly
+          // drags the other its way.
+          const vx = o.body.velocity(DT).x;
+          const target = gap < want && tp < 1.5 ? s * 90 : g.win === o ? s * 24 * heave : -s * 24 * heave;
+          o.body.impulse((target - vx) * 0.25, 0, DT);
+        }
+        if (tp > g.hold) {
+          // Snap: both sit down hard, away from each other.
+          g.stage = 'snap'; g.at = time;
+          const i = strands.indexOf(g.strand);
+          if (i >= 0) g.strand.snap = true;
+          for (const o of both) {
+            o.body.impulse(away(o) * 150 * k, -170 * k, DT);
+            o.surpriseUntil = time + 0.5;
+          }
+          quip(g.q === g.win ? g.p : g.q, 'whoa!', 0.9);
+        }
+        return;
+      }
+      if (g.stage === 'snap' && time - g.at > 1.1) {
+        g.stage = 'gloat';
+        const lose = g.win === g.p ? g.q : g.p;
+        g.win.cheerUntil = time + 1.5; quip(g.win, Math.random() < 0.5 ? 'I win!' : 'ha, too strong!', 1.3);
+        lose.sheepishUntil = time + 1.2;
+        g.win.hop(0, -300);
+        return;
+      }
+      if (g.stage === 'gloat' && time - g.at > 2.8) end();
+      return;
+    }
+    if (!free(b) || !b.body.onFloor() || idleFor() > 60 || time < (b.nextTug ?? (b.nextTug = time + (250 + Math.random() * 500) / CFG.tug))) return;
+    b.nextTug = time + (500 + Math.random() * 800) / CFG.tug;
+    const c = b.body.centroid(), r = b.body.o.radius;
+    const o = [...buddies.values()].find((o) => o !== b && o.kind === 'mother' && !o.tug && free(o) && o.body.onFloor() && Math.abs(o.body.centroid().y - c.y) < r && Math.abs(o.body.centroid().x - c.x) < (r + o.body.o.radius) * 1.6);
+    if (o) tugNow(b, o);
+  }
+  function tugNow(b, o) {
+    // The bigger one tends to win, but not always.
+    const win = Math.random() < 0.5 + 0.3 * Math.sign(b.body.o.radius - o.body.o.radius) ? b : o;
+    const g = { p: b, q: o, win, stage: 'grab', start: time, hold: 2.6 + Math.random() * 1.6 };
+    b.tug = o.tug = g;
+    // Sidle up so they're touching.
+    const bc = b.body.centroid(), oc = o.body.centroid(), gap = Math.abs(oc.x - bc.x) - (b.body.o.radius + o.body.o.radius) * 0.95;
+    if (gap > 8) { const v = launch(Math.sign(oc.x - bc.x) * gap, b.body.o.radius * 0.3); b.body.impulse(-b.body.velocity(DT).x, 0, DT); b.hop(v.vx, v.vy); }
+    o.glanceAt = b; o.glanceUntil = time + 0.6;
+  }
+
   function towerNow(b, o) {
     const g = { line: [b, o], stage: 'climb', start: time, next: time + 0.7, jumped: 0 };
     b.tower = o.tower = g;
@@ -3444,7 +3527,7 @@
   // hopping in step, single file, turning back at the edge of the screen.
   function parade(b) {
     if (CFG.parade <= 0 || b.kind !== 'mother') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.copy && !o.five && !o.frog && !o.tower && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.copy && !o.five && !o.frog && !o.tower && !o.tug && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.parade;
     if (g) {
       if (g.line[0] !== b) return; // (the one in front runs it)
@@ -4312,7 +4395,7 @@
     at(29, () => { const b = big()[1] || big()[0]; if (b && !b.blow) b.blow = { at: time + 0.7, side: 1 }; });
     at(31, () => addFlutter());
     at(17, () => { const b = buddies.get(HOME) || big()[0]; if (b) b.say([{ text: 'While you were away (demo):' }, ...summaryLines()], 6, false, false); });
-    // Part two: a trampoline, a burp, a dream, a somersault, a tumble, leapfrog, a tower, a roly-poly, a heart.
+    // Part two: a trampoline, a burp, a dream, a somersault, a tumble, leapfrog, a tower, a roly-poly, a heart, a tug of war.
     at(34, () => {
       const [b, o] = big();
       if (!b || !o || b.body.grab || o.body.grab) return;
@@ -4347,7 +4430,14 @@
     });
     at(73, () => { const b = big()[1] || big()[0]; if (b && !b.roll && !b.tower) rollNow(b); });
     at(77, () => { const b = big()[0]; if (b && !b.shape) b.shape = { at: time }; });
-    at(81, () => { seasonOverride = was; showingOff = false; });
+    at(81, () => {
+      const [b, o] = big();
+      if (!b || !o || b.body.grab || o.body.grab || b.tug || o.tug || b.tower || o.tower) return;
+      const r = b.body.o.radius, y = H - r * 1.2;
+      b.body.teleport(W * 0.35, y); o.body.teleport(W * 0.35 + (r + o.body.o.radius) * 1.1, y);
+      setTimeout(() => { if (!b.dying && !o.dying && !b.tug && !o.tug) tugNow(b, o); }, 900);
+    });
+    at(90, () => { seasonOverride = was; showingOff = false; });
   }
   let showingOff = false;
 
@@ -4470,6 +4560,7 @@
     leapfrog(b);
     tower(b);
     measure(b);
+    tug(b);
     trickTreat(b);
     comfort(b);
     snowFight(b);
@@ -4592,6 +4683,7 @@
     else if (time < (b.yawnUntil || 0)) { expression = 'sleepy'; mouth = 'yawn'; }
     else if (time < (b.napUntil || 0) && !body.grab) { expression = 'sleepy'; mouth = 'flat'; } // (a quick nap, for show)
     else if (time < (b.winceUntil || 0)) { expression = 'pained'; mouth = 'wobble'; }
+    else if (b.tug && b.tug.stage === 'pull' && !body.grab) { expression = 'pained'; mouth = 'wobble'; } // (heave!)
     else if (time < (b.cheerUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
     else if (time < (b.burpUntil || 0)) { expression = 'normal'; mouth = 'o'; } // (*burp*)
     else if (b.hug || (b.huggedBy && b.huggedBy.hug && b.huggedBy.hug.o === b)) { expression = 'happy'; mouth = 'smile'; } // (a hug)

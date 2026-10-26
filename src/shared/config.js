@@ -172,6 +172,7 @@
       ['leapfrog', 1, 0, 2, 0.05, 'Now and then two bored slimes side by side play leapfrog, taking turns hopping right over each other'],
       ['tower', 1, 0, 3, 0.05, 'Two bored slimes now and then make a tower: one hops up onto the other\'s head and stands tall'],
       ['measure', 1, 0, 2, 0.05, 'Two bored slimes now and then stand back to back and stretch up to see who\'s taller'],
+      ['tug', 1, 0, 2, 0.05, 'Two bored slimes now and then play tug of war on a strand of goo until it snaps'],
       ['parade', 1, 0, 2, 0.05, 'Now and then, with a few calm slimes about, one leads a parade and the others hop along behind'],
       ['copycat', 0.6, 0, 1, 0.05, 'Chance a calm slime nearby copies another\'s trick, hop for hop'],
       ['farewell', 1, 0, 2, 0.05, 'When a session ends, the others watch its slime go, a little deflated, and the nearest says bye'],
