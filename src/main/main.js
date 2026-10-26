@@ -667,6 +667,7 @@ function quickFor(id, s) {
     gitFailed: gitFailed(inbox.log(id)),
     runFailed: require('./inbox').runFailed(inbox.log(id)),
     install: s.cwd && !installingPackages.has(id) ? runs.needsInstall(s.cwd) : '',
+    env: s.cwd ? runs.needsEnv(s.cwd) : '',
     pr: prStates.get(id) || null,
     context: contextOf(id),
   });
@@ -2794,8 +2795,23 @@ app.whenReady().then(async () => {
     }, null, 10 * 60e3);
     pushTalk(id);
   }
+  // Make .env, from its quick actions: its template copied (never over a
+  // .env that's there), and opened in your editor to fill in.
+  ipcMain.on('talk-make-env', (_e, id) => { if (id === talkId) envFor(id); });
+  function envFor(id) {
+    const s = tracker.sessions.get(id);
+    const from = s && s.cwd && runs.needsEnv(s.cwd);
+    if (!from) return;
+    try { fs.copyFileSync(path.join(s.cwd, from), path.join(s.cwd, '.env'), fs.constants.COPYFILE_EXCL); } catch (err) {
+      inbox.add(id, { who: 'note', text: `Couldn’t make .env: ${err.code === 'EEXIST' ? 'it’s there already' : err.message}`, error: true });
+      return pushTalk(id);
+    }
+    inbox.add(id, { who: 'note', text: `Made .env from ${from}: fill in its values${editorNow() ? ` (it’s open in ${editorNow().name})` : ''}` });
+    openInEditor(id, '.env');
+    pushTalk(id);
+  }
   // A quick action from the menu bar, as a tap on it in the box would.
-  doQuick = (id, q) => (q.run ? gitRunFor(id, q.run) : q.install ? installFor(id) : sendMessage(id, q.prompt));
+  doQuick = (id, q) => (q.run ? gitRunFor(id, q.run) : q.install ? installFor(id) : q.env ? envFor(id) : sendMessage(id, q.prompt));
   // Stops a background task: in a session Blaube started, asked of Claude
   // Code itself (stop_task); in a terminal's, the processes writing its
   // output (its own, under its claude process). false: the box asks Claude.

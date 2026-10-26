@@ -65,6 +65,13 @@ function manager(cwd) {
 // a package inside a workspace, whose packages are installed above it).
 const LOCKS = { npm: 'package-lock.json', pnpm: 'pnpm-lock.yaml', yarn: 'yarn.lock' };
 const MARKS = { npm: '.package-lock.json', pnpm: '.modules.yaml', yarn: '.yarn-integrity' };
+// Its .env isn't there yet, but a template is (.env.example and the like):
+// that template's name, to copy for you to fill in; or ''.
+const ENV_TEMPLATES = ['.env.example', '.env.sample', '.env.template', '.env.dist'];
+function needsEnv(cwd) {
+  if (!cwd || ['.env', '.env.local'].some((f) => fs.existsSync(path.join(cwd, f)))) return '';
+  return ENV_TEMPLATES.find((f) => { try { return fs.statSync(path.join(cwd, f)).isFile(); } catch { return false; } }) || '';
+}
 function needsInstall(cwd) {
   const mtime = (f) => { try { return fs.statSync(path.join(cwd, f)).mtimeMs; } catch { return 0; } };
   // (A Python project uv keeps: its .venv missing, a fresh clone. Whether
@@ -142,4 +149,4 @@ function output(id) {
 // Its last line that says something, for "stopped" notes.
 function lastLine(text) { return String(text || '').replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').split('\n').map((l) => l.trim()).filter(Boolean).pop() || ''; }
 
-module.exports = { needsInstall, scripts, manager, start, stop, stopAll, sessions, list, output, lastLine, events, LONG };
+module.exports = { needsEnv, needsInstall, scripts, manager, start, stop, stopAll, sessions, list, output, lastLine, events, LONG };

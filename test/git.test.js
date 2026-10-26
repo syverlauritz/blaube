@@ -289,6 +289,12 @@ test('packages to install: Install packages, run right there', () => {
   assert.equal(quickActions(null, 'working', { install: 'npm install' }).length, 0);
 });
 
+test('a .env to make: Make .env, after Install packages', () => {
+  const q = quickActions(null, 'idle', { install: 'npm install', env: '.env.example' });
+  assert.deepEqual(q.slice(0, 2).map((x) => x.label), ['Install packages', 'Make .env']);
+  assert.deepEqual(q[1], { label: 'Make .env', prompt: 'Copies .env.example to .env, for you to fill in', env: true });
+});
+
 test('the newest commit, pushed nowhere, can be undone with its changes kept', async () => {
   const { canUndo, undoCommit, commits } = require('../src/main/git');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-undo-'));

@@ -119,3 +119,20 @@ test('a Python project uv keeps: uv sync when its .venv is missing', () => {
     assert.equal(needsInstall(dir), '');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('a .env to make: missing, with a template beside it', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-env-'));
+  try {
+    assert.equal(runs.needsEnv(dir), '', 'no template');
+    fs.writeFileSync(path.join(dir, '.env.sample'), 'KEY=\n');
+    assert.equal(runs.needsEnv(dir), '.env.sample');
+    fs.writeFileSync(path.join(dir, '.env.example'), 'KEY=\n');
+    assert.equal(runs.needsEnv(dir), '.env.example', 'the usual one first');
+    fs.writeFileSync(path.join(dir, '.env.local'), 'KEY=1\n');
+    assert.equal(runs.needsEnv(dir), '', 'its values are in .env.local');
+    fs.rmSync(path.join(dir, '.env.local'));
+    fs.writeFileSync(path.join(dir, '.env'), 'KEY=1\n');
+    assert.equal(runs.needsEnv(dir), '');
+    assert.equal(runs.needsEnv(''), '');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

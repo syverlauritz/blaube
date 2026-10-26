@@ -43,7 +43,7 @@ const MAIN = /^(main|master|trunk|develop)$/;
 // apiError: its last turn ended on an API error; pr: its branch's pull
 // request (pr.js); gitFailed: 'push' or
 // 'pull' when that's what git last failed at here; install: the command
-// that installs its packages when they need it (runs.needsInstall); carryAt: { at, label, set }
+// that installs its packages when they need it (runs.needsInstall); env: the .env template to copy when its .env is missing (runs.needsEnv); carryAt: { at, label, set }
 // when that was a usage limit that lifts then (set: it'll carry on by itself) }.
 function quickActions(st, state, more = {}) {
   if (state === 'working' || state === 'waiting') return [];
@@ -66,6 +66,8 @@ function quickActions(st, state, more = {}) {
   // (Its packages aren't installed, or a pull brought new ones: installed
   // right there, no model call.)
   if (more.install) out.push({ label: 'Install packages', prompt: `Runs ${more.install} right here`, install: true });
+  // (Its .env isn't there, its template is: copied for you to fill in.)
+  if (more.env) out.push({ label: 'Make .env', prompt: `Copies ${more.env} to .env, for you to fill in`, env: true });
   const n = st ? st.changed + st.untracked : 0;
   if (st && st.conflicts) out.push({ label: 'Fix conflicts', prompt: 'There are merge conflicts. Resolve them, keeping both sides’ intent, then tell me what you chose.' });
   if (n) out.push({ label: 'Commit', prompt: 'Commit the current changes with a clear message (split them into a few commits if they are unrelated).' });

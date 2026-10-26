@@ -565,6 +565,14 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	const edLog = repo + '-editor.txt', fakeEd = repo + '-code.sh';
 	fs.writeFileSync(fakeEd, `#!/bin/sh\necho "$@" > '${edLog}'\n`, { mode: 0o755 });
 	global.__blaubeEditor = { name: 'VS Code', bin: fakeEd, kind: 'code' };
+	// No .env yet, a .env.example beside it: Make .env, opened to fill in.
+	fs.writeFileSync(path.join(repo, '.env.example'), 'API_URL=\n');
+	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Make .env' && b.title === 'Copies .env.example to .env, for you to fill in')`), 10000), 'no .env, a template beside it: Make .env');
+	await box(`[...document.querySelectorAll('#quick button')].find((b) => b.textContent === 'Make .env').click()`);
+	check(await until(() => fs.existsSync(path.join(repo, '.env')) && fs.readFileSync(path.join(repo, '.env'), 'utf8') === 'API_URL=\n' && inbox.log(ID3).some((e) => e.text === 'Made .env from .env.example: fill in its values (it’s open in VS Code)') && fs.existsSync(edLog) && /\.env\b/.test(fs.readFileSync(edLog, 'utf8')), 10000), 'a tap copies it and opens it in your editor');
+	check(await until(() => box(`![...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Make .env')`), 10000), 'and it isn’t offered again');
+	for (const f of ['.env', '.env.example']) fs.rmSync(path.join(repo, f), { force: true });
+	fs.rmSync(edLog, { force: true });
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'what did you change?' });
 	// While it works: how long it's been at it, as the terminal counts.
 	tracker.sessions.get(ID3).turnStart = Date.now() - 75e3;
