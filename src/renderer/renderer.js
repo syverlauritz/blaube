@@ -2047,6 +2047,25 @@
     b.trick = { n: 0, next: time };
   }
 
+  // Once in a long while: a fit of hiccups. Each one jolts it up a little.
+  function hiccup(b) {
+    if (CFG.quirks <= 0 || b.kind === 'child' || b.dying) return;
+    if (b.hics) {
+      if (time < b.hics.next || b.body.grab) return;
+      if (b.hics.n-- <= 0) { b.hics = null; return; }
+      b.hics.next = time + 1.1 + Math.random() * 1.4;
+      if (!b.body.onFloor()) return;
+      b.body.squashTop(-b.body.o.radius * 7, DT);
+      b.body.impulse(0, -90, DT);
+      b.startleUntil = time + 0.25;
+      if (Math.random() < 0.5) b.say([{ text: 'hic!' }], 0.8, false, false);
+      return;
+    }
+    if (time < (b.nextHics ?? (b.nextHics = time + (600 + Math.random() * 1800) / CFG.quirks))) return;
+    b.nextHics = time + (900 + Math.random() * 2400) / CFG.quirks;
+    if (b.state === 'idle' || b.state === 'done') b.hics = { n: 4 + Math.floor(Math.random() * 4), next: time };
+  }
+
   function pounce(b) {
     if (time < (b.pounceUntil || 0)) {
       if (!b.caught && b.body.contains(mouse.x, mouse.y)) {
@@ -2133,6 +2152,7 @@
     pounce(b);
     prank(b);
     trick(b);
+    hiccup(b);
     // Hanging over the edge of a window: it clings and shuffles back on.
     const l = b.body.onLedge;
     if (l && !b.body.grab) {
