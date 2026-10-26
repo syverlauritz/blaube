@@ -475,19 +475,14 @@
   // A mother gives up some of her volume to each of her children.
   // Sessions grow with the tokens they've used: a step bigger each time
   // the total doubles, counted from 100k.
-  function tokenScale(m) {
-    const total = m.session && m.session.tokens ? m.session.tokens.total : 0;
-    if (!total) return 1;
-    return Math.min(CFG.maxTokenGrowth, 1 + CFG.tokenGrowth * Math.log2(1 + total / 100000));
-  }
+  const sessionTotal = (m) => (m.session && m.session.tokens ? m.session.tokens.total : 0);
+  const tokenScale = (m) => BlaubeConfig.tokenGrowth(CFG, sessionTotal(m), 100000);
 
   // Helpers grow the same way with their own tokens, counted from 20k
   // (they use far fewer), and never past three quarters of their mother.
   function childRadius(b) {
-    const total = (b.agent && b.agent.tokens) || 0;
-    let r = CFG.childRadius * (total ? Math.min(CFG.maxTokenGrowth, 1 + CFG.tokenGrowth * Math.log2(1 + total / 20000)) : 1);
-    if (b.mother && !b.mother.dying) r = Math.min(r, Math.max(CFG.childRadius, b.mother.body.o.radius * 0.75));
-    return r;
+    const mother = b.mother && !b.mother.dying ? b.mother : null;
+    return BlaubeConfig.childRadius(CFG, (b.agent && b.agent.tokens) || 0, mother ? sessionTotal(mother) : null);
   }
 
   // How full the session's context window is, 0..1.
@@ -512,9 +507,12 @@
   const ramp = (v, from, to) => Math.max(0, Math.min(1, (v - from) / Math.max(0.001, to - from)));
 
   function radiusFor(m) {
-    // She gives up some of her volume to each child (as big as it is now).
+    // She gives up some of her volume to each child (as big as it is now,
+    // while it splits off). Not what it grows by from its own tokens: those
+    // count toward hers too, and her shrinking as they grew held them all
+    // down to one size.
     let given = 0;
-    for (const b of buddies.values()) if (b.mother === m && !b.dying) given += b.body.o.radius * b.body.o.radius;
+    for (const b of buddies.values()) if (b.mother === m && !b.dying) given += Math.min(b.body.o.radius, CFG.childRadius) ** 2;
     const R = CFG.mainRadius * tokenScale(m);
     return Math.max(Math.min(CFG.mainMinRadius, R), Math.sqrt(Math.max(0, R * R - 0.5 * given)));
   }
