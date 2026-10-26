@@ -58,6 +58,7 @@ const permRules = require('./permRules');
 const taskKill = require('./taskKill');
 const memory = require('./memory');
 const { startFocusWatcher, transcriptPath } = require('./focus');
+const transcript = require('./transcript');
 const usage = require('./usage');
 const { createGitChanges } = require('./gitChanges');
 const gitChanges = createGitChanges();
@@ -3157,13 +3158,14 @@ app.whenReady().then(async () => {
       if (rec && rec.win.isVisible()) rec.win.focus();
     }
   });
-  // What was said before the box's own log, from its transcript.
-  ipcMain.handle('talk-earlier', (_e, id) => {
-    const s = isOpen(id) && tracker.sessions.get(id);
+  // Its conversation from its transcript, a page at a time from the end
+  // (before: where the page after it starts), for above the box's own log.
+  // (Asked as the box opens, maybe a moment before it shows.)
+  ipcMain.handle('talk-history', async (_e, id, before) => {
+    const s = typeof id === 'string' && tracker.sessions.get(id);
     const file = s && !id.startsWith('demo-') && transcriptPath(s);
-    if (!file) return [];
-    const first = inbox.log(id).find((e) => e.at);
-    try { return history.messagesBefore(file, first ? first.at : Date.now(), 30); } catch { return []; }
+    if (!file) return { entries: [], from: 0 };
+    try { return await transcript.page(file, { before: Number.isFinite(before) && before >= 0 ? before : undefined }); } catch { return { entries: [], from: 0 }; }
   });
   // One changed file's diff, for the git line's file list.
   ipcMain.handle('talk-diff', (_e, id, file) => new Promise((done) => {

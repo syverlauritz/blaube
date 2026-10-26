@@ -57,7 +57,7 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   commit: (id, hash) => ipcRenderer.invoke('talk-commit', id, hash),
   parked: (id) => ipcRenderer.invoke('talk-parked', id),
   switchBranch: (id, name, create) => ipcRenderer.invoke('talk-switch-branch', id, name, create),
-  earlier: (id) => ipcRenderer.invoke('talk-earlier', id),
+  history: (id, before) => ipcRenderer.invoke('talk-history', id, before),
   newIn: (folder, opts) => ipcRenderer.send('talk-new', folder, opts),
   pickUp: (id) => ipcRenderer.send('talk-pickup', id),
   continueHere: (id) => ipcRenderer.send('talk-continue', id),

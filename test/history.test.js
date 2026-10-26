@@ -56,25 +56,6 @@ test('ago', () => {
   assert.equal(ago(now - 30 * 3600e3, now), 'yesterday');
 });
 
-test('what was said before a time, from the transcript', () => {
-  const { messagesBefore } = require('../src/main/history.js');
-  const h = home();
-  const t = (min) => new Date(Date.UTC(2026, 9, 26, 9, min)).toISOString();
-  const f = write(h, ID(9), [
-    { type: 'user', timestamp: t(0), message: { content: 'first' } },
-    { type: 'assistant', timestamp: t(1), message: { content: [{ type: 'text', text: 'working on it' }] } },
-    { type: 'assistant', timestamp: t(2), message: { content: [{ type: 'text', text: 'done with first' }] } },
-    { type: 'user', timestamp: t(10), message: { content: 'second (Blaube saw this)' } },
-  ]);
-  const before = Date.parse(t(10));
-  assert.deepEqual(messagesBefore(f, before), [
-    { who: 'you', text: 'first', at: Date.parse(t(0)) },
-    { who: 'claude', text: 'done with first', at: Date.parse(t(2)) },
-  ]);
-  assert.equal(messagesBefore(f, before, 1).length, 1);
-  assert.deepEqual(messagesBefore(path.join(h, 'missing.jsonl'), before), []);
-});
-
 test('past sessions can be searched for what was said in them', async () => {
   const { searchPast } = require('../src/main/history.js');
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-past-'));

@@ -11,7 +11,7 @@
   const MAX = 4000; // longer replies are cut until unfolded
   let current = null, askKey = 0, seen = 0;
   let editing = null; // (one of yours you're changing: { id, uuid })
-  let drawn = { entries: [], thinking: -1, open: '' }, ends = []; // what the log shows, and each entry's last element
+  let drawn = { entries: [], thinking: -1, open: '', hist: '' }, ends = [], histEnd = null; // what the log shows, and each entry's last element
   const dots = document.createElement('div'); // the slime thinking
   dots.className = 'dots';
   // What it's doing, and how long it's been at it ("Editing face.js · 1m 20s"), as the terminal counts.
@@ -244,38 +244,50 @@
     });
   }
 
-  // What was said before this box's own log (from its transcript), on a tap
-  // at the top. Kept per session while Blaube runs.
-  const earlier = new Map(); // session id -> [messages] (empty: nothing earlier)
-  function drawEarlier(s) {
-    if (!s.earlier || !api.earlier) return;
-    const got = earlier.get(s.id);
-    if (got && !got.length) return;
-    if (!got) {
+  // What came before this box's own log, from its transcript: the newest
+  // page as it opens, each earlier one on a tap at the top (Show earlier).
+  // Drawn just like the live log, which takes over where it begins (see
+  // shared/talkHistory.js). Kept per session while Blaube runs.
+  const pages = new Map(); // session id -> { entries, from (0: nothing earlier), loading }
+  function loadHistory(id, more) {
+    const p = pages.get(id);
+    if (!api.history || (p && p.loading) || (more && !(p && p.from > 0))) return;
+    if (p) p.loading = true; else pages.set(id, { entries: [], from: 0, loading: true });
+    api.history(id, more ? p.from : undefined).then((r) => {
+      const had = pages.get(id) || { entries: [] };
+      const got = r && Array.isArray(r.entries) ? r : { entries: [], from: 0 };
+      pages.set(id, { entries: more ? got.entries.concat(had.entries) : got.entries, from: got.from || 0, loading: false });
+      if (!current || current.id !== id) return;
+      const keep = log.scrollHeight - log.scrollTop;
+      drawn.entries = []; render(current);
+      if (more) log.scrollTop = log.scrollHeight - keep; // (what you were reading stays put)
+    });
+  }
+  const historyOf = (s) => {
+    const p = !s.demo && s.earlier && pages.get(s.id);
+    return p ? BlaubeTalkHistory.shown(p.entries, s.log) : [];
+  };
+  // Draws it; returns its last element (null: nothing drawn).
+  function drawHistory(s, hist) {
+    const p = pages.get(s.id);
+    if (!p || s.demo || !s.earlier) return null;
+    if (p.from > 0) {
       const b = document.createElement('button');
       b.className = 'earlierbtn';
       b.type = 'button';
-      b.textContent = 'Show earlier messages';
-      b.onclick = () => {
-        b.disabled = true;
-        const id = s.id;
-        api.earlier(id).then((list) => {
-          earlier.set(id, list || []);
-          if (!list || !list.length) { b.textContent = 'Nothing earlier'; return; }
-          if (current && current.id === id) { const keep = log.scrollHeight - log.scrollTop; drawn.entries = []; render(current); log.scrollTop = log.scrollHeight - keep; }
-        });
-      };
+      b.textContent = p.loading ? 'Loading…' : 'Show earlier';
+      b.disabled = !!p.loading;
+      b.onclick = () => { b.disabled = true; b.textContent = 'Loading…'; loadHistory(s.id, true); };
       inner.append(b);
-      return;
     }
-    const box = document.createElement('div');
-    box.className = 'earlier';
-    for (const m of got) box.append(...message(m, false));
-    const line = document.createElement('div');
-    line.className = 'since old';
-    line.textContent = 'Above: from before Blaube was watching';
-    box.append(line);
-    inner.append(box);
+    let last = null;
+    for (const m of hist) {
+      if (m.who === 'step') { last = addStep(m, false); continue; }
+      const nodes = message(m, false);
+      inner.append(...nodes);
+      last = nodes[nodes.length - 1];
+    }
+    return last;
   }
 
   // Web links in a reply ([text](url) or a bare https://…) open in your
@@ -427,6 +439,13 @@
       rich(a, m.aside.answer);
       markPaths(a);
       e.append(q, a);
+      return [e];
+    }
+    // (Where its context was compacted, in a conversation from its transcript.)
+    if (m.who === 'note' && m.divider) {
+      const e = document.createElement('div');
+      e.className = 'since old';
+      e.textContent = m.text;
       return [e];
     }
     if (m.who === 'note') {
@@ -740,10 +759,15 @@
     // never while you're selecting text in it (it catches up after).
     const entries = s.log.map((m) => JSON.stringify(m));
     if (!s.log.length) entries.push(s.ask ? 'asking' : 'empty'); // the greeting comes and goes with a card
+    // (And what came before it, from its transcript, once that's read.)
+    if (s.earlier && !s.demo && !pages.has(s.id)) loadHistory(s.id);
+    const hist = historyOf(s);
+    const page = pages.get(s.id);
+    const histKey = page && s.earlier && !s.demo ? [hist.length, page.entries.length, page.from, !!page.loading].join() : '';
     const openKey = [...open].join();
     const sel = window.getSelection();
     const selecting = !switched && sel && !sel.isCollapsed && log.contains(sel.anchorNode);
-    const extends_ = !switched && openKey === drawn.open && drawn.entries.length > 0 && entries.length >= drawn.entries.length
+    const extends_ = !switched && openKey === drawn.open && histKey === drawn.hist && drawn.entries.length > 0 && entries.length >= drawn.entries.length
       && drawn.entries.every((j, i) => j === entries[i]);
     const changed = switched || !extends_ || entries.length !== drawn.entries.length || thinking !== drawn.thinking;
     if (changed && (!selecting || switched)) {
@@ -753,14 +777,14 @@
       if (!extends_) {
         inner.textContent = '';
         ends = [];
-        drawEarlier(s);
-        if (!s.log.length && !s.ask && (s.connected || s.typeable || s.owned)) {
+        histEnd = drawHistory(s, hist);
+        if (!s.log.length && !hist.length && !s.ask && (s.connected || s.typeable || s.owned)) {
           const e = document.createElement('div');
           e.className = 'empty';
           e.textContent = s.owned ? `What should we do in ${s.project}?` : `Say hi to ${s.project}! It hears you even when you’re not at its terminal.`;
           inner.append(e);
         }
-      } else if (from === 0) { inner.textContent = ''; drawEarlier(s); }
+      } else if (from === 0) { inner.textContent = ''; histEnd = drawHistory(s, hist); }
       // Where what came in since you last looked begins (when replies did).
       const since = s.lookedAt ? s.log.findIndex((m, i) => i > 0 && m.at > s.lookedAt && s.log[i - 1].at <= s.lookedAt) : -1;
       const sinceShows = since > 0 && s.log.slice(since).some((m) => m.who === 'claude');
@@ -779,7 +803,7 @@
         // (Before anything still waiting to go in.)
         let a = s.log.length - 1;
         while (a >= 0 && s.log[a].status === 'queued') a--;
-        if (a >= 0 && ends[a]) ends[a].after(dots); else inner.prepend(dots);
+        if (a >= 0 && ends[a]) ends[a].after(dots); else if (histEnd && histEnd.isConnected) histEnd.after(dots); else inner.prepend(dots);
       }
       if (!switched && s.log.slice(seen).some((m) => m.who === 'claude')) {
         const w = $('wrap');
@@ -798,7 +822,7 @@
         more.onclick = () => { open.add(at); drawn.entries = []; render(current); };
         e.after(more);
       }
-      drawn = { entries, thinking, open: openKey };
+      drawn = { entries, thinking, open: openKey, hist: histKey };
       if (atBottom || switched) log.scrollTop = log.scrollHeight;
     }
     if (!$('findBar').hidden && $('find').value.trim()) find($('find').value);
