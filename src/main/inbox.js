@@ -441,7 +441,9 @@ function erredLast(log) {
   for (let i = log.length - 1; i >= 0; i--) {
     const e = log[i];
     if ((e.who === 'you' && !e.midTurn && e.status !== 'queued') || e.who === 'claude') return '';
-    if (e.who === 'note' && e.error && !e.runFailed) return e.text; // (what it said; a script of its own that stopped isn't Claude's error)
+    // (What Claude Code said. Blaube's own "couldn't…" notes aren't
+    // Claude's errors: trying again wouldn't help, and would cost a turn.)
+    if (e.who === 'note' && e.error && /^Claude Code: /.test(e.text || '')) return e.text;
   }
   return '';
 }
