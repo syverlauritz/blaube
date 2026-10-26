@@ -1868,10 +1868,19 @@ app.whenReady().then(async () => {
     // "!git log": run right here, in its folder, as the terminal's bash
     // mode does; what it printed goes along with your next message.
     if (/^!\S/.test(String(text).trim())) return runForSession(id, String(text).trim().slice(1).trim());
+    const sess = tracker.sessions.get(id);
+    // "/memory": its project's CLAUDE.md, opened in your editor.
+    if (/^\/memory\s*$/i.test(String(text).trim()) && sess && sess.cwd) {
+      const st = gitStates.get(id);
+      const file = path.join((st && st.root) || sess.cwd, 'CLAUDE.md');
+      try { if (!fs.existsSync(file)) fs.writeFileSync(file, `# ${path.basename(path.dirname(file))}\n\n`); } catch (e) { inbox.add(id, { who: 'note', text: `Couldn’t make CLAUDE.md: ${e.message}`, error: true }); return; }
+      if (!TEST) shell.openPath(file);
+      inbox.add(id, { who: 'note', text: `Opened ${path.basename(path.dirname(file))}/CLAUDE.md, what every session there reads first` });
+      return;
+    }
     // "# always use pnpm": remembered in its project's CLAUDE.md, as the
     // terminal's # does.
     const note = memory.noteIn(text);
-    const sess = tracker.sessions.get(id);
     if (note && sess && sess.cwd) {
       const st = gitStates.get(id);
       try {

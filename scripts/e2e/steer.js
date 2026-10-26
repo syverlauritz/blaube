@@ -381,6 +381,9 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => { try { return fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8') === '- always use pnpm\n'; } catch { return false; } }), '# notes go in the project’s CLAUDE.md');
 	check(await until(() => box(`[...document.querySelectorAll('#inner .note')].some((e) => /^Remembered in blaube-repo-\\w+\\/CLAUDE\\.md: always use pnpm$/.test(e.textContent))`)), 'and the box says so');
 	check(!inbox.log(ID3).some((e) => e.who === 'you' && /always use pnpm/.test(e.text)), 'instead of going as a message');
+	await type('/memory');
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'note' && /^Opened blaube-repo-\w+\/CLAUDE\.md/.test(e.text))), '/memory opens the project’s CLAUDE.md');
+	check(!inbox.log(ID3).some((e) => e.who === 'you' && e.text === '/memory'), 'rather than going to its terminal');
 	await type('!ls src');
 	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'You ran ls src' && e.ok && !e.running && /tax\.js/.test(e.detail))), '!ls runs in its folder and shows what it printed');
 	check(await until(() => box(`[...document.querySelectorAll('#inner .step')].some((e) => /You ran ls src/.test(e.textContent))`)), 'as a step in the box');
