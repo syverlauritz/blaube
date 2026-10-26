@@ -2695,6 +2695,27 @@
     b.glanceAt = { spot: p }; b.glanceUntil = time + 1.8;
   }
 
+  // A pile of leaves (or snow) close by: a bored slime takes a big jump
+  // right into it, and they fly up everywhere.
+  function leafPile(b) {
+    if (CFG.play <= 0 || b.kind === 'child' || b.dying || !flakes.length) return;
+    const ok = (b.state === 'idle' || b.state === 'done') && !b.body.grab && b.body.onFloor() && !b.tag && !b.prank && !b.trick && !b.blow && !b.nibbling && (b.sleep || 0) < 0.1 && idleFor() < 60;
+    if (!ok || time < (b.nextPile ?? (b.nextPile = time + (90 + Math.random() * 200) / CFG.play))) return;
+    b.nextPile = time + (180 + Math.random() * 360) / CFG.play;
+    const c = b.body.centroid(), r = b.body.o.radius, bot = b.body.bbox().maxY;
+    const ground = flakes.filter((f) => f.landed && !f.on && !f.ledge && !f.eaten && Math.abs(f.y - bot) < 24 && Math.abs(f.x - c.x) > r * 1.2 && Math.abs(f.x - c.x) < r * 7);
+    let best = null, most = 3;
+    for (const f of ground) {
+      const n = ground.filter((g) => Math.abs(g.x - f.x) < 60).length;
+      if (n > most) { most = n; best = f; }
+    }
+    if (!best) return;
+    const vy = (720 + Math.random() * 140) * Math.min(1.2, CFG.play), air = 2 * vy / CFG.gravity;
+    b.hop((best.x - c.x) / air * 1.2, -vy); // (a hop lands a little short)
+    b.happyUntil = time + air + 1.2;
+    if (Math.random() < 0.5) quip(b, 'wheee', 1.2);
+  }
+
   // You pick up its task pet: it watches, worried, and hops up after it,
   // reaching for it.
   function petWorry(b) {
@@ -2936,6 +2957,7 @@
     nibble(b);
     nudgePet(b);
     petWorry(b);
+    leafPile(b);
     hiccup(b);
     // Hanging over the edge of a window: it clings and shuffles back on.
     const l = b.body.onLedge;
