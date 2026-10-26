@@ -1014,6 +1014,7 @@
       // A good thump makes it blink (a hard one makes it dizzy, above).
       else if (body.lastImpact > 650 && CFG.eyeLife > 0 && time > (b.thumpBlinkAt || 0)) { b.nextBlink = time; b.thumpBlinkAt = time + 0.3; }
       if (body.lastImpact > 650 && CFG.contactJiggle > 0) passJiggle(b, body.lastImpact);
+      if (flakes.length) stirFlakes(b, pre);
       if (body.lastImpact > CFG.splashSpeed && CFG.splashDrops > 0) splash(b, pre);
       if (b.effort === 'high' && !b.glasses && !b.splitting && !b.merging && !b.dying && body.lastImpact > CFG.glassesSpeed) knockGlasses(b);
       if (b.glasses) stepGlasses(b);
@@ -1376,7 +1377,8 @@
       // own slow fall after being knocked off.
       f.sway += DT * (f.kind === 'snow' ? 1.3 : 2.2);
       const fall = f.kind === 'snow' ? 45 : 70;
-      f.vy += (fall - f.vy) * 2 * DT;
+      if (time < (f.loose || 0)) f.vy = Math.min(fall * 3, f.vy + 700 * DT); // knocked: a real little arc
+      else f.vy += (fall - f.vy) * 2 * DT;
       f.vx += (f.drift + Math.sin(f.sway) * (f.kind === 'snow' ? 18 : 55) - f.vx) * (time < (f.loose || 0) ? 0.4 : 2) * DT; // (knocked off: it keeps going a while)
       f.x += f.vx * DT; f.y += f.vy * DT;
       f.a += f.va * DT * (f.kind === 'snow' ? 0 : 1 + Math.abs(Math.sin(f.sway)));
@@ -1412,8 +1414,31 @@
     }
   }
 
-  function drawSeason() {
+  // Leaves (or snow) on the ground fly up when a slime lands among them,
+  // and get pushed along by one sliding through.
+  function stirFlakes(b, v) {
+    const body = b.body, hit = body.lastImpact || 0, slide = body.onFloor() ? Math.abs(v.x) : 0;
+    if (hit < 250 && slide < 60) return;
+    const box = body.bbox(), c = body.centroid(), r = body.o.radius;
     for (const f of flakes) {
+      if (!f.landed || Math.abs(f.y - box.maxY) > 24) continue;
+      if (hit >= 250 && f.x > box.minX - r * 0.6 && f.x < box.maxX + r * 0.6) {
+        f.landed = 0; f.loose = time + 0.6;
+        f.vx = (Math.sign(f.x - c.x) || 1) * (80 + Math.random() * hit * 0.2);
+        f.vy = -(150 + Math.random() * hit * 0.25);
+      } else if (slide >= 60 && f.x > box.minX - 4 && f.x < box.maxX + 4 && Math.sign(f.x - c.x) === Math.sign(v.x)) {
+        f.landed = 0; f.loose = time + 0.4;
+        f.vx = v.x * (1.1 + Math.random() * 0.4);
+        f.vy = -(40 + Math.random() * 60);
+      }
+    }
+  }
+
+  // (Lying on the ground they're drawn first, behind the slimes; falling
+  // or on a head, after.)
+  function drawSeason(ground) {
+    for (const f of flakes) {
+      if (!!f.landed !== ground) continue;
       const fade = f.landed ? Math.max(0, Math.min(1, ((f.kind === 'snow' ? 8 : 12) - (time - f.landed)) / 1.5)) : 1;
       if (fade <= 0) continue;
       ctx.save();
@@ -2268,6 +2293,7 @@
     if (CFG.shadow) for (const b of list) D.drawShadow(ctx, b.body, floorAt(b.body.centroid().x, b.body.bbox().maxY));
     drawTalkTail();
     drawDrops();
+    drawSeason(true);
 
     // Goo bridge while a slime is splitting off.
     for (const b of list) {
@@ -2309,7 +2335,7 @@
       if (b.state === 'waiting') D.drawExclaim(ctx, b.body, time, W, '?');
       else if (b.state === 'done' && unseen(b)) D.drawExclaim(ctx, b.body, time, W);
     }
-    drawSeason();
+    drawSeason(false);
     drawPets();
     drawHearts();
     for (const b of list) if (b.glasses) D.drawGlasses(ctx, b.glasses.x, b.glasses.y, b.glasses.r, b.glasses.a, CFG);
