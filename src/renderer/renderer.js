@@ -900,10 +900,10 @@
     if (b.session && b.session.look) return b.session.look;
     // Chosen once, then kept for as long as it runs. A session's slime takes
     // its favourite look that no other session's slime is wearing (plain
-    // ones may repeat); a helper always wears something, shared or not.
+    // ones may repeat; about half are plain). A helper takes its favourite.
     if (b.chosenLook && b.chosenLookFor === b.key) return b.chosenLook;
     const order = Looks.lookOrder(b.key, !b.big);
-    if (b.kind === 'child') b.chosenLook = order.find((n) => n !== 'none');
+    if (b.kind === 'child') b.chosenLook = order[0];
     else {
       const worn = new Set([...buddies.values()].filter((o) => o !== b && o.kind === 'mother' && o.chosenLook && !o.dying).map((o) => o.chosenLook));
       b.chosenLook = order.find((n) => n === 'none' || !worn.has(n)) || order[0];
