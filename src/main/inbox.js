@@ -69,7 +69,7 @@ class Inbox extends EventEmitter {
     const q = this.queue.get(id);
     if (!q || !q.length) return '';
     this.queue.delete(id);
-    for (const e of q) e.status = 'sent';
+    for (const e of q) { e.status = 'sent'; e.sentAt = this.now(); }
     this.emit('heard', id);
     this.emit('change', id);
     return JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: frame(q.map((e) => e.text).join('\n\n')) } });
@@ -172,7 +172,7 @@ class Inbox extends EventEmitter {
     reply(frame(texts.join('\n\n')));
     // 'delivering' until the wake-up shows up as the next turn starting, so
     // a reply to the turn before still lands above them (see observe).
-    for (const e of this.log(id)) if (e.status === 'queued') e.status = 'delivering';
+    for (const e of this.log(id)) if (e.status === 'queued') { e.status = 'delivering'; e.sentAt = this.now(); }
     this.emit('delivered', id);
     this.emit('change', id);
   }
@@ -405,7 +405,7 @@ function turnOf(log, now) {
   if (start < 0) return null;
   const steps = log.slice(start + 1).filter((e) => e.who === 'step');
   const files = [...new Set(steps.filter((e) => e.file && e.kind === 'edit').map((e) => e.file))];
-  return { took: Math.max(0, now - log[start].at), steps: steps.length, files };
+  return { took: Math.max(0, now - (log[start].sentAt || log[start].at)), steps: steps.length, files }; // (from when it went in, not when it was typed)
 }
 
 // Keeps a session's to-do list up to date from TodoWrite (the whole list

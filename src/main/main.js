@@ -437,11 +437,10 @@ function pushTalk(id, focusField = false) {
     });
   }
 }
-let hubPast = []; // the past sessions the overview last offered
+let hubPast = [], hubFolders = [], hubCache = null; // what the overview last offered
 const gitStates = new Map(); // session id -> its last git status (or null: not a repository)
 
 // A session at a glance, for the overview in the talk box.
-const lastDoing = new Map(); // session id -> what its latest tool call is about
 const glances = new Map(); // session id -> { at, state, g } (worked out at most once a second)
 function glanceAt(o) {
   const hit = glances.get(o.id);
@@ -456,7 +455,7 @@ function glanceNow(o) {
   const last = [...inbox.log(o.id)].reverse().find((e) => e.who === 'claude');
   if (o.cwd && !o.id.startsWith('demo-') && o.id !== talkId) git.status(o.cwd, (st) => { const was = JSON.stringify(gitStates.get(o.id) || null); gitStates.set(o.id, st); if (JSON.stringify(st) !== was) pushTalk(talkId); });
   return attention.glance({
-    state: o.state, doing: lastDoing.get(o.id) || '', message: o.message,
+    state: o.state, doing: doing.get(o.id) || '', message: o.message,
     lastReply: last ? last.text : (o.id.startsWith('demo-') ? '' : usage.lastText(transcriptPath(o))),
     todo: todo.length ? { done: todo.filter((t) => t.status === 'completed').length, of: todo.length } : null,
     context: tk && tk.limit && tk.context ? Math.min(100, Math.round((tk.context / tk.limit) * 100)) : 0,
@@ -1211,7 +1210,6 @@ app.whenReady().then(async () => {
     else if (win && open) win.webContents.send('say', { id, text: snippet(text), voiceOnly: true });
   });
   tracker.on('activity', statusBubble);
-  tracker.on('activity', ({ session: s, agentId, payload: p }) => { if (!agentId && p.hook_event_name === 'PreToolUse') lastDoing.set(s.id, describeTool(p.tool_name, p.tool_input || {})); });
   // A few moments worth a reaction (most tools get just their icon): a push
   // sent off, tests that pass or fail, a commit, something deleted.
   tracker.on('tooldone', ({ session: s, agentId, payload: p, failed }) => {
@@ -1231,6 +1229,7 @@ app.whenReady().then(async () => {
     if (tracker.sessions.has(to)) { tracker.sessions.delete(to); readySessions.delete(to); }
     tracker.rename(id, to);
     inbox.rename(id, to);
+    if (doing.has(id)) { doing.set(to, doing.get(id)); doing.delete(id); }
     if (readySessions.has(id)) { readySessions.delete(id); readySessions.add(to); }
     if (talkId === id) talkId = to;
     pushState();
@@ -1436,16 +1435,28 @@ app.whenReady().then(async () => {
   // The overview's lower half: folders to start a session in, and recent
   // past sessions to pick up (read only when the overview opens).
   ipcMain.handle('talk-hub', () => {
+    // (Looking through past transcripts is slow-ish: at most every 30 s.)
+    if (hubCache && Date.now() - hubCache.at < 30000) return hubCache.hub;
     const live = tracker.list();
     const folders = [...new Set([...(prefs.recentFolders || []), ...live.map((o) => o.cwd).filter(Boolean)])]
       .filter((f) => { try { return fs.statSync(f).isDirectory(); } catch { return false; } }).slice(0, 5);
     let past = [];
     try { past = history.pastSessions(new Set(live.map((o) => o.id)), 3); } catch { /* none */ }
     hubPast = past;
-    return { folders: folders.map((f) => ({ path: f, name: path.basename(f) })), past: past.map((p) => ({ id: p.id, title: p.title, where: `${path.basename(p.cwd)} · ${history.ago(p.at)}` })) };
+    hubFolders = folders;
+    const hub = { folders: folders.map((f) => ({ path: f, name: path.basename(f) })), past: past.map((p) => ({ id: p.id, title: p.title, where: `${path.basename(p.cwd)} · ${history.ago(p.at)}` })) };
+    hubCache = { at: Date.now(), hub };
+    return hub;
   });
-  ipcMain.on('talk-new', (_e, folder) => { if (folder === 'pick') newSession(); else if (typeof folder === 'string' && folder) { hideTalk(); startSession(folder); } });
-  ipcMain.on('talk-pickup', (_e, id) => { const p = hubPast.find((x) => x.id === id); if (p) { hideTalk(); pickUp(p); } });
+  // Only a folder the overview offered, and only if it's still there.
+  ipcMain.on('talk-new', (_e, folder) => {
+    if (folder === 'pick') return newSession();
+    if (!hubFolders.includes(folder)) return;
+    try { if (!fs.statSync(folder).isDirectory()) return; } catch { hubCache = null; return; }
+    hideTalk();
+    startSession(folder);
+  });
+  ipcMain.on('talk-pickup', (_e, id) => { const p = hubPast.find((x) => x.id === id); if (p) { hubCache = null; hideTalk(); pickUp(p); } });
   ipcMain.on('talk-copy', (_e, text) => { if (typeof text === 'string' && text.length < 1e6) clipboard.writeText(text); });
   // A file a turn changed, shown in Finder (never opened: it could be a program).
   ipcMain.on('talk-reveal', (_e, id, file) => {

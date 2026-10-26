@@ -229,13 +229,15 @@
     const b = document.createElement('button');
     b.className = 'copy';
     b.type = 'button';
-    b.textContent = 'Copy';
+    // (Its word is drawn by CSS, so it's never part of the text around it:
+    // not in what you select and copy, not in what find reads.)
+    b.dataset.label = 'Copy';
     b.setAttribute('aria-label', label);
     b.onclick = (e) => {
       e.stopPropagation();
       if (api.copy) api.copy(get());
-      b.textContent = 'Copied';
-      setTimeout(() => { b.textContent = 'Copy'; }, 1200);
+      b.dataset.label = 'Copied';
+      setTimeout(() => { b.dataset.label = 'Copy'; }, 1200);
     };
     return b;
   }
@@ -327,7 +329,12 @@
       let after = thinking;
       for (let i = thinking + 1; thinking >= 0 && i < s.log.length; i++) if (s.log[i].status !== 'queued') after = i;
       if (after >= 0 && ends[after]) ends[after].after(dots);
-      else if (thinking === -2) inner.append(dots);
+      else if (thinking === -2) {
+        // (Before anything still waiting to go in.)
+        let a = s.log.length - 1;
+        while (a >= 0 && s.log[a].status === 'queued') a--;
+        if (a >= 0 && ends[a]) ends[a].after(dots); else inner.prepend(dots);
+      }
       if (!switched && s.log.slice(seen).some((m) => m.who === 'claude')) {
         const w = $('wrap');
         w.classList.remove('boing'); void w.offsetWidth; w.classList.add('boing');
@@ -357,7 +364,7 @@
   function renderOthers(s) {
     const box = $('others');
     const list = s.others || [];
-    const key = JSON.stringify([s.id, list.map((o) => [o.id, o.color, o.state])]);
+    const key = JSON.stringify([s.id, list.map((o) => [o.id, o.color, o.state, o.project])]);
     if (box.dataset.key === key) return;
     box.dataset.key = key;
     box.textContent = '';

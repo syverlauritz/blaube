@@ -155,6 +155,7 @@
   .msg .code { position: relative; }
   .copy { border: 0; background: none; padding: 0 2px; font: 600 14px var(--ui); color: var(--faint); cursor: pointer; }
   .copy:hover { color: var(--ink); }
+  .copy::after { content: attr(data-label); }
   .msg .code .copy { position: absolute; top: 8px; right: 8px; background: var(--soft); border-radius: 999px; padding: 1px 8px; opacity: 0; transition: opacity .15s; }
   .msg .code:hover .copy, .msg .code .copy:focus-visible { opacity: 1; }
   /* What a turn came to, under its reply. */
