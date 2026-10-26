@@ -441,9 +441,20 @@ function erredLast(log) {
   for (let i = log.length - 1; i >= 0; i--) {
     const e = log[i];
     if ((e.who === 'you' && !e.midTurn && e.status !== 'queued') || e.who === 'claude') return '';
-    if (e.who === 'note' && e.error) return e.text; // (what it said)
+    if (e.who === 'note' && e.error && !e.runFailed) return e.text; // (what it said; a script of its own that stopped isn't Claude's error)
   }
   return '';
+}
+
+// A script Blaube ran for it (runs.js) that stopped with an error since
+// anything was said: { command, tail } (its last lines), or null.
+function runFailed(log) {
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if ((e.who === 'you' && !e.midTurn && e.status !== 'queued') || e.who === 'claude') return null;
+    if (e.who === 'note' && e.runFailed) return e.runFailed;
+  }
+  return null;
 }
 
 function stoppedLast(log) {
@@ -563,4 +574,4 @@ function alwaysLabel(updates, max = 70) {
   return text.length > max ? text.slice(0, max - 2) + '…' : text;
 }
 
-module.exports = { Inbox, frame, describe, toolName, alwaysLabel, stepText, stepDetail, turnOf, failedTests, stoppedLast, erredLast, STYLE };
+module.exports = { Inbox, frame, describe, toolName, alwaysLabel, stepText, stepDetail, turnOf, failedTests, stoppedLast, erredLast, runFailed, STYLE };

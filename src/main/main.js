@@ -491,6 +491,7 @@ function pushTalk(id, focusField = false) {
       carryAt: carryFor(id),
       failedTests: failedTests(inbox.log(id)),
       gitFailed: gitFailed(inbox.log(id)),
+      runFailed: require('./inbox').runFailed(inbox.log(id)),
       pr: prStates.get(id) || null,
       context: contextOf(id),
     }),
@@ -1788,7 +1789,8 @@ app.whenReady().then(async () => {
   runs.events.on('exit', (r) => {
     if (!r.stopped) {
       const last = runs.lastLine(r.out);
-      inbox.add(r.session, { who: 'note', text: `${r.command} stopped${r.code ? ` (code ${r.code})` : ''}${last ? `: ${last.slice(0, 200)}` : ''}`, error: !!r.code });
+      const tail = { text: String(r.out).replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/\s+$/, '') }; // (it has ended: what it printed last)
+      inbox.add(r.session, Object.assign({ who: 'note', text: `${r.command} stopped${r.code ? ` (code ${r.code})` : ''}${last ? `: ${last.slice(0, 200)}` : ''}`, error: !!r.code }, r.code ? { runFailed: { command: r.command, tail: tail.text.split('\n').slice(-30).join('\n').slice(-3000) } } : {}));
       if (r.code && win) win.webContents.send('say', { id: r.session, text: `${r.name} stopped`, seconds: 5, status: true });
     }
     if (talkId === r.session) pushTalk(r.session);

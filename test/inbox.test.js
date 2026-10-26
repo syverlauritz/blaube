@@ -604,3 +604,12 @@ test('a turn started from a message Blaube sent with an id can be put back to it
   inbox.replied('s1', 'Done again.');
   assert.equal(inbox.log('s1').at(-1).turn.rewind, undefined, 'none without an id');
 });
+
+test('a script that stopped is not Claude’s error, and counts until something is said', () => {
+  const { erredLast, runFailed } = require('../src/main/inbox.js');
+  const failed = { who: 'note', text: 'npm run dev stopped (code 1): boom', error: true, runFailed: { command: 'npm run dev', tail: 'boom' } };
+  assert.equal(erredLast([{ who: 'you', text: 'hi' }, failed]), '');
+  assert.deepEqual(runFailed([{ who: 'you', text: 'hi' }, failed]), { command: 'npm run dev', tail: 'boom' });
+  assert.equal(runFailed([failed, { who: 'you', text: 'fix it' }]), null);
+  assert.equal(runFailed([failed, { who: 'claude', text: 'fixed' }]), null);
+});

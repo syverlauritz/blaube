@@ -210,3 +210,9 @@ test('changes requested on its pull request: Answer the review', () => {
   assert.deepEqual(q.map((a) => a.label), ['Fix the checks', 'Answer the review', 'Run tests']);
   assert.match(q[1].prompt, /changes on pull request #9.*gh pr view 9 --comments/);
 });
+
+test('a script the box ran that stopped with an error: Fix it, with its last lines', () => {
+  const q = quickActions(null, 'done', { runFailed: { command: 'npm run dev', tail: 'Error: port 3000 in use' } });
+  assert.equal(q[0].label, 'Fix it');
+  assert.match(q[0].prompt, /^`npm run dev` stopped with an error\. Its last lines:\n\n```\nError: port 3000 in use\n```/);
+});

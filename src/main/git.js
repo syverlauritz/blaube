@@ -37,7 +37,8 @@ function summary(st) {
 const MAIN = /^(main|master|trunk|develop)$/;
 
 // What you might want next, as { label, prompt }: only while it isn't busy.
-// `more`: { stopped: you stopped its last turn, failedTests: the test
+// `more`: { stopped: you stopped its last turn, runFailed: { command, tail }
+// of a script the box ran that stopped with an error, failedTests: the test
 // command that failed in it, context: how full its context is (%),
 // apiError: its last turn ended on an API error; pr: its branch's pull
 // request (pr.js); gitFailed: 'push' or
@@ -57,6 +58,9 @@ function quickActions(st, state, more = {}) {
     else if (more.carryAt) out.push({ label: `Carry on at ${more.carryAt.label}`, prompt: 'Carries on by itself when your usage limit lifts', later: more.carryAt.at });
     out.push({ label: 'Try again', prompt: 'Carry on where you left off.' });
   }
+  // (A dev server it runs from the box that stopped with an error: its last
+  // lines go along.)
+  if (more.runFailed) out.push({ label: 'Fix it', prompt: `\`${more.runFailed.command}\` stopped with an error. Its last lines:\n\n\`\`\`\n${more.runFailed.tail}\n\`\`\`\n\nFind out why and fix it, then tell me what was wrong.` });
   if (more.failedTests) out.push({ label: 'Fix the tests', prompt: `The tests failed (\`${more.failedTests}\`). Fix them, then run them again and tell me what was wrong.` });
   const n = st ? st.changed + st.untracked : 0;
   if (st && st.conflicts) out.push({ label: 'Fix conflicts', prompt: 'There are merge conflicts. Resolve them, keeping both sides’ intent, then tell me what you chose.' });

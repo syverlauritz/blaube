@@ -470,6 +470,11 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await until(() => box(`!document.body.classList.contains('overview')`));
 	await box(`[...[...document.querySelectorAll('#bg li')].find((l) => l.firstChild.textContent === 'dev').querySelectorAll('button')].find((b) => b.textContent === 'Stop').click()`);
 	check(await until(() => box(`![...document.querySelectorAll('#bg li')].some((l) => l.firstChild.textContent === 'dev')`), 10000) && !inbox.log(ID3).some((e) => /npm run dev stopped/.test(e.text || '')), 'Stop stops it, and that’s no news');
+	fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ name: 'tax', scripts: { dev: 'node -e "console.error(\'Error: port 3000 in use\'); process.exit(1)"' } }));
+	await type('/run dev');
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'note' && /^npm run dev stopped \(code 1\)/.test(e.text) && e.runFailed), 30000), 'a dev server that crashes says so');
+	check(await until(() => box(`(() => { const b = document.querySelector('#quick button'); return !!b && b.textContent === 'Fix it' && /port 3000 in use/.test(b.title); })()`)), 'with Fix it, its last lines going along');
+	check(await until(() => box(`![...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Try again')`)), 'and it isn’t taken for Claude’s own error');
 	fs.rmSync(path.join(repo, 'package.json')); fs.rmSync(path.join(repo, 'server.js'));
 	// Files named in a reply open right in the box; a long reply's rest is a tap away.
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'what did you change?' });
