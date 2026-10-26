@@ -498,6 +498,7 @@ function pushTalk(id, focusField = false) {
     focus: focusField,
     // Its git status and what you might ask for next (see git.js).
     git: gitLine(id),
+    turnStart: s.state === 'working' ? s.turnStart || 0 : 0, // (how long it's been at it, beside what it's doing)
     gitFiles: gitFiles(id),
     putBack: discarded.has(id) ? discarded.get(id).rel : '', // (the file whose changes you just discarded, to put back)
     editor: id.startsWith('demo-') || !editorNow() ? '' : editorNow().name, // (your code editor, to open its files in)

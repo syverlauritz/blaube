@@ -14,6 +14,14 @@
   let drawn = { entries: [], thinking: -1, open: '' }, ends = []; // what the log shows, and each entry's last element
   const dots = document.createElement('div'); // the slime thinking
   dots.className = 'dots';
+  // What it's doing, and how long it's been at it ("Editing face.js · 1m 20s"), as the terminal counts.
+  const tickDoing = () => {
+    const el = dots.querySelector('.doing');
+    const t = current && current.state === 'working' && current.turnStart ? Math.floor((Date.now() - current.turnStart) / 1000) : 0;
+    const took = t >= 10 ? (t < 60 ? `${t}s` : `${Math.floor(t / 60)}m ${t % 60}s`) : '';
+    el.textContent = [el.dataset.doing || (took ? 'Working' : ''), took].filter(Boolean).join(' · ');
+  };
+  setInterval(() => { if (current && current.state === 'working') tickDoing(); }, 1000);
   dots.innerHTML = '<i></i><i></i><i></i><span class="doing"></span><button class="bgit" type="button" hidden title="Let it carry on in the background (Ctrl+B in the terminal)">Run in background</button><ul class="helpers"></ul>'; // and what it's doing ("Editing face.js"), and its helpers
   dots.querySelector('.bgit').onclick = (e) => { e.currentTarget.hidden = true; if (current) api.background(current.id); };
   const drafts = new Map(); // what you'd typed, per session
@@ -629,7 +637,8 @@
         if (s.log[i].who === 'you' && s.log[i].status !== 'queued') { thinking = i; break; }
       }
     }
-    dots.querySelector('.doing').textContent = s.doing || '';
+    dots.querySelector('.doing').dataset.doing = s.doing || '';
+    tickDoing();
     dots.querySelector('.bgit').hidden = !s.canBackground || !api.background;
     // Helpers it sent off, each with what it's on ("Finding the tax tables:
     // Reading rates.js"); one waiting on you says so.

@@ -548,6 +548,10 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	fs.writeFileSync(fakeEd, `#!/bin/sh\necho "$@" > '${edLog}'\n`, { mode: 0o755 });
 	global.__blaubeEditor = { name: 'VS Code', bin: fakeEd, kind: 'code' };
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'what did you change?' });
+	// While it works: how long it's been at it, as the terminal counts.
+	tracker.sessions.get(ID3).turnStart = Date.now() - 75e3;
+	await tool({ session_id: ID3, cwd: repo, hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: path.join(repo, 'notes.md') } });
+	check(await until(() => box(`/^Reading notes\\.md · 1m \\d+s$/.test((document.querySelector('#inner .dots .doing') || {}).textContent || '')`), 8000), `what it’s doing says how long it’s been at it (${await box(`(document.querySelector('#inner .dots .doing') || {}).textContent`)})`);
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'Stop', last_assistant_message: 'I changed `src/tax.js:1` and [the notes](notes.md#L1), not `nope.js` or `console.log`.\n\n' + 'All of it. '.repeat(500) + 'THE END' });
 	check(await until(() => box(`(() => { const l = [...document.querySelectorAll('#inner .msg.claude .filelink')].map((e) => e.textContent).join(); return l === 'src/tax.js:1,the notes'; })()`)), 'files named in a reply become tappable (only real ones)');
 	await box(`[...document.querySelectorAll('#inner .filelink')].find((e) => e.textContent === 'src/tax.js:1').click()`);
@@ -646,7 +650,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => (global.__blaubeNudged || {}).id === ID3 && /^\d+ files? changed, not committed yet$/.test(global.__blaubeNudged.text), 10000), `a while after it finished with changes uncommitted, its slime says so (${(global.__blaubeNudged || {}).text})`);
 	global.__blaubeNudged = null;
 	await sleep(2500);
-	check(!global.__blaubeNudged, 'once, not every time it looks');
+	check(!global.__blaubeNudged, `once, not every time it looks (${JSON.stringify(global.__blaubeNudged)})`);
 	global.__blaubeNudgeAfter = null;
 	await hook({ session_id: ID3, hook_event_name: 'SessionEnd' });
 	await page(`window.blaube.talk(${JSON.stringify(ID)}, { x: 300, y: 600, r: 60 })`);
