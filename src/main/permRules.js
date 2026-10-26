@@ -43,6 +43,27 @@ function remove(file, rule) {
   return true;
 }
 
+// Lets it do something without asking: `rule` into `file`'s allow list
+// (made if need be; everything else in it kept). Only a rule that looks
+// like one: Tool or Tool(what). Returns whether it was added (false: it
+// was there already). Throws if it can't.
+const RULE = /^[A-Za-z][\w.-]*(?:\([^()\n]{1,300}\))?$/;
+function add(file, rule) {
+  rule = String(rule || '').trim();
+  if (!RULE.test(rule)) throw new Error('that doesn’t look like a rule: Bash(npm test:*), Edit, WebFetch(domain:example.com)');
+  let j = {};
+  if (fs.existsSync(file)) { j = readJson(file); if (!j || typeof j !== 'object' || Array.isArray(j)) throw new Error(`${file} isn’t settings Blaube can read`); }
+  j.permissions = j.permissions && typeof j.permissions === 'object' ? j.permissions : {};
+  const allow = Array.isArray(j.permissions.allow) ? j.permissions.allow : [];
+  if (allow.includes(rule)) return false;
+  j.permissions.allow = [...allow, rule];
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.blaube-${process.pid}`;
+  fs.writeFileSync(tmp, JSON.stringify(j, null, 2) + '\n');
+  fs.renameSync(tmp, file);
+  return true;
+}
+
 // "Bash(npm test:*)" -> "npm test…" in Bash; "Edit" -> "Edit (anything)".
 function label(rule) {
   const m = /^([\w.-]+)\((.*)\)$/.exec(rule);
@@ -51,4 +72,4 @@ function label(rule) {
   return m[1] === 'Bash' ? `Run ${what}` : `${m[1]}: ${what}`;
 }
 
-module.exports = { files, list, remove, label };
+module.exports = { files, list, remove, add, label };

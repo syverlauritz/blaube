@@ -36,3 +36,19 @@ test('says each rule plainly', () => {
   assert.equal(rules.label('Edit'), 'Edit (anything)');
   assert.equal(rules.label('WebFetch(domain:github.com)'), 'WebFetch: domain:github.com');
 });
+
+test('adds an Always allow rule, keeping everything else', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-perm-'));
+  const file = path.join(dir, '.claude', 'settings.local.json');
+  assert.equal(rules.add(file, 'Bash(npm test:*)'), true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { permissions: { allow: ['Bash(npm test:*)'] } });
+  fs.writeFileSync(file, JSON.stringify({ model: 'opus', permissions: { allow: ['Edit'], deny: ['Bash(rm:*)'] } }));
+  assert.equal(rules.add(file, ' WebFetch(domain:example.com) '), true);
+  assert.equal(rules.add(file, 'Edit'), false, 'there already');
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { model: 'opus', permissions: { allow: ['Edit', 'WebFetch(domain:example.com)'], deny: ['Bash(rm:*)'] } });
+  assert.throws(() => rules.add(file, 'rm -rf /'));
+  assert.throws(() => rules.add(file, ''));
+  fs.writeFileSync(file, 'not json');
+  assert.throws(() => rules.add(file, 'Edit'));
+  assert.equal(fs.readFileSync(file, 'utf8'), 'not json');
+});

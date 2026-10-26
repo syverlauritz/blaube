@@ -336,6 +336,16 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await box(`document.getElementById('subname').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
 	check(await until(() => box(`document.getElementById('text').value === '/rename Tax rewrite' && document.activeElement.id === 'text'`)), 'and double-clicking it puts /rename in the field, to rename it');
 	await box(`(() => { const t = document.getElementById('text'); t.value = ''; t.dispatchEvent(new Event('input')); })()`);
+	// /permissions: what it may do without asking, added to and taken back.
+	await type('/permissions allow Bash(npm test:*)');
+	const local = path.join(repo, '.claude', 'settings.local.json');
+	check(await until(() => { try { return JSON.parse(fs.readFileSync(local, 'utf8')).permissions.allow.includes('Bash(npm test:*)'); } catch { return false; } }), '/permissions allow adds a rule, to the project’s own local settings');
+	await type('/permissions');
+	check(await until(() => inbox.log(ID3).some((e) => /^Allowed without asking: Run npm test… \(this project, just you\)/.test(e.text || ''))), '/permissions lists what it may do without asking');
+	await type('/permissions remove Bash(npm test:*)');
+	check(await until(() => JSON.parse(fs.readFileSync(local, 'utf8')).permissions.allow.length === 0 && inbox.log(ID3).some((e) => e.text === 'It asks first again before: Run npm test…')), 'and /permissions remove takes it back');
+	await type('/agents');
+	check(await until(() => fs.existsSync(path.join(repo, '.claude', 'agents')) && inbox.log(ID3).some((e) => /^No agents of its own yet\. Opened .+\/\.claude\/agents/.test(e.text || ''))), '/agents opens the project’s agents folder');
 	await box(`document.getElementById('git').click()`);
 	check(await until(() => box(`[...document.querySelectorAll('#gitFiles li > button:first-child')].map((b) => b.textContent).sort().join()`).then((t) => t === 'notes.mdnew,src/tax.jsnew')), 'tapping it lists the files');
 	await box(`[...document.querySelectorAll('#gitFiles li > button:first-child')].find((b) => /tax\\.js/.test(b.textContent)).click()`);

@@ -1959,6 +1959,53 @@ app.whenReady().then(async () => {
       const doctor = own[1].toLowerCase() === 'doctor';
       return runForSession(id, `${q} ${doctor ? 'doctor' : 'update'}`, doctor ? 'Checked Claude Code (claude doctor)' : 'Updated Claude Code (claude update)');
     }
+    // "/permissions": what it may do without asking; "allow Bash(npm
+    // test:*)" adds a rule (this project, just you), "remove …" takes one back.
+    const perm = /^\/(?:permissions|allowed-tools)(?:\s+(allow|add|remove|deny)\s+(.+))?\s*$/i.exec(String(text).trim());
+    if (perm && sess && sess.cwd && !id.startsWith('demo-')) {
+      const st = gitStates.get(id);
+      const root = (st && st.root) || sess.cwd;
+      const list = permRules.list([sess.cwd, root]);
+      const rule = perm[2] ? perm[2].trim() : '';
+      if (!perm[1]) {
+        inbox.add(id, { who: 'note', text: list.length
+          ? `Allowed without asking: ${list.slice(0, 20).map((r) => `${permRules.label(r.rule)} (${r.scope.toLowerCase()})`).join(' · ')}. Add one with /permissions allow Bash(npm test:*), take one back with /permissions remove and the rule.`
+          : 'It asks before everything that needs asking. Add a rule with /permissions allow Bash(npm test:*).' });
+      } else if (/^(allow|add)$/i.test(perm[1])) {
+        try {
+          const added = permRules.add(path.join(root, '.claude', 'settings.local.json'), rule);
+          inbox.add(id, { who: 'note', text: added ? `It may do this without asking now (this project, just you): ${permRules.label(rule)}` : `It could already: ${permRules.label(rule)}` });
+        } catch (e) { inbox.add(id, { who: 'note', text: `Couldn’t add it: ${e.message}`, error: true }); }
+      } else {
+        const r = list.find((x) => x.rule === rule);
+        if (r && permRules.remove(r.file, r.rule)) inbox.add(id, { who: 'note', text: `It asks first again before: ${permRules.label(r.rule)}` });
+        else inbox.add(id, { who: 'note', text: `There’s no rule ${rule} to take back (/permissions lists them)`, error: true });
+      }
+      return;
+    }
+    // "/config" and "/hooks": your Claude Code settings file, opened in your
+    // editor; "/agents": the project's own agents (.claude/agents).
+    const cfg = /^\/(config|settings|hooks|agents)\s*$/i.exec(String(text).trim());
+    if (cfg && sess && !id.startsWith('demo-')) {
+      const st = gitStates.get(id);
+      const root = (st && st.root) || sess.cwd;
+      try {
+        if (cfg[1].toLowerCase() === 'agents') {
+          if (!root) return;
+          const dir = path.join(root, '.claude', 'agents');
+          const names = [dir, path.join(os.homedir(), '.claude', 'agents')].flatMap((d) => { try { return fs.readdirSync(d).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3)); } catch { return []; } });
+          fs.mkdirSync(dir, { recursive: true });
+          if (!TEST) shell.openPath(dir);
+          inbox.add(id, { who: 'note', text: `${names.length ? `Its agents: ${[...new Set(names)].join(', ')}. ` : 'No agents of its own yet. '}Opened ${path.basename(root)}/.claude/agents: each .md there is one (a name, what it's for, its instructions).` });
+        } else {
+          const file = path.join(os.homedir(), '.claude', 'settings.json');
+          if (!fs.existsSync(file) && !TEST) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, '{}\n'); }
+          if (!TEST) shell.openPath(file);
+          inbox.add(id, { who: 'note', text: `Opened your Claude Code settings (~/.claude/settings.json)${cfg[1].toLowerCase() === 'hooks' ? ', where hooks go' : ''}` });
+        }
+      } catch (e) { inbox.add(id, { who: 'note', text: `Couldn’t open it: ${e.message}`, error: true }); }
+      return;
+    }
     // "/login": Claude Code signed in through your browser (see auth.js).
     if (/^\/login\s*$/i.test(String(text).trim())) {
       if (owned.findClaude() || owned.shellPath()) return signIn(id);
