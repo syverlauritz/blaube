@@ -1142,8 +1142,12 @@
       const b = document.createElement('button');
       b.type = 'button';
       b.textContent = q.label;
-      b.title = q.run === 'push' ? 'Runs git push right here' : q.run === 'pull' ? 'Runs git pull right here (only if it needs no merge)' : q.run === 'finish' ? `Runs ${q.label === 'Continue the rebase' ? 'git rebase --continue' : 'git commit --no-edit'} right here` : q.prompt;
-      b.onclick = () => { if (!current) return; if (q.here) api.continueHere(current.id); else if (q.signIn) api.signIn(current.id); else if (q.bring) api.bringHere(current.id); else if ('later' in q) api.later(current.id, q.later); else if (q.run && api.gitRun) api.gitRun(current.id, q.run); else if (q.install && api.install) api.install(current.id); else if (q.env && api.makeEnv) api.makeEnv(current.id); else api.send(current.id, q.prompt); box.hidden = true; };
+      b.title = q.run === 'push' ? 'Runs git push right here' : q.run === 'pull' ? 'Runs git pull right here (only if it needs no merge)' : q.run === 'finish' ? `Runs ${q.label === 'Continue the rebase' ? 'git rebase --continue' : 'git commit --no-edit'} right here` : q.sure ? `${q.prompt} (tap twice)` : q.prompt;
+      // (One that can't be taken back asks to be sure: a second tap.)
+      let sureAt = 0;
+      const was = b.textContent;
+      if (q.sure) b.classList.add('careful');
+      b.onclick = () => { if (!current) return; if (q.sure && Date.now() - sureAt > 4000) { sureAt = Date.now(); b.textContent = q.sure; b.classList.add('sure'); setTimeout(() => { if (Date.now() - sureAt >= 4000) { b.textContent = was; b.classList.remove('sure'); } }, 4100); return; } if (q.here) api.continueHere(current.id); else if (q.signIn) api.signIn(current.id); else if (q.bring) api.bringHere(current.id); else if ('later' in q) api.later(current.id, q.later); else if (q.run && api.gitRun) api.gitRun(current.id, q.run); else if (q.install && api.install) api.install(current.id); else if (q.env && api.makeEnv) api.makeEnv(current.id); else api.send(current.id, q.prompt); box.hidden = true; };
       box.append(b);
     }
   }

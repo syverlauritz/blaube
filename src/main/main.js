@@ -1164,7 +1164,7 @@ function notify(s, event, text, secs = 0) {
   // (A question: a tap on an answer, or one in your own words.)
   const askReply = ask && ask.kind === 'tool' && n.actions;
   // (Done: its first two quick actions as buttons, Commit or Fix the tests, say.)
-  const quick = event === 'done' && !n.actions && doQuick ? quickFor(s.id, s).filter((q) => !q.here && !q.signIn && !q.bring && !('later' in q)).slice(0, 2) : [];
+  const quick = event === 'done' && !n.actions && doQuick ? quickFor(s.id, s).filter((q) => !q.here && !q.signIn && !q.bring && !q.sure && !('later' in q)).slice(0, 2) : [];
   const buttons = n.actions || (quick.length ? quick.map((q) => q.label) : null);
   const answer = (label) => inbox.decide(s.id, ask.key, 'allow', { [n.question]: label });
   const note = new Notification(Object.assign({ title: n.title, body: n.body }, event === 'done' ? { hasReply: true, replyPlaceholder: `Reply to ${s.project}` } : askReply ? { hasReply: true, replyPlaceholder: 'Or say what to do instead' } : n.question ? { hasReply: true, replyPlaceholder: 'Or answer in your words' } : {},
@@ -1634,7 +1634,7 @@ function trayMenu() {
     }
     // Free: its quick actions (Commit, Push, Fix the checks…), as in its box.
     if ((o.state === 'done' || o.state === 'idle') && doQuick) {
-      for (const q of quickFor(o.id, o).filter((x) => !x.here && !x.signIn && !x.bring && !('later' in x))) acts.push({ label: q.label, toolTip: q.prompt, click: () => doQuick(o.id, q) });
+      for (const q of quickFor(o.id, o).filter((x) => !x.here && !x.signIn && !x.bring && !x.sure && !('later' in x))) acts.push({ label: q.label, toolTip: q.prompt, click: () => doQuick(o.id, q) });
     }
     return acts.length ? Object.assign(row, { submenu: [{ label: 'Open', click: open }, { type: 'separator' }, ...acts] }) : Object.assign(row, { click: open });
   });
@@ -2769,11 +2769,11 @@ app.whenReady().then(async () => {
     const pr = prStates.get(id);
     const cmd = s && st && s.state !== 'working' && s.state !== 'waiting' && git.command(run, st, pr);
     if (!cmd) return;
-    const as = run === 'push' ? `Pushed ${st.branch || 'it'}` : run === 'home' ? `Back on ${pr.base}, up to date, ${st.branch} deleted` : run === 'finish' ? (st.midway === 'rebase' ? 'Carried on with the rebase' : 'Finished the merge') : `Pulled into ${st.branch || 'it'}`;
+    const as = run === 'push' ? `Pushed ${st.branch || 'it'}` : run === 'home' ? `Back on ${pr.base}, up to date, ${st.branch} deleted` : run === 'finish' ? (st.midway === 'rebase' ? 'Carried on with the rebase' : 'Finished the merge') : run === 'abort' ? `Called off the ${st.midway}: back to how it was before` : `Pulled into ${st.branch || 'it'}`;
     const entry = runForSession(id, cmd, as, (code) => {
       if (code === 0 && win) win.webContents.send('nod', id);
       if (code === 0 && run === 'push') pulls.forget(s.cwd, st.branch); // (its checks start again)
-      if (code !== 0) entry.text = run === 'finish' ? 'git couldn’t finish it (tap for why); tapping it again asks Claude to' : run === 'push' ? 'git couldn’t push (tap for why); Push again asks Claude to' : run === 'home' ? `git couldn’t do all of it (tap for why): ${st.branch} may still be there` : 'git couldn’t pull without a merge (tap for why); Pull again asks Claude to';
+      if (code !== 0) entry.text = run === 'abort' ? `git couldn’t call off the ${st.midway} (tap for why); tapping it again asks Claude to` : run === 'finish' ? 'git couldn’t finish it (tap for why); tapping it again asks Claude to' : run === 'push' ? 'git couldn’t push (tap for why); Push again asks Claude to' : run === 'home' ? `git couldn’t do all of it (tap for why): ${st.branch} may still be there` : 'git couldn’t pull without a merge (tap for why); Pull again asks Claude to';
       if (run === 'home') { prStates.delete(id); pulls.forget(s.cwd, st.branch); }
       git.forget(s.cwd);
       git.status(s.cwd, (now) => {

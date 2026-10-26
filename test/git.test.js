@@ -473,6 +473,10 @@ test('a merge or rebase midway, its conflicts settled: finished right there', ()
   assert.equal(command('finish', st({ midway: 'rebase' })), 'git -c core.editor=true rebase --continue');
   assert.equal(command('finish', st({ midway: 'merge', conflicts: 1 })), '', 'not with conflicts left');
   assert.ok(!quickActions(st({ midway: 'merge', conflicts: 1 }), 'idle').some((q) => q.run === 'finish'));
+  assert.deepEqual(merge[1], { label: 'Call off the merge', prompt: 'Runs git merge --abort right here: back to how it was before the merge started', run: 'abort', sure: 'Call it off?' });
+  assert.deepEqual(quickActions(st({ midway: 'rebase', conflicts: 1 }), 'idle').slice(0, 2).map((q) => q.label), ['Fix conflicts', 'Call off the rebase']);
+  assert.equal(command('abort', st({ midway: 'rebase' })), 'git rebase --abort');
+  assert.equal(command('abort', st({})), '');
   const failed = quickActions(st({ midway: 'merge' }), 'idle', { gitFailed: 'finish' })[0];
   assert.ok(failed.label === 'Finish the merge' && !failed.run && /finish it with a commit/.test(failed.prompt), 'when git couldn’t, Claude is asked');
 });

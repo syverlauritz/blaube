@@ -594,6 +594,15 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await box(`document.querySelector('#quick button').click()`);
 	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'Finished the merge' && e.ok && !e.running) && gq('log', '-1', '--format=%p').split(' ').length === 2, 15000), 'a tap commits the merge, git itself');
 	check(await until(() => box(`![...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Finish the merge')`), 10000), 'and it isn’t offered again');
+	gq('reset', '-q', '--keep', 'HEAD~1');
+	// Or called off: back to before it started, two taps.
+	try { gq('merge', 'clash-b'); } catch {}
+	const callOff = `[...document.querySelectorAll('#quick button')].find((b) => b.textContent === 'Call off the merge' || b.textContent === 'Call it off?')`;
+	check(await until(() => box(`(() => { const b = ${callOff}; return !!b && /git merge --abort/.test(b.title); })()`), 10000), 'a merge in conflict can be called off');
+	await box(`${callOff}.click()`);
+	check(await until(() => box(`${callOff}.textContent === 'Call it off?'`)) && fs.existsSync(path.join(repo, '.git', 'MERGE_HEAD')), 'one tap asks to be sure, and calls off nothing yet');
+	await box(`${callOff}.click()`);
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'Called off the merge: back to how it was before' && e.ok) && !fs.existsSync(path.join(repo, '.git', 'MERGE_HEAD')) && fs.readFileSync(clash, 'utf8') === 'mine\n', 15000), 'a second tap calls it off, git merge --abort');
 	gq('reset', '-q', '--keep', before); gq('branch', '-D', 'clash-b'); gq('config', '--unset', 'user.name'); gq('config', '--unset', 'user.email');
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'what did you change?' });
 	// While it works: how long it's been at it, as the terminal counts.

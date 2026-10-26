@@ -79,6 +79,8 @@ function quickActions(st, state, more = {}) {
   const direct = (run) => (more.gitFailed === run ? {} : { run });
   // (A merge or rebase midway, its conflicts settled: finished right there.)
   if (st && st.midway && !st.conflicts) out.unshift(Object.assign(st.midway === 'rebase' ? { label: 'Continue the rebase', prompt: 'A rebase is under way and its conflicts are settled: continue it (resolving any new conflicts, keeping both sides’ intent), then tell me what you chose.' } : { label: 'Finish the merge', prompt: 'A merge is under way and its conflicts are settled: finish it with a commit, then tell me what it brought in.' }, direct('finish')));
+  // (Or called off, back to before it started: a second tap to be sure.)
+  if (st && st.midway && more.gitFailed !== 'abort') out.splice(st.conflicts ? out.findIndex((q) => q.label === 'Fix conflicts') + 1 : 1, 0, { label: `Call off the ${st.midway}`, prompt: `Runs git ${st.midway} --abort right here: back to how it was before the ${st.midway} started`, run: 'abort', sure: 'Call it off?' });
   if (st && !n && (st.ahead || unpushed)) out.push(Object.assign({ label: 'Push', prompt: unpushed ? 'Push this branch and set its upstream.' : 'Push this branch.' }, direct('push')));
   // (Its pull request, if it has one (see pr.js): failing checks first.)
   const pr = more.pr && more.pr.state === 'OPEN' ? more.pr : null;
@@ -160,6 +162,7 @@ function diff(root, rel, how, cb) {
 function command(run, st, pr = null, platform = process.platform) {
   if (run === 'push') return st && !st.upstream ? 'git push --set-upstream origin HEAD' : 'git push';
   if (run === 'pull') return 'git pull --ff-only';
+  if (run === 'abort') return st && st.midway ? `git ${st.midway} --abort` : '';
   if (run === 'finish') return !st || !st.midway || st.conflicts ? '' : st.midway === 'rebase' ? 'git -c core.editor=true rebase --continue' : 'git commit --no-edit';
   if (run === 'home') {
     const base = pr && pr.state === 'MERGED' && branchName(pr.base), branch = st && branchName(st.branch);
