@@ -1917,9 +1917,9 @@
       } else if (p.stage === 'boo' && time - p.at > 1.5) b.prank = null;
       return;
     }
-    if (!calmOf(b) || time < (b.nextPrank ?? (b.nextPrank = time + (60 + Math.random() * 180) / CFG.pranks))) return;
+    if (!calmOf(b) || time < (b.nextPrank ?? (b.nextPrank = time + (90 + Math.random() * 210) / CFG.pranks))) return;
     const d = new Date(), spooky = d.getMonth() === 9 && d.getDate() === 31;
-    b.nextPrank = time + (spooky ? 25 + Math.random() * 40 : 120 + Math.random() * 360) / CFG.pranks;
+    b.nextPrank = time + (spooky ? 30 + Math.random() * 60 : 240 + Math.random() * 480) / CFG.pranks;
     const c = b.body.centroid(), r = b.body.o.radius;
     const others = [...buddies.values()].filter((o) => o !== b && o.big && calmOf(o) && Math.abs(o.body.centroid().y - c.y) < r && Math.abs(o.body.centroid().x - c.x) < r * 12);
     if (!others.length) return;
