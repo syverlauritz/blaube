@@ -804,7 +804,13 @@
       stop.textContent = 'Stop';
       stop.title = `Ask Claude to stop ${t.command}`;
       stop.onclick = () => { if (!current) return; stop.disabled = true; api.send(current.id, `Stop the background task “${t.label}” (id ${t.id}, \`${t.command}\`).`); };
-      li.append(name, stop);
+      // (And what it has printed lately, asked of Claude too.)
+      const peek = document.createElement('button');
+      peek.type = 'button';
+      peek.textContent = 'Output';
+      peek.title = `Ask Claude what ${t.command} has printed lately`;
+      peek.onclick = () => { if (!current) return; api.send(current.id, `What has the background task “${t.label}” (id ${t.id}, \`${t.command}\`) printed lately? Show me the last lines that matter, and say if anything looks wrong.`); };
+      li.append(name, peek, stop);
       box.append(li);
     }
     requestAnimationFrame(fitWindow);
