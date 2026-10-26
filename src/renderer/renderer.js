@@ -5163,7 +5163,7 @@
     else if (time < (b.squirmUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
     else if (time < (b.wantsPetsUntil || 0) && time > (b.pettedUntil || 0)) { expression = 'normal'; mouth = 'smile'; }
     else if (time - (b.sneezedAt ?? -9) < 0.5) { expression = 'happy'; mouth = 'flat'; }
-    else if (b.gaveUp && time - b.gaveUp.at < 10) { expression = 'worried'; mouth = 'worried'; } // (couldn't get to mum)
+    else if (b.gaveUp && time - b.gaveUp.at < 10) { expression = 'sad'; mouth = 'worried'; } // (couldn't get to mum)
     else if (b.merging && b.kind === 'child') { expression = 'happy'; mouth = 'smile'; }
     else if (nodding(b)) { expression = 'happy'; mouth = 'smile'; }
     else if (time < (b.pettedUntil || 0)) { expression = 'happy'; mouth = 'grin'; }

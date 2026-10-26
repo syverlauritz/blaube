@@ -196,6 +196,31 @@
           ctx.fill();
           break;
         }
+        case 'sad': {
+          // Droopy: the top lid comes down, lower at the outer corner, and
+          // it looks down.
+          const open = Math.max(0.08, 1 - face.blink);
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(x - side * ew * 1.3, y - eh * 0.2);
+          ctx.lineTo(x + side * ew * 1.3, y + eh * 0.25);
+          ctx.lineTo(x + side * ew * 1.3, y + eh * 2);
+          ctx.lineTo(x - side * ew * 1.3, y + eh * 2);
+          ctx.closePath();
+          ctx.clip();
+          ctx.fillStyle = s.eyeWhites ? '#fff' : ink;
+          ctx.beginPath();
+          ctx.ellipse(x, y + eh * 0.1, ew * (s.eyeWhites ? 1 : 0.8), eh * (s.eyeWhites ? 1 : 0.8) * open, 0, 0, Math.PI * 2);
+          ctx.fill();
+          if (s.eyeWhites && open > 0.3) {
+            ctx.fillStyle = ink;
+            ctx.beginPath();
+            ctx.arc(x, y + eh * 0.45, ew * s.pupilSize, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+          break;
+        }
         case 'meditate':
           // Calm, half-closed white eyes.
           ctx.fillStyle = '#fff';
@@ -260,10 +285,11 @@
           }
         }
       }
-      if (s.brows && (face.expression === 'worried' || face.expression === 'concentrate' || face.expression === 'pained' || face.expression === 'annoyed' || face.expression === 'peek')) {
+      if (s.brows && (face.expression === 'worried' || face.expression === 'concentrate' || face.expression === 'pained' || face.expression === 'annoyed' || face.expression === 'peek' || face.expression === 'sad')) {
         // Concentrating: level brows that only sometimes pull together.
         // Annoyed: pulled down hard at the middle. Peeking: level and calm.
-        const tilt = face.expression === 'concentrate' ? 0.9 * (face.furrow || 0) : face.expression === 'annoyed' ? 1.1 : face.expression === 'peek' ? 0 : -1;
+        // Sad: steeply up at the middle.
+        const tilt = face.expression === 'concentrate' ? 0.9 * (face.furrow || 0) : face.expression === 'annoyed' ? 1.1 : face.expression === 'peek' ? 0 : face.expression === 'sad' ? -2 : -1;
         const lift = face.expression === 'concentrate' ? (face.raise || 0) * eh * 0.4 : 0;
         ctx.beginPath();
         ctx.moveTo(x - ew * side, y - eh * 1.35 + tilt * eh * 0.25 - lift);
