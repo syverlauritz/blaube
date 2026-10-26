@@ -146,9 +146,14 @@
     ctx.lineWidth = r * 0.06 * s.faceLine;
     ctx.strokeStyle = ink;
 
+    // Hovered while it works, its eyes open (peek eases 0..1): past a
+    // squeeze they're open eyes, opening the rest of the way.
+    const peek = face.peek || 0;
+    const eyes = (face.expression === 'concentrate' || face.expression === 'meditate') && peek > 0.15 ? 'open' : face.expression;
+    const opening = eyes === 'open' ? 0.15 + 0.85 * Math.min(1, (peek - 0.15) / 0.7) : 1;
     for (const side of [-1, 1]) {
       const x = side * ex, y = ey;
-      switch (face.expression) {
+      switch (eyes) {
         case 'happy':
           ctx.beginPath();
           ctx.arc(x, y + eh * 0.25, ew * 0.85, Math.PI * 1.1, Math.PI * 1.9);
@@ -199,7 +204,7 @@
           ctx.fill();
           break;
         default: {
-          const open = Math.max(0.08, 1 - face.blink) * (face.squint ? 0.3 : 1);
+          const open = Math.max(0.08, (1 - face.blink) * opening) * (face.squint ? 0.3 : 1);
           const wk = 1 + 0.35 * (face.wide || 0); // wide eyes when startled
           const ew = ew0 * wk, eh = eh0 * wk;
           if (effort === 'low') {

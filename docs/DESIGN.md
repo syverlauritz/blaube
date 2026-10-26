@@ -43,6 +43,13 @@ ships that breaks a "must".
   for a moment, pull together or lift. This face is approved: do not redesign it.
   (Open "glancing up" eyes read shell-shocked; half-lidded eyes read bored
   and judging; keep those for specific reactions only.)
+- Hovered while it works, it looks up at you: its eyes ease fully open (no
+  squint, no half-lid, brows staying, still blinking) and follow the cursor;
+  when you move off they ease shut again. Dizzy, struggling, shy or talking
+  faces win over it.
+- The Halloween ghost: a plain white sheet (flat, no outline) draped over
+  the body and whatever it wears, with two dark eye holes and a scalloped
+  hem; it is pulled down over the head and pulled off upward, never popped.
 - Faces turn far toward the mouse (the face slides round the head); the
   "Eyes follow the mouse" amount is set high on purpose.
 - Pets are small rigid squares with black beady eyes, in a shade of their

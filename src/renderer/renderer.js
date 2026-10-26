@@ -629,7 +629,7 @@
 
   // The shots script (scripts/shots) opens the window with ?debug to look
   // inside while it plays a scene.
-  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, now: () => time, sys, spoken, input: { down: (e) => onDown(e), move: (e) => onMove(e), up: (e) => onUp(e) }, ownMouse: false };
+  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, now: () => time, sys, spoken, input: { down: (e) => onDown(e), move: (e) => onMove(e), up: (e) => onUp(e) }, ownMouse: false, ghost: (b, o) => ghostNow(b, o) };
   const petSize = () => 34 * CFG.size;
 
   function syncPets(sessions) {
@@ -2565,6 +2565,7 @@
     b.flip = null; b.forceFlip = false;
     b.trick = null; b.tumble = null; b.roll = null;
     b.bounceAt = 0; b.sneeze = null;
+    unsheet(b); if (b.ghostBy) unsheet(b.ghostBy); // (a ghost, or the one it was creeping up on)
     b.body.o.upright = CFG.upright;
     b.body.calm(400, DT);
   }
@@ -2850,7 +2851,7 @@
   // it pops up tall, "boo!".
   function trickTreat(b) {
     if (CFG.trickTreat <= 0 || b.kind !== 'mother') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.frog && !o.tower && !o.rope && !o.seek && !o.pile && !o.keepy && !o.measure && !o.roll && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.ghost && !o.ghostBy && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.frog && !o.tower && !o.rope && !o.seek && !o.pile && !o.keepy && !o.measure && !o.roll && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.tot;
     if (g) {
       const o = g.o, end = () => { b.tot = null; o.totBy = null; };
@@ -2914,24 +2915,25 @@
     const g = b.ghost, body = b.body;
     if (g) {
       const t = time - g.at, o = g.o, r = body.o.radius;
-      const end = () => { b.ghost = null; if (o) o.ghostBy = null; };
-      if (b.dying || t > 16 || (o && (o.dying || o.merging))) { end(); return; }
+      // Anything that cuts it short (picked up, the other one picked up or
+      // gone, called to work) takes the sheet off the usual way, never in
+      // one frame.
+      if (g.stage !== 'off' && (b.dying || body.grab || t > 16 || b.merging || (b.state !== 'idle' && b.state !== 'done') || !o || o.dying || o.merging || o.body.grab)) { unsheet(b); return; }
       b.nextHop = time + 1;
-      g.amt = g.stage === 'off' ? Math.max(0, 1 - (time - g.offAt) / 0.5) : Math.min(1, t / 0.5);
-      if (body.grab) { if (g.stage !== 'off') { g.stage = 'off'; g.offAt = time; } }
       if (g.stage === 'on' && t > 0.8) { g.stage = 'creep'; g.next = time; }
       if (g.stage === 'creep') {
         const c = body.centroid(), oc = o.body.centroid(), dx = oc.x - c.x;
-        // Sway as it goes, woo-ooo.
+        // Sway as it goes, woo-ooo. (It stops further off than its own
+        // size: the sheet is wider than it is.)
         body.lean(Math.sin(t * 3) * r * 5 * DT, DT);
-        if (Math.abs(dx) < r + o.body.o.radius * 1.4) { g.stage = 'boo'; g.booAt = time; quip(b, 'boooo!', 1.4); body.squashTop(-r * 14, DT); return; }
+        if (Math.abs(dx) < r * 1.4 + o.body.o.radius * 1.4) { g.stage = 'boo'; g.booAt = time; quip(b, 'boooo!', 1.4); body.squashTop(-r * 14, DT); return; }
         if (time > g.next && body.onFloor() && !b.pendingHop) {
           g.next = time + 0.55;
-          const v = launch(Math.sign(dx) * Math.min(Math.abs(dx) - (r + o.body.o.radius) * 1.1, r * 1.2), r * 0.35);
+          const v = launch(Math.sign(dx) * Math.min(Math.abs(dx) - (r * 1.3 + o.body.o.radius) * 1.1, r * 1.2), r * 0.35);
           body.impulse(-body.velocity(DT).x, 0, DT);
           b.hop(v.vx, v.vy);
         }
-        if (time - g.at > 10) { g.stage = 'off'; g.offAt = time; }
+        if (t > 10) unsheet(b);
         return;
       }
       if (g.stage === 'boo') {
@@ -2946,17 +2948,17 @@
           bristle(o);
           quip(o, 'eek!', 1);
         }
-        if (bt > 1.8) { g.stage = 'off'; g.offAt = time; quip(b, "it's me!", 1.2); b.cheerUntil = time + 1.8; }
+        if (bt > 1.8) { unsheet(b); g.reveal = true; quip(b, "it's me!", 1.2); b.cheerUntil = time + 1.8; }
         return;
       }
       if (g.stage === 'off') {
         const ot = time - g.offAt;
-        if (o && ot > 0.7 && !g.laughed && !o.dying) { g.laughed = true; quip(o, Math.random() < 0.5 ? 'haha' : 'not funny!', 1); if (Math.random() < 0.6) o.cheerUntil = time + 1.2; else { o.annoyedAt = b; o.annoyedUntil = time + 1.2; } }
-        if (ot > 1.6) end();
+        if (g.reveal && o && ot > 0.7 && !g.laughed && !o.dying) { g.laughed = true; quip(o, Math.random() < 0.5 ? 'haha' : 'not funny!', 1); if (Math.random() < 0.6) o.cheerUntil = time + 1.2; else { o.annoyedAt = b; o.annoyedUntil = time + 1.2; } }
+        if (ot > (g.reveal ? 1.6 : GHOST_OFF)) { b.ghost = null; if (o && o.ghostBy === b) o.ghostBy = null; }
       }
       return;
     }
-    if (CFG.ghosts <= 0 || CFG.seasons <= 0 || !spooky() || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || !body.onFloor() || b.merging || b.dying || b.tower || b.pile || b.rope || b.seek || b.balloon || b.frog || b.tag || b.parade || b.tot || b.shape || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
+    if (CFG.ghosts <= 0 || CFG.seasons <= 0 || !spooky() || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || !body.onFloor() || b.merging || b.dying || b.tower || b.pile || b.rope || b.seek || b.balloon || b.frog || b.tag || b.parade || b.tot || b.shape || b.prank || b.trick || b.roll || b.tumble || b.flip || b.ghostBy || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
     if (time < (b.nextGhost ?? (b.nextGhost = time + (120 + Math.random() * 300) / CFG.ghosts))) return;
     b.nextGhost = time + (300 + Math.random() * 500) / CFG.ghosts;
     const c = body.centroid(), r = body.o.radius;
@@ -2964,37 +2966,120 @@
     if (o) ghostNow(b, o);
   }
   function ghostNow(b, o) {
-    b.ghost = { o, at: time, stage: 'on', amt: 0 };
+    b.ghost = { o, at: time, stage: 'on' };
     o.ghostBy = b;
   }
-  // The sheet: the body's outline a little bigger, a wavy hem that flutters
-  // as it goes, and two dark eye holes.
+  // Off comes the sheet (pulled up and away, see drawGhost), whatever
+  // stage it had got to: from as far on as it was.
+  function unsheet(b) {
+    const g = b.ghost;
+    if (!g || g.stage === 'off') return;
+    const on = Math.min(1, (time - g.at) / GHOST_ON);
+    g.stage = 'off';
+    g.offAt = time - GHOST_OFF * (1 - on);
+  }
+  const GHOST_ON = 0.45, GHOST_OFF = 0.5; // seconds to pull the sheet on, and off
+  // How far on the sheet is at time t, 0..1, eased in and out.
+  function sheetOn(g, t) {
+    const k = g.stage === 'off' ? 1 - Math.min(1, Math.max(0, (t - g.offAt) / GHOST_OFF)) : Math.min(1, Math.max(0, (t - g.at) / GHOST_ON));
+    return k * k * (3 - 2 * k);
+  }
+  // The sheet: draped over the body's outline (and over what it wears on
+  // its head), falling straight from its widest to a scalloped hem at the
+  // floor, with two dark eye holes where its eyes are. Pulled on, its edge
+  // comes down over the head and body; pulled off, the edge goes back up
+  // and the sheet lifts away. No outline (flat, like everything else).
   function drawGhost(b) {
     const g = b.ghost;
-    if (!g || !g.amt) return;
+    if (!g) return;
+    const on = sheetOn(g, time);
+    if (on <= 0) return;
     const body = b.body, c = body.centroid(), r = body.o.radius, n = body.n, box = body.bbox();
-    const lift = (1 - g.amt) * (g.stage === 'off' ? r * 1.5 : r * 0.6); // (pulled on from above, pulled off upward)
-    const hem = box.maxY + 1;
+    // How far out the body reaches from its middle along (dx, dy).
+    const reach = (dx, dy) => {
+      let best = 0;
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const ax = body.px[j] - c.x, ay = body.py[j] - c.y, ex = body.px[i] - body.px[j], ey = body.py[i] - body.py[j];
+        const den = dx * ey - dy * ex;
+        if (Math.abs(den) < 1e-9) continue;
+        const s = (ax * ey - ay * ex) / den, u = (ax * dy - ay * dx) / den;
+        if (s > best && u >= 0 && u <= 1) best = s;
+      }
+      return best || r;
+    };
+    // The hem trails a little behind as it goes, and sways (eased over the
+    // time between frames, so the hops don't jerk it about).
+    const since = Math.min(0.1, Math.max(0, time - (g.drawAt ?? time)));
+    g.drawAt = time;
+    const v = body.velocity(DT);
+    const want = Math.max(-r * 0.15, Math.min(r * 0.15, -v.x * 0.03));
+    g.trail = (g.trail || 0) + (want - (g.trail || 0)) * (1 - Math.exp(-since * 8));
+    const sway = g.trail + Math.sin(time * 3) * r * 0.03;
+    // Over the top: the head's own round, puffed out (wider, and taller)
+    // just enough to go over what it wears on it, as little as will do.
+    // Eased, so a swinging ear doesn't make the sheet twitch.
+    let bx = 1.06, by = 1.06, best = Infinity;
+    const tips = (body.lookTips || []).map((p) => {
+      const tx = (p.x - c.x) / r, ty = (p.y - c.y) / r, d = Math.hypot(tx, ty) || 1, k = 1 + (0.12 + (p.w / r) * 0.25) / d;
+      return [tx * k, ty * k];
+    }).filter((p) => p[1] < 0);
+    for (let sx = 1.06; sx <= 1.5; sx += 0.02) {
+      let sy = 1.06;
+      for (const [tx, ty] of tips) {
+        const q = 1 - (tx / sx) * (tx / sx);
+        sy = Math.max(sy, q > 0.08 ? -ty / Math.sqrt(q) : 9);
+      }
+      if (sy <= 2.4 && sx * sy < best) { best = sx * sy; bx = sx; by = sy; }
+    }
+    const settle = 1 - Math.exp(-since * 10);
+    g.sx = g.sx ? g.sx + (bx - g.sx) * settle : bx;
+    g.sy = g.sy ? g.sy + (by - g.sy) * settle : by;
+    // (Its skin is only so many points, so straight between them: the
+    // sheet smooths over the corners.)
+    const M = 32, dome = [];
+    let far = [];
+    for (let j = 0; j < M; j++) far.push(reach(Math.cos(-Math.PI + (Math.PI * j) / (M - 1)), Math.sin(-Math.PI + (Math.PI * j) / (M - 1))));
+    for (let pass = 0; pass < 4; pass++) far = far.map((d, j) => (j === 0 || j === M - 1 ? d : (far[j - 1] + d * 2 + far[j + 1]) / 4));
+    for (let j = 0; j < M; j++) {
+      const a = -Math.PI + (Math.PI * j) / (M - 1), dx = Math.cos(a), dy = Math.sin(a);
+      const R = far[j] + r * 0.03;
+      dome.push([c.x + dx * (R + r * (g.sx - 1)), c.y + dy * (R + r * (g.sy - 1))]);
+    }
+    // From its widest it falls to the floor, flaring a touch.
+    const hem = box.maxY + 1, L = dome[0], R = dome[M - 1], flare = r * 0.08;
+    const lx = L[0] - flare + sway, rx = R[0] + flare + sway;
+    let top = Infinity;
+    for (const p of dome) top = Math.min(top, p[1]);
+    // Pulled on, the edge comes down from over the head (and the sheet
+    // settles onto it); off, it goes back up and the sheet lifts away.
+    const lift = g.stage === 'off' ? (1 - on) * (1 - on) * r * 0.9 : (1 - on) * r * 0.25;
+    const edge = top - r * 0.15 + (hem + r * 0.25 - (top - r * 0.15)) * on;
     ctx.save();
-    ctx.globalAlpha = Math.min(1, g.amt * 1.5);
+    if (on < 1) {
+      ctx.beginPath();
+      ctx.moveTo(box.minX - r, top - r * 3);
+      ctx.lineTo(box.maxX + r, top - r * 3);
+      for (let k = 0; k <= 12; k++) ctx.lineTo(box.maxX + r - ((box.maxX - box.minX + r * 2) * k) / 12, edge - lift + Math.sin(k * 1.7 + time * 6) * r * 0.03);
+      ctx.closePath();
+      ctx.clip();
+    }
     ctx.translate(0, -lift);
     ctx.fillStyle = '#f6f4f0';
-    ctx.strokeStyle = 'rgba(40,40,60,0.12)';
-    ctx.lineWidth = 2;
     ctx.beginPath();
-    // Round the top half, then the hem along the bottom.
-    const left = box.minX - r * 0.1, right = box.maxX + r * 0.1, w = right - left, waves = 5;
-    const sway = Math.sin(time * 5) * r * 0.04;
-    const top = [];
-    for (let i = 0; i < n; i++) { const a = Math.atan2(body.py[i] - c.y, body.px[i] - c.x); if (a < 0) top.push([a, i]); }
-    top.sort((p, q) => p[0] - q[0]); // (left, over the top, to the right)
-    ctx.moveTo(left + sway, c.y);
-    for (const [, i] of top) ctx.lineTo(c.x + (body.px[i] - c.x) * 1.08, c.y + (body.py[i] - c.y) * 1.08);
-    ctx.lineTo(right + sway, c.y);
-    ctx.lineTo(right + sway * 2, hem);
-    for (let k = waves * 2; k >= 0; k--) ctx.lineTo(left + (w * k) / (waves * 2) + sway * 2, hem - (k % 2 ? r * 0.09 : 0) + Math.sin(time * 6 + k) * r * 0.02);
+    ctx.moveTo(lx, hem);
+    const drop = hem - L[1];
+    ctx.bezierCurveTo(lx, hem - drop * 0.35, L[0], L[1] + drop * 0.4, L[0], L[1]);
+    for (let j = 1; j < M - 1; j++) ctx.quadraticCurveTo(dome[j][0], dome[j][1], (dome[j][0] + dome[j + 1][0]) / 2, (dome[j][1] + dome[j + 1][1]) / 2);
+    ctx.lineTo(R[0], R[1]);
+    ctx.bezierCurveTo(R[0], R[1] + (hem - R[1]) * 0.4, rx, hem - (hem - R[1]) * 0.35, rx, hem);
+    // The hem: soft scallops, fluttering.
+    const waves = 5, w = rx - lx;
+    for (let k = 0; k < waves; k++) {
+      const x0 = rx - (w * k) / waves, x1 = rx - (w * (k + 1)) / waves;
+      ctx.quadraticCurveTo((x0 + x1) / 2, hem + r * 0.1 + Math.sin(time * 6 + k * 1.3) * r * 0.03, x1, hem);
+    }
     ctx.closePath();
-    ctx.fill(); ctx.stroke();
+    ctx.fill();
     // Eye holes, where its eyes are under there.
     const ft = b.faceTurn || { x: 0, y: 0 }, st = body.stretch();
     ctx.fillStyle = '#2a2638';
@@ -3118,7 +3203,7 @@
   // rounds, then they're done.
   function tag(b) {
     if (CFG.play <= 0 || b.kind === 'child') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.snow && !o.parade && !o.frog && !o.tower && !o.rope && !o.seek && !o.pile && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.ghost && !o.ghostBy && !o.prank && !o.trick && !o.snow && !o.parade && !o.frog && !o.tower && !o.rope && !o.seek && !o.pile && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.tag;
     if (g) {
       if (g.p !== b) return; // (one of the pair runs the game)
@@ -3164,7 +3249,7 @@
   // each other along the floor, the one underneath ducking down for it.
   function leapfrog(b) {
     if (CFG.leapfrog <= 0 || b.kind !== 'mother') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.tower && !o.rope && !o.seek && !o.pile && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.ghost && !o.ghostBy && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.tower && !o.rope && !o.seek && !o.pile && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.frog;
     if (g) {
       if (g.p !== b) return; // (one of the pair runs the game)
@@ -3236,7 +3321,7 @@
   // grinning, until it hops down.
   function tower(b) {
     if (CFG.tower <= 0 || b.kind !== 'mother') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.frog && !o.balloon && !o.rope && !o.seek && !o.pile && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.ghost && !o.ghostBy && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.frog && !o.balloon && !o.rope && !o.seek && !o.pile && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.tower;
     if (g) {
       if (g.line[0] !== b) return; // (the bottom one runs it)
@@ -3306,7 +3391,7 @@
   // and then the shorter one cheats with a little hop ("ha!").
   function measure(b) {
     if (CFG.measure <= 0 || b.kind !== 'mother') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.frog && !o.tower && !o.rope && !o.seek && !o.pile && !o.keepy && !o.roll && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.ghost && !o.ghostBy && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.frog && !o.tower && !o.rope && !o.seek && !o.pile && !o.keepy && !o.roll && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.measure;
     if (g) {
       if (g.p !== b) return;
@@ -3377,7 +3462,7 @@
   const ROPE_T = 0.95; // (one turn of the rope, s)
   function skipRope(b) {
     if (CFG.skipRope <= 0 || b.kind !== 'mother') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.frog && !o.tower && !o.rope && !o.seek && !o.pile && !o.keepy && !o.measure && !o.roll && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.ghost && !o.ghostBy && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.frog && !o.tower && !o.rope && !o.seek && !o.pile && !o.keepy && !o.measure && !o.roll && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = rope;
     if (g) {
       if (g.j !== b) return;
@@ -3501,7 +3586,7 @@
   let seekGame = null;
   function hideSeek(b) {
     if (CFG.hideSeek <= 0 || b.kind !== 'mother') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.frog && !o.tower && !o.rope && !o.seek && !o.pile && !o.keepy && !o.measure && !o.roll && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.ghost && !o.ghostBy && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.frog && !o.tower && !o.rope && !o.seek && !o.pile && !o.keepy && !o.measure && !o.roll && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = seekGame;
     if (g) {
       if (g.s !== b) return;
@@ -3603,7 +3688,7 @@
   let pileGame = null;
   function dogpile(b) {
     if (CFG.dogpile <= 0 || b.kind !== 'mother') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.frog && !o.tower && !o.rope && !o.seek && !o.pile && !o.keepy && !o.measure && !o.roll && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.ghost && !o.ghostBy && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.frog && !o.tower && !o.rope && !o.seek && !o.pile && !o.keepy && !o.measure && !o.roll && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = pileGame;
     if (g) {
       if (g.bottom !== b) return;
@@ -3709,7 +3794,7 @@
   // hopping in step, single file, turning back at the edge of the screen.
   function parade(b) {
     if (CFG.parade <= 0 || b.kind !== 'mother') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.copy && !o.five && !o.frog && !o.tower && !o.rope && !o.seek && !o.pile && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.ghost && !o.ghostBy && !o.prank && !o.trick && !o.tag && !o.snow && !o.copy && !o.five && !o.frog && !o.tower && !o.rope && !o.seek && !o.pile && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.parade;
     if (g) {
       if (g.line[0] !== b) return; // (the one in front runs it)
@@ -3778,7 +3863,7 @@
   const snowballs = [];
   function snowFight(b) {
     if (CFG.snowballs <= 0 || CFG.seasons <= 0 || b.kind === 'child') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.parade && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.ghost && !o.ghostBy && !o.prank && !o.trick && !o.tag && !o.parade && !o.balloon && !o.shape && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.snow;
     if (g) {
       if (g.p !== b) return; // (one of the pair runs the fight)
@@ -4601,7 +4686,7 @@
 
   // Fond of you (petted lately): it tags along after your cursor for a bit.
   function tagAlong(b) {
-    if ((b.mood || 0) < 0.75 || b.kind === 'child' || b.body.grab || !b.body.onFloor() || b.pendingHop || time < (b.nextTagAlong || 0)) return;
+    if ((b.mood || 0) < 0.75 || b.kind === 'child' || b.ghost || b.ghostBy || b.body.grab || !b.body.onFloor() || b.pendingHop || time < (b.nextTagAlong || 0)) return;
     if (b.state !== 'idle' && b.state !== 'done') return;
     if (performance.now() / 1000 - mouse.lastMove > 3 || mouse.x < 0 || mouse.x > W) return;
     const c = b.body.centroid(), r = b.body.o.radius, dx = mouse.x - c.x;
@@ -4931,6 +5016,7 @@
     const v = body.velocity(DT);
     const speed = Math.hypot(v.x, v.y);
     let expression = 'normal', mouth = 'smile';
+    let calmWork = false; // (its everyday working face: see peeking, below)
     if (time < b.dizzyUntil) { expression = 'dizzy'; mouth = 'flat'; }
     else if (time < (b.raspUntil || 0) && !body.grab) { expression = 'annoyed'; mouth = 'raspberry'; } // (pbbbt!)
     else if (b.balloon && b.balloon.stage === 'zip') { expression = 'happy'; mouth = 'raspberry'; } // (the air rushing out)
@@ -4973,8 +5059,8 @@
     else if (b.pain > 0.05) { expression = 'pained'; mouth = 'wobble'; }
     else if (st === 'done' && unseen(b)) { expression = 'happy'; mouth = 'grin'; }
     else if (st === 'working' && b.stuck) { expression = 'pained'; mouth = 'wobble'; }
-    else if (st === 'working' && b.tapping) { expression = 'normal'; mouth = 'flat'; b.glanceAt = { spot: { x: body.centroid().x + (b.key.length % 2 ? 1 : -1) * body.o.radius * 2, y: body.bbox().maxY + body.o.radius } }; b.glanceUntil = time + 0.1; }
-    else if (st === 'working') { expression = 'concentrate'; mouth = 'flat'; }
+    else if (st === 'working' && b.tapping) { expression = 'normal'; mouth = 'flat'; calmWork = true; b.glanceAt = { spot: { x: body.centroid().x + (b.key.length % 2 ? 1 : -1) * body.o.radius * 2, y: body.bbox().maxY + body.o.radius } }; b.glanceUntil = time + 0.1; }
+    else if (st === 'working') { expression = 'concentrate'; mouth = 'flat'; calmWork = true; }
     else if (st === 'idle' && idleFor() > dozeAfter()) { expression = 'sleepy'; mouth = 'flat'; }
     // Saying something by itself (a status bubble): eyes open to tell you.
     // Just hovering doesn't wake it from its work.
@@ -4996,11 +5082,14 @@
       b.furrowUntil = time + 0.8 + Math.random() * 1.2;
       b.nextFurrow = time + 4 + Math.random() * 8;
     }
-    // Hovered while it works: it peeks up at you, half-open eyes following
-    // the cursor, then goes back to work when you move on.
-    const peeking = expression === 'concentrate' && b === hovered && !body.grab;
-    if (peeking) { expression = 'peek'; mouth = 'flat'; }
-    const moving = expression === 'concentrate' && time < b.furrowUntil;
+    // Hovered while it works: it looks up at you, eyes opening wide (and
+    // its brows calm) and following the cursor, then goes back to work when
+    // you move on. Eased both ways (see drawFace's peek). Only its everyday
+    // working face does: dizzy, struggling, shy, talking and so on win.
+    const peeking = calmWork && b === hovered && !body.grab;
+    b.peek = (b.peek || 0) + ((peeking ? 1 : 0) - (b.peek || 0)) * ease(0.05);
+    if (!peeking && b.peek < 0.01) b.peek = 0;
+    const moving = expression === 'concentrate' && time < b.furrowUntil && !peeking;
     const wantFurrow = moving && b.browMove === 'furrow' ? 1 : 0, wantRaise = moving && b.browMove === 'raise' ? 1 : 0;
     b.furrow = (b.furrow || 0) + (wantFurrow - (b.furrow || 0)) * ease(0.15);
     b.raise = (b.raise || 0) + (wantRaise - (b.raise || 0)) * ease(0.15);
@@ -5046,12 +5135,12 @@
       b.glanceUntil = time + 0.1;
       if (expression === 'concentrate' || expression === 'sleepy' || expression === 'peek') { expression = 'normal'; mouth = 'smile'; }
     }
-    if (b.glanceAt && time < (b.glanceUntil || 0) && !b.glanceAt.dying && !body.grab && (expression === 'concentrate' || expression === 'normal' || expression === 'sleepy')) {
+    if (!peeking && b.glanceAt && time < (b.glanceUntil || 0) && !b.glanceAt.dying && !body.grab && (expression === 'concentrate' || expression === 'normal' || expression === 'sleepy')) {
       checkIn = true;
       if (expression !== 'normal') { expression = 'normal'; mouth = 'flat'; }
     }
     const glaring = expression === 'annoyed';
-    b.gazeTarget = glaring ? b.annoyedAt.body.centroid() : !checkIn || b.glanceAt === 'you' ? null : b.glanceAt.spot || b.glanceAt.body.centroid();
+    b.gazeTarget = glaring ? b.annoyedAt.body.centroid() : peeking ? null : !checkIn || b.glanceAt === 'you' ? null : b.glanceAt.spot || b.glanceAt.body.centroid();
     let wantLook = checkIn || glaring || peeking ? 1 : (st === 'idle' || st === 'done') && expression === 'normal' && effort !== 'low' && !body.grab && !b.bubble ? 1 : 0;
     // Flying: it looks where it's going.
     if (CFG.eyeLife > 0 && !body.grab && !body.onFloor() && speed > 700 && !meditating(b) && !glaring) {
@@ -5147,7 +5236,7 @@
     // Startled (poked, flinching): eyes go wide for a moment.
     const wide = CFG.eyeLife * Math.max(wideBy, wideSeen, over ? 0.5 : 0, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
     return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.6 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: b.shy > 0 ? { ...CFG, cheeks: Math.min(0.95, CFG.cheeks + b.shy * 0.55) } : CFG, bodyColor: b.color,
-      effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal',
+      effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal' && !b.peek, peek: b.peek,
       fullTurn: (body.fullTurn = !!((b.flip && b.flip.spun) || b.tumble || b.roll)), // (mid-somersault the face, and what it wears, go all the way round)
     };
   }
@@ -5271,13 +5360,13 @@
       const face = faceFor(b);
       if (b.body.o.radius > 12) D.drawFace(ctx, b.body, face);
       b.faceTurn = { x: face.turnX || 0, y: face.turnY || 0 };
-      drawGhost(b);
       if (face.expression === 'sleepy' && face.mouth !== 'yawn') D.drawZzz(ctx, b.body, time);
       nightcap(b);
       if (b.dream && time < b.dream.until && !b.bubble && b !== hovered && ((b.sleep || 0) > 0.8 || b.dream.demo)) D.drawDream(ctx, b.body, time, W, b.dream.what);
       const sweat = Math.max(ramp(b.fill || 0, CFG.sweatAt, 1), busySweat(b));
       if (sweat > 0) D.drawSweat(ctx, b.body, time, sweat);
       drawBeads(b);
+      drawGhost(b); // (over all of it: nothing pokes through the sheet)
       if (b.merging && b.kind === 'child' && !b.dying) {
         const box = b.body.bbox();
         D.drawHeart(ctx, b.body.centroid().x, Math.min(box.minY, b.body.lookTop ?? Infinity) - 14, Math.max(9, b.body.o.radius * 0.18), (time - b.merging.since) % 1.8);

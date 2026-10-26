@@ -258,7 +258,7 @@
 	// grows out of it seamlessly) or 'front' (its own colours, on top).
 	function drawLook(ctx, b, layer, color) {
 		const name = b.look;
-		if (layer === 'back') b.body.lookTop = null; // how high it reaches; set below
+		if (layer === 'back') { b.body.lookTop = null; b.body.lookTips = []; } // how high it reaches, and where its tips are; set below
 		if (!name || name === 'none') return;
 		const body = b.body, r = body.o.radius, u = 0.16 * Math.sqrt(r * 110);
 		const L = b.lookState || { a: 0, t: 0 };
@@ -292,6 +292,7 @@
 			const reach = u * (name === 'bunny' ? 5 : 2.6) * part.scale, ang = Math.atan2(p.ny, p.nx) + Math.PI / 2 + swing;
 			const topY = p.y - p.ny * u * sink - reach * Math.cos(ang);
 			if (body.lookTop == null || topY < body.lookTop) body.lookTop = topY;
+			body.lookTips.push({ x: p.x - p.nx * u * sink + reach * Math.sin(ang), y: topY, w: u * 1.6 * part.scale }); // (a sheet over it drapes over these)
 			if (part === b.lookParts[0]) {
 				const m = ctx.getTransform(), c = body.centroid();
 				b.lookDrawn = { x: m.e - c.x, y: m.f - c.y, rot: Math.atan2(m.b, m.a), len: Math.hypot(m.c, m.d) };

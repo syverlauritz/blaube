@@ -360,6 +360,32 @@ const SCENES = {
 		size: [1100, 520],
 	},
 	hover: { sessions: [session('a', 'blaube', 'working', { activity: 'tool', tokens: { total: 400000, context: 124000, limit: 200000 } })], hover: true },
+	// Hovering a busy slime: its squeezed-shut working eyes open wide and
+	// follow the cursor (on its left, its right, its top), easing open and,
+	// once you move off, shut again.
+	peek: {
+		sessions: [session('pk', 'blaube', 'working', { look: 'sprout' })],
+		wait: 3000,
+		size: [700, 460],
+		motion: { frames: 32, every: 90, drop: 0, still: true, hopAt: [], mouseAt: { 0: [3, -3], 3: [-0.6, 0.1], 9: [0.6, 0.1], 14: [0, -0.45], 19: [3, -3] } },
+	},
+	// Halloween: one pulls a sheet over itself, creeps up on the other,
+	// boooo!, and off comes the sheet.
+	ghost: {
+		sessions: [session('gh1', 'blaube', 'idle', { look: 'horns' }), session('gh2', 'kalkis', 'idle', { color: '#5B8DEF', look: 'catears' })],
+		config: { size: 0.85 },
+		wait: 3000,
+		size: [1000, 460],
+		motion: { frames: 48, every: 110, drop: 0, still: true, hopAt: [], jsAt: { 0: 'teleport', 6: 'ghost' } },
+	},
+	// The same, picked up mid-creep: the sheet comes off as it's lifted.
+	ghostGrab: {
+		sessions: [session('gh1', 'blaube', 'idle', { look: 'bunny' }), session('gh2', 'kalkis', 'idle', { color: '#5B8DEF', look: 'bow' })],
+		config: { size: 0.85 },
+		wait: 3000,
+		size: [1000, 460],
+		motion: { frames: 24, every: 80, drop: 0, still: true, hopAt: [], jsAt: { 0: 'teleport', 4: 'ghost' }, grabAt: { 16: 'gh1' }, releaseAt: 23 },
+	},
 	// The talk box (a click on a slime), drawn where the app would put it.
 	talkChat: {
 		sessions: [session('tc', 'vergence-studios-playground', 'done', { look: 'bunny' }), session('tc2', 'kalkis', 'idle', { color: '#5B8DEF', look: 'bow' })],
@@ -889,6 +915,23 @@ async function shootMotion(win, name, m) {
 			if (m.ledge && i === 8) await js(`(() => { const b = [...__blaube.buddies.values()][1]; b.body.teleport(420, 420); b.body.impulse(0, -1200, 1 / 120); })()`);
 			if (m.ledge && i >= 18 && i <= 22) await fakeWindow(120 + (i - 17) * 40, 300 - (i - 17) * 12);
 			if (m.commandAt && m.commandAt[i]) win.webContents.send('fire', 'command', m.commandAt[i]);
+			// Two slimes stood apart, and the left one going as a ghost.
+			if (m.jsAt && m.jsAt[i] === 'teleport') await js(`(() => { const l = [...__blaube.buddies.values()]; l[0].body.teleport(220, 300); l[1].body.teleport(760, 300); })()`);
+			if (m.jsAt && m.jsAt[i] === 'ghost') await js(`(() => { const l = [...__blaube.buddies.values()]; __blaube.ghost(l[0], l[1]); })()`);
+			if (m.mouseAt && m.mouseAt[i]) {
+				// The cursor, so many radii from the slime's middle.
+				const [dx, dy] = m.mouseAt[i];
+				const at = await js(`(() => { const b = [...__blaube.buddies.values()][0], c = b.body.centroid(); return { x: c.x, y: c.y, r: b.body.o.radius }; })()`);
+				mouse('mouseMove', at.x + dx * at.r, at.y + dy * at.r);
+			}
+			if (m.grabAt && m.grabAt[i]) {
+				const at = await js(`__blaube.buddies.get(${JSON.stringify(m.grabAt[i])}).body.centroid()`);
+				mouse('mouseMove', at.x, at.y);
+				mouse('mouseDown', at.x, at.y);
+				m.held = at;
+			}
+			if (m.held && i < m.releaseAt && !(m.grabAt && m.grabAt[i])) { m.held.y -= 12; mouse('mouseMove', m.held.x, m.held.y); }
+			if (m.held && i === m.releaseAt) { mouse('mouseUp', m.held.x, m.held.y); m.held = null; }
 			if (m.sayAt && m.sayAt[i]) for (const say of [].concat(m.sayAt[i])) win.webContents.send('fire', 'say', say);
 			if (m.tease) {
 				// Wiggle above it, low enough to reach.
@@ -944,6 +987,8 @@ async function shootMotion(win, name, m) {
 		if (jump > 0.25) notes.push(`jumps ${jump.toFixed(2)} rad between frames: jittery`);
 		console.log(`check ${look}: peak ${peak.toFixed(2)}, biggest frame jump ${jump.toFixed(2)}, furthest off the top ${off.toFixed(2)}${notes.length ? ' -- ' + notes.join('; ') : ' ok'}`);
 	}
+	// (each frame by itself, too, to look at closely)
+	frames.forEach((src, i) => fs.writeFileSync(path.join(OUT, `${name}-${String(i + 1).padStart(2, '0')}.png`), Buffer.from(src.split(',')[1], 'base64')));
 	// Lay the frames out in a grid, half size, and save that.
 	const cols = 4, size = win.getContentSize(), fw = Math.round(size[0] / 2), fh = Math.round(size[1] / 2);
 	const sheet = new BrowserWindow({ width: fw * cols, height: fh * Math.ceil(frames.length / cols), show: false, webPreferences: { offscreen: true } });
