@@ -2227,6 +2227,32 @@
     if (askKey && current.ask && current.ask.kind === 'plan') planButtons();
     fit(); send.disabled = !current || current.demo || (!text.value.trim() && !files.length); requestAnimationFrame(fitWindow); });
   text.addEventListener('input', () => { if (askKey && current.ask && current.ask.kind === 'tool') planButtons(); });
+	// Its slime watches the caret as you type: where it is (at most 20
+	// times a second, the last always sent), and now and then something to
+	// get excited about (a new line, a long word, typing fast).
+	const caret = { at: 0, timer: 0, keys: [], burst: null, key: '' };
+	function sendCaret() {
+		caret.timer = 0;
+		if (!current || !api.caret || !window.BlaubeCaret || document.activeElement !== text) return;
+		caret.at = Date.now();
+		const p = BlaubeCaret.measure(text);
+		api.caret(current.id, Math.round(p.x), Math.round(p.y), caret.burst);
+		caret.burst = null;
+	}
+	function caretMoved() {
+		if (caret.timer) return;
+		caret.timer = setTimeout(sendCaret, Math.max(0, 50 - (Date.now() - caret.at)));
+	}
+	text.addEventListener('keydown', (e) => { caret.key = e.key; });
+	text.addEventListener('input', () => {
+		const now = Date.now();
+		caret.keys = caret.keys.filter((t) => now - t < 1000).concat(now);
+		if (window.BlaubeCaret) caret.burst = caret.burst || BlaubeCaret.burst({ key: caret.key, value: text.value, end: text.selectionEnd, rate: caret.keys.length });
+		caret.key = '';
+		caretMoved();
+	});
+	for (const ev of ['keyup', 'click', 'select', 'focus']) text.addEventListener(ev, caretMoved);
+	document.addEventListener('selectionchange', () => { if (document.activeElement === text) caretMoved(); });
   // Its permission mode under the field, as the terminal shows it; ⇧⇥ (or
   // a tap) changes it in a session Blaube started.
   const MODES = { default: 'Asks before edits', acceptEdits: 'Accepting edits', plan: 'Plan first', bypassPermissions: 'Bypassing permissions', dontAsk: 'Not asking first', auto: 'Auto mode' };

@@ -29,4 +29,5 @@ contextBridge.exposeInMainWorld('blaube', {
   onNod: (cb) => ipcRenderer.on('nod', (_e, id, how) => cb(id, how)),
   onSystem: (cb) => ipcRenderer.on('system', (_e, m) => cb(m)),
   onTyping: (cb) => ipcRenderer.on('typing', (_e, id) => cb(id)),
+	onCaret: (cb) => ipcRenderer.on('caret', (_e, c) => cb(c)),
 });
