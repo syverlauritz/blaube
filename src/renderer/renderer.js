@@ -1326,6 +1326,7 @@
   // Two calm slimes sitting together now and then have a little chat: they
   // look at each other and take turns, the one talking bobbing and leaning
   // in, the other leaning in a little to listen.
+  const CHATTER = ['…', '!', '?', '♪', 'hm', 'ooh', 'haha', 'mhm', 'ya', 'heh'];
   function chat(b, r, c) {
     if (CFG.socialize <= 0) return false;
     const ch = b.chat;
@@ -1338,6 +1339,9 @@
       b.body.lean(side * (speaker ? 14 : 6) * k, DT);
       b.body.impulse(-b.body.velocity(DT).x * 0.15, 0, DT); // feet planted
       if (speaker) b.body.squashTop(Math.sin((time - ch.from) * 14) * 18 * k, DT);
+      // Now and then a word of it floats up.
+      const turn = Math.floor((time - ch.from) / ch.turn);
+      if (speaker && b.chatTurn !== turn) { b.chatTurn = turn; if (Math.random() < 0.4) quip(b, CHATTER[Math.floor(Math.random() * CHATTER.length)], ch.turn * 0.9); }
       b.glanceAt = o;
       b.glanceUntil = time + 0.2;
       return true;
