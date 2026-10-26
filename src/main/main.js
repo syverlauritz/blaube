@@ -3019,6 +3019,24 @@ app.whenReady().then(async () => {
       done('');
     });
   }));
+  // A file in conflict, settled from its box: your version or theirs.
+  ipcMain.handle('talk-settle', (_e, id, file, side) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    const st = gitStates.get(id);
+    const f = s && st && st.root && st.files.find((x) => x.how === 'conflict' && path.join(st.root, x.path) === file);
+    if (!f) return done('Can’t settle that one');
+    if (s.state === 'working' || s.state === 'waiting') return done('Not while it’s working: wait for it to finish');
+    git.settle(st.root, f.path, side, (err) => {
+      if (err) { inbox.add(id, { who: 'note', text: `Couldn’t settle ${f.path}: ${err}` }); return done(err); }
+      git.status(s.cwd, (now) => {
+        const left = now ? now.conflicts : 0;
+        inbox.add(id, { who: 'note', text: `Kept ${side === 'mine' ? 'your' : 'their'} version of ${f.path}${left ? ` (${left} more in conflict)` : ': no conflicts left, Commit finishes it'}` });
+        gitStates.set(id, now);
+        pushTalk(id);
+        done('');
+      });
+    });
+  }));
   ipcMain.handle('talk-put-back', (_e, id) => new Promise((done) => {
     const s = id === talkId && tracker.sessions.get(id);
     const d = discarded.get(id);

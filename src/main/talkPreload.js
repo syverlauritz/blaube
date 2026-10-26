@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   gitRun: (id, run) => ipcRenderer.send('talk-git-run', id, run),
   install: (id) => ipcRenderer.send('talk-install', id),
   makeEnv: (id) => ipcRenderer.send('talk-make-env', id),
+  settle: (id, file, side) => ipcRenderer.invoke('talk-settle', id, file, side),
   signIn: (id) => ipcRenderer.send('talk-sign-in', id),
   taskOutput: (id, taskId) => ipcRenderer.invoke('talk-task-output', id, taskId),
   stopTask: (id, taskId) => ipcRenderer.invoke('talk-stop-task', id, taskId),

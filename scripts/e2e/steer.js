@@ -573,6 +573,24 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => box(`![...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Make .env')`), 10000), 'and it isn’t offered again');
 	for (const f of ['.env', '.env.example']) fs.rmSync(path.join(repo, f), { force: true });
 	fs.rmSync(edLog, { force: true });
+	// A merge in conflict: Mine or Theirs on the file, one tap, no terminal.
+	const gq = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: repo, stdio: 'pipe' }).toString().trim();
+	const before = gq('rev-parse', 'HEAD'), clash = path.join(repo, 'clash.txt');
+	fs.writeFileSync(clash, 'base\n'); gq('add', 'clash.txt'); gq('commit', '-q', '-m', 'clash base', 'clash.txt');
+	gq('branch', 'clash-b');
+	fs.writeFileSync(clash, 'mine\n'); gq('commit', '-q', '-m', 'clash mine', 'clash.txt');
+	gq('switch', '-q', 'clash-b');
+	fs.writeFileSync(clash, 'theirs\n'); gq('commit', '-q', '-m', 'clash theirs', 'clash.txt');
+	gq('switch', '-q', '-');
+	try { gq('merge', 'clash-b'); } catch {}
+	await until(() => box(`(() => { if (document.getElementById('gitFiles').hidden) document.getElementById('git').click(); return !document.getElementById('gitFiles').hidden; })()`));
+	const clashRow = `([...document.querySelectorAll('#gitFiles li')].find((l) => l.firstChild.firstChild.textContent === 'clash.txt') || document)`;
+	check(await until(() => box(`(() => { const ks = [...${clashRow}.querySelectorAll('.keep')]; return ks.map((k) => k.textContent).join() === 'Mine,Theirs' && /Keep their version/.test(ks[1].title); })()`), 10000), 'a file in conflict has Mine and Theirs');
+	await sleep(400);
+	await shot('conflict');
+	await box(`[...${clashRow}.querySelectorAll('.keep')][1].click()`);
+	check(await until(() => fs.readFileSync(clash, 'utf8') === 'theirs\n' && !gq('diff', '--name-only', '--diff-filter=U') && inbox.log(ID3).some((e) => e.text === 'Kept their version of clash.txt: no conflicts left, Commit finishes it'), 10000), 'a tap on Theirs keeps theirs and marks it settled');
+	gq('merge', '--abort'); gq('reset', '-q', '--keep', before); gq('branch', '-D', 'clash-b');
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'what did you change?' });
 	// While it works: how long it's been at it, as the terminal counts.
 	tracker.sessions.get(ID3).turnStart = Date.now() - 75e3;

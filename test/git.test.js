@@ -413,7 +413,7 @@ test('what’s new upstream, fetched quietly: behind shows without you fetching'
   const { fetchQuietly, status } = require('../src/main/git');
   const top = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-fetch-'));
   const env = Object.assign({}, process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
-  const g = (cwd, ...a) => execFileSync('git', a, { cwd, env }).toString().trim();
+  const g = (cwd, ...a) => execFileSync('git', a, { cwd, env, stdio: 'pipe' }).toString().trim();
   const mine = path.join(top, 'mine'), theirs = path.join(top, 'theirs'), hub = path.join(top, 'hub.git');
   const fetch = (o) => new Promise((r) => fetchQuietly(mine, r, o));
   try {
@@ -430,4 +430,34 @@ test('what’s new upstream, fetched quietly: behind shows without you fetching'
     assert.equal(await fetch({ asked: true, now: 3 * 60e3 }), true);
     assert.equal(await new Promise((r) => fetchQuietly('', r)), false);
   } finally { fs.rmSync(top, { recursive: true, force: true }); }
+});
+
+test('a file in conflict, settled: your version or theirs (flipped in a rebase), or deleted', async () => {
+  const { settle } = require('../src/main/git');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-settle-'));
+  const env = Object.assign({}, process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
+  const g = (...a) => { try { return execFileSync('git', a, { cwd: dir, env, stdio: 'pipe' }).toString().trim(); } catch (e) { return 'failed'; } };
+  const read = (f) => fs.readFileSync(path.join(dir, f), 'utf8');
+  const p = (rel, side) => new Promise((r) => settle(dir, rel, side, r));
+  try {
+    g('init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'base\n'); fs.writeFileSync(path.join(dir, 'b.txt'), 'base\n'); g('add', '.'); g('commit', '-qm', 'base');
+    g('switch', '-q', '-c', 'theirs');
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'theirs\n'); g('rm', '-q', 'b.txt'); g('commit', '-qam', 'theirs');
+    g('switch', '-q', 'main');
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'mine\n'); fs.writeFileSync(path.join(dir, 'b.txt'), 'mine\n'); g('commit', '-qam', 'mine');
+    assert.equal(g('merge', '-q', 'theirs'), 'failed');
+    assert.equal(await p('a.txt', 'mine'), '');
+    assert.equal(read('a.txt'), 'mine\n');
+    assert.equal(await p('b.txt', 'theirs'), '', 'they deleted it: deleted');
+    assert.equal(fs.existsSync(path.join(dir, 'b.txt')), false);
+    assert.equal(g('diff', '--name-only', '--diff-filter=U'), '', 'nothing left in conflict');
+    g('merge', '--abort');
+    // A rebase of main onto theirs: "mine" is still main's version.
+    assert.equal(g('rebase', 'theirs'), 'failed');
+    assert.equal(await p('a.txt', 'mine'), '');
+    assert.equal(read('a.txt'), 'mine\n');
+    assert.equal(await p('a.txt', 'yours'), 'Can’t settle that one');
+    assert.equal(await p('../a.txt', 'mine'), 'Can’t settle that one');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

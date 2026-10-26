@@ -1,6 +1,7 @@
 // A session's git status, read locally (`git status`), for its talk box:
 // the branch, what's changed, what isn't pushed yet; and the one-tap
 // requests that make sense from there (commit, push, open a PR...).
+const fs = require('node:fs');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { signedOut } = require('./auth');
@@ -359,6 +360,23 @@ function fetchQuietly(root, cb, { asked = false, every = asked ? 2 * 60e3 : 10 *
     });
   });
 }
+// A file in conflict, settled one way: your version or theirs (`git
+// checkout --ours/--theirs`, then `git add`; or `git rm` when that side
+// deleted it). During a rebase git's "ours" is the branch it's rebasing
+// onto, so yours is its "theirs". cb(error or '').
+function settle(root, rel, side, cb) {
+  if (!['mine', 'theirs'].includes(side) || !rel || path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) return cb('Can’t settle that one');
+  const o = { cwd: root, timeout: 5000, windowsHide: true };
+  const done = (err, errOut, what) => { forget(root); cb(err ? gitSaid(errOut) || what : ''); };
+  execFile('git', ['rev-parse', '--git-path', 'rebase-merge', '--git-path', 'rebase-apply'], o, (e0, out) => {
+    const rebase = !e0 && String(out).split('\n').filter(Boolean).some((p) => fs.existsSync(path.resolve(root, p)));
+    execFile('git', ['checkout', (side === 'mine') !== rebase ? '--ours' : '--theirs', '--', rel], o, (err, _o, errOut) => {
+      if (err && /does not have (our|their) version/.test(errOut)) return execFile('git', ['rm', '-q', '--', rel], o, (e2, _o2, errOut2) => done(e2, errOut2, 'git couldn’t delete it'));
+      if (err) return done(err, errOut, 'git couldn’t keep that version');
+      execFile('git', ['add', '--', rel], o, (e2, _o2, errOut2) => done(e2, errOut2, 'git couldn’t mark it settled'));
+    });
+  });
+}
 const gitSaid = (errOut) => (String(errOut || '').split('\n').find((l) => /^(fatal|error):/.test(l)) || '').replace(/^(fatal|error):\s*/, '');
 
-module.exports = { fetchQuietly, park, parked, unpark, canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };
+module.exports = { settle, fetchQuietly, park, parked, unpark, canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };

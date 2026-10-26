@@ -1266,6 +1266,24 @@
         const pre = li.querySelector('pre');
         if (pre) li.insertBefore(un, pre); else li.append(un);
       }
+      // (In conflict: keep your version or theirs, one tap each.)
+      if (f.how === 'conflict' && api.settle) {
+        const keeps = [['mine', 'Mine', 'Keep your version of it, dropping their changes to it'], ['theirs', 'Theirs', 'Keep their version of it, dropping your changes to it']].map(([side, label, title]) => {
+          const k = document.createElement('button');
+          k.type = 'button';
+          k.className = 'reveal keep';
+          k.textContent = label;
+          k.title = title;
+          k.onclick = async () => {
+            for (const x of keeps) x.disabled = true;
+            const err = await api.settle(current.id, f.path, side);
+            if (err) { for (const x of keeps) x.disabled = false; k.title = err; b.title = err; }
+          };
+          return k;
+        });
+        const pre = li.querySelector('pre');
+        for (const k of keeps) if (pre) li.insertBefore(k, pre); else li.append(k);
+      }
       box.append(li);
     }
     if (was !== box.hidden || gitOpen) requestAnimationFrame(fitWindow);
