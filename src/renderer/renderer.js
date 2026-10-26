@@ -859,9 +859,13 @@
   // Slimes resting against each other slowly fall into breathing together.
   function breatheTogether(b) {
     if (CFG.breathSync <= 0 || b.pain > 0.2 || b.body.grab) return;
-    const m = b.body.bbox(), reach = b.body.o.radius * 0.5, mine = time * b.breathRate + b.breathPhase;
+    const c = b.body.centroid(), r = b.body.o.radius, reach = r * 0.5, mine = time * b.breathRate + b.breathPhase;
+    let m = null;
     for (const o of buddies.values()) {
       if (o === b || o.dying || o.body.grab) continue;
+      const oc = o.body.centroid();
+      if (Math.hypot(oc.x - c.x, oc.y - c.y) > (r + o.body.o.radius) * 1.8) continue; // (far apart: skip the outlines)
+      m = m || b.body.bbox();
       const n = o.body.bbox();
       if (n.minX - m.maxX > reach || m.minX - n.maxX > reach || n.minY - m.maxY > reach || m.minY - n.maxY > reach) continue;
       b.breathPhase += DT * 1.2 * CFG.breathSync * Math.sin(time * o.breathRate + o.breathPhase - mine);
