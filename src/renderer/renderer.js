@@ -2743,7 +2743,19 @@
       const oc = o.body.centroid();
       if (Math.abs(oc.x - c.x) < r * 0.9 && oc.y < c.y - r * 0.5 && o.body.bbox().maxY > top - 6) { on = o; break; }
     }
-    if (on !== b.stackedBy) { b.stackedBy = on; b.stackSince = time; b.stackReacted = false; b.stackPatience = Math.random() * 2; return; }
+    if (on !== b.stackedBy) {
+      b.stackedBy = on; b.stackSince = time; b.stackReacted = false; b.stackPatience = Math.random() * 2;
+      // Dropped onto its head from high up: it gives like a trampoline and
+      // springs the faller back up. Boing!
+      const fall = on && on.vel ? on.vel.y : 0;
+      if (on && CFG.trampoline > 0 && fall > 650 && b.body.onFloor()) {
+        b.body.squashTop(Math.min(900, fall * 0.35) * Math.min(1.5, CFG.trampoline), DT);
+        on.bounceAt = time + 0.08; on.bounceV = Math.min(1500, fall) * 1.0 * Math.min(1.5, CFG.trampoline);
+        b.surpriseUntil = time + 0.6; on.cheerUntil = time + 1.2;
+        quip(on, 'boing!', 1);
+      }
+      return;
+    }
     if (!on) return;
     const family = on.mother === b || b.mother === on || (on.mother && on.mother === b.mother);
     const t = time - b.stackSince;
@@ -3688,6 +3700,10 @@
     }
     sulk(b);
     burp(b);
+    if (b.bounceAt && time > b.bounceAt) { // (sprung off a trampoline, see stackPlay)
+      b.bounceAt = 0;
+      if (!b.body.grab) { const v = b.body.velocity(DT); b.body.impulse((Math.random() - 0.5) * 120 - v.x * 0.5, -b.bounceV - v.y, DT); }
+    }
     dream(b);
     hug(b);
     teeter(b);

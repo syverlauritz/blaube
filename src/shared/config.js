@@ -147,6 +147,7 @@
       ['socialize', 1, 0, 3, 0.05, 'Calm slimes chat; mothers lean in to catch helpers'],
       ['nuzzle', 1, 0, 3, 0.05, 'Helpers nuzzle their mother'],
       ['gulp', 1, 0, 3, 0.05, 'A mother gulps a helper back in (ripple and swell)'],
+      ['trampoline', 1, 0, 1.5, 0.05, 'Drop one onto another from high up and the one below gives like a trampoline and springs it back up'],
       ['burps', 1, 0, 3, 0.05, 'Now and then gulping a helper back in is followed by a little burp (and a blush)'],
       ['petEmpathy', 1, 0, 2, 0.05, 'Task pets rush to a dizzy slime and cheer when it\'s happy'],
       ['spectate', 1, 0, 2, 0.05, 'Watch a slime fly past (and duck if it comes right at them)'],
