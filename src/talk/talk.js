@@ -1244,9 +1244,13 @@
   const CYCLE = ['default', 'acceptEdits', 'plan'];
   function renderMode(s) {
     const m = $('mode'), mode = s.mode || 'default';
-    m.hidden = !!s.ended || !!s.demo || (!s.canMode && mode === 'default');
+    const shown = s.canMode || mode !== 'default';
+    m.hidden = !!s.ended || !!s.demo || (!shown && !s.model);
     m.className = 'mode ' + mode + (s.canMode ? ' can' : '');
-    m.textContent = MODES[mode] || mode;
+    m.textContent = '';
+    // (Which model it is, first: Opus 5.5 · Accepting edits.)
+    if (s.model) { const n = document.createElement('span'); n.className = 'model'; n.textContent = s.model + (shown ? ' · ' : ''); m.append(n); }
+    if (shown) m.append(MODES[mode] || mode);
     if (s.canMode) { const k = document.createElement('kbd'); k.textContent = '⇧⇥'; m.append(k); }
     m.title = s.canMode ? 'Change how it asks (Shift+Tab)' : 'Change it in its terminal (Shift+Tab there)';
   }

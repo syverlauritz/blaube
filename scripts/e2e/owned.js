@@ -20,7 +20,7 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
   const m = JSON.parse(l);
   if (m.type === 'control_request') {
     const r = m.request, ok = (response) => out({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response } });
-    if (r.subtype === 'set_model') { model = 'claude-' + r.model; return ok({ model }); }
+    if (r.subtype === 'set_model') { model = r.model.startsWith('claude-') ? r.model : 'claude-' + r.model; return ok({ model }); }
     if (r.subtype === 'set_permission_mode') { ok({ mode: r.mode }); return out({ type: 'system', subtype: 'status', permissionMode: r.mode }); }
     if (r.subtype === 'interrupt') { clearTimeout(turn); ok({}); return out({ type: 'result', subtype: 'error_during_execution', is_error: true }); }
     return;
@@ -49,10 +49,11 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	const id = startSession(dir);
 	check(await until(() => talk() && talk().isVisible() && talkId() === id, 8000), 'a session starts, its box open');
 
-	await type('/model sonnet');
-	check(await until(async () => /Now using claude-sonnet/.test(await said())), '/model sonnet switches its model, no terminal');
+	await type('/model claude-sonnet-5-5');
+	check(await until(async () => /Now using claude-sonnet-5-5/.test(await said())), '/model switches its model, no terminal');
+	check(await until(() => box(`document.querySelector('#mode .model') && document.querySelector('#mode .model').textContent === 'Sonnet 5.5 · '`)), 'and the box says which model it is now');
 	await type('hello');
-	check(await until(async () => /claude-sonnet here\./.test(await said())), 'and it answers as that model');
+	check(await until(async () => /claude-sonnet-5-5 here\./.test(await said())), 'and it answers as that model');
 	await type('/model');
 	check(await until(async () => /Say which: \/model opus/.test(await said())), '/model alone says how');
 	check(await box(`document.getElementById('suggest').hidden`), 'and sending leaves no suggestions behind');

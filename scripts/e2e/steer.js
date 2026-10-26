@@ -229,7 +229,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	const long = new Date(Date.now() - 3600e3).toISOString();
 	fs.writeFileSync(tx, [
 		{ type: 'user', timestamp: long, message: { content: 'set up the repo' } },
-		{ type: 'assistant', timestamp: long, message: { content: [{ type: 'text', text: 'The repo is set up with a src folder.' }] } },
+		{ type: 'assistant', timestamp: long, message: { model: 'claude-opus-5-5', content: [{ type: 'text', text: 'The repo is set up with a src folder.' }] } },
 	].map((e) => JSON.stringify(e)).join('\n') + '\n');
 	await hook({ session_id: ID3, cwd: repo, transcript_path: tx, hook_event_name: 'SessionStart' });
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'hi', permission_mode: 'acceptEdits' });
@@ -239,7 +239,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await page(`window.blaube.talk(${JSON.stringify(ID3)}, { x: 300, y: 600, r: 60 })`);
 	check(await until(() => talkId() === ID3 && box(`/feature.tax · 2 changed/.test(document.getElementById('git').textContent)`), 8000), 'in a git repository, its branch and what’s changed show');
 	check(await until(() => box(`!!document.querySelector('#inner .earlierbtn')`)), 'a session whose transcript goes further back offers Earlier messages');
-	check(await box(`(() => { const m = document.getElementById('mode'); return !m.hidden && m.textContent === '⏵⏵ Accepting edits' && !m.classList.contains('can'); })()`), 'a session accepting edits says so under the field');
+	check(await until(() => box(`(() => { const m = document.getElementById('mode'); return !m.hidden && m.textContent === 'Opus 5.5 · ⏵⏵ Accepting edits' && !m.classList.contains('can'); })()`)), 'under the field: its model, and that it’s accepting edits');
 	await box(`document.querySelector('#inner .earlierbtn').click()`);
 	check(await until(() => box(`(() => { const e = document.querySelector('#inner .earlier'); return !!e && /set up the repo/.test(e.textContent) && /src folder/.test(e.textContent); })()`)), 'tapping it shows what was said before');
 	await box(`document.getElementById('git').click()`);

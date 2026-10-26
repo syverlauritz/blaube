@@ -445,6 +445,7 @@ function pushTalk(id, focusField = false) {
     connected: hooksOk || inbox.reachable.has(id) || inbox.steerable.has(id) || inbox.asks.has(id) || inbox.owned.has(id),
     doing: s.state === 'working' ? doing.get(id) || '' : '',
     mode: s.mode || '', // (its permission mode)
+    model: modelName(pickedModel.get(id) || (id.startsWith('demo-') ? '' : usage.sessionInfo(transcriptPath(s)).model)),
     canBring: canBringIn(s), // (it could carry on in Blaube instead)
     canMode: owned.has(id), // (one Blaube started can be asked to change it)
     tasks: (s.tasks || []).filter((t) => !t.demo).slice(0, 4).map((t) => ({ id: t.id, label: t.description || t.command, command: t.command })),
@@ -503,6 +504,15 @@ function glanceNow(o) {
   });
 }
 
+// "claude-opus-5-5" -> "Opus 5.5" (what to call a model in the box).
+function modelName(id) {
+  const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(String(id || ''));
+  if (!m) return '';
+  return m[1][0].toUpperCase() + m[1].slice(1) + ' ' + m[2] + (m[3] && m[3].length < 3 ? '.' + m[3] : '');
+}
+// A model you just switched a session to (until its transcript says so).
+const pickedModel = new Map();
+
 // A file a session's reply names (relative to its folder, or to the top of
 // its repository), as a full path: only a file inside one of those, else ''.
 function sessionFile(id, rel) {
@@ -536,7 +546,7 @@ function sweepSoon() { if (!sweepTimer) sweepTimer = setTimeout(() => { sweepTim
 function sweep() {
   const live = (id) => tracker.sessions.has(id) || owned.has(id) || (id === talkId && !!talkWin && !talkWin.isDestroyed() && talkWin.isVisible());
   for (const id of [...inbox.logs.keys(), ...inbox.todos.keys(), ...inbox.steerable, ...inbox.typed.keys()]) if (!live(id)) inbox.forget(id);
-  const maps = { gitStates, looked, glances, talkHeights, notified, doing, errorCounts };
+  const maps = { gitStates, looked, glances, talkHeights, notified, doing, errorCounts, pickedModel };
   for (const id of [...muted]) if (!live(id)) muted.delete(id);
   for (const m of Object.values(maps)) for (const id of [...m.keys()]) if (!live(id)) m.delete(id);
   for (const [k, at] of [...lastBubble]) if (Date.now() - at > 60e3) lastBubble.delete(k);
@@ -1425,6 +1435,7 @@ app.whenReady().then(async () => {
   owned.on('mode', (id, mode) => tracker.setMode(id, mode));
   owned.on('compacted', (id) => inbox.add(id, { who: 'note', text: 'Compacted: it carries on from a summary of the conversation so far' }));
   owned.on('result', (id, r) => {
+    pickedModel.delete(id); // (its transcript says now)
     if (r.interrupted && !r.text) inbox.observe({ session_id: id, hook_event_name: 'Stop' }); // (stopped: nothing went wrong)
     else if (!r.text && r.said) inbox.add(id, { who: 'note', text: r.said.replace(/^Error:\s*/, '') }); // (Claude Code itself answered a command)
     else if (r.error && !r.text) inbox.add(id, { who: 'note', text: `Something went wrong${r.subtype ? ` (${r.subtype})` : ''}.` });
@@ -1597,6 +1608,7 @@ app.whenReady().then(async () => {
           const what = c.request.subtype === 'set_model' ? (ok ? `Now using ${r.model || c.request.model}` : `Couldn’t switch to ${c.request.model}: ${r}`)
             : ok ? 'Plan mode: it shows you a plan before it changes anything' : `Couldn’t switch to plan mode: ${r}`;
           if (ok && c.request.mode) tracker.setMode(id, r.mode || c.request.mode);
+          if (ok && r.model) pickedModel.set(id, r.model);
           inbox.add(id, { who: 'note', text: what });
           pushTalk(id);
         });
