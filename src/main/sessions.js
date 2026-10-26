@@ -72,6 +72,9 @@ class SessionTracker extends EventEmitter {
       entry: payload._entry || (prev && prev.entry) || '',
       transcript: payload.transcript_path || (prev && prev.transcript) || '',
       pid: payload._pid || (prev && prev.pid) || 0,
+      // Its permission mode, as Claude Code last said ('default',
+      // 'acceptEdits', 'plan'...).
+      mode: typeof payload.permission_mode === 'string' ? payload.permission_mode : (prev && prev.mode) || '',
       project: cwd ? path.basename(cwd.replace(/[\\/]+$/, '')) : 'Claude',
       state: next.state,
       // While working: 'thinking' (the model) or 'tool' (running a tool).
@@ -104,6 +107,14 @@ class SessionTracker extends EventEmitter {
     if (!prev || prev.state !== session.state || prev.plan !== session.plan) {
       this.emit('change', { session, from: prev ? prev.state : null, to: session.state });
     }
+  }
+
+  // Its permission mode changed (said by Claude Code outside a hook).
+  setMode(id, mode) {
+    const s = this.sessions.get(id);
+    if (!s || !mode || s.mode === mode) return;
+    s.mode = mode;
+    this.emit('change', { session: s, from: s.state, to: s.state });
   }
 
   // Subagent events only touch the session's list of subagents. Returns true
@@ -226,6 +237,18 @@ class SessionTracker extends EventEmitter {
   }
 
   // Marks done/waiting sessions as seen, so Blaube stops pestering.
+  // A session carries on under another id (a picked-up one Claude Code
+  // gave a new id): same slime, new name for it.
+  rename(from, to) {
+    const s = this.sessions.get(from);
+    if (!s || this.sessions.has(to)) return false;
+    this.sessions.delete(from);
+    s.id = to;
+    this.sessions.set(to, s);
+    this.emit('change', { session: s, from: s.state, to: s.state });
+    return true;
+  }
+
   acknowledge() {
     for (const s of this.sessions.values()) s.seen = true;
   }

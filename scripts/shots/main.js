@@ -365,12 +365,36 @@ const SCENES = {
 		bg: '#f2f0ec',
 		wait: 3500,
 		size: [1000, 640],
-		talk: { key: 'tc', inbox: 'ready', log: [
+		talk: { key: 'tc', inbox: 'ready', today: 'Today: 14 replies · 2h 10m of work · 23 files changed', git: 'feature/login · 3 changed', quick: [{ label: 'Commit', prompt: 'Commit' }, { label: 'Open a PR', prompt: 'PR' }, { label: 'Run tests', prompt: 'Tests' }],
+			others: [{ id: 'tc', project: 'vergence', color: '#D97757', state: 'done', status: 'Done: Committed as f3a91c2 “Fix flaky e2e timeout”.', meta: 'feature/login · 3 changed' },
+				{ id: 'tc2', project: 'kalkis', color: '#5B8DEF', state: 'waiting', status: 'Needs you: Claude needs your permission to use Bash', meta: '62% context · main' },
+				{ id: 'tc3', project: 'web', color: '#E07BA8', state: 'working', status: 'Editing Hero.tsx · 4m', meta: '2 of 5 on its list · main · 7 changed' }], log: [
 			{ who: 'you', text: 'run the tests and tell me if anything fails', via: 'terminal' },
 			{ who: 'claude', text: 'All 66 tests pass. I also fixed a flaky timeout in the e2e test: it was waiting on the wrong event.' },
 			{ who: 'you', text: 'nice. can you commit that?', via: 'blaube', status: 'sent' },
 			{ who: 'note', text: 'Allowed Bash: git commit -m "Fix flaky e2e timeout"' },
-			{ who: 'claude', text: 'Committed as f3a91c2 “Fix flaky e2e timeout”.' },
+			{ who: 'claude', text: 'Committed as f3a91c2 “Fix flaky e2e timeout”.', turn: { took: 252e3, steps: 9, files: ['/w/test/e2e.js', '/w/src/main/inbox.js'] } },
+		] },
+	},
+	// /context in a session Blaube started: what fills it, as a bar.
+	talkContext: {
+		sessions: [session('tx', 'blaube', 'done', { color: '#5B8DEF', look: 'antenna' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1000, 640],
+		talk: { key: 'tx', inbox: 'ready', owned: true, canMode: true, mode: 'acceptEdits', model: 'Opus 5.5', context: 62, limit: '82% of the week used', log: [
+			{ who: 'you', text: 'how full are you?', via: 'blaube', status: 'sent' },
+			{ who: 'claude', text: 'About two thirds. Most of it is our conversation so far.' },
+			{ who: 'you', text: '/context', via: 'blaube', status: 'sent' },
+			{ who: 'note', text: 'Context: 62% full (124k of 200k)', context: { max: 200000, parts: [
+				{ name: 'Messages', tokens: 81000, kind: 'used', label: 'Messages 81k' },
+				{ name: 'System tools', tokens: 29200, kind: 'used', label: 'System tools 29.2k' },
+				{ name: 'Skills', tokens: 6800, kind: 'used', label: 'Skills 6.8k' },
+				{ name: 'System prompt', tokens: 3800, kind: 'used', label: 'System prompt 3.8k' },
+				{ name: 'Memory files', tokens: 3200, kind: 'used', label: 'Memory files 3.2k' },
+				{ name: 'Autocompact buffer', tokens: 33000, kind: 'buffer', label: 'Autocompact buffer 33k' },
+				{ name: 'Free space', tokens: 43000, kind: 'free', label: 'Free space 43k' },
+			] } },
 		] },
 	},
 	talkAsk: {
@@ -389,6 +413,30 @@ const SCENES = {
 		talk: { key: 'tt', inbox: 'busy', log: [
 			{ who: 'claude', text: 'Here’s what changed:\n\n## Summary\n- Moved the **hero image** to `public/hero.webp`\n- Lazy-loads the gallery\n- Fixed the nav on mobile\n\n```\nnpm run build  ✓ 2.1s\n```' },
 			{ who: 'you', text: 'looks good, ship it', via: 'blaube', status: 'sent' },
+		] },
+	},
+	// What it did between replies, Stop while it works, and a message that
+	// goes in at its next step.
+	talkSteps: {
+		talkJs: `setTimeout(() => { document.querySelectorAll('button.step')[1].click(); document.getElementById('todoHead').click(); const dt = new DataTransfer(); dt.items.add(new File([new Uint8Array([137,80,78,71])], 'screenshot.png', { type: 'image/png' })); document.getElementById('text').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); }, 500)`,
+		sessions: [session('ts', 'blaube', 'working', { look: 'sprout' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1000, 640],
+		talk: { key: 'ts', inbox: 'busy', stoppable: true, todos: [
+			{ id: '1', text: 'Log each step', doing: 'Logging each step', status: 'completed' },
+			{ id: '2', text: 'Add a Stop button', doing: 'Adding a Stop button', status: 'completed' },
+			{ id: '3', text: 'Show the steps in the talk box', doing: 'Showing the steps in the talk box', status: 'in_progress' },
+			{ id: '4', text: 'Run the tests', doing: 'Running the tests', status: 'pending' },
+		], log: [
+			{ who: 'you', text: 'make the talk box show what you did', via: 'blaube', status: 'sent', n: 1 },
+			{ who: 'step', text: 'Read inbox.js', ok: true, n: 2 },
+			{ who: 'step', text: 'Read talk.js', ok: true, n: 3 },
+			{ who: 'step', text: 'Searched for “who === ”', ok: true, n: 4 },
+			{ who: 'step', text: 'Edited inbox.js', ok: true, n: 5, detail: '− const MAX_LOG = 60;\n+ const MAX_LOG = 60;\n+ const MAX_STEPS = 40;' },
+			{ who: 'step', text: 'Run the tests', ok: false, n: 6, detail: '$ npm test\nnot ok 91 - steps never push what was said out of the log\n  AssertionError: 41 !== 40' },
+			{ who: 'step', text: 'Edited talk.js', ok: true, n: 7 },
+			{ who: 'you', text: 'and keep it quiet, small text', via: 'blaube', status: 'queued', n: 8 },
 		] },
 	},
 	talkLong: {
@@ -478,6 +526,10 @@ const SCENES = {
 		wait: 4000,
 	},
 };
+// The overview: the talk box with every session at a glance.
+// Find (⌘F) in a conversation with steps.
+SCENES.talkFind = Object.assign({}, SCENES.talkSteps, { talkJs: `setTimeout(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', metaKey: true })); const f = document.getElementById('find'); f.value = 'test'; f.dispatchEvent(new Event('input')); }, 400)` });
+SCENES.talkOverview = Object.assign({}, SCENES.talkChat, { talkJs: `setTimeout(() => document.querySelector('.others .all').click(), 400)` });
 
 async function shoot(win, name, scene) {
 	const fire = (event, value) => win.webContents.send('fire', event, value);
@@ -550,6 +602,11 @@ async function addTalk(win, scene, name) {
 	let wantH = 400;
 	const onHeight = (e, _id, v) => { if (e.sender === tw.webContents) wantH = v; };
 	ipcMain.on('talk-height', onHeight);
+	ipcMain.removeHandler('talk-hub');
+	ipcMain.handle('talk-hub', () => ({ folders: [{ path: '/Users/me/Git/blaube', name: 'blaube' }, { path: '/Users/me/Git/kalkis', name: 'kalkis' }], past: [{ id: 'p1', title: 'Speed up the build', where: 'blaube · yesterday' }, { id: 'p2', title: 'Fix the login bug', where: 'kalkis · 3 days ago' }] }));
+	ipcMain.removeHandler('talk-paste');
+	ipcMain.handle('talk-paste', () => '/tmp/blaube-pastes/pasted-1.png'); // (nothing is saved for a picture)
+	tw.webContents.on('console-message', (e) => { if (e.level === 'error') console.log('talk error:', e.message); });
 	await tw.loadFile(path.join(ROOT, 'src', 'talk', 'talk.html'));
 	tw.webContents.send('talk-state', Object.assign({ id: sess.id, project: sess.project, state: sess.state, color: sess.color || '#D97757', font: 'Coiny', connected: true, queued: 0, ask: null, asks: 0, tail: place.tail }, t));
 	await sleep(500);

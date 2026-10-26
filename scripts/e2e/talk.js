@@ -346,6 +346,21 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
 	check(await until(() => !talk().isVisible()), 'Esc closes it');
 
+	// From the menu bar: a question's answers, and a plan's Go ahead.
+	const trayItem = (label) => { for (const r of global.__blaubeTrayMenu().items) { const i = r.submenu && r.submenu.items.find((x) => x.label === label); if (i) return i; } return null; };
+	const quiz5 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	check(await until(() => !!trayItem('Dogs') && !!trayItem('Which pet?')), 'the menu bar menu shows a question and its answers');
+	trayItem('Dogs').click();
+	let qd5 = null;
+	try { qd5 = JSON.parse((await Promise.race([quiz5.done, sleep(3000).then(() => null)])).out).hookSpecificOutput.decision; } catch { /* checked below */ }
+	check(qd5 && qd5.behavior === 'allow' && qd5.updatedInput.answers['Which pet?'] === 'Dogs', 'and a click there answers it');
+	const planning5 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'ExitPlanMode', tool_input: { plan: '1. Add sounds' } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	check(await until(() => !!trayItem('Go ahead with the plan')), 'and a plan has Go ahead');
+	trayItem('Go ahead with the plan').click();
+	let pd5 = null;
+	try { pd5 = JSON.parse((await Promise.race([planning5.done, sleep(3000).then(() => null)])).out).hookSpecificOutput.decision; } catch { /* checked below */ }
+	check(pd5 && pd5.behavior === 'allow', 'which approves it');
+
 	waiting.kill(); asking.kill();
 	console.log(failed ? `\n${failed} failed` : '\nall passed');
 	return failed ? 1 : 0;

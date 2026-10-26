@@ -253,3 +253,20 @@ test('a tool call says what it is about, and finishing one is reported (failures
   assert.equal(t.list()[0].state, 'working');
   assert.deepEqual(done, [['Bash', false], ['Bash', true]]);
 });
+
+test('a session’s permission mode is kept from its hooks, and can be set', () => {
+  const t = new SessionTracker();
+  const changes = [];
+  t.on('change', (c) => changes.push(c));
+  t.handle({ session_id: 'm', cwd: '/x', hook_event_name: 'UserPromptSubmit', permission_mode: 'acceptEdits' });
+  assert.equal(t.sessions.get('m').mode, 'acceptEdits');
+  t.handle({ session_id: 'm', hook_event_name: 'PreToolUse', tool_name: 'Read' });
+  assert.equal(t.sessions.get('m').mode, 'acceptEdits', 'kept when a hook doesn’t say');
+  const n = changes.length;
+  t.setMode('m', 'plan');
+  assert.equal(t.sessions.get('m').mode, 'plan');
+  assert.equal(changes.length, n + 1);
+  t.setMode('m', 'plan');
+  t.setMode('nobody', 'plan');
+  assert.equal(changes.length, n + 1, 'no change, no news');
+});

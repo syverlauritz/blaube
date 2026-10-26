@@ -105,3 +105,13 @@ test('lastText is the newest thing Claude said, not a helper or a tool call', ()
 	assert.strictEqual(lastText(''), '');
 	assert.strictEqual(lastText(path.join(os.tmpdir(), 'blaube-missing.jsonl')), '');
 });
+
+test('an API error Claude Code wrote down is found, the newest one said', () => {
+	const { sessionApiErrors } = require('../src/main/usage.js');
+	const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-')), 't.jsonl');
+	const err = (text, extra = {}) => JSON.stringify(Object.assign({ type: 'assistant', isApiErrorMessage: true, message: { model: '<synthetic>', content: [{ type: 'text', text }] } }, extra)) + '\n';
+	fs.writeFileSync(file, line('a', { input_tokens: 5 }));
+	assert.deepStrictEqual(sessionApiErrors(file), { count: 0, text: '' });
+	fs.appendFileSync(file, err('API Error: 529 Overloaded') + err('a helper’s', { isSidechain: true }) + err('5-hour limit reached ∙ resets 3pm'));
+	assert.deepStrictEqual(sessionApiErrors(file), { count: 2, text: '5-hour limit reached ∙ resets 3pm' });
+});

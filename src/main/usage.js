@@ -87,6 +87,14 @@ function addInfo(u, line) {
 		} catch { /* half a line */ }
 	}
 	if (!own) return;
+	// Claude Code couldn't get an answer (overloaded, a usage limit...): what it said.
+	if (line.includes('"isApiErrorMessage":true')) {
+		try {
+			const c = JSON.parse(line).message.content;
+			const text = (Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text).join(' ') : String(c || '')).trim();
+			if (text) { u.apiErrors = (u.apiErrors || 0) + 1; u.apiError = text.slice(0, 300); }
+		} catch { /* half a line */ }
+	}
 	const branch = /"gitBranch":"([^"]*)"/.exec(line);
 	if (branch && branch[1] && !branch[1].startsWith('worktree-agent-')) u.branch = branch[1];
 	const model = /"model":"(claude-[^"]+)"/.exec(line);
@@ -176,6 +184,12 @@ function sessionErrors(file) {
 	return (u && u.errors) || 0;
 }
 
+// The API errors in a transcript: { count, text } (text: the newest).
+function sessionApiErrors(file) {
+	const u = file && readNew(file);
+	return { count: (u && u.apiErrors) || 0, text: (u && u.apiError) || '' };
+}
+
 // Reads on until a transcript and its helpers' are read to the end (at most
 // 64 MB per call); true once they are. A missing file counts as read.
 function catchUp(file) {
@@ -202,4 +216,4 @@ function forget(keep) {
 	for (const f of files.keys()) if (!keep.has(f) && !dirs.some((d) => f.startsWith(d))) files.delete(f);
 }
 
-module.exports = { helperTokens, sessionUsage, sessionTasks, sessionEffort, sessionInfo, sessionErrors, lastText, catchUp, forget };
+module.exports = { helperTokens, sessionUsage, sessionTasks, sessionEffort, sessionInfo, sessionErrors, sessionApiErrors, lastText, catchUp, forget };

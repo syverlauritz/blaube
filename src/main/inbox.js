@@ -13,8 +13,11 @@
 // started (prompts typed in the terminal, messages sent from the slime and
 // Claude's replies), for the talk box.
 const { EventEmitter } = require('node:events');
+const { testCounts, words: countWords } = require('./testCounts');
+const { classify } = require('../shared/actions');
 
 const MAX_LOG = 60;
+const MAX_STEPS = 40; // what it did (read, edited, ran) is dropped before what was said
 
 // How a message from the slime reaches Claude: as a system reminder, so it
 // says plainly that it's the user talking, and that the answer will be read
@@ -37,7 +40,54 @@ class Inbox extends EventEmitter {
     // into them, and their replies come from their own output.
     this.owned = new Set();
     this.typed = new Map(); // session id -> what was just typed into its terminal (its prompt echo isn't logged twice)
+    // Sessions whose tool hooks hand Blaube's answer back to Claude (they
+    // were connected by this Blaube): a message can go in at the next step,
+    // and Stop works.
+    this.steerable = new Set();
+    this.stops = new Set(); // sessions you asked to stop (until the turn ends)
+    this.todos = new Map(); // session id -> [{ id, text, doing, status }]
     this.nextKey = 1;
+  }
+
+  // A tool hook from a session (PreToolUse, PostToolUse...). Returns what
+  // the hook hands back to Claude, or '' for nothing.
+  // - Stop: every tool is turned down until the turn ends, with a word that
+  //   you asked it to stop, so it wraps up and its Stop hook still runs
+  //   (and it can still hear you afterwards).
+  // - Messages from the slime go in at the next step, as Claude Code does
+  //   with what you type while it works, instead of after the turn.
+  step(payload, talksBack) {
+    const id = String(payload.session_id || '');
+    if (!id) return '';
+    if (talksBack && !this.steerable.has(id)) { this.steerable.add(id); this.emit('change', id); }
+    if (!talksBack) return '';
+    const event = payload.hook_event_name;
+    if (this.stops.has(id) && event === 'PreToolUse') {
+      return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'The user pressed Stop in Blaube, their desktop buddy. Stop now: don\'t use any more tools. In one short sentence, say where you got to.' } });
+    }
+    if (payload.agent_id || this.stops.has(id) || this.owned.has(id)) return '';
+    if (event !== 'PostToolUse') return '';
+    const q = this.queue.get(id);
+    if (!q || !q.length) return '';
+    this.queue.delete(id);
+    for (const e of q) { e.status = 'sent'; e.sentAt = this.now(); e.midTurn = true; } // (part of the turn it's in, not a new one)
+    this.emit('heard', id);
+    this.emit('change', id);
+    return JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: frame(q.map((e) => e.text).join('\n\n')) } });
+  }
+
+  // Stop button: it stops before its next step. False if it can't.
+  stop(id) {
+    if (!this.steerable.has(id) || this.stops.has(id)) return false;
+    this.stops.add(id);
+    // Whatever it's asking you is answered no, so it isn't left waiting.
+    for (const a of [...(this.asks.get(id) || [])]) {
+      a.reply(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: 'The user pressed Stop in Blaube, their desktop buddy. Stop now and say where you got to.' } } }));
+      this.unasked(id, a.reply);
+    }
+    this.add(id, { who: 'note', text: 'You asked it to stop', stop: true });
+    this.emit('stopping', id);
+    return true;
   }
 
   // A session wants permission for a tool; `reply(json)` answers its hook.
@@ -85,10 +135,14 @@ class Inbox extends EventEmitter {
         : Object.assign({ behavior: 'allow', updatedInput: a.input }, always);
       note = choice === 'deny' ? (change ? `Kept planning: ${change}` : 'Kept planning') : choice === 'always' ? 'Approved the plan, auto-accepting edits' : 'Approved the plan';
     } else {
+      // Denied with a note, as "No, and tell Claude what to do differently".
+      const say = choice === 'deny' && answers && answers.message ? String(answers.message).trim() : '';
       decision = choice === 'deny'
-        ? { behavior: 'deny', message: 'The user denied this from Blaube, their desktop buddy.' }
+        ? { behavior: 'deny', message: say
+          ? `The user denied this from Blaube, their desktop buddy, and said what to do instead: ${say}`
+          : 'The user denied this from Blaube, their desktop buddy.' }
         : Object.assign({ behavior: 'allow' }, always);
-      note = `${choice === 'deny' ? 'Denied' : choice === 'always' ? 'Always allowed' : 'Allowed'} ${a.tool}${a.detail ? ': ' + a.detail : ''}`;
+      note = `${choice === 'deny' ? 'Denied' : choice === 'always' ? 'Always allowed' : 'Allowed'} ${a.tool}${a.detail ? ': ' + a.detail : ''}${say ? ` · “${say}”` : ''}`;
     }
     a.reply(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision } }));
     this.add(id, { who: 'note', text: note });
@@ -123,7 +177,7 @@ class Inbox extends EventEmitter {
     reply(frame(texts.join('\n\n')));
     // 'delivering' until the wake-up shows up as the next turn starting, so
     // a reply to the turn before still lands above them (see observe).
-    for (const e of this.log(id)) if (e.status === 'queued') e.status = 'delivering';
+    for (const e of this.log(id)) if (e.status === 'queued') { e.status = 'delivering'; e.sentAt = this.now(); }
     this.emit('delivered', id);
     this.emit('change', id);
   }
@@ -184,15 +238,16 @@ class Inbox extends EventEmitter {
   }
 
   // Something you said to a session Blaube started (it went straight in).
-  say(id, text) {
+  say(id, text, uuid) {
     text = String(text || '').trim();
-    if (text) this.add(id, { who: 'you', text, via: 'blaube', status: 'sent' });
+    if (text) this.add(id, Object.assign({ who: 'you', text, via: 'blaube', status: 'sent' }, uuid ? { uuid } : {}));
   }
 
   // A reply from a session Blaube started (from its own output).
   replied(id, text) {
     if (!String(text || '').trim()) return;
-    const entry = this.add(id, { who: 'claude', text: String(text) });
+    const turn = turnOf(this.log(id), this.now());
+    const entry = this.add(id, Object.assign({ who: 'claude', text: String(text) }, turn ? { turn } : {}));
     this.emit('reply', id, entry);
   }
 
@@ -201,6 +256,29 @@ class Inbox extends EventEmitter {
     const id = String(payload.session_id || '');
     if (!id || payload.agent_id) return;
     const event = payload.hook_event_name;
+    if (this.stops.has(id) && (event === 'Stop' || event === 'UserPromptSubmit' || event === 'SessionEnd')) { this.stops.delete(id); this.emit('change', id); }
+    // Its to-do list, as the terminal shows it.
+    if (event === 'PostToolUse') {
+      const doneOf = () => (this.todos.get(id) || []).filter((t) => t.status === 'completed').length;
+      const before = doneOf();
+      if (todo(this.todos, id, payload)) {
+        const after = doneOf(), of = (this.todos.get(id) || []).length;
+        if (after > before) this.emit('ticked', id, { done: after, of });
+        this.emit('change', id);
+      }
+    }
+    if (event === 'SessionEnd') this.todos.delete(id);
+    // What it did, a line per step, between what was said.
+    if (event === 'PostToolUse' || event === 'PostToolUseFailure') {
+      const text = stepText(payload.tool_name, payload.tool_input);
+      const i = payload.tool_input || {};
+      const file = /^(Edit|MultiEdit|Write|NotebookEdit|Read)$/.test(payload.tool_name) ? String(i.file_path || i.notebook_path || '') : '';
+      const cmd = (payload.tool_name === 'Bash' || payload.tool_name === 'PowerShell') && payload.tool_input && typeof payload.tool_input.command === 'string' ? payload.tool_input.command.slice(0, 200) : '';
+      const detail = stepDetail(payload);
+      // (A test run says how it went: "Ran npm test · 2 failing".)
+      const counts = cmd && TESTS.test(cmd) ? testCounts(detail) : null;
+      if (text) this.add(id, Object.assign({ who: 'step', text: text + countWords(counts), ok: event === 'PostToolUse', kind: classify(payload.tool_name, payload.tool_input), detail }, file ? { file } : {}, cmd ? { cmd } : {}, counts ? { tests: counts } : {}));
+    }
     // A session Blaube started tells its own story (say/replied).
     if (this.owned.has(id) && (event === 'UserPromptSubmit' || event === 'Stop')) return;
     // The terminal answered a permission prompt (the tool ran, or the turn
@@ -228,7 +306,8 @@ class Inbox extends EventEmitter {
     } else if (event === 'Stop' && payload.last_assistant_message) {
       // The reply answers the turn that just ended, so it goes above
       // anything sent from the slime that hasn't been read yet.
-      const entry = this.add(id, { who: 'claude', text: String(payload.last_assistant_message) });
+      const turn = turnOf(this.log(id), this.now());
+      const entry = this.add(id, Object.assign({ who: 'claude', text: String(payload.last_assistant_message) }, turn ? { turn } : {}));
       const log = this.logs.get(id);
       log.pop();
       let at = log.length;
@@ -243,10 +322,25 @@ class Inbox extends EventEmitter {
       this.waiters.delete(id);
       this.queue.delete(id);
       this.reachable.delete(id);
+      this.steerable.delete(id);
       for (const a of this.asks.get(id) || []) a.reply(null);
       this.asks.delete(id);
       this.emit('change', id);
     }
+  }
+
+  // A session that's gone for good: nothing is kept for it.
+  forget(id) {
+    if (this.waiters.has(id) || this.asks.has(id) || this.owned.has(id)) return false; // (still talking to it)
+    for (const m of [this.queue, this.logs, this.typed, this.todos, this.reachable, this.steerable, this.stops]) m.delete(id);
+    return true;
+  }
+
+  // Everything about a session moves to its new id.
+  rename(from, to) {
+    for (const m of [this.waiters, this.queue, this.logs, this.asks, this.typed, this.todos]) if (m.has(from)) { m.set(to, m.get(from)); m.delete(from); }
+    for (const set of [this.reachable, this.owned, this.steerable, this.stops]) if (set.has(from)) { set.delete(from); set.add(to); }
+    this.emit('change', to);
   }
 
   log(id) { return this.logs.get(id) || []; }
@@ -255,7 +349,10 @@ class Inbox extends EventEmitter {
     const log = this.logs.get(id) || [];
     const e = Object.assign({ at: this.now(), n: this.nextKey++ }, entry);
     log.push(e);
-    if (log.length > MAX_LOG) log.splice(0, log.length - MAX_LOG);
+    // (In batches: every trim redraws the talk box from scratch.)
+    const steps = log.filter((x) => x.who === 'step');
+    if (steps.length > MAX_STEPS + 20) { const drop = new Set(steps.slice(0, steps.length - MAX_STEPS)); log.splice(0, log.length, ...log.filter((x) => !drop.has(x))); }
+    if (log.length > MAX_LOG + MAX_STEPS) log.splice(0, log.length - MAX_LOG - MAX_STEPS);
     this.logs.set(id, log);
     this.emit('change', id);
     return e;
@@ -270,6 +367,9 @@ class Inbox extends EventEmitter {
       // never heard from its inbox hook (started before it was installed).
       inbox: this.owned.has(id) || this.waiters.has(id) ? 'ready' : this.reachable.has(id) ? 'busy' : 'unknown',
       owned: this.owned.has(id),
+      todos: this.todos.get(id) || [],
+      stoppable: this.steerable.has(id),
+      stopping: this.stops.has(id),
       queued: (this.queue.get(id) || []).length,
       ask: (() => {
         const a = (this.asks.get(id) || [])[0];
@@ -309,6 +409,148 @@ function describe(tool, input) {
   return clip(text);
 }
 
+// What the turn that just ended came to: how long since what started it,
+// how many steps, which files it changed. Null if there's nothing to say.
+function turnOf(log, now) {
+  let start = -1;
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if (e.who === 'claude') break;
+    if (e.who !== 'you' || e.status === 'queued' || e.status === 'delivering') continue;
+    start = i;
+    if (!e.midTurn) break; // (a message added mid-turn: the turn began before it)
+  }
+  if (start < 0) return null;
+  const steps = log.slice(start + 1).filter((e) => e.who === 'step');
+  const files = [...new Set(steps.filter((e) => e.file && e.kind === 'edit').map((e) => e.file))];
+  return Object.assign({ took: Math.max(0, now - (log[start].sentAt || log[start].at)), steps: steps.length, files }, log[start].uuid ? { rewind: log[start].uuid } : {}); // (from when it went in, not when it was typed; rewind: the message to put its changes back to)
+}
+
+// The test command its last turn ran and that failed (its last run of
+// tests, so tests fixed later in the turn don't count), or ''.
+const TESTS = /\b(?:(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test|npx\s+(?:jest|vitest|mocha|playwright\s+test)|pytest|jest|vitest|mocha|rspec|go\s+test|cargo\s+test|node\s+--test|make\s+test|dotnet\s+test|mvn\s+test|gradlew?\s+test)\b/;
+function failedTests(log) {
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if (e.who === 'you' && !e.midTurn && e.status !== 'queued') break;
+    if (e.who === 'step' && e.cmd && TESTS.test(e.cmd)) return e.ok === false ? e.cmd : '';
+  }
+  return '';
+}
+
+// Whether you stopped its last turn (so it can be asked to carry on).
+// Whether its last turn ended on an API error (overloaded, say): nothing
+// you said since, and nothing Claude said after it.
+function erredLast(log) {
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if ((e.who === 'you' && !e.midTurn && e.status !== 'queued') || e.who === 'claude') return '';
+    // (What Claude Code said. Blaube's own "couldn't…" notes aren't
+    // Claude's errors: trying again wouldn't help, and would cost a turn.)
+    if (e.who === 'note' && e.error && /^Claude Code: /.test(e.text || '')) return e.text;
+  }
+  return '';
+}
+
+// A script Blaube ran for it (runs.js) that stopped with an error since
+// anything was said: { command, tail } (its last lines), or null.
+function runFailed(log) {
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if ((e.who === 'you' && !e.midTurn && e.status !== 'queued') || e.who === 'claude') return null;
+    if (e.who === 'note' && e.runFailed) return e.runFailed;
+  }
+  return null;
+}
+
+function stoppedLast(log) {
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if (e.who === 'you' && !e.midTurn && e.status !== 'queued') return false;
+    if (e.who === 'note' && e.stop) return true;
+  }
+  return false;
+}
+
+// Keeps a session's to-do list up to date from TodoWrite (the whole list
+// each time) or the task tools (one item at a time). True if it changed.
+function todo(all, id, p) {
+  const i = p.tool_input && typeof p.tool_input === 'object' ? p.tool_input : {};
+  const r = p.tool_response && typeof p.tool_response === 'object' ? p.tool_response : {};
+  const status = (v) => (v === 'completed' || v === 'in_progress' || v === 'pending' ? v : null);
+  if (p.tool_name === 'TodoWrite' && Array.isArray(i.todos)) {
+    all.set(id, i.todos.filter((t) => t && t.content).slice(0, 30).map((t, n) => ({ id: String(t.id || n), text: String(t.content), doing: String(t.activeForm || t.content), status: status(t.status) || 'pending' })));
+    return true;
+  }
+  const list = all.get(id) || [];
+  if (p.tool_name === 'TaskCreate' && i.subject) {
+    const tid = String((r.task && r.task.id) || r.id || r.taskId || list.length + 1);
+    // A fresh list once the last one is all done.
+    const keep = list.length && list.every((t) => t.status === 'completed') ? [] : list;
+    all.set(id, [...keep, { id: tid, text: String(i.subject), doing: String(i.activeForm || i.subject), status: 'pending' }].slice(-30));
+    return true;
+  }
+  if (p.tool_name === 'TaskUpdate' && i.taskId != null) {
+    const t = list.find((x) => x.id === String(i.taskId));
+    if (!t) return false;
+    if (i.status === 'deleted') { all.set(id, list.filter((x) => x !== t)); return true; }
+    if (status(i.status)) t.status = i.status;
+    if (i.subject) t.text = String(i.subject);
+    if (i.activeForm) t.doing = String(i.activeForm);
+    return true;
+  }
+  return false;
+}
+
+// One step it took, said after the fact: "Edited face.js", "Ran npm test".
+// Nothing for the ones that show up some other way (questions, plans,
+// helpers get their own slime) or say nothing (its own bookkeeping).
+const base = (p) => String(p || '').split(/[\\/]/).filter(Boolean).pop() || 'a file';
+const short = (t, n = 60) => { t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+function stepText(tool, input) {
+  const i = input && typeof input === 'object' ? input : {};
+  switch (tool) {
+    case 'Read': return 'Read ' + base(i.file_path);
+    case 'Edit': case 'MultiEdit': return 'Edited ' + base(i.file_path);
+    case 'Write': return 'Wrote ' + base(i.file_path);
+    case 'NotebookEdit': return 'Edited ' + base(i.notebook_path);
+    case 'Grep': return `Searched for “${short(i.pattern, 30)}”`;
+    case 'Glob': return 'Looked for ' + short(i.pattern, 40);
+    case 'WebSearch': return 'Searched the web: ' + short(i.query, 40);
+    case 'WebFetch': try { return 'Read ' + new URL(i.url).hostname; } catch { return 'Read a web page'; }
+    case 'Bash': case 'PowerShell': return i.description ? short(i.description) : 'Ran ' + short(i.command, 50);
+    case 'Agent': case 'Task': return i.description ? 'Helper finished: ' + short(i.description, 45) : 'A helper finished';
+    case 'AskUserQuestion': case 'ExitPlanMode': case 'TodoWrite': case 'TaskCreate': case 'TaskUpdate': case 'TaskList': case 'TaskGet': case 'ToolSearch': return '';
+    default: return String(tool || '').startsWith('mcp__') ? 'Used ' + toolName(tool) : tool ? 'Used ' + tool : '';
+  }
+}
+
+// What you'd have seen in the terminal for a step, for when you open it:
+// the change an edit made, the command and the end of what it printed, or
+// what went wrong. Kept short; the log holds a lot of these.
+const DETAIL = 1500;
+function stepDetail(payload) {
+  const i = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
+  const r = payload.tool_response;
+  const tail = (t) => { t = String(t || '').replace(/\s+$/, ''); return t.length > DETAIL ? '…' + t.slice(-DETAIL) : t; };
+  const head = (t) => { t = String(t || ''); return t.length > DETAIL ? t.slice(0, DETAIL) + '…' : t; };
+  const printed = () => {
+    if (typeof r === 'string') return r;
+    if (!r || typeof r !== 'object') return '';
+    return [r.stdout, r.stderr].filter((x) => typeof x === 'string' && x.trim()).join('\n') || (typeof r.output === 'string' ? r.output : '');
+  };
+  const failed = payload.hook_event_name === 'PostToolUseFailure' ? String(payload.error || printed() || '') : '';
+  const tool = payload.tool_name;
+  if (tool === 'Edit' && typeof i.new_string === 'string') {
+    const lines = (t, mark) => String(t || '').trim().split('\n').map((l) => mark + ' ' + l).join('\n');
+    return head([lines(i.old_string, '−'), lines(i.new_string, '+')].filter((x) => x.length > 2).join('\n') + (failed ? '\n\n' + failed : ''));
+  }
+  if (tool === 'MultiEdit' && Array.isArray(i.edits)) return head(i.edits.map((e) => `− ${String(e.old_string || '').trim()}\n+ ${String(e.new_string || '').trim()}`).join('\n\n'));
+  if (tool === 'Write' && typeof i.content === 'string') return head(i.content);
+  if (tool === 'Bash' || tool === 'PowerShell') return tail(`$ ${i.command || ''}\n${failed || printed()}`);
+  return failed ? tail(failed) : '';
+}
+
 const clip = (text) => (text.length > 4000 ? text.slice(0, 4000) + '…' : text);
 
 // A tool's name as a person would say it: "Bash", "Gmail: send message".
@@ -338,4 +580,4 @@ function alwaysLabel(updates, max = 70) {
   return text.length > max ? text.slice(0, max - 2) + '…' : text;
 }
 
-module.exports = { Inbox, frame, describe, toolName, alwaysLabel, STYLE };
+module.exports = { Inbox, frame, describe, toolName, alwaysLabel, stepText, stepDetail, turnOf, failedTests, stoppedLast, erredLast, runFailed, STYLE };

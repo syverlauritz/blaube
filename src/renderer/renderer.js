@@ -5551,6 +5551,9 @@
     // How full its context window is.
     const tk = b.kind === 'mother' && b.session && b.session.tokens;
     if (tk && tk.limit && tk.context) lines.push({ text: `${Math.min(100, Math.round((tk.context / tk.limit) * 100))}% of context used`, dim: true });
+    // How far down its to-do list it is.
+    const todo = b.kind === 'mother' && b.session && b.session.todo;
+    if (todo) lines.push({ text: `${todo.done} of ${todo.of} on its list done`, dim: true });
     // Until you've talked to one, say you can.
     if (b.session && !String(b.session.id).startsWith('demo-')) {
       if (settings.hooksInstalled === false) lines.push({ text: 'Connect Claude Code in my menu for more', dim: true });
@@ -6085,6 +6088,25 @@
     // seconds (a busy session shouldn't fidget).
     const once = (kind, gap) => { b.reacted = b.reacted || {}; if (time < (b.reacted[kind] || 0)) return false; b.reacted[kind] = time + gap; return true; };
     const grounded = b.body.onFloor() && !b.body.grab;
+    // Its to-do list: a little hop for each item ticked off (not too
+    // often), a proper one with a cheer when the list is done.
+    if (m.kind === 'tick' && once('tick', 8)) {
+      if (grounded) b.hop(0, -220);
+      if (talkingTo !== m.id) b.say([{ text: `✓ ${m.done} of ${m.of}` }], 1.6);
+      return;
+    }
+    if (m.kind === 'listdone' && once('listdone', 20)) {
+      b.cheerUntil = time + 1.2;
+      if (grounded) b.hop(0, -360);
+      if (talkingTo !== m.id) b.say([{ text: m.of > 1 ? `All ${m.of} done!` : 'Done!' }], 2);
+      return;
+    }
+    // Stop: it digs in and squashes down, like braking.
+    if (m.kind === 'brace') {
+      b.winceUntil = time + 0.6;
+      if (grounded) b.body.impulse(0, 320, DT);
+      return;
+    }
     if (m.kind === 'push' && once('push', 30)) {
       // Sent off: a little hop and a word.
       if (grounded) b.hop(0, -380);

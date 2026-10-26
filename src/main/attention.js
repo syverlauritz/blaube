@@ -1,0 +1,128 @@
+// Which session wants you most (for the talk shortcut), and when a
+// session is worth a system notification (the slimes can't be seen).
+
+// Needs you first, then finished and not looked at yet, then the most
+// recently busy. Demo slimes never.
+function mostWanted(sessions) {
+  const real = sessions.filter((s) => !String(s.id).startsWith('demo-'));
+  const rank = (s) => (s.state === 'waiting' ? 0 : s.state === 'done' && !s.seen ? 1 : s.state === 'working' ? 2 : 3);
+  real.sort((a, b) => rank(a) - rank(b) || (b.updatedAt || 0) - (a.updatedAt || 0));
+  return real[0] || null;
+}
+
+// A notification for something that happened to a session, or null.
+// `seen`: the slimes are where you can see them (in front of your windows),
+// or you're talking to this one. Finishing counts only after a wait
+// (`secs` of work); needing you always counts.
+// `ask`: what it's asking permission for ({ kind, tool, detail }), or its
+// question ({ kind: 'question', input }), if anything: then it says what,
+// and can be answered right there (actions).
+// `turn`: what a finished turn came to ({ files, failed }: how many files it
+// changed, whether its tests failed), for the title.
+function notification({ event, project, title, text, secs = 0, seen = false, enabled = true, ask = null, turn = null }) {
+  if (!enabled || seen) return null;
+  const name = title || project || 'Claude';
+  const short = (t, n = 140) => { t = String(t || '').replace(/[`*_#>]+/g, '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+  // A question: what it asks; a single pick of up to three is answered
+  // right there (actions), and a single question can be answered in words
+  // (question: what the answer is to).
+  const qs = ask && ask.kind === 'question' && ask.input && Array.isArray(ask.input.questions) ? ask.input.questions : [];
+  if (event === 'waiting' && qs.length) {
+    const q = qs[0] || {}, one = qs.length === 1 && !q.multiSelect;
+    const labels = (q.options || []).map((o) => String((o && o.label) || '')).filter(Boolean);
+    return Object.assign({ title: `${name} asks`, body: short(q.question) || 'It has a question for you.' }, one ? { question: String(q.question || '') } : {}, one && labels.length && labels.length <= 3 ? { actions: labels } : {});
+  }
+  if (event === 'waiting' && ask && ask.kind === 'tool') return { title: `${name} asks to use ${ask.tool || 'a tool'}`, body: short(ask.detail) || short(text) || 'It’s waiting for your answer.', actions: ['Allow', 'Deny'] };
+  if (event === 'waiting') return { title: `${name} needs you`, body: short(text) || 'It’s waiting for your answer.' };
+  if (event === 'error') return { title: `${name} couldn’t go on`, body: short(text) || 'Claude Code couldn’t get an answer.' };
+  // Its pull request: checks finished, approved, merged (text: which).
+  if (event === 'pr') return { title: `${name}: ${String(text || '').slice(0, 80)}`, body: /fail|changes/.test(text) ? 'Its box has a quick action for it.' : 'On GitHub.' };
+  if (event === 'task') return { title: `${name}: ${short(text, 60) || 'a background task'} stopped`, body: 'It ended with an error. Its last lines are in its box.' };
+  if (event === 'done' && secs >= 20) {
+    const files = turn && turn.files ? ` · ${turn.files} ${turn.files === 1 ? 'file' : 'files'} changed` : '';
+    return { title: turn && turn.failed ? `${name} is done, but its tests fail${files}` : `${name} is done${files}`, body: short(text) || 'It finished its turn.' };
+  }
+  return null;
+}
+
+// One session at a glance, for the overview: what it's up to (in words,
+// with how long it's been waiting on you) and the small print (to-do
+// progress, context, git).
+function glance({ state, doing = '', message = '', lastReply = '', todo = null, context = 0, git = '', tests = null, turnStart = 0, waitingSince = 0, unread = 0, now = Date.now() }) {
+  const clip = (t, n = 80) => { t = String(t || '').replace(/[`*_#>]+/g, '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+  const mins = turnStart ? Math.floor((now - turnStart) / 60000) : 0;
+  const waited = state === 'waiting' && waitingSince ? Math.floor((now - waitingSince) / 60000) : 0;
+  const status = state === 'waiting' ? `Needs you${waited >= 1 ? ` (${waited < 60 ? `${waited}m` : `${Math.floor(waited / 60)}h`})` : ''}${message ? ': ' + clip(message, 70) : ''}`
+    : state === 'working' ? `${doing ? clip(doing, 60) : 'Working'}${mins >= 1 ? ` · ${mins}m` : ''}`
+    : state === 'done' ? `Done${lastReply ? ': ' + clip(lastReply, 70) : ''}`
+    : lastReply ? clip(lastReply, 80) : 'Idle';
+  const meta = [unread ? `${unread} new repl${unread === 1 ? 'y' : 'ies'} since you looked` : '', todo && todo.of ? `${todo.done} of ${todo.of} on its list` : '', context >= 50 ? `${context}% context` : '', tests && tests.fail ? `${tests.fail} test${tests.fail === 1 ? '' : 's'} failing` : tests && tests.pass ? 'tests pass' : '', git].filter(Boolean).join(' · ');
+  return { status, meta };
+}
+
+// The day so far, across every session's log: replies, time Claude spent
+// working on them, files changed. "Today" starts at local midnight.
+function today(logs, now = Date.now()) {
+  const d = new Date(now);
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  let replies = 0, worked = 0;
+  const files = new Set();
+  for (const log of logs) {
+    for (const e of log) {
+      if (e.who !== 'claude' || e.at < start) continue;
+      replies++;
+      if (e.turn) { worked += e.turn.took || 0; for (const f of e.turn.files || []) files.add(f); }
+    }
+  }
+  if (!replies) return '';
+  const m = Math.round(worked / 60e3);
+  const time = m < 1 ? '' : m < 60 ? `${m}m of work` : `${Math.floor(m / 60)}h ${m % 60}m of work`;
+  return ['Today: ' + `${replies} repl${replies === 1 ? 'y' : 'ies'}`, time, files.size ? `${files.size} file${files.size === 1 ? '' : 's'} changed` : ''].filter(Boolean).join(' · ');
+}
+
+// Finding something said in any session (⌘F in the overview): each
+// session that has it, most hits first, with a snippet round the newest.
+// sessions: [{ id, project, log }].
+function search(sessions, q) {
+  q = String(q || '').trim().toLowerCase();
+  if (q.length < 2) return [];
+  const out = [];
+  for (const s of sessions) {
+    let hits = 0, snippet = '';
+    for (let i = s.log.length - 1; i >= 0; i--) {
+      const e = s.log[i];
+      const text = [e.text, e.detail].filter(Boolean).join('\n');
+      const at = text.toLowerCase().indexOf(q);
+      if (at < 0) continue;
+      hits++;
+      if (!snippet) {
+        const from = Math.max(0, at - 30);
+        snippet = (from ? '…' : '') + text.slice(from, at + q.length + 50).replace(/\s+/g, ' ').trim() + (at + q.length + 50 < text.length ? '…' : '');
+      }
+    }
+    if (hits) out.push({ id: s.id, project: s.project, hits, snippet });
+  }
+  return out.sort((a, b) => b.hits - a.hits);
+}
+
+// Its changes left uncommitted a while after it finished: its slime says
+// so, once for each set of changes. { text, key } (key: which changes), or
+// null.
+function leftUncommitted({ state, git, idleFor = 0 }, after = 20 * 60e3) {
+  if ((state !== 'done' && state !== 'idle') || !git || idleFor < after) return null;
+  const n = (git.changed || 0) + (git.untracked || 0);
+  if (!n) return null;
+  return { text: `${n} file${n === 1 ? '' : 's'} changed, not committed yet`, key: [git.branch, n, ...(git.files || []).map((f) => f.path)].join('|') };
+}
+
+// Still waiting on you a while later (10 minutes, then 30): its slime
+// reminds you, once at each. `told`: how many reminders it's had for this
+// wait. { text, told } or null.
+const REMIND = [10 * 60e3, 30 * 60e3];
+function stillWaiting({ state, since, now = Date.now(), told = 0, what = '' }) {
+  if (state !== 'waiting' || !since || told >= REMIND.length || now - since < REMIND[told]) return null;
+  const m = Math.floor((now - since) / 60e3);
+  return { text: `Still waiting for you (${m}m)${what ? `: ${what}` : ''}`, told: told + 1 };
+}
+
+module.exports = { mostWanted, notification, glance, today, search, leftUncommitted, stillWaiting };

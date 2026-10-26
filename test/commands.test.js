@@ -1,0 +1,158 @@
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { slashCommand } = require('../src/main/commands.js');
+
+test('slash commands, and messages that only start with a slash', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-cmd-'));
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-proj-'));
+  fs.mkdirSync(path.join(home, '.claude', 'commands', 'git'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.claude', 'commands', 'git', 'ship.md'), 'x');
+  fs.mkdirSync(path.join(proj, '.claude', 'commands'), { recursive: true });
+  fs.writeFileSync(path.join(proj, '.claude', 'commands', 'deploy.md'), 'x');
+  const is = (t) => slashCommand(t, proj, home);
+  assert.equal(is('/compact'), '/compact');
+  assert.equal(is('  /model opus'), '/model');
+  assert.equal(is('/deploy staging'), '/deploy');
+  assert.equal(is('/git:ship'), '/git:ship');
+  assert.equal(is('/my-plugin:do-thing now'), '/my-plugin:do-thing');
+  assert.equal(is('/api returns 500 now, can you fix it'), '');
+  assert.equal(is('/tmp is full'), '');
+  assert.equal(is('/usr/local/bin is missing'), '');
+  assert.equal(is('hello /compact'), '');
+});
+
+test('your own commands go as the prompt they stand for; "/" lists them first', () => {
+  const { expand, commandNames } = require('../src/main/commands.js');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-cmd-'));
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-proj-'));
+  const dir = path.join(home, '.claude', 'commands');
+  fs.mkdirSync(path.join(dir, 'git'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'git', 'ship.md'), '---\ndescription: "Ship a branch"\n---\nShip $1 to $2. ($ARGUMENTS)\n');
+  fs.writeFileSync(path.join(dir, 'tidy.md'), 'Tidy the diff.');
+  fs.writeFileSync(path.join(dir, 'st.md'), 'Status: !`git status`');
+  fs.mkdirSync(path.join(proj, '.claude', 'commands'), { recursive: true });
+  fs.writeFileSync(path.join(proj, '.claude', 'commands', 'tidy.md'), 'Tidy it the project way.');
+  assert.equal(expand('/git:ship web prod', proj, home), 'Ship web to prod. (web prod)');
+  assert.equal(expand('/tidy', proj, home), 'Tidy it the project way.', 'the project’s wins');
+  assert.equal(expand('/tidy  carefully', '', home), 'Tidy the diff.\n\ncarefully', 'words with nowhere to go are added');
+  assert.equal(expand('/st', '', home), '', 'shell commands need Claude Code');
+  assert.equal(expand('/compact', '', home), '');
+  fs.writeFileSync(path.join(dir, 'review.md'), 'Mine.');
+  assert.equal(expand('/review', '', home), '', 'a built-in stays Claude Code’s');
+  assert.equal(expand('/api is down', '', home), '');
+  const names = commandNames('', proj, home);
+  assert.deepEqual(names.slice(0, 4).map((c) => c.name), ['git:ship', 'ship', 'st', 'tidy']);
+  assert.equal(names[0].about, 'Ship a branch');
+  assert.ok(names.some((c) => c.name === 'compact' && !c.mine));
+  assert.deepEqual(commandNames('co', proj, home).map((c) => c.name), ['compact', 'config', 'context', 'cost']);
+});
+
+test('/context is asked of Claude Code, and its answer drawn as what fills it', () => {
+  const { control, contextNote } = require('../src/main/commands');
+  assert.deepEqual(control('/context'), { request: { subtype: 'get_context_usage', detail: 'summary' } });
+  const n = contextNote({
+    categories: [
+      { id: 'system_prompt', name: 'System prompt', tokens: 3803, kind: 'used' },
+      { id: 'system_tools', name: 'System tools', tokens: 29244, kind: 'used' },
+      { id: 'system_tools_deferred', name: 'System tools (deferred)', tokens: 34354, kind: 'deferred' },
+      { id: 'messages', name: 'Messages', tokens: 61000, kind: 'used' },
+      { id: 'autocompact_buffer', name: 'Autocompact buffer', tokens: 33000, kind: 'buffer' },
+      { id: 'free_space', name: 'Free space', tokens: 372953, kind: 'free' },
+    ],
+    totalTokens: 94047, maxTokens: 500000, percentage: 19, gridRows: [[]],
+  });
+  assert.equal(n.text, 'Context: 19% full (94k of 500k)');
+  assert.deepEqual(n.context.parts.map((p) => p.label), ['Messages 61k', 'System tools 29.2k', 'System prompt 3.8k', 'Autocompact buffer 33k', 'Free space 373k']);
+  assert.equal(n.context.max, 500000);
+  assert.equal(contextNote(null), null);
+});
+
+test('/effort is asked of Claude Code (its flag settings)', () => {
+  const { control } = require('../src/main/commands');
+  assert.deepEqual(control('/effort high'), { request: { subtype: 'apply_flag_settings', settings: { effortLevel: 'high' } } });
+  assert.deepEqual(control('/effort MAX'), { request: { subtype: 'apply_flag_settings', settings: { effortLevel: 'max' } } });
+  assert.match(control('/effort').help, /\/effort low, \/effort medium, \/effort high, \/effort xhigh, \/effort max/);
+  assert.ok(control('/effort loads').help);
+});
+
+test('built-in commands the box handles itself say what they do', () => {
+  const { commandNames } = require('../src/main/commands.js');
+  const byName = Object.fromEntries(commandNames('', '', require('node:os').tmpdir()).map((c) => [c.name, c]));
+  assert.equal(byName.usage.about, 'How much of your limits you’ve used');
+  assert.equal(byName.rename.mine, false);
+  assert.equal(byName.vim.about, undefined);
+});
+
+test('lists your skills and the project’s, with what each is for', () => {
+  const { skills } = require('../src/main/commands.js');
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-home-')), proj = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-proj-'));
+  const put = (root, name, body) => { fs.mkdirSync(path.join(root, '.claude', 'skills', name), { recursive: true }); if (body) fs.writeFileSync(path.join(root, '.claude', 'skills', name, 'SKILL.md'), body); };
+  put(proj, 'deploy', '---\nname: deploy\ndescription: "Ships the site"\n---\nDo it.');
+  put(home, 'deploy', '---\ndescription: mine\n---\n');
+  put(home, 'notes', 'no front matter');
+  put(home, 'empty');
+  assert.deepEqual(skills(proj, home), [{ name: 'deploy', about: 'Ships the site', where: 'this project' }, { name: 'notes', about: '', where: 'yours' }]);
+  assert.deepEqual(skills('', path.join(home, 'none')), []);
+});
+
+test('a skill by name: in / suggestions, and asked for in words where only the terminal could start it', () => {
+  const { skillPrompt, commandNames } = require('../src/main/commands.js');
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-home-')), proj = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-proj-'));
+  fs.mkdirSync(path.join(proj, '.claude', 'skills', 'release'), { recursive: true });
+  fs.writeFileSync(path.join(proj, '.claude', 'skills', 'release', 'SKILL.md'), '---\ndescription: Tags and ships\n---\n');
+  assert.deepEqual(commandNames('rel', proj, home).filter((c) => c.skill), [{ name: 'release', mine: true, skill: true, about: 'Tags and ships' }]);
+  assert.equal(skillPrompt('/release v2.1', proj, home), 'Use your release skill for this: v2.1');
+  assert.equal(skillPrompt('/release', proj, home), 'Use your release skill.');
+  assert.equal(skillPrompt('/compact', proj, home), '');
+  assert.equal(skillPrompt('/nope', proj, home), '');
+});
+
+test('/cost and /logout say what they do here', () => {
+  const { commandNames } = require('../src/main/commands.js');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-cmd-'));
+  const names = commandNames('', '', home);
+  assert.equal(names.find((c) => c.name === 'cost').about, 'How many tokens it has used');
+  assert.equal(names.find((c) => c.name === 'logout').about, 'Signs Claude Code out');
+  assert.equal(require('../src/main/commands').kTokens(120000), '120k');
+});
+
+test('/init, /review and the like as the same ask in words', () => {
+  const { askInWords } = require('../src/main/commands.js');
+  assert.match(askInWords('/init'), /^Look through this codebase and write a CLAUDE\.md/);
+  assert.match(askInWords('/init focus on the API'), /\n\nfocus on the API$/);
+  assert.match(askInWords('/review 42'), /^Review pull request 42\. Read it with `gh pr view`/);
+  assert.match(askInWords('/review'), /list the open ones with `gh pr list`/);
+  assert.match(askInWords('/security-review'), /^Do a security review/);
+  assert.match(askInWords('/PR-comments'), /gh pr view --comments/);
+  assert.equal(askInWords('/compact'), '');
+  assert.equal(askInWords('/api returns 500'), '');
+});
+
+test('/bug: a new Claude Code issue with what you said, its version and system', () => {
+  const { bugUrl } = require('../src/main/commands.js');
+  const u = new URL(bugUrl('/bug it hangs on start', '2.1.0', 'darwin 24.0'));
+  assert.equal(u.origin + u.pathname, 'https://github.com/anthropics/claude-code/issues/new');
+  assert.equal(u.searchParams.get('title'), 'it hangs on start');
+  assert.match(u.searchParams.get('body'), /^it hangs on start\n\n[\s\S]*- Claude Code: 2\.1\.0\n- System: darwin 24\.0\n$/);
+  assert.equal(new URL(bugUrl('/bug')).searchParams.get('title'), '');
+});
+
+test('/run is the box’s own, unless you have a /run of your own', () => {
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const { blaubeCommand, commandNames } = require('../src/main/commands');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-cmd-'));
+  try {
+    assert.equal(blaubeCommand('run', '', home), true);
+    assert.equal(blaubeCommand('nope', '', home), false);
+    assert.deepEqual(commandNames('ru', '', home).map((c) => c.name), ['run']);
+    fs.mkdirSync(path.join(home, '.claude', 'commands'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.claude', 'commands', 'run.md'), 'Run the thing');
+    assert.equal(blaubeCommand('run', '', home), false);
+    assert.deepEqual(commandNames('ru', '', home).map((c) => `${c.name}${c.mine ? '*' : ''}`), ['run*']);
+  } finally { fs.rmSync(home, { recursive: true, force: true }); }
+});

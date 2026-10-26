@@ -22,6 +22,13 @@ function hookCommand(port = DEFAULT_PORT) {
   return `curl -s -m 2 -X POST -H "Content-Type: application/json" -H "X-Blaube-Term: $TERM_PROGRAM" -H "X-Blaube-Entry: $CLAUDE_CODE_ENTRYPOINT" -H "X-Blaube-Pid: $(cat /proc/$$/winpid 2>/dev/null)" --data-binary @- http://127.0.0.1:${port}${HOOK_PATH} >/dev/null 2>&1 || true`;
 }
 
+// For tool events: the same, but what Blaube answers goes back to Claude
+// (X-Blaube-Out says so), so a message from the slime can go in at the
+// next step and Stop can stop it. Blaube answers nothing almost always.
+function toolHookCommand(port = DEFAULT_PORT) {
+  return `curl -s -m 2 -X POST -H "Content-Type: application/json" -H "X-Blaube-Out: 1" -H "X-Blaube-Term: $TERM_PROGRAM" -H "X-Blaube-Entry: $CLAUDE_CODE_ENTRYPOINT" -H "X-Blaube-Pid: $(cat /proc/$$/winpid 2>/dev/null)" --data-binary @- http://127.0.0.1:${port}${HOOK_PATH} 2>/dev/null || true`;
+}
+
 // Waits for a message from the slime. Blaube holds the request open; a
 // message comes back as text, which goes to stderr with exit code 2 so
 // Claude wakes up and reads it (asyncRewake). An empty answer means stop
@@ -73,8 +80,9 @@ function withBlaube(settings, port = DEFAULT_PORT) {
   const out = withoutBlaube(settings);
   out.hooks = Object.assign({}, out.hooks);
   const hook = { type: 'command', command: hookCommand(port), timeout: 3 };
+  const toolHook = { type: 'command', command: toolHookCommand(port), timeout: 3 };
   for (const ev of EVENTS) {
-    const group = TOOL_EVENTS.has(ev) ? { matcher: '*', hooks: [hook] } : { hooks: [hook] };
+    const group = TOOL_EVENTS.has(ev) ? { matcher: '*', hooks: [toolHook] } : { hooks: [hook] };
     out.hooks[ev] = [...(out.hooks[ev] || []), group];
   }
   out.hooks.Stop.push({ hooks: [inboxHook(port)] });
@@ -99,9 +107,8 @@ function isInstalled(file = settingsPath(), port = DEFAULT_PORT) {
   try {
     const s = read(file);
     // Exact match, so an older Blaube's hooks show up as needing an update.
-    const cmd = hookCommand(port);
     const has = (ev, c) => (s.hooks?.[ev] || []).some((g) => (g.hooks || []).some((h) => isOurs(h) && h.command === c));
-    return EVENTS.every((ev) => has(ev, cmd)) && has('Stop', inboxCommand(port)) && has('PermissionRequest', permissionCommand(port));
+    return EVENTS.every((ev) => has(ev, TOOL_EVENTS.has(ev) ? toolHookCommand(port) : hookCommand(port))) && has('Stop', inboxCommand(port)) && has('PermissionRequest', permissionCommand(port));
   } catch {
     return false;
   }
@@ -125,4 +132,4 @@ function uninstall(file = settingsPath()) {
   write(file, withoutBlaube(read(file)));
 }
 
-module.exports = { install, uninstall, isInstalled, hasAnyBlaubeHooks, withBlaube, withoutBlaube, hookCommand, inboxCommand, permissionCommand, settingsPath, EVENTS };
+module.exports = { install, uninstall, isInstalled, hasAnyBlaubeHooks, withBlaube, withoutBlaube, hookCommand, toolHookCommand, inboxCommand, permissionCommand, settingsPath, EVENTS };
