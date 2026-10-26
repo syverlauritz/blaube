@@ -152,6 +152,8 @@
     if (!choir) return;
     for (const b of choir.singers) {
       if (b.singing && b.speech) b.speech.line.stop();
+      // The song is over: no mouth still miming it, and giggles are free again.
+      if (b.singing) { b.speech = null; b.mouth = null; }
       b.singing = null;
     }
     choir = null;
@@ -2349,16 +2351,26 @@
     const b = buddies.get(m.id);
     if (!b) return;
     // Out loud only (its talk box is showing the words).
-    if (m.voiceOnly) { speak(b, m.text); return; }
+    // The end of a turn arrives twice, about at once: the Done status and
+    // the reply itself. Whichever comes first is said; the other would
+    // only cut it off and start again.
+    const turnLine = (text) => {
+      if (b.speech && time - (b.turnSaidAt ?? -99) < 2) return;
+      b.turnSaidAt = time;
+      speak(b, text);
+    };
+    if (m.voiceOnly) { turnLine(m.text); return; }
     // Status updates are kept for the hover bubble, and only pop up by
     // themselves when the Status bubbles setting says Always. Only the big
     // moments (done, needs you) are said out loud, bubble or not.
     if (m.status) {
       b.status = { text: m.text, at: time, state: b.state };
-      if (m.aloud) speak(b, m.text, { softer: m.soft ? 0.55 : 1 });
+      if (m.aloud && m.soft) speak(b, m.text, { softer: 0.55 });
+      else if (m.aloud) turnLine(m.text);
       if (CFG.statusBubbles !== 'Always') return;
     }
-    b.say(m.text, m.seconds || 4, false, !m.status);
+    b.say(m.text, m.seconds || 4, false, false);
+    if (!m.status) turnLine(m.text);
   });
   api.onWorld((w) => setObstacles(w.obstacles));
   if (api.onLedges) api.onLedges(setLedges);
