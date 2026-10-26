@@ -914,6 +914,7 @@
       body.o.edgeStiffness = CFG.edgeStiffness + 0.4 * firm;
       liven(b);
       const pre = body.velocity(DT);
+      b.vel = pre; // (others watch it fly; see spectate)
       body.step(DT);
       splat(b, pre);
       updateGaze(b);
@@ -1056,6 +1057,21 @@
   // whizzes past, shifts its weight when it's bored, and wriggles when it's
   // held up too long. All of it goes in as forces; the body does the rest.
 
+  // The nearest slime whizzing by (flying fast, or flung about), if any is
+  // close enough to watch: { o, c, d }.
+  function spectate(b) {
+    if (CFG.spectate <= 0) return null;
+    const c = b.body.centroid(), r = b.body.o.radius;
+    let best = null;
+    for (const o of buddies.values()) {
+      if (o === b || o.dying || !o.vel || o.body.onFloor()) continue;
+      if (Math.hypot(o.vel.x, o.vel.y) < 700) continue;
+      const oc = o.body.centroid(), d = Math.hypot(oc.x - c.x, oc.y - c.y) - o.body.o.radius;
+      if (d < r * 9 && (!best || d < best.d)) best = { o, c: oc, d };
+    }
+    return best;
+  }
+
   function liven(b) {
     const body = b.body;
     if (b.dying || b.removed) return;
@@ -1084,6 +1100,19 @@
       b.surpriseUntil = time + 0.45;
       body.lean(-(Math.sign(dx) || 1) * CFG.flinch * r * 3.2, DT);
       body.squashTop(CFG.flinch * r * 2.2, DT);
+    }
+    // ...and a slime flying right at it makes it duck.
+    if (CFG.spectate > 0 && time > (b.duckAt || 0)) {
+      const s = spectate(b);
+      if (s && s.d < r * 1.2 && s.d > 0) {
+        const v = s.o.vel, toward = ((c.x - s.c.x) * v.x + (c.y - s.c.y) * v.y) / Math.max(1, Math.hypot(v.x, v.y) * Math.hypot(c.x - s.c.x, c.y - s.c.y));
+        if (toward > 0.3) {
+          b.duckAt = time + 1;
+          b.startleUntil = time + 0.4;
+          body.lean((Math.sign(c.x - s.c.x) || 1) * CFG.spectate * r * 2.4, DT);
+          body.squashTop(CFG.spectate * r * 3, DT);
+        }
+      }
     }
     if (nuzzle(b, r, c)) return;
     // A helper on its way home: its mother leans in to catch it.
@@ -1885,6 +1914,15 @@
       b.gazeTarget = { x: c.x + v.x * 0.3, y: c.y + v.y * 0.3 };
       wantLook = Math.max(wantLook, CFG.eyeLife);
     }
+    // Another slime flying past: it watches it go, eyes wide if it's close.
+    const seen = !glaring && !body.grab && body.onFloor() && spectate(b);
+    let wideSeen = 0;
+    if (seen) {
+      b.gazeTarget = seen.c;
+      wantLook = Math.max(wantLook, CFG.spectate);
+      wideSeen = Math.max(0, 1 - seen.d / (body.o.radius * 4)) * 0.6 * Math.min(1, CFG.spectate);
+      if (expression === 'concentrate' || expression === 'sleepy') { expression = 'normal'; mouth = 'o'; }
+    }
     b.lookAmount = (b.lookAmount ?? wantLook) + (wantLook - (b.lookAmount ?? wantLook)) * 0.08;
     // While the face isn't turning (working, not looking at anything), its
     // gaze waits right on what it would look at, so a glance turns straight
@@ -1921,7 +1959,7 @@
       }
     }
     // Startled (poked, flinching): eyes go wide for a moment.
-    const wide = CFG.eyeLife * Math.max(wideBy, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
+    const wide = CFG.eyeLife * Math.max(wideBy, wideSeen, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
     return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.6 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal',
     };
