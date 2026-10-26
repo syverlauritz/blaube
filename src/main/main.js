@@ -384,6 +384,7 @@ function activateApp(pid) {
 // already there.
 function hideTalk(switching = false) {
   if (!talkWin || !talkWin.isVisible()) return;
+  if (talkId) looked.set(talkId, Date.now()); // you've read it up to now
   const onPurpose = talkWin.isFocused();
   talkWin.hide();
   if (win) win.webContents.send('talk-rect', null);
@@ -441,6 +442,7 @@ let hubPast = [], hubFolders = [], hubCache = null; // what the overview last of
 const gitStates = new Map(); // session id -> its last git status (or null: not a repository)
 
 // A session at a glance, for the overview in the talk box.
+const looked = new Map(); // session id -> when you last had its talk box open
 const glances = new Map(); // session id -> { at, state, g } (worked out at most once a second)
 function glanceAt(o) {
   const hit = glances.get(o.id);
@@ -461,6 +463,8 @@ function glanceNow(o) {
     context: tk && tk.limit && tk.context ? Math.min(100, Math.round((tk.context / tk.limit) * 100)) : 0,
     git: gitStates.has(o.id) ? git.summary(gitStates.get(o.id)) : '',
     turnStart: o.turnStart,
+    // Replies since its talk box was last open (never opened: since Blaube started).
+    unread: o.id === talkId ? 0 : inbox.log(o.id).filter((e) => e.who === 'claude' && e.at > (looked.get(o.id) || 0)).length,
   });
 }
 

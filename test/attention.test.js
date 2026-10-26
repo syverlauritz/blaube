@@ -31,3 +31,9 @@ test('a session at a glance, in words', () => {
   assert.equal(glance({ state: 'idle' }).status, 'Idle');
   assert.equal(glance({ state: 'idle', context: 20 }).meta, '', 'a little context isn’t worth saying');
 });
+
+test('the overview says how much happened since you last looked', () => {
+  const { glance } = require('../src/main/attention.js');
+  assert.equal(glance({ state: 'done', lastReply: 'Ok.', unread: 3, git: 'main' }).meta, '3 new replies since you looked · main');
+  assert.equal(glance({ state: 'done', unread: 1 }).meta, '1 new reply since you looked');
+});
