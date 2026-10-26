@@ -669,7 +669,7 @@
       if (time > p.nextBlink) p.nextBlink = time + 1.5 + Math.random() * 4;
       // A leaf drifting down close by: it jumps to bat at it.
       if (onFloor && !p.dying && CFG.seasons > 0 && time > (p.nextChase || 0)) {
-        const f = flakes.find((f) => !f.on && !f.landed && f.kind === 'leaves' && Math.abs(f.x - p.x) < 110 && p.y - f.y > 40 && p.y - f.y < 220);
+        const f = flakes.find((f) => !f.on && !f.landed && f.kind !== 'snow' && Math.abs(f.x - p.x) < 110 && p.y - f.y > 40 && p.y - f.y < 220);
         if (f) {
           p.nextChase = time + 2 + Math.random() * 3;
           const up = Math.sqrt(2 * CFG.gravity * (p.y - f.y + 10)), air = up / CFG.gravity;
@@ -1590,15 +1590,17 @@
   // on the ground; a slime that moves sheds them, and one that's collected a
   // few gives a little shake to get them off.
   const flakes = [];
-  let seasonOverride = null; // (dev: force 'leaves', 'snow' or 'none')
+  let seasonOverride = null; // (dev: force 'leaves', 'petals', 'snow' or 'none')
   function season() {
     if (seasonOverride) return seasonOverride;
     const d = new Date(), m = d.getMonth(), day = d.getDate();
     if (m === 11 || m <= 1) return 'snow';
     if ((m === 8 && day >= 22) || m === 9 || m === 10) return 'leaves';
+    if ((m === 2 && day >= 20) || m === 3 || m === 4) return 'petals';
     return 'none';
   }
   const LEAF_COLORS = ['#d9822b', '#c4572a', '#e0a53a', '#a8643a'];
+  const PETAL_COLORS = ['#f6c6d4', '#f2b0c4', '#fbe0e8', '#efa3bb'];
 
   // How high its middle sits when it's lying on something.
   const rest = (f) => (f.kind === 'snow' ? f.size * 0.9 : f.size * 0.5);
@@ -1606,12 +1608,12 @@
   function stepSeason() {
     const kind = CFG.seasons > 0 || showingOff ? season() : 'none';
     if (kind !== 'none' && flakes.length < 80) {
-      const rate = Math.max(CFG.seasons, showingOff ? 3 : 0) * (kind === 'snow' ? 0.9 : 0.3) * (W / 1600);
+      const rate = Math.max(CFG.seasons, showingOff ? 3 : 0) * (kind === 'snow' ? 0.9 : kind === 'petals' ? 0.6 : 0.3) * (W / 1600);
       if (Math.random() < rate * DT) {
         const snow = kind === 'snow';
         flakes.push({ kind, x: Math.random() * W, y: -10, vx: 0, vy: snow ? 40 : 60, drift: (Math.random() - 0.5) * 30, sway: Math.random() * 6.28,
-          size: snow ? 2 + Math.random() * 2.5 : 7 + Math.random() * 4, a: Math.random() * 6.28, va: (Math.random() - 0.5) * 3,
-          color: snow ? null : LEAF_COLORS[Math.floor(Math.random() * LEAF_COLORS.length)], on: null, landed: 0 });
+          size: snow ? 2 + Math.random() * 2.5 : kind === 'petals' ? 6 + Math.random() * 2.5 : 7 + Math.random() * 4, a: Math.random() * 6.28, va: (Math.random() - 0.5) * 3,
+          color: snow ? null : (kind === 'petals' ? PETAL_COLORS : LEAF_COLORS)[Math.floor(Math.random() * 4)], on: null, landed: 0 });
       }
     }
     if (!flakes.length) return;
@@ -1662,7 +1664,7 @@
       // Falling: drifting and swaying (leaves see-saw more), easing to their
       // own slow fall after being knocked off.
       f.sway += DT * (f.kind === 'snow' ? 1.3 : 2.2);
-      const fall = f.kind === 'snow' ? 45 : 70;
+      const fall = f.kind === 'snow' ? 45 : f.kind === 'petals' ? 50 : 70;
       if (time < (f.loose || 0)) f.vy = Math.min(fall * 3, f.vy + 700 * DT); // knocked: a real little arc
       else f.vy += (fall - f.vy) * 2 * DT;
       f.vx += (f.drift + Math.sin(f.sway) * (f.kind === 'snow' ? 18 : 55) - f.vx) * (time < (f.loose || 0) ? 0.4 : 2) * DT; // (knocked off: it keeps going a while)
@@ -1749,6 +1751,19 @@
         ctx.arc(0, 0, f.size, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
+      } else if (f.kind === 'petals') {
+        // A cherry blossom petal: a rounded teardrop with a notch at the tip.
+        ctx.rotate(f.a);
+        ctx.scale(1, 0.55 + 0.45 * Math.abs(Math.cos(f.sway))); // (tumbling)
+        const z = f.size;
+        ctx.fillStyle = f.color;
+        ctx.beginPath();
+        ctx.moveTo(-z, 0);
+        ctx.quadraticCurveTo(-z * 0.2, -z * 0.95, z * 0.9, -z * 0.45);
+        ctx.lineTo(z * 0.6, 0);
+        ctx.lineTo(z * 0.9, z * 0.45);
+        ctx.quadraticCurveTo(-z * 0.2, z * 0.95, -z, 0);
+        ctx.fill();
       } else {
         ctx.rotate(f.a);
         ctx.fillStyle = f.color;
