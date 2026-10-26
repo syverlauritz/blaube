@@ -66,7 +66,7 @@ const ABOUT = {
   agents: 'Opens the project’s agents folder',
   btw: 'A quick question on the side, while it works',
   bug: 'Reports a Claude Code bug on GitHub',
-  clear: 'A fresh conversation, same slime',
+  clear: 'A fresh conversation, same blob',
   compact: 'Frees up its context',
   config: 'Opens your Claude Code settings',
   context: 'What fills its context',

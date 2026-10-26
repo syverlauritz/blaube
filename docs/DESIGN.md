@@ -54,7 +54,7 @@ ships that breaks a "must".
 - Expressions and faces are the creative director's call. Judges may note
   how a face reads, but never redesign an approved face.
 - Pets get happy "^ ^" eyes and a heart when they reach their owner.
-- The talk box (a slime's chat) is rounder than the little bubbles: 30 px
+- The talk box (a blob's chat) is rounder than the little bubbles: 30 px
   corners on the box, pill-shaped buttons, softly rounded rows and code
   boxes, a chubby round-tipped tail. All tails are round-tipped and chubby.
   All of Blaube's words are in one rounded font, Nunito (chosen over
@@ -62,15 +62,15 @@ ships that breaks a "must".
   of a bubble or talk box, which uses the display font picked in Settings
   (Coiny by default; very long names fall back to Nunito to stay readable). Wanted ("more rounded", "more
   childlike in general").
-- Slimes talk out loud in a made-up babble through a talkbox: a buzzy
+- Blobs talk out loud in a made-up babble through a talkbox: a buzzy
   synth note shaped by a sweeping vowel filter, with a wah on the attack of
   each syllable only (it opens and stays open; no wah-wah on held notes).
   Bigger is deeper, helpers are higher. Wanted ("hilarious"). The talking
-  mouth: shut, it's the slime's own mouth; open, a dark oval that drops
+  mouth: shut, it's the blob's own mouth; open, a dark oval that drops
   from the top lip, never bigger than a yawn, a pink tongue when wide.
-- Choir mode: every slime sings in parts, fuller with more slimes, eyes
+- Choir mode: every blob sings in parts, fuller with more blobs, eyes
   shut, swaying, notes floating up. Songs are public domain only.
-- A full context makes a slime round and taut, not just bigger.
+- A full context makes a blob round and taut, not just bigger.
 - Other apps' windows: a Blaube set or dropped on top of one stays there
   (falls off only if it wanders off), and can still be thrown anywhere:
   window tops only catch things coming down onto them, softly.
