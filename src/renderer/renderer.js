@@ -1262,7 +1262,7 @@
       else if (b.patted) feel(b, 0.2 * DT);
       // A setback (a failed tool or test) lets some air out for a moment.
       b.droop = (b.droop || 0) + ((time < (b.droopUntil || 0) ? 1 : 0) - (b.droop || 0)) * (time < (b.droopUntil || 0) ? 0.02 : 0.006);
-      body.areaScale = (1 + CFG.contextInflate * b.fill * b.fill) * (1 + CFG.breathe * (1 + 12 * CFG.sleepSlump * (b.sleep || 0)) * Math.sin(time * b.breathRate + b.breathPhase)) * (1 - CFG.droop * b.droop);
+      body.areaScale = (1 + CFG.contextInflate * b.fill * b.fill) * (1 + CFG.breathe * (1 - (b.taut || 0)) * (1 + 12 * CFG.sleepSlump * (b.sleep || 0)) * Math.sin(time * b.breathRate + b.breathPhase)) * (1 - CFG.droop * b.droop);
       // ...and firmer: more pressure inside, so a full one barely sags.
       // (Capped: past about 0.85 the pressure solve overshoots and the skin
       // jitters, worst while it's held.)
@@ -1289,6 +1289,8 @@
       const firm = b.fill * b.fill * CFG.contextFirm;
       body.o.shapeStiffness = CFG.shapeStiffness + 0.08 * firm + 0.12 * (b.shapeAmt || 0); // (holding a shape takes some effort; see shapeShift)
       body.o.edgeStiffness = CFG.edgeStiffness + 0.4 * firm;
+			// Blown up like a balloon: taut as a drum, round, no sag or wobble.
+			if (b.taut) { body.o.pressure = Math.max(body.o.pressure, 0.75 * b.taut); body.o.shapeStiffness += 0.05 * b.taut; }
       liven(b);
       const pre = body.velocity(DT);
       b.vel = pre; // (others watch it fly; see spectate)
@@ -2625,6 +2627,7 @@
     b.pendingHop = null;
     b.flip = null; b.forceFlip = false;
     b.trick = null; b.tumble = null; b.roll = null;
+		if (b.balloon) unballoon(b); // (all the air out at once)
     b.bounceAt = 0; b.sneeze = null;
     unsheet(b); if (b.ghostBy) unsheet(b.ghostBy); // (a ghost, or the one it was creeping up on)
     b.body.o.upright = CFG.upright;
@@ -4287,64 +4290,97 @@
     b.nextShape = time + (500 + Math.random() * 800) / CFG.shapes;
     b.shape = { at: time };
   }
-  // Now and then a bored slime takes a huge breath and puffs itself up like
-  // a balloon until it floats off the floor, holds it, cheeks full... then
-  // lets go and zips about the screen, going down with a "pfffbt!", and
-  // lands dizzy and giggling.
-  function balloon(b) {
-    const g = b.balloon, body = b.body;
-    if (g) {
-      const t = time - g.at, k = Math.min(1.5, CFG.balloon), r = body.o.radius;
-      if (body.grab || b.dying || t > 9) { b.balloon = null; b.puff = 0; return; }
-      b.nextHop = time + 1;
-      if (g.stage === 'breathe') {
-        // Three big gulps of air, each a swell.
-        b.puff = 0.75 * k * Math.min(1, t / 1.8) * (1 + 0.08 * Math.sin(t * Math.PI * 2 / 0.6));
-        if (body.onFloor()) body.impulse(-body.velocity(DT).x * 0.2, 0, DT);
-        if (t > 1.8) { g.stage = 'float'; g.at = time; g.floor = body.bbox().maxY; }
-        return;
-      }
-      if (g.stage === 'float') {
-        // Lighter than air: it lifts off and bobs up a little way.
-        const up = g.floor - body.bbox().maxY;
-        const v = body.velocity(DT), rise = up < r * 1.1 ? -120 * Math.min(1, t / 0.4) : 10;
-        body.impulse((Math.sin(t * 2.2) * 25 - v.x) * 0.1, (rise - v.y) * 0.8, DT);
-        if (t > 1.8) {
-          g.stage = 'zip'; g.at = time; g.dir = -Math.PI / 2 + (Math.random() - 0.5) * 1.6; g.turn = (Math.random() < 0.5 ? -1 : 1) * (4 + Math.random() * 3);
-          b.surpriseUntil = time + 0.3;
-          quip(b, 'pfffbt!', 1.3);
-        }
-        return;
-      }
-      if (g.stage === 'zip') {
-        // Air rushing out pushes it about, wherever the hole's pointing; the
-        // hole wanders round, so it loops and swerves.
-        const left = Math.max(0, 1 - t / 1.4);
-        b.puff = 0.75 * k * left;
-        g.dir += g.turn * DT + (Math.random() - 0.5) * 6 * DT;
-        const v = body.velocity(DT), speed = 750 * Math.sqrt(left) * k;
-        body.impulse((Math.cos(g.dir) * speed - v.x) * 0.15 * left, (Math.sin(g.dir) * speed - v.y) * 0.15 * left, DT);
-        body.spin((g.turn * 0.6 - body.angularVelocity(DT)) * 0.1 * left, DT);
-        if (left <= 0) { g.stage = 'land'; g.at = time; }
-        return;
-      }
-      if (g.stage === 'land' && body.onFloor() && t > 0.3) {
-        b.balloon = null; b.puff = 0;
-        b.dizzyUntil = time + 1.2;
-        b.giggleAt = time + 1.3;
-        return;
-      }
-      return;
-    }
-    if (b.giggleAt && time > b.giggleAt) { b.giggleAt = 0; quipBack(b, 'hehe', 1); b.cheerUntil = time + 1; }
-    if (CFG.balloon <= 0 || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || b.merging || b.dying || !body.onFloor() || b.pendingHop || b.stackedBy || b.shape || b.tower || b.frog || b.tag || b.parade || b.trick || b.keepy || b.roll || b.measure || b.rope || b.seek || b.pile || b.tot || b.skate || b.comforting || (b.mood || 0) < 0 || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
-    if (time < (b.nextBalloon ?? (b.nextBalloon = time + (300 + Math.random() * 600) / CFG.balloon))) return;
-    b.nextBalloon = time + (600 + Math.random() * 900) / CFG.balloon;
-    balloonNow(b);
-  }
-  function balloonNow(b) {
-    b.balloon = { at: time, stage: 'breathe' };
-  }
+	// Now and then a bored slime puffs itself up like a balloon: three big
+	// gulps of air, cheeks full, until it's half as big again and taut as a
+	// drum. Full, it strains a moment, lifts off and bobs up... then lets
+	// go: "pfffbt!", the air rushing out sends it looping and swerving about
+	// the screen as it shrinks back down, and it lands dizzy and giggling.
+	// (Its size and firmness are worked out fresh every step, from b.puff
+	// and b.taut, so they come back exactly as they were; see step.)
+	function balloon(b) {
+		const g = b.balloon, body = b.body;
+		if (g) {
+			const t = time - g.at, k = Math.min(1.5, CFG.balloon), r = body.o.radius, full = 0.6 * k;
+			if (body.grab || b.dying || t > 9) { unballoon(b); return; }
+			b.nextHop = time + 1;
+			if (g.stage === 'breathe') {
+				// Gulp, gulp, gulp: each a quick suck of air, then a held breath.
+				const gulp = Math.min(2, Math.floor(t / 0.42)), into = (t - gulp * 0.42) / 0.42, suck = Math.min(1, into / 0.45);
+				const level = (gulp + suck * suck * (3 - 2 * suck)) / 3;
+				b.puff = full * level; b.taut = level;
+				b.cheekPuff = level;
+				b.gulping = into < 0.55;
+				if (into < 0.05 && g.gulp !== gulp) { g.gulp = gulp; body.squashTop(-r * 3, DT); } // (a little heave with each)
+				if (body.onFloor()) body.impulse(-body.velocity(DT).x * 0.2, 0, DT);
+				if (t > 1.26) { g.stage = 'full'; g.at = time; b.gulping = false; }
+				return;
+			}
+			if (g.stage === 'full') {
+				// Full to bursting: it quivers with the strain, then lifts off.
+				const ease = Math.min(1, t / 0.15);
+				b.puff = full * (1 + 0.035 * Math.sin(t * 38) * ease); b.taut = 1; b.cheekPuff = 1;
+				b.cheekStrain = 0.3 * ease;
+				if (body.onFloor()) body.impulse(-body.velocity(DT).x * 0.2, 0, DT);
+				if (t > 0.5) { g.stage = 'float'; g.at = time; g.floor = body.bbox().maxY; b.cheekStrain = 0; }
+				return;
+			}
+			if (g.stage === 'float') {
+				// Lighter than air: it lifts off gently and bobs, drifting a little.
+				b.puff = full; b.taut = 1; b.cheekPuff = 1;
+				const lift = r * 2.2 * Math.min(1, t / 1.4) * (2 - Math.min(1, t / 1.4)) + Math.sin(t * 3.4) * r * 0.12;
+				const up = g.floor - body.bbox().maxY, v = body.velocity(DT);
+				body.impulse((Math.sin(t * 2.2) * 30 - v.x) * 0.08, (-(lift - up) * 4 - v.y) * 0.2, DT);
+				if (t > 2) {
+					// (Off up and out toward the side with more room.)
+					const e = body.bounds, out = body.centroid().x < (e.left + e.right) / 2 ? 1 : -1;
+					g.stage = 'zip'; g.at = time; g.dir = -Math.PI / 2 + out * (0.5 + Math.random() * 0.5); g.turn = (Math.random() < 0.5 ? -1 : 1) * (4 + Math.random() * 2.5);
+					b.surpriseUntil = time + 0.3;
+					quip(b, 'pfffbt!', 1.3);
+				}
+				return;
+			}
+			if (g.stage === 'zip') {
+				// The air rushing out drives it along wherever the hole's
+				// pointing, and the hole wanders round, so it loops and swerves.
+				// Near an edge it turns back in, so it stays on the screen.
+				const left = Math.max(0, 1 - t / 1.8);
+				b.puff = full * left; b.taut = left; b.cheekPuff = 0;
+				// (It looks a moment ahead, to turn before it gets there.)
+				const v = body.velocity(DT), c = body.centroid(), e = body.bounds, near = r * 3;
+				const ax = c.x + v.x * 0.3, ay = c.y + v.y * 0.3;
+				const wall = Math.max(0, 1 - Math.min(ax - e.left, e.right - ax, ay - e.top, e.bottom - ay) / near);
+				if (wall > 0) {
+					const back = Math.atan2((e.top + e.bottom) / 2 - c.y, (e.left + e.right) / 2 - c.x);
+					g.dir += Math.atan2(Math.sin(back - g.dir), Math.cos(back - g.dir)) * Math.min(1, 12 * Math.min(1, wall) * DT);
+				}
+				g.dir += g.turn * DT + (Math.random() - 0.5) * 6 * DT;
+				const speed = 1300 * Math.sqrt(k) * (0.5 + 0.5 * left), grip = 0.12 * Math.min(1, left * 4);
+				body.impulse((Math.cos(g.dir) * speed - v.x) * grip, (Math.sin(g.dir) * speed - v.y) * grip, DT);
+				body.spin((g.turn * 0.5 - body.angularVelocity(DT)) * 0.1 * left, DT);
+				if (left <= 0) { g.stage = 'land'; g.at = time; b.puff = 0; b.taut = 0; }
+				return;
+			}
+			if (g.stage === 'land' && body.onFloor() && t > 0.3) {
+				unballoon(b);
+				b.dizzyUntil = time + 1.2;
+				b.giggleAt = time + 1.3;
+				return;
+			}
+			return;
+		}
+		if (b.giggleAt && time > b.giggleAt) { b.giggleAt = 0; quipBack(b, 'hehe', 1); b.cheerUntil = time + 1; }
+		if (CFG.balloon <= 0 || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || b.merging || b.dying || !body.onFloor() || b.pendingHop || b.stackedBy || b.shape || b.tower || b.frog || b.tag || b.parade || b.trick || b.keepy || b.roll || b.measure || b.rope || b.seek || b.pile || b.tot || b.skate || b.comforting || (b.mood || 0) < 0 || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
+		if (time < (b.nextBalloon ?? (b.nextBalloon = time + (300 + Math.random() * 600) / CFG.balloon))) return;
+		b.nextBalloon = time + (600 + Math.random() * 900) / CFG.balloon;
+		balloonNow(b);
+	}
+	function balloonNow(b) {
+		b.balloon = { at: time, stage: 'breathe', gulp: -1 };
+	}
+	// Done (or picked up partway): all the air out, and back to its own size and firmness.
+	function unballoon(b) {
+		b.balloon = null; b.puff = 0; b.taut = 0; b.cheekPuff = 0; b.cheekStrain = 0; b.gulping = false;
+	}
   // A real fright: it bristles all over for a moment, like a startled cat.
   function bristle(b) {
     if (CFG.shapes <= 0 || b.shape || b.dying) return;
@@ -5234,7 +5270,8 @@
     if (time < b.dizzyUntil) { expression = 'dizzy'; mouth = 'flat'; }
     else if (time < (b.raspUntil || 0) && !body.grab) { expression = 'annoyed'; mouth = 'raspberry'; } // (pbbbt!)
     else if (b.balloon && b.balloon.stage === 'zip') { expression = 'happy'; mouth = 'raspberry'; } // (the air rushing out)
-    else if (b.balloon && b.balloon.stage !== 'land') { expression = 'normal'; mouth = 'flat'; } // (cheeks full, holding it)
+		else if (b.balloon && b.gulping) { expression = 'concentrate'; mouth = 'o'; } // (gulping air in)
+    else if (b.balloon && b.balloon.stage !== 'land') { expression = 'normal'; mouth = 'puffed'; } // (cheeks full, holding it)
     else if (time < (b.annoyedUntil || 0) && b.annoyedAt && !b.annoyedAt.dying && !body.grab && !homeward(b)) { expression = 'annoyed'; mouth = 'flat'; }
     else if (time < (b.yawnUntil || 0)) { expression = 'sleepy'; mouth = 'yawn'; }
     else if (time < (b.napUntil || 0) && !body.grab) { expression = 'sleepy'; mouth = 'flat'; } // (a quick nap, for show)
@@ -5449,8 +5486,9 @@
     // A big toss: past the top it looks down at what's coming ("uh-oh"),
     // and just before it lands it screws its eyes shut and braces.
     let wideBy = time < (b.booUntil || 0) ? 1 : time < (b.wantsPetsUntil || 0) && time > (b.pettedUntil || 0) ? 0.5 : 0; // (boo!, or me too!: big eyes)
+		if (b.balloon && !b.gulping && (b.balloon.stage === 'full' || b.balloon.stage === 'float')) wideBy = 0.45; // (full to bursting: round eyes)
     if (CFG.eyeLife > 0 && !body.grab && !meditating(b) && expression !== 'dizzy') {
-      if (v.y < -900 && !body.onFloor()) b.tossUp = time;
+      if (v.y < -900 && !body.onFloor() && !b.balloon) b.tossUp = time;
       if (b.tossUp && time - b.tossUp < 2 && !body.onFloor() && v.y > 0) {
         const box = body.bbox(), below = floorAt(body.centroid().x, box.maxY) - box.maxY;
         if (below < body.o.radius * 0.9 && v.y > 600) { expression = 'pained'; mouth = 'flat'; }
@@ -5471,7 +5509,7 @@
 	} else if (!b.eyesUp) { b.eyesUp = true; b.eyesAt = time; }
     // Startled (poked, flinching): eyes go wide for a moment.
     const wide = CFG.eyeLife * Math.max(wideBy, wideSeen, over ? 0.5 : 0, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
-    return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.35 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: b.blush > 0 ? { ...CFG, cheeks: Math.min(0.95, CFG.cheeks + b.blush * 0.55) } : CFG, bodyColor: b.color,
+    return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, b.cheekStrain || 0, time < (b.strainUntil || 0) ? 0.35 * Math.min(1, CFG.strain) : 0), puffed: b.cheekPuff || 0, nod: nodOf(b), scale: CFG.faceScale, style: b.blush > 0 ? { ...CFG, cheeks: Math.min(0.95, CFG.cheeks + b.blush * 0.55) } : CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal' && !b.peek, peek: b.peek,
       fullTurn: (body.fullTurn = !!((b.flip && b.flip.spun) || b.tumble || b.roll)), // (mid-somersault the face, and what it wears, go all the way round)
     };

@@ -301,10 +301,13 @@
     if (face.glasses) glassesShape(ctx, r, s, 0, ey);
 
     // Cheeks.
-    if (s.cheeks > 0) {
+		// (Full of air, they puff out: bigger, rounder, further out, and they show
+		// even on a face that has none.)
+		const puffed = face.puffed || 0;
+		if (s.cheeks > 0 || puffed > 0) {
       ctx.save();
       const warm = isWarm(face.bodyColor);
-      ctx.globalAlpha = warm ? s.cheeks : Math.max(s.cheeks, 0.7);
+			ctx.globalAlpha = Math.max(warm ? s.cheeks : Math.max(s.cheeks, 0.7), 0.5 * puffed);
       ctx.fillStyle = warm ? s.cheekColor : '#ff86a6';
       // Cheeks sit on a round head, so they turn on a ball instead of
       // sliding with the rest of the face: one turning toward the edge moves
@@ -317,12 +320,12 @@
       const angleOf = (v) => Math.asin(Math.max(-0.99, Math.min(0.99, v / R)));
       const yaw = angleOf(turnX), pitch = angleOf(turnY);
       for (const side of [-1, 1]) {
-        const ax = angleOf(side * r * 0.55 * s.eyeSpacing), ay = angleOf(r * 0.14);
+				const ax = angleOf(side * r * (0.55 + 0.08 * puffed) * s.eyeSpacing), ay = angleOf(r * (0.14 + 0.06 * puffed));
         const tx = ax + yaw, ty = ay + pitch;
         if (Math.abs(tx) > Math.PI / 2) continue; // turned out of sight
         const w = Math.min(1.1, Math.cos(tx) / Math.cos(ax)), h = Math.min(1.1, Math.cos(ty) / Math.cos(ay));
         ctx.beginPath();
-        ctx.ellipse(R * Math.sin(tx), R * Math.sin(ty), r * 0.12 * w, r * 0.07 * h, 0, 0, Math.PI * 2);
+				ctx.ellipse(R * Math.sin(tx), R * Math.sin(ty), r * (0.12 + 0.07 * puffed) * w, r * (0.07 + 0.09 * puffed) * h, 0, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.restore();
@@ -410,6 +413,13 @@
         ctx.stroke();
         break;
       }
+			case 'puffed':
+				// Lips pressed tight on a mouthful of air: short and squeezed,
+				// the corners pinched down a touch.
+				ctx.moveTo(-r * 0.05, my + r * 0.015);
+				ctx.quadraticCurveTo(0, my - r * 0.02, r * 0.05, my + r * 0.015);
+				ctx.stroke();
+				break;
       case 'slack':
         // Hanging open, a little lopsided.
         ctx.fillStyle = ink;
