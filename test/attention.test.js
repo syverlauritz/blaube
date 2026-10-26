@@ -107,3 +107,10 @@ test('a finished turn says what it came to in the title', () => {
   assert.equal(notification({ event: 'done', project: 'kalkis', text: 'Done.', secs: 90, turn: { files: 1, failed: true } }).title, 'kalkis is done, but its tests fail · 1 file changed');
   assert.equal(notification({ event: 'done', project: 'kalkis', text: 'Done.', secs: 90, turn: { files: 0, failed: false } }).title, 'kalkis is done');
 });
+
+test('news of its pull request is a notification when its slime can’t be seen', () => {
+  const { notification } = require('../src/main/attention');
+  assert.deepEqual(notification({ event: 'pr', project: 'kalkis', text: 'PR #12: 1 check failed' }), { title: 'kalkis: PR #12: 1 check failed', body: 'Its box has a quick action for it.' });
+  assert.deepEqual(notification({ event: 'pr', project: 'kalkis', text: 'PR #12 is merged' }), { title: 'kalkis: PR #12 is merged', body: 'On GitHub.' });
+  assert.equal(notification({ event: 'pr', project: 'kalkis', text: 'PR #12 is merged', seen: true }), null);
+});

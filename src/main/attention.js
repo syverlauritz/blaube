@@ -35,6 +35,8 @@ function notification({ event, project, title, text, secs = 0, seen = false, ena
   if (event === 'waiting' && ask && ask.kind === 'tool') return { title: `${name} asks to use ${ask.tool || 'a tool'}`, body: short(ask.detail) || short(text) || 'It’s waiting for your answer.', actions: ['Allow', 'Deny'] };
   if (event === 'waiting') return { title: `${name} needs you`, body: short(text) || 'It’s waiting for your answer.' };
   if (event === 'error') return { title: `${name} couldn’t go on`, body: short(text) || 'Claude Code couldn’t get an answer.' };
+  // Its pull request: checks finished, approved, merged (text: which).
+  if (event === 'pr') return { title: `${name}: ${String(text || '').slice(0, 80)}`, body: /fail|changes/.test(text) ? 'Its box has a quick action for it.' : 'On GitHub.' };
   if (event === 'task') return { title: `${name}: ${short(text, 60) || 'a background task'} stopped`, body: 'It ended with an error. Its last lines are in its box.' };
   if (event === 'done' && secs >= 20) {
     const files = turn && turn.files ? ` · ${turn.files} ${turn.files === 1 ? 'file' : 'files'} changed` : '';

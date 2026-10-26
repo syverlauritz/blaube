@@ -1794,6 +1794,7 @@ app.whenReady().then(async () => {
         if (said) {
           inbox.add(o.id, { who: 'note', text: said });
           if (win) win.webContents.send('say', { id: o.id, text: said, seconds: 6, status: true, aloud: true });
+          notify(o, 'pr', said); // (only if you can't see its slime)
         }
         if (o.id === talkId) pushTalk(o.id);
         pushState();
