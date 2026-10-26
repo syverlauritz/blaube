@@ -1,0 +1,3 @@
+{"type":"user","message":{"role":"user","content":"Find every recipe that uses buttermilk"},"isSidechain":true}
+{"type":"assistant","message":{"id":"mi6w591","model":"claude-opus-5-5","content":[{"type":"thinking","thinking":"Buttermilk shows up in pancakes, scones and the fried chicken. I should grep the recipes folder for buttermilk and also for \"soured milk\", since the older recipes call it that.","signature":"h1"}]},"isSidechain":true}
+{"type":"assistant","message":{"id":"mnvxdgt","model":"claude-opus-5-5","content":[{"type":"tool_use","id":"g1","name":"Grep","input":{"pattern":"buttermilk"}}]},"isSidechain":true}

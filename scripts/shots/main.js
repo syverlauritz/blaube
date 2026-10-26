@@ -666,6 +666,42 @@ const SCENES = {
 		hover: 'sb',
 		say: [{ id: 'sd', text: 'All done! Want me to push it?', seconds: 8 }],
 	},
+	// Hovered while it works: its newest thinking (made-up fixture
+	// transcripts, read by the app's own reader) in a thought bubble beside
+	// its status bubble. A mother, her helper, a crowd with the hovered one
+	// at the right edge (the bubble goes left), and one with no thinking
+	// (what it's doing instead).
+	thoughtMother: {
+		sessions: [
+			session('tm', 'blaube', 'working', { activity: 'tool', agents: [{ id: 'th', type: 'Explore', description: 'Find the buttermilk recipes', state: 'working', activity: 'tool' }] }),
+			session('tn', 'kalkis', 'working', { color: '#5B8DEF', activity: 'tool' }),
+		],
+		config: { size: 0.8 },
+		hover: 'tm', thinking: 'fixture', wait: 4500, size: [1200, 560],
+	},
+	thoughtHelper: {
+		sessions: [
+			session('tm', 'blaube', 'working', { activity: 'tool', agents: [{ id: 'th', type: 'Explore', description: 'Find the buttermilk recipes', state: 'working', activity: 'tool' }] }),
+			session('tn', 'kalkis', 'working', { color: '#5B8DEF', activity: 'tool' }),
+		],
+		config: { size: 0.8 },
+		hover: 'tm/th', thinking: 'fixture', wait: 4500, size: [1200, 560],
+	},
+	thoughtCrowd: {
+		sessions: [
+			session('tc1', 'website', 'working', { color: '#5FB57A', activity: 'tool' }),
+			session('tc2', 'notes', 'idle', { color: '#9B7BD8' }),
+			session('tc3', 'shop', 'working', { color: '#E07BA8' }),
+			session('tc4', 'blaube', 'working', { activity: 'tool' }),
+		],
+		config: { size: 0.7 },
+		hover: 'tc4', thinking: 'fixture', wait: 5000, size: [1100, 520],
+	},
+	thoughtDoing: {
+		sessions: [session('td', 'blaube', 'working', { activity: 'tool' })],
+		config: { size: 0.8 },
+		hover: 'td', thinking: 'doing', wait: 3500, size: [900, 520],
+	},
 };
 // The box where it opened, its slime carried round it (talk.box: the box's
 // window; talk.hold: where the slime is held): the tail leaves from the
@@ -1043,7 +1079,17 @@ app.whenReady().then(async () => {
 	win.webContents.setFrameRate(60);
 	win.webContents.setAudioMuted(true); // they babble; not out loud here
 	win.webContents.on('console-message', (e) => { if (e.level === 'error') console.log('page error:', e.message); });
+	// A hovered slime's thinking, from the fixture transcripts (scene.thinking).
+	const thinking = require(path.join(ROOT, 'src', 'main', 'thinking.js'));
+	const FIX = path.join(ROOT, 'test', 'fixtures', 'thinking', 'fixture-session.jsonl');
+	let scene = null;
+	ipcMain.handle('thinking', async (_e, key) => {
+		if (!scene || !scene.thinking) return { text: '', doing: '' };
+		if (scene.thinking === 'doing') return { text: '', doing: 'Reading pancakes.md' };
+		const helper = String(key).includes('/');
+		return { text: await thinking.thinkingOf(helper ? thinking.helperFile(FIX, 'fixture-helper') : FIX, !helper), doing: 'Running npm test' };
+	});
 	const wanted = process.argv.slice(2).filter((a) => SCENES[a]);
-	for (const name of wanted.length ? wanted : Object.keys(SCENES)) await shoot(win, name, SCENES[name]);
+	for (const name of wanted.length ? wanted : Object.keys(SCENES)) { scene = SCENES[name]; await shoot(win, name, scene); }
 	app.quit();
 });

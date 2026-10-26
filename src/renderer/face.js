@@ -1078,6 +1078,7 @@
     const w = Math.min(360, Math.max(ICON_W, Math.max(...lines.map((l, i) => { ctx.font = font(l, i); return ctx.measureText(l.text).width + (l.color ? 16 : 0); })) + PAD_X * 2));
     const h = Math.max(ICON_H, lines.reduce((sum, l, i) => sum + lineH(l, i), 0) + PAD_Y * 2 - 2);
     const p = settle(b, placeBalloon(b, w, h, W), w, h);
+    b.statusBox = { x: p.x, y: p.y, w, h, slot: placed[placed.length - 1] }; // (for a thought bubble beside it)
     drawBalloon(ctx, p, w, h, false);
     let ly = p.y + PAD_Y - 1;
     lines.forEach((l, i) => {
@@ -1096,6 +1097,77 @@
       ly += lineH(l, i) / 2;
     });
   }
+
+	// What it's thinking, while you hover it: the end of its newest thought
+	// in a thought bubble (puffs, no tail) beside its status bubble, the side
+	// with room, trailing its puffs down to its head. At most three lines of
+	// the plain font, the newest words last. avoid: other slimes'
+	// heads ({ x, y, w, h }), which it never covers. Drawn after drawStatus.
+	const THOUGHT_W = 250, THOUGHT_LINE = 20, THOUGHT_LINES = 3;
+	function drawThought(ctx, b, text, W, avoid = []) {
+		const S = b.statusBox;
+		if (!text || !S || !fontsReady) return;
+		ctx.save();
+		ctx.font = `600 14px ${TEXT_FONT}`;
+		let rows = wrap(ctx, text, THOUGHT_W);
+		if (rows.length > THOUGHT_LINES) {
+			rows = rows.slice(-THOUGHT_LINES);
+			if (!rows[0].startsWith('…')) rows[0] = '…' + rows[0];
+		}
+		const w = Math.max(ICON_W, Math.ceil(Math.max(...rows.map((r) => ctx.measureText(r).width))) + PAD_X * 2);
+		const h = rows.length * THOUGHT_LINE + PAD_Y * 2;
+		const hits = (x, y) => x < 8 || x + w > W - 8 || y < 8
+			|| placed.some((o) => o !== S.slot && x < o.x + o.w + GAP && x + w + GAP > o.x && y < o.y + o.h + 26 && y + h + GAP > o.y) // (and its tail or puffs)
+			|| avoid.some((o) => x < o.x + o.w && x + w > o.x && y < o.y + o.h && y + h > o.y);
+		// Beside it, bottoms level, on the side with more room (kept while
+		// it's up, so it doesn't hop sides); above it if neither side has room.
+		const roomy = W - (S.x + S.w) >= S.x ? 1 : -1;
+		const first = b.thoughtSide && performance.now() - (b.thoughtSideAt || 0) < 500 ? b.thoughtSide : roomy;
+		const y0 = Math.max(8, S.y + S.h - h);
+		let side = 0, x = 0, y = y0;
+		for (const sd of [first, -first]) {
+			const cx = sd > 0 ? S.x + S.w + 14 : S.x - 14 - w;
+			if (!hits(cx, y0)) { side = sd; x = cx; break; }
+		}
+		if (!side) {
+			x = Math.max(8, Math.min(W - w - 8, S.x + S.w / 2 - w / 2));
+			y = S.y - 34 - h;
+			for (let tries = 0; tries < 6 && hits(x, y) && y > 8; tries++) y -= 20;
+			y = Math.max(8, y);
+		}
+		b.thoughtSide = side || first;
+		b.thoughtSideAt = performance.now();
+		placed.push({ x, y, w, h });
+		ctx.fillStyle = '#fff';
+		ctx.beginPath();
+		const rad = pillRadius(h);
+		if (side) {
+			// Two puffs on the way from its near corner down to its head.
+			const c = b.centroid(), r = b.o.radius, top = b.bbox().minY;
+			const from = { x: side > 0 ? x + rad * 0.9 : x + w - rad * 0.9, y: y + h - 2 };
+			const to = { x: c.x + side * r * 0.5, y: top + r * 0.1 };
+			for (const [k, pr] of [[0.36, 6], [0.7, 3.8]]) {
+				const px = from.x + (to.x - from.x) * k, py = from.y + (to.y - from.y) * k;
+				ctx.moveTo(px + pr, py);
+				ctx.arc(px, py, pr, 0, Math.PI * 2);
+			}
+		} else {
+			// Above it: the puffs trail down toward it, in the gap.
+			const mx = Math.max(x + rad, Math.min(x + w - rad, S.x + S.w / 2));
+			for (const [dy, pr] of [[10, 6], [23, 3.8]]) {
+				ctx.moveTo(mx + pr, y + h + dy);
+				ctx.arc(mx, y + h + dy, pr, 0, Math.PI * 2);
+			}
+		}
+		ctx.fill();
+		roundRect(ctx, x, y, w, h, rad);
+		ctx.fill();
+		ctx.fillStyle = INK;
+		ctx.textAlign = 'left';
+		ctx.textBaseline = 'middle';
+		rows.forEach((row, i) => ctx.fillText(row, x + PAD_X, y + PAD_Y + (i + 0.5) * THOUGHT_LINE));
+		ctx.restore();
+	}
 
   // Wrapped, then evened out: as narrow as it goes without taking another
   // line, so two lines come out about the same length, not a long one and
@@ -1148,5 +1220,5 @@
     ctx.closePath();
   }
 
-  root.BlaubeDraw = { setFont, setCrowd, drawHeart, drawNote, drawShadow, drawBody, vary, drawFace, drawGlasses, drawDots, drawThinking, drawDream, drawZzz, drawFlush, drawSweat, drawPet, drawExclaim, drawLabel, drawBubble, STATE_COLORS };
+  root.BlaubeDraw = { setFont, setCrowd, drawHeart, drawNote, drawShadow, drawBody, vary, drawFace, drawGlasses, drawDots, drawThinking, drawDream, drawZzz, drawFlush, drawSweat, drawPet, drawExclaim, drawLabel, drawBubble, drawThought, STATE_COLORS };
 })(globalThis);

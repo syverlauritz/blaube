@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('blaube', {
   talk: (id, at) => ipcRenderer.send('talk', id, at),
   talkAt: (id, at) => ipcRenderer.send('talk-at', id, at), // where the tail leaves the box
   openTuning: () => ipcRenderer.send('open-tuning'),
+  thinking: (key) => ipcRenderer.invoke('thinking', key), // { text, doing } for a hovered slime's thought bubble
   ready: () => ipcRenderer.send('ready'),
   onState: (cb) => ipcRenderer.on('state', (_e, s) => cb(s)),
   onConfig: (cb) => ipcRenderer.on('config', (_e, c) => cb(c)),

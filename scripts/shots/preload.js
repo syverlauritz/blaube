@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('blaube', {
 	showSessionMenu: () => {},
 	openSession: () => {},
 	openTuning: () => {},
+	thinking: (key) => ipcRenderer.invoke('thinking', key),
 	ready: () => ipcRenderer.send('ready'),
 	onState: on('state'),
 	onConfig: on('config'),
