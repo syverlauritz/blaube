@@ -2301,6 +2301,28 @@ app.whenReady().then(async () => {
       });
       return install('');
     }
+    // "/mcp add linear https://mcp.linear.app/mcp" (or "/mcp add name --
+    // npx some-server"), "/mcp remove linear": Claude Code's own `claude mcp
+    // add` and `remove`, for this project, as a step. A session Blaube
+    // started is started again to have it (same conversation).
+    const mcpAdd = /^\/mcp\s+add\s+([\w.-]{1,60})\s+(?:(https?:\/\/\S{1,500})|--\s+(\S[^\n]{0,500}))\s*$/i.exec(String(text).trim());
+    const mcpRemove = /^\/mcp\s+(?:remove|rm)\s+([\w.-]{1,60})\s*$/i.exec(String(text).trim());
+    if ((mcpAdd || mcpRemove) && sess && sess.cwd && !id.startsWith('demo-')) {
+      const bin = TEST ? global.__blaubeClaudeBin : owned.findClaude() || owned.shellPath() || 'claude'; // (tests: a stand-in, never your real settings)
+      if (!bin) return;
+      const sq = (a) => (process.platform === 'win32' ? `"${a.replace(/"/g, '')}"` : `'${a.replace(/'/g, `'\\''`)}'`);
+      const name = (mcpAdd || mcpRemove)[1];
+      const cmd = mcpRemove ? `${sq(bin)} mcp remove ${sq(name)}`
+        : mcpAdd[2] ? `${sq(bin)} mcp add --transport http ${sq(name)} ${sq(mcpAdd[2])}`
+        : `${sq(bin)} mcp add ${sq(name)} -- ${mcpAdd[3].trim().split(/\s+/).map(sq).join(' ')}`;
+      return runForSession(id, cmd, mcpRemove ? `Removed ${name} (claude mcp remove)` : `Added ${name} (claude mcp add)`, (code) => {
+        if (code !== 0) return;
+        if (owned.has(id)) {
+          inbox.add(id, { who: 'note', text: `Claude Code starts again ${mcpRemove ? 'without' : 'with'} ${name}, same conversation${tracker.sessions.get(id) && tracker.sessions.get(id).state === 'working' ? ', once this turn is done' : ''}` });
+          owned.reopen(id, [], sess.cwd, (done) => { if (done) inbox.add(id, { who: 'note', text: mcpRemove ? `${name} is gone` : `It can use ${name} now (/mcp says if it connects)` }); });
+        } else inbox.add(id, { who: 'note', text: `Sessions started in ${path.basename(sess.cwd)} from now on ${mcpRemove ? 'won’t have' : 'have'} ${name}` });
+      });
+    }
     // "/doctor" and "/upgrade": Claude Code's own checkup and update
     // (`claude doctor`, `claude update`), run right there as a step.
     // ("/mcp" in a terminal's session: `claude mcp list`, its MCP servers

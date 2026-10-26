@@ -192,6 +192,18 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(() => fs.existsSync(path.join(dir, 'signed-in'))) && !inbox.log(id).some((e) => e.who === 'you' && e.text === '/login'), '/login signs in the same way, without going to Claude');
 	await type('/mcp');
 	check(await until(() => inbox.log(id).some((e) => e.text === 'Its MCP servers: github (connected) · linear (connected)')), '/mcp lists its MCP servers and how they are');
+	// Adding and removing one: Claude Code's own claude mcp add/remove (a stand-in here), then it starts again with it.
+	const mcpLog = path.join(os.tmpdir(), `blaube-mcp-${process.pid}.txt`), fakeClaude = mcpLog + '.sh';
+	fs.writeFileSync(fakeClaude, `#!/bin/sh\necho "$@" >> '${mcpLog}'\n`, { mode: 0o755 });
+	global.__blaubeClaudeBin = fakeClaude;
+	await type('/mcp add sentry https://mcp.sentry.dev/mcp');
+	check(await until(() => fs.existsSync(mcpLog) && fs.readFileSync(mcpLog, 'utf8').includes('mcp add --transport http sentry https://mcp.sentry.dev/mcp') && inbox.log(id).some((e) => e.who === 'step' && e.text === 'Added sentry (claude mcp add)' && e.ok)), '/mcp add adds an MCP server, with claude mcp add');
+	check(await until(() => inbox.log(id).some((e) => e.text === 'It can use sentry now (/mcp says if it connects)') && owned.has(id), 15000), 'and the session starts again to have it, same conversation');
+	await type('/mcp add files -- npx -y @modelcontextprotocol/server-filesystem /tmp');
+	check(await until(() => fs.readFileSync(mcpLog, 'utf8').includes('mcp add files -- npx -y @modelcontextprotocol/server-filesystem /tmp'), 15000), 'a command one too');
+	await type('/mcp remove sentry');
+	check(await until(() => fs.readFileSync(mcpLog, 'utf8').includes('mcp remove sentry') && inbox.log(id).some((e) => e.text === 'sentry is gone'), 15000), '/mcp remove takes it out');
+	global.__blaubeClaudeBin = '';
 	await type('/status');
 	check(await until(() => inbox.log(id).some((e) => /^Claude Code 9\.9\.9 · .+ · in .+ · started by Blaube$/.test(e.text || ''))), '/status says what it’s running on');
 	check(await until(() => box(`(() => { const d = [...document.querySelectorAll('#inner .statusmore')].pop(); if (!d) return false; d.open = true; return /Login methodClaude Max account/.test(d.textContent) && /MCP servers1 connected, 1 failed/.test(d.textContent); })()`)), 'with everything Claude Code’s own /status says a tap away (get_status)');

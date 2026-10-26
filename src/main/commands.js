@@ -83,7 +83,7 @@ const ABOUT = {
   exit: 'Ends it (a session Blaube started)',
   login: 'Signs Claude Code in, in your browser',
   logout: 'Signs Claude Code out',
-  mcp: 'Its MCP servers, and how they are',
+  mcp: 'Its MCP servers: /mcp add name url adds one',
   memory: 'Opens the project’s CLAUDE.md',
   model: 'Switches its model',
   permissions: 'What it may do without asking',
