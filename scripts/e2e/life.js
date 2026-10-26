@@ -101,6 +101,11 @@ module.exports = async function run({ win, tracker }) {
 	check(await until(() => js(`!!__blaube.buddies.get('s1').stuck`), 1500), 'errors keep coming, it steams up');
 	ev('s1', 'Stop', { last_assistant_message: 'Gave up for now.' });
 	check(await until(() => js(`!__blaube.buddies.get('s1').stuck`), 1500), 'the turn ends, it calms down');
+	// Two bored slimes play tag.
+	await sleep(1500);
+	const startTag = `(() => { const a = __blaube.buddies.get('s1'), b = __blaube.buddies.get('s2'); if (a.tag) return true; const c = a.body.centroid(); if (Math.abs(b.body.centroid().x - c.x) > a.body.o.radius * 6) b.body.teleport(c.x + a.body.o.radius * 4, c.y); a.nextTag = 0; return false; })()`;
+	check(await until(() => js(startTag), 5000), 'two bored slimes start a game of tag');
+	check(await until(() => js(`(__blaube.buddies.get('s1').tag || {}).n > 0`), 8000), 'a bump, and the other is it');
 	await sleep(1500);
 	check(await js(`[...__blaube.buddies.values()].every((b) => [...b.body.px].every(Number.isFinite))`), 'bodies still finite after all that');
 	check(errs.length === 0, 'no renderer errors ' + errs.slice(0, 3).join(' | '));

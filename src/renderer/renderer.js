@@ -2080,7 +2080,7 @@
   // "boo!" The other jumps, then glares. (More often on Halloween.)
   function prank(b) {
     if (CFG.pranks <= 0 || b.kind !== 'mother') return;
-    const calmOf = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && o.body.onFloor() && !o.stackedBy && o !== buddies.get(talkingTo);
+    const calmOf = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && o.body.onFloor() && !o.stackedBy && !o.tag && o !== buddies.get(talkingTo);
     const p = b.prank;
     if (p) {
       const busy = (o) => o.dying || o.body.grab || o.merging || (o.state !== 'idle' && o.state !== 'done');
@@ -2122,7 +2122,7 @@
   // with a little trick, three hops, each higher than the last.
   function trick(b) {
     if (CFG.tricks <= 0 || b.kind === 'child') return;
-    const ok = b.state === 'idle' && !b.body.grab && !b.merging && !b.prank && (b.sleep || 0) < 0.1 && idleFor() < 30 && b !== buddies.get(talkingTo);
+    const ok = b.state === 'idle' && !b.body.grab && !b.merging && !b.prank && !b.tag && (b.sleep || 0) < 0.1 && idleFor() < 30 && b !== buddies.get(talkingTo);
     if (b.trick) {
       if (!ok) { b.trick = null; return; }
       if (!b.body.onFloor()) { b.trick.up = true; return; }
@@ -2137,6 +2137,67 @@
     if (!ok || !b.body.onFloor() || time < (b.nextTrick ?? (b.nextTrick = time + (120 + Math.random() * 240) / CFG.tricks))) return;
     b.nextTrick = time + (180 + Math.random() * 300) / CFG.tricks;
     b.trick = { n: 0, next: time };
+  }
+
+  // Two bored slimes now and then play tag: one hops after the other, which
+  // hops away grinning; a bump and "tag!", and the other is it. A few
+  // rounds, then they're done.
+  function tag(b) {
+    if (CFG.play <= 0 || b.kind === 'child') return;
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const g = b.tag;
+    if (g) {
+      if (g.p !== b) return; // (one of the pair runs the game)
+      const it = g.it, run = it === g.p ? g.q : g.p;
+      if (!free(g.p) || !free(g.q) || drag || time - g.start > 30) { endTag(g); return; }
+      g.p.nextHop = g.q.nextHop = time + 1;
+      it.happyUntil = run.happyUntil = time + 0.3;
+      const ib = it.body.bbox(), rb = run.body.bbox(), ic = it.body.centroid(), rc = run.body.centroid();
+      const gap = Math.max(rb.minX - ib.maxX, ib.minX - rb.maxX), dx = rc.x - ic.x, r = it.body.o.radius;
+      if (gap < 3 && Math.abs(ic.y - rc.y) < r * 2 && time > g.next) {
+        // Tagged!
+        quip(it, 'tag!', 0.9);
+        run.body.impulse(Math.sign(dx) * 140, -60, DT);
+        run.startleUntil = time + 0.3;
+        if (++g.n >= g.rounds) { endTag(g); return; }
+        g.it = run;
+        g.next = time + 0.9; // (counting to three)
+        g.flee = time;
+        return;
+      }
+      const k = Math.min(1.5, CFG.play);
+      if (time > g.next && it.body.onFloor() && !it.pendingHop) {
+        g.next = time + 0.3;
+        it.hop(Math.max(-420, Math.min(420, dx * 1.6)) * k, -(230 + Math.random() * 90) * Math.min(1.3, k));
+      }
+      if (time > g.flee && run.body.onFloor() && !run.pendingHop && Math.abs(dx) < r * 5) {
+        g.flee = time + 0.45 + Math.random() * 0.35;
+        // Away from it, unless there's a wall behind: then over its head.
+        let dir = Math.sign(dx) || 1;
+        if ((dir > 0 && rb.maxX > W - r * 1.5) || (dir < 0 && rb.minX < r * 1.5)) dir = -dir;
+        run.hop(dir * (220 + Math.random() * 140) * k, -(260 + Math.random() * 120) * Math.min(1.3, k));
+      }
+      return;
+    }
+    if (!free(b) || !b.body.onFloor() || idleFor() > 60 || time < (b.nextTag ?? (b.nextTag = time + (150 + Math.random() * 300) / CFG.play))) return;
+    b.nextTag = time + (300 + Math.random() * 600) / CFG.play;
+    const c = b.body.centroid(), r = b.body.o.radius;
+    const others = [...buddies.values()].filter((o) => o !== b && o.kind !== 'child' && !o.tag && free(o) && o.body.onFloor() && Math.abs(o.body.centroid().y - c.y) < r && Math.abs(o.body.centroid().x - c.x) < r * 10);
+    if (!others.length) return;
+    tagNow(b, others[Math.floor(Math.random() * others.length)]);
+  }
+  function tagNow(b, o) {
+    const g = { p: b, q: o, it: b, start: time, next: time + 0.6, flee: time + 0.3, n: 0, rounds: 3 + Math.floor(Math.random() * 3) };
+    b.tag = o.tag = g;
+    o.glanceAt = b; o.glanceUntil = time + 1;
+    quip(b, Math.random() < 0.5 ? 'tag?' : 'catch!', 1);
+  }
+  function endTag(g) {
+    for (const o of [g.p, g.q]) {
+      o.tag = null;
+      o.nextTag = time + (300 + Math.random() * 600) / Math.max(0.05, CFG.play);
+      if (!o.dying && !o.body.grab) o.happyUntil = time + 1.5;
+    }
   }
 
   // Once in a long while: a fit of hiccups. Each one jolts it up a little.
@@ -2210,8 +2271,9 @@
     });
     at(10, () => { const b = big()[1] || big()[0]; if (b) b.hics = { n: 3, next: time }; });
     at(14, () => charge());
+    at(23, () => { const [b, o] = big(); if (b && o && !b.tag && !o.tag) tagNow(b, o); });
     at(17, () => { const b = buddies.get(HOME) || big()[0]; if (b) b.say([{ text: 'While you were away (demo):' }, ...summaryLines()], 6, false, false); });
-    at(25, () => { seasonOverride = was; showingOff = false; });
+    at(30, () => { seasonOverride = was; showingOff = false; });
   }
   let showingOff = false;
 
@@ -2310,6 +2372,7 @@
     jealous(b);
     tagAlong(b);
     trick(b);
+    tag(b);
     hiccup(b);
     // Hanging over the edge of a window: it clings and shuffles back on.
     const l = b.body.onLedge;
