@@ -2641,7 +2641,7 @@ app.whenReady().then(async () => {
       hideTalk();
       startSession(dest, [...(opts && opts.plan === true ? ['--permission-mode', 'plan'] : []), ...(model ? ['--model', model] : [])]);
       done('');
-    });
+    }, { gh: r.gh || '' });
   }));
   // 📎 in the box: files to go with the next message (the box stays open
   // while you pick).
