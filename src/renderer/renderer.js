@@ -2148,7 +2148,10 @@
     if (CFG.pokeDent > 0) {
       const c = b.body.centroid(), r = b.body.o.radius;
       const dx = c.x - e.clientX, dy = c.y - e.clientY, d = Math.hypot(dx, dy) || 1;
-      b.body.pushAt(e.clientX, e.clientY, (dx / d) * CFG.pokeDent * r * 12, (dy / d) * CFG.pokeDent * r * 12, r * 0.5, DT);
+      // Full dent at the edge; pressed in the middle it squishes down instead.
+      const edge = Math.min(1, d / r);
+      b.body.pushAt(e.clientX, e.clientY, (dx / d) * CFG.pokeDent * r * 12 * edge, (dy / d) * CFG.pokeDent * r * 12 * edge, r * 0.5 * edge + 4, DT);
+      if (edge < 0.6) b.body.squashTop(CFG.pokeDent * r * 6 * (0.6 - edge), DT);
     }
     b.startleUntil = time + 0.3;
     if (b.merging) b.merging.since = time; // being held resets the trip home
