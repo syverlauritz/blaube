@@ -2699,7 +2699,7 @@
     if (time < (a.bumpedAt || 0) + 0.6 || time < (b.bumpedAt || 0) + 0.6) return;
     const va = a.body.velocity(DT), vb = b.body.velocity(DT);
     const rel = Math.hypot(va.x - vb.x, va.y - vb.y);
-    if (rel < 300) return;
+    if (rel < 300 || (a.tower && a.tower === b.tower)) return; // (a tower partner climbing up is expected)
     a.bumpedAt = b.bumpedAt = time;
     const aFaster = Math.hypot(va.x, va.y) > Math.hypot(vb.x, vb.y);
     const hit = aFaster ? b : a, by = aFaster ? a : b;
@@ -2828,7 +2828,7 @@
       // Dropped onto its head from high up: it gives like a trampoline and
       // springs the faller back up. Boing!
       const fall = on && on.vel ? on.vel.y : 0;
-      if (on && CFG.trampoline > 0 && fall > 650 && b.body.onFloor()) {
+      if (on && CFG.trampoline > 0 && fall > 650 && b.body.onFloor() && !(b.tower && b.tower === on.tower)) {
         b.body.squashTop(Math.min(900, fall * 0.35) * Math.min(1.5, CFG.trampoline), DT);
         on.bounceAt = time + 0.08; on.bounceV = Math.min(1500, fall) * 1.0 * Math.min(1.5, CFG.trampoline);
         b.surpriseUntil = time + 0.6; on.cheerUntil = time + 1.2;
@@ -2837,6 +2837,7 @@
       return;
     }
     if (!on) return;
+    if (b.tower && b.tower.line.includes(on)) return; // (a tower: it's meant to be up there)
     const family = on.mother === b || b.mother === on || (on.mother && on.mother === b.mother);
     const t = time - b.stackSince;
     if (t > 0.5 && !b.stackReacted) {
@@ -2910,7 +2911,7 @@
   // its last one falls a little short, and the first one says "copycat!".
   function trick(b) {
     if (CFG.tricks <= 0 || b.kind === 'child') return;
-    const ok = b.state === 'idle' && !b.body.grab && !b.merging && !b.prank && !b.tag && !b.snow && !b.parade && !b.frog && (b.sleep || 0) < 0.1 && (idleFor() < 30 || showingOff) && b !== buddies.get(talkingTo);
+    const ok = b.state === 'idle' && !b.body.grab && !b.merging && !b.prank && !b.tag && !b.snow && !b.parade && !b.frog && !b.tower && (b.sleep || 0) < 0.1 && (idleFor() < 30 || showingOff) && b !== buddies.get(talkingTo);
     const c = b.copy;
     if (c) {
       if (!ok || c.lead.dying || time - c.start > 12) { b.copy = null; return; }
@@ -2963,7 +2964,7 @@
   // rounds, then they're done.
   function tag(b) {
     if (CFG.play <= 0 || b.kind === 'child') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.snow && !o.parade && !o.frog && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.snow && !o.parade && !o.frog && !o.tower && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.tag;
     if (g) {
       if (g.p !== b) return; // (one of the pair runs the game)
@@ -3009,7 +3010,7 @@
   // each other along the floor, the one underneath ducking down for it.
   function leapfrog(b) {
     if (CFG.leapfrog <= 0 || b.kind !== 'mother') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.tower && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.frog;
     if (g) {
       if (g.p !== b) return; // (one of the pair runs the game)
@@ -3051,13 +3052,14 @@
     if (o) frogNow(b, o);
   }
   // The take-off speed for a hop that rises h px and comes down dx px
-  // along, with the air slowing it as the bodies' damping does.
-  function launch(dx, h) {
+  // along (onto something up px higher), with the air slowing it as the
+  // bodies' damping does.
+  function launch(dx, h, up = 0) {
     const d = CFG.damping, g = CFG.gravity;
     let vy = Math.sqrt(2 * g * h);
     for (let tries = 0; tries < 40; tries++, vy *= 1.04) {
       let y = 0, v = -vy, peak = 0, n = 0;
-      while (n < 2000) { v = (v + g * DT) * d; y += v * DT; n++; peak = Math.min(peak, y); if (y >= 0 && v > 0) break; }
+      while (n < 2000) { v = (v + g * DT) * d; y += v * DT; n++; peak = Math.min(peak, y); if (y >= -up && v > 0) break; }
       if (-peak < h) continue;
       const along = DT * (1 - Math.pow(d, n)) / (1 - d); // (distance per unit of take-off speed)
       return { vx: dx / along, vy: -vy };
@@ -3075,6 +3077,83 @@
     quip(b, 'leapfrog!', 1.1);
   }
 
+  // A tower: one bored slime hops up onto another's head ("tower!") and
+  // stands up tall there, wobbling, the one underneath bracing and
+  // grinning, until it hops down.
+  function tower(b) {
+    if (CFG.tower <= 0 || b.kind !== 'mother') return;
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.frog && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const g = b.tower;
+    if (g) {
+      if (g.line[0] !== b) return; // (the bottom one runs it)
+      const end = (happy) => {
+        for (const o of g.line) o.tower = null;
+        if (happy) { for (const o of g.line) o.happyUntil = time + 1.5; quip(b, 'hehe', 1); }
+      };
+      if (g.line.some((o) => !free(o) || (o !== b && o.stackedBy && !g.line.includes(o.stackedBy))) || drag || time - g.start > 16) { end(false); return; }
+      for (const o of g.line) { o.nextHop = time + 1; o.happyUntil = time + 0.3; }
+      const top = g.line[g.line.length - 1], under = g.line[g.line.length - 2];
+      if (g.stage === 'climb') {
+        if (time < g.next) return;
+        if (!g.jumped) {
+          if (!top.body.onFloor() || top.pendingHop) return;
+          const tc = top.body.centroid(), uc = under.body.centroid(), ub = under.body.bbox();
+          const rise = Math.max(20, top.body.bbox().maxY - ub.minY), v = launch(uc.x - tc.x, rise + top.body.o.radius * 0.8, rise), tv = top.body.velocity(DT);
+          top.body.impulse(-tv.x, 0, DT);
+          top.hop(v.vx, v.vy);
+          g.jumped = time;
+          return;
+        }
+        // Coming down onto it: it steers for the middle of its head.
+        const tc = top.body.centroid(), uc = under.body.centroid();
+        if (time - g.jumped > 0.3 && tc.y < uc.y - under.body.o.radius * 0.4 && Math.abs(tc.x - uc.x) < (top.body.o.radius + under.body.o.radius) * 0.8) {
+          top.body.impulse(((uc.x - tc.x) * 4 - top.body.velocity(DT).x) * 0.3, 0, DT);
+          under.body.impulse(-under.body.velocity(DT).x * 0.2, 0, DT);
+        }
+        if (under.stackedBy === top && time - g.jumped > 0.5) {
+          // Up! It stands tall and finds its balance.
+          g.stage = 'stand'; g.at = time;
+          under.surpriseUntil = time + 0.4;
+          return;
+        }
+        if (time - g.jumped > 2.2) { // (missed: off it slid)
+          quip(top, 'whoops', 1); end(false);
+        }
+        return;
+      }
+      // Standing: the one on top stretches up tall, wobbling to keep its
+      // balance (leaning back over the middle), and the bottom one braces.
+      const t = time - g.at, k = Math.min(1.5, CFG.tower);
+      if (under.stackedBy !== top) { g.off = g.off || time; if (time - g.off > 0.4) { quip(top, 'whoa!', 1); end(false); } return; }
+      g.off = 0;
+      const tc = top.body.centroid(), uc = under.body.centroid(), tr = top.body.o.radius;
+      top.body.squashTop(-k * tr * 0.5 * 60 * DT, DT);
+      top.body.lean(Math.max(-1, Math.min(1, (uc.x - tc.x) / tr)) * tr * 6 * DT, DT);
+      top.body.impulse(((uc.x - tc.x) * 4 - top.body.velocity(DT).x) * 0.3, 0, DT);
+      under.body.squashTop(k * under.body.o.radius * 0.25 * 60 * DT, DT); // (a flat seat for it)
+      for (const o of g.line) if (o !== top && o.body.onFloor()) o.body.impulse(-o.body.velocity(DT).x * 0.2, 0, DT); // (feet planted)
+      if (t > 0.6 && !g.tada) { g.tada = true; quip(top, 'ta-da!', 1.2); top.cheerUntil = time + 1.2; }
+      if (t > 3.4) {
+        // Down it comes: a hop off to the roomier side.
+        const side = tc.x < W / 2 ? 1 : -1;
+        top.hop(side * 260, -360);
+        end(true);
+      }
+      return;
+    }
+    if (!free(b) || b.stackedBy || !b.body.onFloor() || idleFor() > 60 || time < (b.nextTower ?? (b.nextTower = time + (250 + Math.random() * 450) / CFG.tower))) return;
+    b.nextTower = time + (500 + Math.random() * 700) / CFG.tower;
+    const c = b.body.centroid(), r = b.body.o.radius;
+    const o = [...buddies.values()].find((o) => o !== b && o.kind === 'mother' && !o.tower && free(o) && !o.stackedBy && o.body.onFloor() && Math.abs(o.body.centroid().y - c.y) < r && Math.abs(o.body.centroid().x - c.x) < r * 4);
+    if (o) towerNow(b, o);
+  }
+  function towerNow(b, o) {
+    const g = { line: [b, o], stage: 'climb', start: time, next: time + 0.7, jumped: 0 };
+    b.tower = o.tower = g;
+    b.glanceAt = o; b.glanceUntil = time + 1;
+    quip(o, 'tower!', 1.1);
+  }
+
   function tagNow(b, o) {
     const g = { p: b, q: o, it: b, start: time, next: time + 0.6, flee: time + 0.3, n: 0, rounds: 3 + Math.floor(Math.random() * 3) };
     b.tag = o.tag = g;
@@ -3086,7 +3165,7 @@
   // hopping in step, single file, turning back at the edge of the screen.
   function parade(b) {
     if (CFG.parade <= 0 || b.kind !== 'mother') return;
-    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.copy && !o.five && !o.frog && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.copy && !o.five && !o.frog && !o.tower && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
     const g = b.parade;
     if (g) {
       if (g.line[0] !== b) return; // (the one in front runs it)
@@ -3820,7 +3899,7 @@
     at(29, () => { const b = big()[1] || big()[0]; if (b && !b.blow) b.blow = { at: time + 0.7, side: 1 }; });
     at(31, () => addFlutter());
     at(17, () => { const b = buddies.get(HOME) || big()[0]; if (b) b.say([{ text: 'While you were away (demo):' }, ...summaryLines()], 6, false, false); });
-    // Part two: a trampoline, a burp, a dream, a somersault, a tumble, leapfrog.
+    // Part two: a trampoline, a burp, a dream, a somersault, a tumble, leapfrog, a tower.
     at(34, () => {
       const [b, o] = big();
       if (!b || !o || b.body.grab || o.body.grab) return;
@@ -3846,7 +3925,14 @@
       b.body.teleport(W * 0.2, y); o.body.teleport(W * 0.2 + (r + o.body.o.radius) * 1.15, y);
       setTimeout(() => { if (!b.dying && !o.dying && !b.frog && !o.frog) frogNow(b, o); }, 900);
     });
-    at(66, () => { seasonOverride = was; showingOff = false; });
+    at(66, () => {
+      const [b, o] = big();
+      if (!b || !o || b.body.grab || o.body.grab || b.tower || o.tower) return;
+      const r = b.body.o.radius, y = H - r * 1.2;
+      b.body.teleport(W * 0.5, y); o.body.teleport(W * 0.5 + (r + o.body.o.radius) * 1.3, y);
+      setTimeout(() => { if (!b.dying && !o.dying && !b.tower && !o.tower) towerNow(b, o); }, 900);
+    });
+    at(74, () => { seasonOverride = was; showingOff = false; });
   }
   let showingOff = false;
 
@@ -3964,6 +4050,7 @@
     trick(b);
     tag(b);
     leapfrog(b);
+    tower(b);
     snowFight(b);
     parade(b);
     blow(b);

@@ -163,6 +163,7 @@
       ['allDoneWave', 1, 0, 2, 0.05, 'When the last busy session finishes, they do a wave of hops along the row: all done!'],
       ['highFive', 1, 0, 2, 0.05, 'Two sessions that finish close together jump up and bump in the air: high five!'],
       ['leapfrog', 1, 0, 2, 0.05, 'Now and then two bored slimes side by side play leapfrog, taking turns hopping right over each other'],
+      ['tower', 1, 0, 3, 0.05, 'Two bored slimes now and then make a tower: one hops up onto the other\'s head and stands tall'],
       ['parade', 1, 0, 2, 0.05, 'Now and then, with a few calm slimes about, one leads a parade and the others hop along behind'],
       ['copycat', 0.6, 0, 1, 0.05, 'Chance a calm slime nearby copies another\'s trick, hop for hop'],
       ['farewell', 1, 0, 2, 0.05, 'When a session ends, the others watch its slime go, a little deflated, and the nearest says bye'],
