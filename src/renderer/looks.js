@@ -417,7 +417,7 @@
 					// middle one stands straight).
 					if (back) at(0, () => {
 						const lean = Math.sign(part.shift) * Math.min(1, Math.abs(part.shift) * 2) * u * 0.4;
-						const bw = u * 1.7, by = u * 0.9, ay = -u * 2.3, t = 0.82; // base half-width, base y, apex y, where the straight sides stop
+						const bw = u * 1.2, by = u * 0.63, ay = -u * 1.6, t = 0.82; // base half-width, base y, apex y, where the straight sides stop
 						ctx.beginPath();
 						ctx.moveTo(-bw, by);
 						ctx.lineTo(lean - bw * (1 - t), by + (ay - by) * t);
