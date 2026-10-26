@@ -864,12 +864,12 @@ const usage = (five, week, models = []) => ({ lim: { status: five >= 1 ? 'reject
 	{ kind: 'seven_day', used: week, resetsAt: Date.now() + 4.2 * 864e5, status: 'allowed' },
 	...models.map(([kind, used]) => ({ kind, used, resetsAt: Date.now() + 4.2 * 864e5, status: 'allowed' })),
 ] } });
-const jarScene = (limits, extra = {}) => Object.assign({ sessions: [session('a', 'blaube', 'idle')], limits, jar: { x: 300, y: 516 }, wait: 3500 }, extra);
+const jarScene = (limits, extra = {}) => Object.assign({ sessions: [session('a', 'blaube', 'idle')], limits, jar: { x: 770, y: 516 }, wait: 3500 }, extra);
 SCENES.jarFull = jarScene(usage(0.02, 0.1));
 SCENES.jarHalf = jarScene(usage(0.5, 0.2));
 SCENES.jarEmpty = jarScene(usage(1, 0.4), { wait: 14000 });
-SCENES.jarHover = jarScene(usage(0.62, 0.41, [['seven_day_opus', 0.12]]), { mouse: [300, 490] });
-SCENES.jarUnknown = jarScene(null, { mouse: [300, 490] });
+SCENES.jarHover = jarScene(usage(0.62, 0.41, [['seven_day_opus', 0.12]]), { mouse: [770, 470] });
+SCENES.jarUnknown = jarScene(null, { mouse: [770, 470] });
 SCENES.jarCookie = jarScene(usage(0.62, 0.41), { sessions: [session('a', 'blaube', 'working')], jar: { x: 700, y: 516 }, motion: { frames: 24, every: 60, drop: 0, still: true, hopAt: [], jsAt: { 0: 'cookieFar', 1: 'cookie' } } });
 SCENES.jarClose = jarScene(usage(0.45, 0.2), { config: { size: 2 }, jar: { x: 1050, y: 516 }, size: [1200, 560] });
 SCENES.jarLedge = jarScene(usage(0.3, 0.2), { window: [420, 300], jar: { x: 700, y: 300 } });

@@ -19,7 +19,7 @@
 		if (!lim || !Array.isArray(lim.windows)) return [];
 		return lim.windows.filter((w) => w && typeof w.used === 'number').map((w) => {
 			const reset = !!w.resetsAt && w.resetsAt <= now;
-			return { kind: w.kind, used: reset ? 0 : Math.max(0, Math.min(1, w.used)), resetsAt: reset ? 0 : w.resetsAt || 0, out: !reset && (w.status === 'rejected' || w.used >= 1), reset };
+			return { kind: w.kind, model: w.model || '', used: reset ? 0 : Math.max(0, Math.min(1, w.used)), resetsAt: reset ? 0 : w.resetsAt || 0, out: !reset && (w.status === 'rejected' || w.used >= 1), reset };
 		}).sort((a, b) => rank(a.kind) - rank(b.kind));
 	}
 	const rank = (kind) => (ORDER.includes(kind) ? ORDER.indexOf(kind) : ORDER.length);
@@ -49,23 +49,25 @@
 		return '';
 	}
 
-	// "20:20" (the clock as your computer writes it), or "Fri 09:00" once
-	// it's more than a day away.
+	// "20:20" (a 24-hour clock), or "Fri 09:00" once it's more than a day
+	// away.
 	function clock(at, now) {
 		const d = new Date(at);
-		const t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+		const t = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 		return at - now > 24 * 3600e3 ? `${d.toLocaleDateString([], { weekday: 'short' })} ${t}` : t;
 	}
 
 	// The hover bubble: which limit the jar shows, then each window, "62%
-	// used · resets 20:20". noPlan: Claude Code answered that there are no
-	// plan limits (an API key).
-	function lines(lim, now = Date.now(), noPlan = false) {
+	// used · resets 20:20". With none known, how come: { noPlan } (Claude
+	// Code says there are no plan limits: an API key), { checking } (still
+	// asking), or neither (asked, and no answer).
+	function lines(lim, now = Date.now(), why = {}) {
 		const w = pick(lim, now);
-		if (!w) return [{ text: 'Snack jar' }, { text: 'Couldn’t check usage' }, { text: noPlan ? 'With an API key there are no plan limits' : 'Blaube hasn’t heard your limits yet', dim: true }];
+		if (!w && why.checking) return [{ text: 'Snack jar' }, { text: 'Checking usage…' }];
+		if (!w) return [{ text: 'Snack jar' }, { text: 'Couldn’t check usage' }, { text: why.noPlan ? 'With an API key there are no plan limits' : 'Claude Code didn’t answer; it tries again soon', dim: true }];
 		const out = [{ text: `Snack jar · ${w.kind === 'five_hour' ? '5-hour limit' : 'weekly limit (closer to running out)'}` }];
 		for (const x of windows(lim, now)) {
-			const name = NAMES[x.kind] || x.kind.replace(/_/g, ' ');
+			const name = NAMES[x.kind] || (x.model ? `${x.model} this week` : x.kind.replace(/_/g, ' '));
 			const resets = x.resetsAt ? ` · resets ${clock(x.resetsAt, now)}` : '';
 			const what = x.reset ? 'fresh again' : x.out ? `limit reached${resets}` : `${Math.round(x.used * 100)}% used${resets}`;
 			out.push({ text: `${name}: ${what}`, dim: x.kind !== 'five_hour' && x.kind !== 'seven_day' });

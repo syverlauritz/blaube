@@ -36,7 +36,7 @@ const live = (lim, now) => (lim ? lim.windows.filter((w) => !w.resetsAt || w.res
 function line(lim, now = Date.now()) {
   const ws = live(lim, now);
   if (!ws.length) return '';
-  return 'Usage: ' + ws.map((w) => `${Math.round(w.used * 100)}% of ${WINDOWS[w.kind] || w.kind.replace(/_/g, ' ')}${w.resetsAt ? ` (resets ${when(w.resetsAt, now)})` : ''}`).join(' · ');
+  return 'Usage: ' + ws.map((w) => `${Math.round(w.used * 100)}% of ${WINDOWS[w.kind] || w.name || w.kind.replace(/_/g, ' ')}${w.resetsAt ? ` (resets ${when(w.resetsAt, now)})` : ''}`).join(' · ');
 }
 
 // Under the field, only once it's worth knowing (75% or more, or limited):
@@ -61,6 +61,15 @@ function fromUsage(rl) {
     const used = Math.max(0, Math.min(1, w.utilization / 100));
     const at = w.resets_at ? Date.parse(w.resets_at) : NaN;
     windows.push({ kind, used, resetsAt: Number.isFinite(at) ? at : 0, status: used >= 1 ? 'rejected' : 'allowed' });
+  }
+  // (Newer ones list the week per model as model_scoped: [{ display_name,
+  // utilization, resets_at }], with the old seven_day_opus/sonnet null.)
+  for (const m of Array.isArray(rl.model_scoped) ? rl.model_scoped : []) {
+    if (!m || typeof m.utilization !== 'number' || !m.display_name) continue;
+    const kind = `seven_day_${String(m.display_name).toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+    if (windows.some((w) => w.kind === kind)) continue;
+    const used = Math.max(0, Math.min(1, m.utilization / 100)), at = m.resets_at ? Date.parse(m.resets_at) : NaN;
+    windows.push({ kind, name: `the week (${m.display_name})`, model: String(m.display_name), used, resetsAt: Number.isFinite(at) ? at : 0, status: used >= 1 ? 'rejected' : 'allowed' });
   }
   return windows.length ? { status: windows.some((w) => w.status === 'rejected') ? 'rejected' : 'allowed', windows } : null;
 }
