@@ -230,6 +230,25 @@
 		});
 	}
 
+	// A twitch: a kick to the springs a look hangs on, so it flicks and
+	// settles (an ear twitch, an antenna perking up). For bunny ears, side
+	// picks one ear (-1 left, 1 right, 0 both), and w > 0 flicks it out,
+	// w < 0 pricks it up.
+	function flick(b, w, side = 0) {
+		const L = b.lookState;
+		if (!L) return;
+		if (L.ears) {
+			L.ears.forEach((E, e) => {
+				const s = e ? 1 : -1;
+				if (side && side !== s) return;
+				E.w[0] += s * w;
+				E.w[1] += s * w * 0.6;
+			});
+			return;
+		}
+		L.w = Math.max(-2.5, Math.min(2.5, L.w + w * 0.3 * (side || 1)));
+	}
+
 	// Swings ease into their limit instead of stopping dead at it.
 	const soft = (v, max) => max * Math.tanh(v / max);
 
@@ -428,5 +447,5 @@
 		return Math.abs(Math.atan2(Math.sin(d), Math.cos(d)));
 	}
 
-	root.BlaubeLooks = { LOOKS, pickLook, lookOrder, stepLook, drawLook, offTop };
+	root.BlaubeLooks = { LOOKS, pickLook, lookOrder, stepLook, drawLook, offTop, flick };
 })(globalThis);

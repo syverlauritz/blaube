@@ -89,6 +89,7 @@
       ['hopCrouch', 0.09, 0, 0.3, 0.01, 'Crouch before a hop (s)'],
       ['crouchDepth', 1, 0, 3, 0.05, 'Crouch depth'],
       ['flightStretch', 0.3, 0, 1, 0.01, 'Stretch out while flying'],
+      ['earTwitch', 1, 0, 2, 0.05, 'Ears and antennas twitch now and then, and prick up when your cursor comes close'],
       ['splatSpeed', 1900, 600, 8000, 50, 'Sticks to a wall it hits faster than (px/s)'],
       ['splatHold', 0.7, 0, 2, 0.05, 'Stays stuck to the wall for (s)'],
       ['splashDrops', 1, 0, 3, 0.05, 'Goo droplets fly off on hard hits'],

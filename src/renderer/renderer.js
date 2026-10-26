@@ -945,6 +945,23 @@
     }
   }
 
+  // Ears (and antennas, and sprouts) twitch now and then, and prick up when
+  // your cursor comes close.
+  const TWITCHY = { catears: 1, bunny: 1, antenna: 1, sprout: 1 };
+  function twitch(b) {
+    if (CFG.earTwitch <= 0 || !TWITCHY[b.look] || b.dying || (b.sleep || 0) > 0.5) return;
+    const k = Math.min(2, CFG.earTwitch), c = b.body.centroid(), r = b.body.o.radius;
+    const near = !drag && Math.hypot(mouse.x - c.x, mouse.y - c.y) < r * 2.5;
+    if (near && !b.cursorNear) Looks.flick(b, -7 * k, 0); // (pricks up)
+    b.cursorNear = near;
+    if (time < (b.nextTwitch ?? (b.nextTwitch = time + 3 + Math.random() * 10))) return;
+    b.nextTwitch = time + (4 + Math.random() * 14) / k;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    Looks.flick(b, (5 + Math.random() * 4) * k, side);
+    // Sometimes a quick double flick.
+    if (Math.random() < 0.3) setTimeout(() => { if (!b.dying) Looks.flick(b, 5 * k, side); }, 160);
+  }
+
   // Two sessions that finish close together jump up and bump in the air
   // between them: "high five!".
   function highFive(a, o, tries = 0) {
@@ -3327,6 +3344,7 @@
       b.say([{ text: `Still waiting on you (${mins} min)` }, ...(what ? [{ text: what, size: 12 }] : [])], 6, false, false);
     }
     sulk(b);
+    twitch(b);
     stepFive(b);
     if (b.kind !== 'home' && b.state === 'idle' && idleFor() > dozeAfter() && time > (b.nextIdleYawn || 0)) {
       if (b.nextIdleYawn) yawn(b, 1.6, 0.5);
