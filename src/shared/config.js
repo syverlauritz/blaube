@@ -129,6 +129,7 @@
       ['snoreBubble', 1, 0, 2, 0.05, 'Fast asleep, it blows a bubble that swells and shrinks with each breath, and pops when it wakes'],
       ['busySweat', 10, 0, 60, 1, 'Working through this many tools a minute, it breaks a sweat (0 = never)'],
       ['sleepTalk', 1, 0, 3, 0.05, 'Fast asleep, it mumbles now and then, often about what it was last doing'],
+      ['petNap', 1, 0, 1, 1, 'Its slime fast asleep, a task pet climbs onto its head to nap there too'],
       ['bubbles', 1, 0, 2, 0.05, 'A bored slime now and then blows a goo bubble; touch it with the cursor to pop it'],
       ['quirks', 1, 0, 10, 0.1, 'Rare little quirks, like a fit of hiccups (how often)'],
       ['sleepSlump', 0.1, 0, 0.3, 0.01, 'Slumps while dozing (and stretches on waking)'],

@@ -653,23 +653,24 @@
         let top = 0;
         for (let i = 0; i < ob.n; i++) if (ob.py[i] < ob.py[top]) top = i;
         const tx = ob.px[top], ty = ob.py[top] - h + 3;
-        if (o.dying || ob.grab || p.held || p.dying) p.ride = p.rideOn = null;
+        if (o.dying || ob.grab || p.held || p.dying) p.ride = p.rideOn = p.napOn = null;
         else if (p.ride && time > p.rideUntil) {
-          p.ride = null;
+          p.ride = p.napOn = null;
           p.vx = (Math.random() < 0.5 ? -1 : 1) * 160; p.vy = -320; p.va = Math.sign(p.vx) * 3;
           p.nextHop = time + 0.8;
         } else if (p.ride) {
+          if (p.napOn && (o.sleep || 0) > 0.5) p.rideUntil = time + 0.4; // (stays while its slime sleeps)
           const v = ob.velocity(DT);
           p.x = tx; p.y = ty; p.vx = v.x; p.vy = v.y;
           p.angle += (Math.max(-0.5, Math.min(0.5, -v.x / 1200)) - p.angle) * 0.2;
           p.happy = true;
           if (time > p.nextBlink) p.nextBlink = time + 1.5 + Math.random() * 4;
           continue;
-        } else if (p.vy > 0 && Math.abs(p.x - tx) < ob.o.radius * 0.8 && p.y >= ty - 4) {
+        } else if (p.vy > 0 && Math.abs(p.x - tx) < ob.o.radius * 0.8 && p.y >= ty - 4 && p.y < ty + PET * 1.5) {
           // Landed on top of it.
           p.ride = o; p.rideOn = null; p.rideUntil = time + 3.5;
           continue;
-        } else if (time - (p.rideAt || 0) > 2) p.rideOn = null;
+        } else if (time - (p.rideAt || 0) > 2) p.rideOn = p.napOn = null;
       }
       const floor = floorAt(p.x, p.held ? undefined : p.y + h) - h;
       p.ledge = floor + h < floorAt(p.x) ? ledges.find((l) => l.y === floor + h && p.x >= l.x0 && p.x <= l.x1) : null;
@@ -741,6 +742,19 @@
         }
       }
       if (!onFloor || time < p.nextHop || p.dying) continue;
+      // Its slime fast asleep: the first pet climbs up onto its head for a
+      // nap of its own.
+      if (m && CFG.petNap > 0 && p.index === 0 && (m.sleep || 0) > 0.85 && Math.abs(p.x - m.body.centroid().x) < m.body.o.radius * 3 && Math.abs(rise) < PET && time > (p.nextClimb || 0) && m.body.onFloor()) {
+        p.nextClimb = time + 30;
+        const ob = m.body, top = ob.bbox().minY, c = ob.centroid();
+        const up = Math.sqrt(2 * CFG.gravity * Math.max(PET, p.y - top + PET * 1.2)), air = up / CFG.gravity * 1.6;
+        p.vx = (c.x - p.x) / air;
+        p.vy = -up;
+        p.va = Math.sign(p.vx || 1) * 2;
+        p.rideOn = m; p.rideAt = time; p.napOn = true;
+        p.nextHop = time + 1.5;
+        continue;
+      }
       // Follow its slime: hop after it, at random moments.
       if (m && !happy) {
         p.vx = Math.sign(dx) * Math.min(520, Math.abs(dx) * 2.4 + 90);
