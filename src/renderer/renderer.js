@@ -1701,6 +1701,25 @@
       return;
     }
     if (m.kind === 'commit' && once('commit', 20)) { b.nodAt = time; b.nodQuiet = true; return; }
+    // Its to-do list: a little hop for each item ticked off (not too
+    // often), a proper one with a cheer when the list is done.
+    if (m.kind === 'tick' && once('tick', 8)) {
+      if (grounded) b.hop(0, -220);
+      if (talkingTo !== m.id) b.say([{ text: `✓ ${m.done} of ${m.of}` }], 1.6);
+      return;
+    }
+    if (m.kind === 'listdone' && once('listdone', 20)) {
+      b.cheerUntil = time + 1.2;
+      if (grounded) b.hop(0, -360);
+      if (talkingTo !== m.id) b.say([{ text: m.of > 1 ? `All ${m.of} done!` : 'Done!' }], 2);
+      return;
+    }
+    // Stop: it digs in and squashes down, like braking.
+    if (m.kind === 'brace') {
+      b.winceUntil = time + 0.6;
+      if (grounded) b.body.impulse(0, 320, DT);
+      return;
+    }
     if (m.kind !== 'oops' || time < (b.nextWince || 0)) return;
     b.nextWince = time + 20;
     b.winceUntil = time + 0.7;

@@ -1165,6 +1165,9 @@ app.whenReady().then(async () => {
   // A message from the slime went in: its turn starts, as if typed.
   // One went in at its next step, mid-turn: it nods, as when you type.
   inbox.on('heard', (id) => { if (win) win.webContents.send('nod', id); });
+  // A to-do item ticked off, or Stop pressed: the slime feels it.
+  inbox.on('ticked', (id, t) => { if (win) win.webContents.send('react', { id, kind: t.done === t.of ? 'listdone' : 'tick', done: t.done, of: t.of }); });
+  inbox.on('stopping', (id) => { if (win) win.webContents.send('react', { id, kind: 'brace' }); });
   inbox.on('delivered', (id) => {
     if (tracker.sessions.has(id)) tracker.handle({ session_id: id, hook_event_name: 'UserPromptSubmit' }, 'blaube');
   });

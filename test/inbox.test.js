@@ -447,3 +447,18 @@ test('a tool with a huge output still reaches Blaube, and its step stays small',
     server.close();
   }
 });
+
+test('ticking off a to-do item, and pressing Stop, are moments the slime can react to', () => {
+  const inbox = new Inbox();
+  const seen = [];
+  inbox.on('ticked', (id, t) => seen.push(['ticked', id, t.done, t.of]));
+  inbox.on('stopping', (id) => seen.push(['stopping', id]));
+  const todos = (...st) => inbox.observe({ session_id: 's1', hook_event_name: 'PostToolUse', tool_name: 'TodoWrite', tool_input: { todos: st.map((status, i) => ({ content: 'item ' + i, status })) } });
+  todos('in_progress', 'pending');
+  todos('in_progress', 'pending'); // no change: nothing
+  todos('completed', 'in_progress');
+  todos('completed', 'completed');
+  inbox.step({ session_id: 's1', hook_event_name: 'PreToolUse' }, true);
+  inbox.stop('s1');
+  assert.deepEqual(seen, [['ticked', 's1', 1, 2], ['ticked', 's1', 2, 2], ['stopping', 's1']]);
+});

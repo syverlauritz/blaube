@@ -85,6 +85,7 @@ class Inbox extends EventEmitter {
       this.unasked(id, a.reply);
     }
     this.add(id, { who: 'note', text: 'You asked it to stop' });
+    this.emit('stopping', id);
     return true;
   }
 
@@ -251,7 +252,15 @@ class Inbox extends EventEmitter {
     const event = payload.hook_event_name;
     if (this.stops.has(id) && (event === 'Stop' || event === 'UserPromptSubmit' || event === 'SessionEnd')) { this.stops.delete(id); this.emit('change', id); }
     // Its to-do list, as the terminal shows it.
-    if (event === 'PostToolUse' && todo(this.todos, id, payload)) this.emit('change', id);
+    if (event === 'PostToolUse') {
+      const doneOf = () => (this.todos.get(id) || []).filter((t) => t.status === 'completed').length;
+      const before = doneOf();
+      if (todo(this.todos, id, payload)) {
+        const after = doneOf(), of = (this.todos.get(id) || []).length;
+        if (after > before) this.emit('ticked', id, { done: after, of });
+        this.emit('change', id);
+      }
+    }
     if (event === 'SessionEnd') this.todos.delete(id);
     // What it did, a line per step, between what was said.
     if (event === 'PostToolUse' || event === 'PostToolUseFailure') {
