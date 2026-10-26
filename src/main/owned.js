@@ -163,11 +163,12 @@ class Owned extends EventEmitter {
   // 'set_model', model }, { subtype: 'set_permission_mode', mode }, or {
   // subtype: 'interrupt' } (stops its turn now). cb(ok, its answer or why
   // not). False if it isn't running.
-  control(id, request, cb = () => {}) {
+  // `wait`: how long to wait for its answer (one that asks the model, longer).
+  control(id, request, cb = () => {}, wait = 5000) {
     const s = this.sessions.get(id);
     if (!s || !s.proc.stdin.writable) { cb(false, 'it isn’t running'); return false; }
     const rid = 'blaube-' + crypto.randomUUID();
-    const late = setTimeout(() => { if (s.pending.delete(rid)) cb(false, 'no answer'); }, 5000);
+    const late = setTimeout(() => { if (s.pending.delete(rid)) cb(false, 'no answer'); }, wait);
     s.pending.set(rid, (ok, r) => { clearTimeout(late); cb(ok, r); });
     if (request.subtype === 'interrupt') s.interrupted = true;
     s.proc.stdin.write(JSON.stringify({ type: 'control_request', request_id: rid, request }) + '\n');

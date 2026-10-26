@@ -328,6 +328,20 @@
   }
 
   function message(m, fresh) {
+    // A question asked on the side (/btw), and its answer.
+    if (m.who === 'note' && m.aside) {
+      const e = document.createElement('div');
+      e.className = 'aside';
+      const q = document.createElement('div');
+      q.className = 'asideq';
+      q.textContent = m.aside.question;
+      const a = document.createElement('div');
+      a.className = 'asidea';
+      rich(a, m.aside.answer);
+      markPaths(a);
+      e.append(q, a);
+      return [e];
+    }
     if (m.who === 'note') {
       const e = document.createElement('div');
       // (A long one, such as /help or /permissions, wraps: it's worth reading.)

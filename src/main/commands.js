@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const BUILT_IN = new Set(['add-dir', 'agents', 'bug', 'clear', 'compact', 'config', 'context', 'cost', 'doctor', 'effort', 'exit', 'export', 'fast', 'help', 'hooks', 'init', 'login', 'logout', 'mcp', 'memory', 'model', 'output-style', 'permissions', 'plan', 'plugin', 'pr-comments', 'release-notes', 'rename', 'resume', 'review', 'rewind', 'security-review', 'skills', 'status', 'statusline', 'terminal-setup', 'todos', 'upgrade', 'usage', 'vim']);
+const BUILT_IN = new Set(['add-dir', 'agents', 'btw', 'bug', 'clear', 'compact', 'config', 'context', 'cost', 'doctor', 'effort', 'exit', 'export', 'fast', 'help', 'hooks', 'init', 'login', 'logout', 'mcp', 'memory', 'model', 'output-style', 'permissions', 'plan', 'plugin', 'pr-comments', 'release-notes', 'rename', 'resume', 'review', 'rewind', 'security-review', 'skills', 'status', 'statusline', 'terminal-setup', 'todos', 'upgrade', 'usage', 'vim']);
 
 // Your own commands: .md files in ~/.claude/commands and the project's
 // .claude/commands (folders make "folder:name"). name -> file.
@@ -64,6 +64,7 @@ function skills(cwd = '', home = os.homedir()) {
 const ABOUT = {
   'add-dir': 'Another folder it may work in',
   agents: 'Opens the project’s agents folder',
+  btw: 'A quick question on the side, while it works',
   bug: 'Reports a Claude Code bug on GitHub',
   clear: 'A fresh conversation, same slime',
   compact: 'Frees up its context',

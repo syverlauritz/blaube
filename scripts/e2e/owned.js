@@ -37,6 +37,7 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
     if (r.subtype === 'rewind_files') return ok(seen.has(r.user_message_id) ? (r.dry_run ? { canRewind: true, filesChanged: ['/x/a.js', '/x/b.js'], insertions: 3, deletions: 1 } : { canRewind: true }) : { canRewind: false, error: 'No file checkpoint found for this message.' });
     if (r.subtype === 'mcp_status') return ok({ mcpServers: [{ name: 'github', status: mcpUp ? 'connected' : 'failed', error: 'ENOENT: no such file' }, { name: 'linear', status: linear }] });
     if (r.subtype === 'mcp_authenticate') { setTimeout(() => { linear = 'connected'; }, 400); return ok({ authUrl: 'https://mcp.linear.app/authorize?state=fake', requiresUserAction: true, callbackExpected: true }); }
+    if (r.subtype === 'side_question') return setTimeout(() => ok({ response: 'It runs on **port 3000**.', synthetic: false }), 300);
     if (r.subtype === 'get_session_cost') return ok({ text: 'Total cost:            $0.0123\\nTotal duration (API):  4s\\nTotal duration (wall): 1m 2s\\nTotal code changes:    3 lines added, 1 line removed' });
     if (r.subtype === 'mcp_reconnect') { mcpUp = r.serverName === 'github'; return ok({}); }
     if (r.subtype === 'get_usage') return ok({ session: {}, rate_limits_available: true, rate_limits: { five_hour: { utilization: used[0], resets_at: new Date(Date.now() + 7200e3).toISOString() }, seven_day: { utilization: used[1], resets_at: new Date(Date.now() + 4 * 86400e3).toISOString() } } });
@@ -129,6 +130,13 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await until(() => tracker.sessions.get(id).state === 'done');
 	await type('/cost');
 	check(await until(() => inbox.log(id).some((e) => e.text === 'Total cost: $0.0123 · Total duration (API): 4s · Total duration (wall): 1m 2s · Total code changes: 3 lines added, 1 line removed')), '/cost says what it has cost, asked of Claude Code (get_session_cost)');
+	await type('slow');
+	await until(() => tracker.sessions.get(id).state === 'working', 3000);
+	await type('/btw what port?');
+	check(await until(() => box(`(() => { const a = [...document.querySelectorAll('#inner .aside')].pop(); return !!a && (a.querySelector('.asideq') || {}).textContent === 'what port?' && (a.querySelector('.asidea b') || {}).textContent === 'port 3000'; })()`)), '/btw asks a quick question on the side, answered while it works (side_question)');
+	check(tracker.sessions.get(id).state === 'working' && !inbox.log(id).some((e) => e.who === 'you' && /what port/.test(e.text)) && !inbox.log(id).some((e) => /^Asked on the side/.test(e.text || '')), 'without becoming part of the conversation');
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '.', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
+	await until(() => tracker.sessions.get(id).state !== 'working', 3000);
 	// Its usage limits, asked of Claude Code after each turn (get_usage).
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
 	check(await until(() => box(`/^Usage: 12% of 5 hours \\(resets .+\\) · 40% of the week/.test((document.querySelector('#overview .usage') || {}).textContent || '')`)), 'the overview has your usage limits, asked of Claude Code after a turn');

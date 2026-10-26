@@ -1808,7 +1808,7 @@ app.whenReady().then(async () => {
       }, TEST ? 300 : 5000);
       look.unref();
       done(true);
-    });
+    }, 30e3);
   }));
   setInterval(askUsage, 5 * 60e3).unref();
   owned.on('compacted', (id) => inbox.add(id, { who: 'note', text: 'Compacted: it carries on from a summary of the conversation so far' }));
@@ -2297,6 +2297,21 @@ app.whenReady().then(async () => {
     }
     // A session Blaube started: straight in, and its turn starts.
     if (owned.has(id)) {
+      // "/btw what's the port?": a quick question on the side, as the
+      // terminal's /btw: answered from the conversation so far, even while
+      // it works, without becoming part of it.
+      const btw = /^\/btw(?:\s+([\s\S]*))?$/i.exec(String(text).trim());
+      if (btw) {
+        const q = (btw[1] || '').trim();
+        if (!q) { inbox.add(id, { who: 'note', text: 'Ask it something on the side: /btw what port does it run on?' }); return; }
+        const asked = inbox.add(id, { who: 'note', text: `Asked on the side: ${q.length > 80 ? q.slice(0, 79) + '…' : q}` });
+        owned.control(id, { subtype: 'side_question', question: q }, (ok, r) => {
+          if (!ok || !r || typeof r.response !== 'string' || !r.response.trim()) { inbox.add(id, { who: 'note', text: `Couldn’t ask on the side: ${ok ? 'no answer' : r}`, error: true }); return; }
+          inbox.logs.set(id, inbox.log(id).filter((e) => e !== asked));
+          inbox.add(id, { who: 'note', aside: { question: q, answer: r.response }, text: `On the side: ${q} — ${r.response}` });
+        }, 120e3);
+        return;
+      }
       // "/clear": a fresh conversation, as in the terminal: a new session in
       // the same place takes over its slime (the old one can be picked up).
       if (/^\/clear\s*$/i.test(String(text).trim())) {
