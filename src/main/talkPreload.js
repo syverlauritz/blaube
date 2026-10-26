@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   attach: (id) => ipcRenderer.invoke('talk-attach', id),
   answer: (id, key, choice) => ipcRenderer.send('talk-answer', id, key, choice),
   later: (id, at) => ipcRenderer.send('talk-later', id, at),
+  taskOutput: (id, taskId) => ipcRenderer.invoke('talk-task-output', id, taskId),
   diff: (id, file) => ipcRenderer.invoke('talk-diff', id, file),
   earlier: (id) => ipcRenderer.invoke('talk-earlier', id),
   newIn: (folder, opts) => ipcRenderer.send('talk-new', folder, opts),

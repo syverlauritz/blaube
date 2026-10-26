@@ -18,6 +18,7 @@ const { failedTests, stoppedLast, erredLast } = require('./inbox');
 const { Notification } = require('electron');
 const { slashCommand, commandNames, expand: expandCommand, control: controlFor } = require('./commands');
 const limits = require('./limits');
+const taskOutput = require('./taskOutput');
 const { openResumeTerminal, resumeCommand, focusSessionApp, typeIntoSession } = require('./terminal');
 const { startAgentsPoller, listAgents, findClaude } = require('./agents');
 const { Owned } = require('./owned');
@@ -1648,6 +1649,14 @@ app.whenReady().then(async () => {
     goToSession(s);
   });
   ipcMain.on('talk', (_e, id, at) => openTalk(id, at || { x: 0, y: 0 }));
+  // What a background task has printed, from Claude Code's own file for it
+  // (null: not found, so the box asks Claude instead).
+  ipcMain.handle('talk-task-output', (_e, id, taskId) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    if (!s || !(s.tasks || []).some((t) => t.id === taskId)) return null;
+    const file = taskOutput.find(id, taskId);
+    return file ? taskOutput.tail(file) : null;
+  });
   // "Carry on at 3pm" (at: when) after a usage limit, or not (at: 0).
   ipcMain.on('talk-later', (_e, id, at) => {
     if (!id || id !== talkId || !tracker.sessions.has(id) || id.startsWith('demo-')) return;

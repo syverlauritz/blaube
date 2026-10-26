@@ -983,13 +983,36 @@
       stop.textContent = 'Stop';
       stop.title = `Ask Claude to stop ${t.command}`;
       stop.onclick = () => { if (!current) return; stop.disabled = true; api.send(current.id, `Stop the background task “${t.label}” (id ${t.id}, \`${t.command}\`).`); };
-      // (And what it has printed lately, asked of Claude too.)
+      // (And what it has printed lately: read from its file, live while
+      // it's open, or else asked of Claude.)
       const peek = document.createElement('button');
       peek.type = 'button';
       peek.textContent = 'Output';
-      peek.title = `Ask Claude what ${t.command} has printed lately`;
-      peek.onclick = () => { if (!current) return; api.send(current.id, `What has the background task “${t.label}” (id ${t.id}, \`${t.command}\`) printed lately? Show me the last lines that matter, and say if anything looks wrong.`); };
-      li.append(name, peek, stop);
+      peek.title = `Show what ${t.command} has printed lately`;
+      const out = document.createElement('pre');
+      out.className = 'bgout';
+      out.hidden = true;
+      const ask = () => api.send(current.id, `What has the background task “${t.label}” (id ${t.id}, \`${t.command}\`) printed lately? Show me the last lines that matter, and say if anything looks wrong.`);
+      const show = async () => {
+        const r = current && api.taskOutput ? await api.taskOutput(current.id, t.id) : null;
+        if (!r) return false;
+        const end = out.scrollHeight - out.scrollTop - out.clientHeight < 8; // (follows the end unless you scrolled up)
+        out.textContent = (r.cut ? '…\n' : '') + (r.text || '(nothing yet)') + (r.exited != null ? `\n[ended, code ${r.exited}]` : '');
+        out.classList.toggle('failed', !!r.exited);
+        if (end) out.scrollTop = out.scrollHeight;
+        return true;
+      };
+      peek.onclick = async () => {
+        if (!current) return;
+        if (!out.hidden) { out.hidden = true; clearInterval(out.timer); peek.setAttribute('aria-expanded', 'false'); requestAnimationFrame(fitWindow); return; }
+        if (!(await show())) return ask();
+        out.hidden = false;
+        peek.setAttribute('aria-expanded', 'true');
+        out.scrollTop = out.scrollHeight;
+        out.timer = setInterval(() => { if (!out.isConnected || out.hidden) return clearInterval(out.timer); show(); }, 1500);
+        requestAnimationFrame(fitWindow);
+      };
+      li.append(name, peek, stop, out);
       box.append(li);
     }
     requestAnimationFrame(fitWindow);

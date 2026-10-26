@@ -86,6 +86,22 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await hook({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_use_id: 'tu1', tool_input: { command: 'npm run dev', description: 'Dev server', run_in_background: true }, tool_response: { backgroundTaskId: 'bash_7' } });
 	check(await until(() => box(`!document.getElementById('bg').hidden && /Dev server/.test(document.getElementById('bg').textContent)`)), 'a background task it started shows in the box');
 	check(await box(`[...document.querySelectorAll('#bg button')].map((b) => b.textContent).join()`) === 'Output,Stop', 'with Output and Stop');
+	// Its Output, read from Claude Code's own file for it: no asking Claude.
+	const tmpRoot = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'blaube-cc-tmp-'));
+	process.env.CLAUDE_CODE_TMPDIR = tmpRoot;
+	const outDir = path.join(tmpRoot, `claude-${process.getuid ? process.getuid() : 0}`, '-tmp-kalkis', ID, 'tasks');
+	fs.mkdirSync(outDir, { recursive: true });
+	fs.writeFileSync(path.join(outDir, 'bash_7.output'), '\x1b[32m  VITE ready\x1b[0m on http://localhost:5173\n');
+	const queuedBefore = (inbox.queue.get(ID) || []).length;
+	await box(`[...document.querySelectorAll('#bg button')].find((b) => b.textContent === 'Output').click()`);
+	check(await until(() => box(`(() => { const o = document.querySelector('#bg .bgout'); return !!o && !o.hidden && /VITE ready on http:\\/\\/localhost:5173/.test(o.textContent) && !/\\x1b/.test(o.textContent); })()`)), 'Output shows what a background task printed, read from its file');
+	check((inbox.queue.get(ID) || []).length === queuedBefore, 'without asking Claude');
+	fs.appendFileSync(path.join(outDir, 'bash_7.output'), 'GET / 500\n\n[exited with code 1]\n');
+	check(await until(() => box(`(() => { const o = document.querySelector('#bg .bgout'); return /GET \\/ 500\\n\\[ended, code 1\\]$/.test(o.textContent) && o.classList.contains('failed'); })()`)), 'and keeps up with it while open, saying how it ended');
+	await box(`[...document.querySelectorAll('#bg button')].find((b) => b.textContent === 'Output').click()`);
+	check(await until(() => box(`document.querySelector('#bg .bgout').hidden`)), 'a second tap hides it');
+	delete process.env.CLAUDE_CODE_TMPDIR;
+	fs.rmSync(tmpRoot, { recursive: true, force: true });
 	await box(`[...document.querySelectorAll('#bg button')].find((b) => b.textContent === 'Stop').click()`);
 	check(await until(() => (inbox.queue.get(ID) || []).some((e) => /Stop the background task .Dev server. \(id bash_7/.test(e.text))), 'its Stop asks Claude to stop it');
 	for (const e of inbox.queue.get(ID) || []) inbox.unsend(ID, e.n);

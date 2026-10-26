@@ -153,6 +153,10 @@
   .bg button { border: 0; border-radius: 999px; padding: 1px 10px; background: var(--soft); font: 600 13px var(--ui); color: var(--dim); cursor: pointer; }
   .bg button:hover { color: var(--ink); }
   .bg button:disabled { opacity: .5; cursor: default; }
+  .bg li { flex-wrap: wrap; }
+  .bg .bgout { flex: 1 0 100%; margin: 4px 0 6px; padding: 8px 12px; background: var(--soft); border-radius: 14px; font: 500 13px/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow-y: auto; user-select: text; }
+  .bg .bgout[hidden] { display: none; }
+  .bg .bgout.failed { box-shadow: inset 3px 0 0 #d33; }
   /* What you might ask for next, one tap each. */
   .quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 8px; }
   .quick[hidden] { display: none; }
