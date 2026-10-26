@@ -38,7 +38,7 @@ function said(e) {
   if (e.type === 'user') {
     if (Array.isArray(c) && c.some((b) => b && b.type === 'tool_result')) return null;
     if (/^\s*</.test(text)) return null; // <command-name>, <local-command-stdout>, <task-notification>...
-    return Object.assign({ who: 'you', text: text.trim() }, when);
+    return Object.assign({ who: 'you', text: text.trim() }, when, typeof e.uuid === 'string' ? { uuid: e.uuid } : {}); // (uuid: to go back to before it)
   }
   if (e.type === 'assistant') return Object.assign({ who: 'claude', text: text.trim() }, when);
   return null;

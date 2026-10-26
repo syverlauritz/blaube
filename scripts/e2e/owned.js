@@ -321,7 +321,7 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	const tx = path.join(dir2, 'session.jsonl');
 	const when = new Date(Date.now() - 60e3).toISOString();
 	fs.writeFileSync(tx, [
-		{ type: 'user', timestamp: when, message: { content: 'rename the tax helper' } },
+		{ type: 'user', uuid: 'b-u1', timestamp: when, message: { content: 'rename the tax helper' } },
 		{ type: 'assistant', timestamp: when, message: { content: [{ type: 'text', text: 'Renamed it to taxOf.' }] } },
 	].map((e) => JSON.stringify(e)).join('\n') + '\n');
 	const term = require('node:child_process').spawn('sleep', ['120']);
@@ -340,6 +340,7 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(() => owned.has(BID), 8000), 'and carries on in Blaube, same session');
 	check(await until(async () => talkId() === BID && /Brought here from its terminal/.test(await said()) && /Renamed it to taxOf/.test(await said()), 8000), 'its box says so, with the conversation so far');
 	check(await until(() => inbox.log(BID).some((e) => e.text === 'Compacted: it carries on from a summary of the conversation so far'), 8000), 'and the command you typed goes in, now it can take it');
+	check(await until(() => box(`[...document.querySelectorAll('#inner .msg.you')].some((e) => e.dataset.text === 'rename the tax helper' && e.nextElementSibling && e.nextElementSibling.matches('.meta.edit'))`)), 'what you said in its terminal can be edited here too');
 	await type('and the tests?');
 	check(await until(async () => /claude-opus here\./.test(await said())), 'and it answers right here');
 	owned.end(BID);

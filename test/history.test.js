@@ -93,3 +93,9 @@ test('past sessions can be searched for what was said in them', async () => {
   assert.deepEqual(await searchPast('vat', new Set([A]), { home }), [], 'not ones running now');
   assert.deepEqual(await searchPast('v', new Set(), { home }), []);
 });
+
+test('what you said keeps its id, to go back to before it', () => {
+  const h = home();
+  const f = write(h, ID(3), [Object.assign(user('make it faster'), { uuid: 'u-1' }), claude('Done.')]);
+  assert.deepEqual(recentMessages(f), [{ who: 'you', text: 'make it faster', uuid: 'u-1' }, { who: 'claude', text: 'Done.' }]);
+});

@@ -433,7 +433,7 @@
     }
     // Your own, in a session Blaube started: change it (Esc Esc in the
     // terminal), going back to before it.
-    if (m.who === 'you' && m.uuid && m.status === 'sent' && current.owned && api.editFrom) {
+    if (m.who === 'you' && m.uuid && (m.status === 'sent' || !m.status) && current.owned && api.editFrom) {
       const t = document.createElement('div');
       t.className = 'meta edit';
       const b = document.createElement('button');
