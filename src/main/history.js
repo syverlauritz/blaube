@@ -58,19 +58,6 @@ function recentMessages(file, n = 6) {
   return out.slice(-n);
 }
 
-// Up to `n` things said before `before` (a time), oldest first: what came
-// before a talk box's own log. Reads at most the last 8 MB.
-function messagesBefore(file, before, n = 30) {
-  const out = [];
-  for (const e of lines(slice(file, -(8 << 20), 8 << 20))) {
-    const m = said(e);
-    if (!m || !m.at || m.at >= before) continue;
-    if (m.who === 'claude' && out.length && out[out.length - 1].who === 'claude') out[out.length - 1] = m;
-    else out.push(m);
-  }
-  return out.slice(-n);
-}
-
 // Its folder and title, from the start and end of its transcript.
 function describe(file) {
   const head = lines(slice(file, 0, 64 << 10));
@@ -180,4 +167,4 @@ function ago(at, now = Date.now()) {
   return d === 1 ? 'yesterday' : `${d} days ago`;
 }
 
-module.exports = { pastSessions, recentMessages, messagesBefore, searchPast, ago, said };
+module.exports = { pastSessions, recentMessages, searchPast, ago, said };

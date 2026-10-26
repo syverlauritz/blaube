@@ -270,14 +270,8 @@ class Inbox extends EventEmitter {
     if (event === 'SessionEnd') this.todos.delete(id);
     // What it did, a line per step, between what was said.
     if (event === 'PostToolUse' || event === 'PostToolUseFailure') {
-      const text = stepText(payload.tool_name, payload.tool_input);
-      const i = payload.tool_input || {};
-      const file = /^(Edit|MultiEdit|Write|NotebookEdit|Read)$/.test(payload.tool_name) ? String(i.file_path || i.notebook_path || '') : '';
-      const cmd = (payload.tool_name === 'Bash' || payload.tool_name === 'PowerShell') && payload.tool_input && typeof payload.tool_input.command === 'string' ? payload.tool_input.command.slice(0, 200) : '';
-      const detail = stepDetail(payload);
-      // (A test run says how it went: "Ran npm test · 2 failing".)
-      const counts = cmd && TESTS.test(cmd) ? testCounts(detail) : null;
-      if (text) this.add(id, Object.assign({ who: 'step', text: text + countWords(counts), ok: event === 'PostToolUse', kind: classify(payload.tool_name, payload.tool_input), detail }, file ? { file } : {}, cmd ? { cmd } : {}, counts ? { tests: counts } : {}));
+      const step = stepEntry(payload);
+      if (step) this.add(id, step);
     }
     // A session Blaube started tells its own story (say/replied).
     if (this.owned.has(id) && (event === 'UserPromptSubmit' || event === 'Stop')) return;
@@ -502,6 +496,20 @@ function todo(all, id, p) {
   return false;
 }
 
+// A step's log entry, from its PostToolUse(Failure) hook (or the same
+// read from its transcript: see transcript.js). Null for one that says nothing.
+function stepEntry(payload) {
+  const text = stepText(payload.tool_name, payload.tool_input);
+  if (!text) return null;
+  const i = payload.tool_input || {};
+  const file = /^(Edit|MultiEdit|Write|NotebookEdit|Read)$/.test(payload.tool_name) ? String(i.file_path || i.notebook_path || '') : '';
+  const cmd = (payload.tool_name === 'Bash' || payload.tool_name === 'PowerShell') && payload.tool_input && typeof payload.tool_input.command === 'string' ? payload.tool_input.command.slice(0, 200) : '';
+  const detail = stepDetail(payload);
+  // (A test run says how it went: "Ran npm test · 2 failing".)
+  const counts = cmd && TESTS.test(cmd) ? testCounts(detail) : null;
+  return Object.assign({ who: 'step', text: text + countWords(counts), ok: payload.hook_event_name === 'PostToolUse', kind: classify(payload.tool_name, payload.tool_input), detail }, file ? { file } : {}, cmd ? { cmd } : {}, counts ? { tests: counts } : {});
+}
+
 // One step it took, said after the fact: "Edited face.js", "Ran npm test".
 // Nothing for the ones that show up some other way (questions, plans,
 // helpers get their own slime) or say nothing (its own bookkeeping).
@@ -580,4 +588,4 @@ function alwaysLabel(updates, max = 70) {
   return text.length > max ? text.slice(0, max - 2) + '…' : text;
 }
 
-module.exports = { Inbox, frame, describe, toolName, alwaysLabel, stepText, stepDetail, turnOf, failedTests, stoppedLast, erredLast, runFailed, STYLE };
+module.exports = { Inbox, frame, describe, toolName, alwaysLabel, stepText, stepDetail, stepEntry, turnOf, failedTests, stoppedLast, erredLast, runFailed, STYLE };

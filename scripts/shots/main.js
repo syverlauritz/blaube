@@ -403,6 +403,31 @@ const SCENES = {
 			{ who: 'claude', text: 'Committed as f3a91c2 “Fix flaky e2e timeout”.', turn: { took: 252e3, steps: 9, files: ['/w/test/e2e.js', '/w/src/main/inbox.js'] } },
 		] },
 	},
+	// A session started in a terminal before Blaube was running: what was
+	// said and done comes from its transcript, above what Blaube saw (Show
+	// earlier at the top for more), and looks just the same.
+	talkHistory: {
+		talkJs: `setTimeout(() => { document.getElementById('log').scrollTop = 0; }, 300)`,
+		sessions: [session('th', 'kalkis', 'done', { color: '#5B8DEF', look: 'bow' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1000, 640],
+		talk: { key: 'th', inbox: 'ready', earlier: true, history: { from: 48213, entries: [
+			{ who: 'you', text: 'why is the VAT off by a krone sometimes?', via: 'terminal', at: 1, n: -11 },
+			{ who: 'step', text: 'Read vat.js', ok: true, kind: 'read', n: -12, at: 2 },
+			{ who: 'step', text: 'Searched for “Math.round”', ok: true, kind: 'search', n: -13, at: 3 },
+			{ who: 'claude', text: 'It rounds each line before adding them up, so the öre add up to a krone now and then. Rounding the total instead fixes it.', at: 4, n: -14, turn: { took: 95e3, steps: 2, files: [] } },
+			{ who: 'note', text: 'Context compacted', divider: true, at: 5, n: -15 },
+			{ who: 'you', text: 'ok, do that', via: 'terminal', at: 6, n: -16 },
+			{ who: 'step', text: 'Edited vat.js', ok: true, kind: 'edit', file: '/w/kalkis/src/vat.js', n: -17, at: 7, detail: '− lines.map((l) => Math.round(l * rate))\n+ Math.round(lines.reduce((a, l) => a + l, 0) * rate)' },
+			{ who: 'step', text: 'Run the tests', ok: true, kind: 'test', n: -18, at: 8 },
+			{ who: 'claude', text: 'Done: it rounds the total now, and the tests pass.', at: 9, n: -19, turn: { took: 140e3, steps: 2, files: ['/w/kalkis/src/vat.js'] } },
+		] }, log: [
+			{ who: 'you', text: 'can you commit it?', via: 'terminal', at: 20, n: 1 },
+			{ who: 'step', text: 'Committed: Round the VAT total, not each line', ok: true, kind: 'commit', n: 2, at: 21 },
+			{ who: 'claude', text: 'Committed as 4e1c0b2.', at: 22, n: 3 },
+		] },
+	},
 	// The tail, with the slime straight below the box, to the left, to the right.
 	talkTailMid: { sessions: [session('tt', 'blaube', 'idle')], bg: '#f2f0ec', wait: 2500, size: [1000, 640], talk: { key: 'tt', x: 500, inbox: 'ready', log: [{ who: 'claude', text: 'All 66 tests pass.' }] } },
 	talkTailLeft: { sessions: [session('tt', 'blaube', 'idle')], bg: '#f2f0ec', wait: 2500, size: [1000, 640], talk: { key: 'tt', x: 130, inbox: 'ready', log: [{ who: 'claude', text: 'All 66 tests pass.' }] } },
@@ -825,6 +850,8 @@ async function addTalk(win, scene, name) {
 	ipcMain.handle('talk-github-todo', () => []);
 	ipcMain.removeHandler('talk-hub');
 	ipcMain.handle('talk-hub', () => ({ folders: [{ path: '/Users/me/Git/blaube', name: 'blaube' }, { path: '/Users/me/Git/kalkis', name: 'kalkis' }], past: [{ id: 'p1', title: 'Speed up the build', where: 'blaube · yesterday' }, { id: 'p2', title: 'Fix the login bug', where: 'kalkis · 3 days ago' }] }));
+	ipcMain.removeHandler('talk-history');
+	ipcMain.handle('talk-history', () => t.history || { entries: [], from: 0 });
 	ipcMain.removeHandler('talk-files-exist');
 	ipcMain.handle('talk-files-exist', () => []);
 	ipcMain.removeHandler('talk-paste');

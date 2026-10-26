@@ -345,10 +345,9 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await until(async () => !!(await page(`!!__blaube.buddies.get(${JSON.stringify(ID3)})`)), 6000);
 	await page(`window.blaube.talk(${JSON.stringify(ID3)}, { x: 300, y: 600, r: 60 })`);
 	check(await until(() => talkId() === ID3 && box(`/feature.tax · 2 changed/.test(document.getElementById('git').textContent)`), 8000), 'in a git repository, its branch and what’s changed show');
-	check(await until(() => box(`!!document.querySelector('#inner .earlierbtn')`)), 'a session whose transcript goes further back offers Earlier messages');
+	check(await until(() => box(`(() => { const m = [...document.querySelectorAll('#inner .msg')].map((e) => e.dataset.text); return m[0] === 'set up the repo' && m[1] === 'The repo is set up with a src folder.' && m.includes('Hello.'); })()`)), 'a session whose transcript goes further back shows what was said before, above what Blaube saw');
+	check(await until(() => box(`!document.querySelector('#inner .earlierbtn')`)), 'and nothing earlier to show');
 	check(await until(() => box(`(() => { const m = document.getElementById('mode'); return !m.hidden && m.textContent === 'Opus 5.5 · 60% of context used · Accepting edits' && !m.classList.contains('can'); })()`)), 'under the field: its model, how full it is, and that it’s accepting edits');
-	await box(`document.querySelector('#inner .earlierbtn').click()`);
-	check(await until(() => box(`(() => { const e = document.querySelector('#inner .earlier'); return !!e && /set up the repo/.test(e.textContent) && /src folder/.test(e.textContent); })()`)), 'tapping it shows what was said before');
 	// /rename: its name, in its transcript where Claude Code keeps it.
 	await type('/rename Tax rewrite');
 	check(await until(() => /"type":"custom-title","customTitle":"Tax rewrite","sessionId":"[^"]+-c"/.test(fs.readFileSync(tx, 'utf8'))), '/rename names it in its transcript, as Claude Code does');
