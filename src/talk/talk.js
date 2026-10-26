@@ -102,6 +102,7 @@
   const known = new Map(); // `${session id}\n${path}` -> true / false
   function markPaths(el) {
     if (!current || current.demo || !api.filesExist) return;
+    if (known.size > 2000) known.clear();
     const id = current.id;
     const codes = [...el.querySelectorAll('[data-path]')];
     const ask = [...new Set(codes.map((c) => c.dataset.path.replace(/:\d+(?:[-:]\d+)?$/, '')).filter((p) => !known.has(id + '\n' + p)))].slice(0, 40);
@@ -340,6 +341,15 @@
     rich(e, cut ? m.text.slice(0, MAX) + '…' : m.text);
     markPaths(e);
     const out = [e];
+    if (cut) {
+      e.dataset.measured = '1'; // (folded already, whatever its height)
+      e.classList.add('folded');
+      const more = document.createElement('button');
+      more.className = 'more';
+      more.textContent = 'Show more';
+      more.onclick = () => { open.add(m.at); drawn.entries = []; render(current); };
+      out.push(more);
+    }
     if (m.status === 'unsent') {
       const t = document.createElement('div');
       t.className = 'meta';
