@@ -77,4 +77,15 @@ function expand(text, cwd = '', home = os.homedir()) {
   return body;
 }
 
-module.exports = { slashCommand, commandNames, expand };
+// What a session Blaube started can do right away, without a terminal:
+// /model sonnet switches its model, /plan makes it plan first. Returns {
+// request } for Claude Code, { help } when something's missing, or null.
+function control(text) {
+  const m = /^\/(model|plan)(?:\s+(\S+))?\s*$/i.exec(String(text || '').trim());
+  if (!m) return null;
+  if (m[1].toLowerCase() === 'plan') return { request: { subtype: 'set_permission_mode', mode: 'plan' } };
+  if (!m[2]) return { help: 'Say which: /model opus, /model sonnet or /model haiku (or a full model name).' };
+  return { request: { subtype: 'set_model', model: m[2].toLowerCase() === 'default' ? 'default' : m[2] } };
+}
+
+module.exports = { slashCommand, commandNames, expand, control };

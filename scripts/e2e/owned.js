@@ -1,0 +1,71 @@
+// End-to-end check of what a session Blaube started can do without a
+// terminal, against a stand-in for Claude Code (no tokens), invisible:
+//
+//   BLAUBE_TEST=scripts/e2e/owned.js BLAUBE_PORT=47876 npx electron .
+//
+// /model and /plan are asked of Claude Code itself, and Stop stops it at once.
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Claude Code's stream-json mode, as far as this needs: control requests
+// answered, a message answered (or not yet, if it's "slow").
+const FAKE = `#!/usr/bin/env node
+let model = 'claude-opus', turn = null;
+const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
+require('node:readline').createInterface({ input: process.stdin }).on('line', (l) => {
+  const m = JSON.parse(l);
+  if (m.type === 'control_request') {
+    const r = m.request, ok = (response) => out({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response } });
+    if (r.subtype === 'set_model') { model = 'claude-' + r.model; return ok({ model }); }
+    if (r.subtype === 'set_permission_mode') return ok({ mode: r.mode });
+    if (r.subtype === 'interrupt') { clearTimeout(turn); ok({}); return out({ type: 'result', subtype: 'error_during_execution', is_error: true }); }
+    return;
+  }
+  if (m.type === 'user') turn = setTimeout(() => out({ type: 'result', subtype: 'success', result: model + ' here.' }), m.message.content === 'slow' ? 20000 : 50);
+});
+`;
+
+module.exports = async function run({ win, owned, startSession, talk, talkId, tracker, inbox }) {
+	let failed = 0;
+	const check = (ok, what) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) failed++; };
+	const until = async (fn, ms = 6000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return true; await sleep(100); } return false; };
+	const box = (js) => talk().webContents.executeJavaScript(js);
+	const type = (text) => box(`(() => { const t = document.getElementById('text'); t.value = ${JSON.stringify(text)}; t.dispatchEvent(new Event('input')); document.getElementById('form').requestSubmit(); })()`);
+	const said = () => box(`document.getElementById('inner').textContent`);
+	await until(() => !win.webContents.isLoading(), 8000);
+	await sleep(800);
+	if (process.platform === 'win32') { console.log('(skipped on Windows: the stand-in is a script)'); return 0; }
+
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-owned-'));
+	const bin = path.join(dir, 'claude');
+	fs.writeFileSync(bin, FAKE, { mode: 0o755 });
+	owned.findClaude = () => bin;
+	const id = startSession(dir);
+	check(await until(() => talk() && talk().isVisible() && talkId() === id, 8000), 'a session starts, its box open');
+
+	await type('/model sonnet');
+	check(await until(async () => /Now using claude-sonnet/.test(await said())), '/model sonnet switches its model, no terminal');
+	await type('hello');
+	check(await until(async () => /claude-sonnet here\./.test(await said())), 'and it answers as that model');
+	await type('/model');
+	check(await until(async () => /Say which: \/model opus/.test(await said())), '/model alone says how');
+	await type('/plan');
+	check(await until(async () => /Plan mode: it shows you a plan/.test(await said())), '/plan puts it in plan mode');
+
+	await type('slow');
+	check(await until(() => tracker.sessions.get(id).state === 'working', 3000), 'a long turn starts');
+	check(await until(() => box(`!document.getElementById('stop').hidden`)), 'with Stop beside its name');
+	await box(`document.getElementById('stop').click()`);
+	check(await until(() => tracker.sessions.get(id).state !== 'working', 3000), 'Stop stops it at once (not at its next step)');
+	await sleep(300);
+	const text = await said();
+	check(/You asked it to stop/.test(text) && !/Something went wrong/.test(text), 'and says you stopped it, not that something went wrong');
+	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Carry on')`)), 'with Carry on a tap away');
+
+	owned.end(id);
+	console.log(failed ? `\n${failed} failed` : '\nall passed');
+	return failed ? 1 : 0;
+};

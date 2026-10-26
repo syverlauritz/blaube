@@ -15,7 +15,7 @@ const git = require('./git');
 const projectFiles = require('./files');
 const { failedTests, stoppedLast } = require('./inbox');
 const { Notification } = require('electron');
-const { slashCommand, commandNames, expand: expandCommand } = require('./commands');
+const { slashCommand, commandNames, expand: expandCommand, control: controlFor } = require('./commands');
 const { openResumeTerminal, resumeCommand, focusSessionApp, typeIntoSession } = require('./terminal');
 const { startAgentsPoller, listAgents, findClaude } = require('./agents');
 const { Owned } = require('./owned');
@@ -461,7 +461,7 @@ function pushTalk(id, focusField = false) {
     // Every slime, to switch between them from the box.
     today: attention.today([...inbox.logs.values()]),
     others: tracker.list().filter(isReady).map((o) => Object.assign({ id: o.id, project: o.project, color: colorOf(o) || prefs.config.color || '#D97757', state: o.state }, glanceAt(o))),
-  }, inbox.view(id)));
+  }, inbox.view(id), owned.has(id) ? { stoppable: true } : {})); // (one Blaube started can always be stopped)
   if (s.cwd && !id.startsWith('demo-')) {
     git.status(s.cwd, (st) => {
       const before = JSON.stringify(gitStates.get(id) || null);
@@ -1371,7 +1371,8 @@ app.whenReady().then(async () => {
     pushState();
   });
   owned.on('result', (id, r) => {
-    if (r.error && !r.text) inbox.add(id, { who: 'note', text: `Something went wrong${r.subtype ? ` (${r.subtype})` : ''}.` });
+    if (r.interrupted && !r.text) inbox.observe({ session_id: id, hook_event_name: 'Stop' }); // (stopped: nothing went wrong)
+    else if (r.error && !r.text) inbox.add(id, { who: 'note', text: `Something went wrong${r.subtype ? ` (${r.subtype})` : ''}.` });
     else inbox.replied(id, r.text);
     tracker.handle({ session_id: id, hook_event_name: 'Stop', last_assistant_message: r.text }, 'blaube');
   });
@@ -1532,6 +1533,19 @@ app.whenReady().then(async () => {
     if (prompt) { inbox.add(id, { who: 'note', text: `${String(text).trim().split(/\s/)[0]}: sent what it says` }); text = prompt; }
     // A session Blaube started: straight in, and its turn starts.
     if (owned.has(id)) {
+      // (/model and /plan are for Claude Code: it's asked directly.)
+      const c = controlFor(text);
+      if (c && c.help) { inbox.add(id, { who: 'note', text: c.help }); return; }
+      if (c) {
+        inbox.add(id, { who: 'you', text: String(text).trim(), via: 'blaube', status: 'sent' });
+        owned.control(id, c.request, (ok, r) => {
+          const what = c.request.subtype === 'set_model' ? (ok ? `Now using ${r.model || c.request.model}` : `Couldn’t switch to ${c.request.model}: ${r}`)
+            : ok ? 'Plan mode: it shows you a plan before it changes anything' : `Couldn’t switch to plan mode: ${r}`;
+          inbox.add(id, { who: 'note', text: what });
+          pushTalk(id);
+        });
+        return;
+      }
       if (!owned.send(id, text)) { inbox.add(id, { who: 'you', text: String(text), via: 'blaube', status: 'unsent' }); return; }
       inbox.say(id, text);
       tracker.handle({ session_id: id, hook_event_name: 'UserPromptSubmit' }, 'blaube');
@@ -1562,7 +1576,13 @@ app.whenReady().then(async () => {
   replyTo = sendMessage;
   ipcMain.on('talk-stop', (_e, id) => {
     if (!id || id !== talkId || !tracker.sessions.has(id)) return;
-    log(`stop ${tracker.sessions.get(id).project}: ${inbox.stop(id) ? 'at its next step' : 'can\'t'}`);
+    const asked = inbox.stop(id);
+    // One Blaube started stops right away, even mid-sentence.
+    if (owned.has(id)) {
+      if (!asked && !inbox.stops.has(id)) inbox.add(id, { who: 'note', text: 'You asked it to stop', stop: true });
+      owned.control(id, { subtype: 'interrupt' }, (ok, r) => log(`interrupt ${id}: ${ok ? 'ok' : r}`));
+    }
+    log(`stop ${tracker.sessions.get(id).project}: ${owned.has(id) ? 'now' : asked ? 'at its next step' : 'can\'t'}`);
     pushTalk(id); // (refused: the button comes back)
   });
   // An image pasted into the talk box: saved where Claude can open it.

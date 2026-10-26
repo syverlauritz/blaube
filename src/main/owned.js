@@ -72,7 +72,7 @@ class Owned extends EventEmitter {
     const proc = viaCmd
       ? spawn('cmd.exe', ['/d', '/s', '/c', `"${[quote(bin), ...args.map(quote)].join(' ')}"`], Object.assign(opts, { windowsVerbatimArguments: true }))
       : spawn(bin, args, opts);
-    const s = { id, proc, cwd, startedAt: Date.now(), err: '', buf: '' }; // (s.id can change: see read)
+    const s = { id, proc, cwd, startedAt: Date.now(), err: '', buf: '', pending: new Map(), interrupted: false }; // (s.id can change: see read)
     this.sessions.set(id, s);
     proc.stdout.setEncoding('utf8');
     proc.stdout.on('data', (chunk) => {
@@ -120,8 +120,19 @@ class Owned extends EventEmitter {
       this.emit('renamed', id, s.id);
       return;
     }
+    const s = this.sessions.get(id);
+    if (m.type === 'control_response' && m.response && s) {
+      const answer = s.pending.get(m.response.request_id);
+      if (!answer) return;
+      s.pending.delete(m.response.request_id);
+      const ok = m.response.subtype === 'success';
+      answer(ok, ok ? m.response.response || {} : String(m.response.error || 'refused'));
+      return;
+    }
     if (m.type === 'result') {
-      this.emit('result', id, { text: typeof m.result === 'string' ? m.result : '', error: !!m.is_error, subtype: m.subtype || '' });
+      const interrupted = !!(s && s.interrupted);
+      if (s) s.interrupted = false;
+      this.emit('result', id, { text: typeof m.result === 'string' ? m.result : '', error: !!m.is_error, subtype: m.subtype || '', interrupted });
     }
   }
 
@@ -130,6 +141,21 @@ class Owned extends EventEmitter {
     const s = this.sessions.get(id);
     if (!s || !s.proc.stdin.writable) return false;
     s.proc.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: String(text) } }) + '\n');
+    return true;
+  }
+
+  // Asks Claude Code itself (not Claude) for something: { subtype:
+  // 'set_model', model }, { subtype: 'set_permission_mode', mode }, or {
+  // subtype: 'interrupt' } (stops its turn now). cb(ok, its answer or why
+  // not). False if it isn't running.
+  control(id, request, cb = () => {}) {
+    const s = this.sessions.get(id);
+    if (!s || !s.proc.stdin.writable) { cb(false, 'it isn’t running'); return false; }
+    const rid = 'blaube-' + crypto.randomUUID();
+    const late = setTimeout(() => { if (s.pending.delete(rid)) cb(false, 'no answer'); }, 5000);
+    s.pending.set(rid, (ok, r) => { clearTimeout(late); cb(ok, r); });
+    if (request.subtype === 'interrupt') s.interrupted = true;
+    s.proc.stdin.write(JSON.stringify({ type: 'control_request', request_id: rid, request }) + '\n');
     return true;
   }
 
