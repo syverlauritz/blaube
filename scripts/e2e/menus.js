@@ -1,5 +1,6 @@
 // End-to-end check of the right-click menus, invisible: they build, their
-// most used items come first, and the sound settings in them change the
+// most used items come first, the tray has each slime's own menu under its
+// row (and no app-wide Colour), and the sound settings in them change the
 // same settings as the Settings window, which keeps up.
 //
 //   BLAUBE_TEST=scripts/e2e/menus.js BLAUBE_PORT=47872 electron .
@@ -40,7 +41,24 @@ module.exports = async function run({ win, tracker }) {
 	check(['Sound', 'Volume', 'Wah at the start of each note'].every((l) => its.includes(l)), 'the sound settings are at its top level');
 	check(!find(slime(), 'Blaube').submenu.items.some((i) => i.label === 'Sound'), 'and not again in its Blaube submenu');
 	check(['Notify me about this one', 'Save conversation as Markdown', 'Copy resume command'].every((l) => find(slime(), 'More').submenu.items.some((i) => i.label === l)), 'the rarer ones under More');
-	check(its[its.length - 1] === 'Hide this slime', 'hiding it last');
+	check(its[its.length - 1] === 'Hide this blob', 'hiding it last');
+	check(its.includes('Colour'), 'its own colour in it');
+
+	// The tray: no app-wide Colour; a row per session, its status said once,
+	// and under it that slime's own menu, without the app-wide bits again.
+	check(!top.includes('Colour'), 'no Colour in the tray’s own part');
+	const row = () => app().items.find((i) => i.submenu && /menus-a|blaube-menus-/.test(i.label));
+	check(await until(() => !!row(), 6000), 'a row for the session in the tray');
+	if (row()) {
+		const r = row();
+		console.log('     tray row: ' + r.label + ' ▸ ' + labels(r.submenu).join(' | '));
+		const status = r.label.split(' — ')[1] || '';
+		check(!!status && r.label.split(status).length === 2 && !r.sublabel, 'its status said once, on the row');
+		const sub = labels(r.submenu);
+		check(sub.includes('Talk') && sub.includes('Colour'), 'its submenu has Talk and its Colour');
+		check(sub.indexOf('Talk') < sub.indexOf('Open project folder') && sub.indexOf('Open project folder') < sub.indexOf('Colour') && sub.indexOf('Colour') < sub.indexOf('Hide this blob'), 'in the same order as right-clicking it');
+		check(!sub.includes('Sound') && !sub.includes('Blaube'), 'and no sound or Blaube submenu in it');
+	}
 
 	// The sound settings: the same ones as Settings, which keeps up.
 	find(app(), 'Settings…').click();
