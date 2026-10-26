@@ -1541,6 +1541,23 @@
     // (poked, shaken, splatted) leans away and gives you a look.
     const mood = b.mood || 0;
     if (mood < -0.45 && near > 0.3 && fresh) { b.annoyedAt = YOU; b.annoyedUntil = time + 0.3; }
+    // Really grumpy and you come close: now and then it blows you a
+    // raspberry, tongue out, buzzing all over, a fleck or two of goo flying.
+    if (CFG.raspberry > 0 && mood < -0.45 && near > 0.6 && fresh && time > (b.nextRasp || 0) && !b.bubble) {
+      b.nextRasp = time + 3 + Math.random() * 3;
+      if (Math.random() < 0.45 * CFG.raspberry) {
+        b.raspUntil = time + 1.1;
+        b.nextRasp = time + 8 + Math.random() * 8;
+        quip(b, 'pbbbt!', 1.4);
+        const sx = Math.sign(dx) || 1;
+        for (let i = 0; i < 3; i++) drops.push({ owner: b, x: c.x + sx * r * 0.1, y: c.y + r * 0.2, vx: sx * (120 + Math.random() * 160), vy: -80 - Math.random() * 120, r: r * 0.025, born: time + i * 0.25, landed: 0 });
+      }
+    }
+    if (time < (b.raspUntil || 0)) {
+      // A fast buzz: tiny squashes up and down.
+      body.squashTop((Math.floor(time * 30) % 2 ? 1 : -1) * r * 0.25 * Math.min(1.5, CFG.raspberry) * 60 * DT, DT);
+      b.annoyedAt = YOU; b.annoyedUntil = Math.max(b.annoyedUntil || 0, time + 0.2);
+    }
     if (CFG.leanToCursor > 0 && near > 0 && fresh && !body.contains(mouse.x, mouse.y)) {
       const side = Math.max(-1, Math.min(1, dx / r)) * (mood < -0.3 ? -0.6 : 1 + 0.6 * Math.max(0, mood));
       body.lean(side * near * CFG.leanToCursor * trait(b, 'curious') * r * 25 * DT, DT);
@@ -4061,6 +4078,7 @@
     let expression = 'normal', mouth = 'smile';
     if (time < b.dizzyUntil) { expression = 'dizzy'; mouth = 'flat'; }
     else if (b.splat) { expression = 'dizzy'; mouth = 'wobble'; }
+    else if (time < (b.raspUntil || 0) && !body.grab) { expression = 'annoyed'; mouth = 'raspberry'; } // (pbbbt!)
     else if (time < (b.annoyedUntil || 0) && b.annoyedAt && !b.annoyedAt.dying && !body.grab) { expression = 'annoyed'; mouth = 'flat'; }
     else if (time < (b.yawnUntil || 0)) { expression = 'sleepy'; mouth = 'yawn'; }
     else if (time < (b.napUntil || 0) && !body.grab) { expression = 'sleepy'; mouth = 'flat'; } // (a quick nap, for show)

@@ -363,6 +363,22 @@
         }
         break;
       }
+      case 'raspberry': {
+        // Pursed lips with the tongue stuck out, fluttering.
+        const flap = Math.sin((face.t ?? performance.now() / 1000) * 70) * r * 0.012;
+        ctx.moveTo(-r * 0.1, my); ctx.lineTo(r * 0.1, my);
+        ctx.stroke();
+        ctx.fillStyle = '#e86a82';
+        ctx.beginPath();
+        ctx.ellipse(0, my, r * 0.085, r * 0.12 + flap, 0, 0, Math.PI);
+        ctx.fill();
+        ctx.strokeStyle = ink;
+        ctx.lineWidth *= 0.5;
+        ctx.beginPath();
+        ctx.moveTo(0, my); ctx.lineTo(0, my + r * 0.07 + flap);
+        ctx.stroke();
+        break;
+      }
       case 'slack':
         // Hanging open, a little lopsided.
         ctx.fillStyle = ink;

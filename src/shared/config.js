@@ -130,6 +130,7 @@
     ]],
     ['Life: mood', [
       ['moods', 1, 0, 3, 0.05, 'Remembers how you treat it for a few minutes: fond after petting, grumpy after shaking'],
+      ['raspberry', 1, 0, 3, 0.05, 'Really grumpy and you come close: now and then it blows you a raspberry (pbbbt!)'],
       ['personality', 0.6, 0, 1, 0.05, 'How different each slime\'s character is'],
       ['idleFidget', 1, 0, 3, 0.05, 'Idle fidgets (weight shifts, settling)'],
       ['tricks', 1, 0, 5, 0.05, 'Bored but awake, it amuses itself now and then (three hops, each higher)'],
