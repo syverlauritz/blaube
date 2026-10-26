@@ -1551,7 +1551,7 @@
     strain(b, r);
     tapFoot(b, r);
     typeAway(b, r);
-    const calm = (b.state === 'idle' || b.state === 'done') && !meditating(b) && !b.stackedBy && time > (b.pounceUntil || 0);
+    const calm = (b.state === 'idle' || b.state === 'done') && !meditating(b) && !b.stackedBy && time > (b.pounceUntil || 0) && !playing(b);
     if (!calm) return;
     // A cursor close by: it leans over toward it, curious. Not when you're
     // on it (that's petting), and not if it's been sitting still a while.
@@ -1592,12 +1592,15 @@
   // Two calm slimes sitting together now and then have a little chat: they
   // look at each other and take turns, the one talking bobbing and leaning
   // in, the other leaning in a little to listen.
+  // In the middle of a game or a trick (which moves it itself): no chatting,
+  // leaning over to the cursor or fidgeting then.
+  const playing = (o) => !!(o.rope || o.seek || o.pile || o.tower || o.frog || o.tag || o.parade || o.trick || o.keepy || o.measure || o.roll || o.skate || o.balloon || o.shape || o.tot || o.snow || o.comforting || o.prank);
   function chat(b, r, c) {
     if (CFG.socialize <= 0) return false;
     const ch = b.chat;
     if (ch) {
       const o = ch.a === b ? ch.b : ch.a;
-      if (time > ch.until || o.dying || o.body.grab || !o.body.onFloor() || o.chat !== ch) { b.chat = null; return false; }
+      if (time > ch.until || o.dying || o.body.grab || !o.body.onFloor() || o.chat !== ch || playing(o)) { b.chat = null; return false; }
       const side = Math.sign(o.body.centroid().x - c.x) || 1;
       const speaker = Math.floor((time - ch.from) / ch.turn) % 2 === (ch.a === b ? 0 : 1);
       const k = CFG.socialize * r * DT;
@@ -1612,7 +1615,7 @@
     b.nextChat = time + (6 + Math.random() * 10) / CFG.socialize;
     if (Math.random() > 0.4 * trait(b, 'curious')) return false;
     for (const o of buddies.values()) {
-      if (o === b || o.dying || o.chat || o.body.grab || !o.body.onFloor() || !(o.state === 'idle' || o.state === 'done')) continue;
+      if (o === b || o.dying || o.chat || o.body.grab || !o.body.onFloor() || !(o.state === 'idle' || o.state === 'done') || playing(o)) continue;
       const oc = o.body.centroid();
       if (Math.hypot(oc.x - c.x, oc.y - c.y) > (r + o.body.o.radius) * 1.7) continue;
       b.chat = o.chat = { a: b, b: o, from: time, until: time + 3 + Math.random() * 3, turn: 0.7 + Math.random() * 0.5 };
@@ -4058,7 +4061,7 @@
       if (Math.abs(body.angle) < 0.08 || time - g.over > 2) done();
       return;
     }
-    if (CFG.rolls <= 0 || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || b.merging || b.dying || !body.onFloor() || b.pendingHop || b.stackedBy || b.tower || b.frog || b.tag || b.parade || b.trick || b.keepy || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
+    if (CFG.rolls <= 0 || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || b.merging || b.dying || !body.onFloor() || b.pendingHop || b.stackedBy || b.tower || b.frog || b.tag || b.parade || b.trick || b.keepy || b.measure || b.rope || b.seek || b.pile || b.balloon || b.shape || b.tot || b.skate || b.snow || b.comforting || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
     if (time < (b.nextRoll ?? (b.nextRoll = time + (150 + Math.random() * 350) / CFG.rolls))) return;
     b.nextRoll = time + (300 + Math.random() * 600) / CFG.rolls;
     rollNow(b);
@@ -4094,7 +4097,7 @@
       if ((Math.abs(v.x) < 40 || Math.abs(g.v0) * Math.exp(-(time - g.off) / 1.6) < 40) && time - g.off > 0.4) { done(); if (!g.brace) b.cheerUntil = time + 1; }
       return;
     }
-    if (CFG.skating <= 0 || season() !== 'snow' || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || b.merging || b.dying || !body.onFloor() || b.pendingHop || b.stackedBy || b.tower || b.frog || b.tag || b.parade || b.trick || b.keepy || b.roll || b.measure || b.snow || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
+    if (CFG.skating <= 0 || season() !== 'snow' || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || b.merging || b.dying || !body.onFloor() || b.pendingHop || b.stackedBy || b.tower || b.frog || b.tag || b.parade || b.trick || b.keepy || b.roll || b.measure || b.snow || b.rope || b.seek || b.pile || b.balloon || b.shape || b.tot || b.comforting || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
     if (time < (b.nextSkate ?? (b.nextSkate = time + (90 + Math.random() * 240) / CFG.skating))) return;
     b.nextSkate = time + (200 + Math.random() * 400) / CFG.skating;
     skateNow(b);
