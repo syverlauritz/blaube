@@ -1257,6 +1257,7 @@
               const mr = m.body.o.radius, ux = dx / (Math.hypot(dx, dy) || 1), uy = dy / (Math.hypot(dx, dy) || 1);
               m.body.pushAt(mc.x - ux * mr, mc.y - uy * mr, ux * mr * 6 * CFG.gulp, uy * mr * 6 * CFG.gulp, mr * 0.6, DT);
               m.gulpAt = time;
+              if (Math.random() < 0.3 * CFG.burps) m.burpAt = time + 0.9 + Math.random() * 0.6;
             }
           } else if (body.onFloor() && !body.grab && time - (b.merging.lastHop || 0) > 0.6) {
             b.merging.lastHop = time;
@@ -3202,6 +3203,27 @@
     }
   }
 
+  // Now and then a gulp is followed by a little burp: a puff from its mouth,
+  // a blush, and maybe a giggle from a slime nearby.
+  function burp(b) {
+    if (!b.burpAt || time < b.burpAt) return;
+    b.burpAt = 0;
+    if (b.dying || b.body.grab || b.bubble) return;
+    const c = b.body.centroid(), r = b.body.o.radius;
+    b.body.squashTop(220, DT);
+    b.burpUntil = time + 0.35;
+    pops.push({ x: c.x + r * 0.05, y: c.y + r * 0.1, r: r * 0.12, born: time, color: b.color, life: 0.45 });
+    quip(b, '*burp*', 1.3);
+    b.blushUntil = time + 2.6;
+    let near = null;
+    for (const o of buddies.values()) {
+      if (o === b || o.dying || o.kind === 'home' || o.body.grab || o.bubble || (o.state !== 'idle' && o.state !== 'done') || (o.sleep || 0) > 0.3) continue;
+      const d = Math.hypot(o.body.centroid().x - c.x, o.body.centroid().y - c.y);
+      if (d < r * 5 && (!near || d < near.d)) near = { o, d };
+    }
+    if (near && Math.random() < 0.6) setTimeout(() => { if (!near.o.dying) { quip(near.o, 'hehe', 1.1); near.o.glanceAt = b; near.o.glanceUntil = time + 1.2; near.o.squirmUntil = time + 0.5; } }, 500);
+  }
+
   // Fast asleep, now and then it dreams: of what it was last working on, or
   // of sheep jumping a fence.
   function dream(b) {
@@ -3665,6 +3687,7 @@
       b.say([{ text: `Still waiting on you (${mins} min)` }, ...(what ? [{ text: what, size: 12 }] : [])], 6, false, false);
     }
     sulk(b);
+    burp(b);
     dream(b);
     hug(b);
     teeter(b);
@@ -3805,6 +3828,7 @@
     else if (time < (b.yawnUntil || 0)) { expression = 'sleepy'; mouth = 'yawn'; }
     else if (time < (b.winceUntil || 0)) { expression = 'pained'; mouth = 'wobble'; }
     else if (time < (b.cheerUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
+    else if (time < (b.burpUntil || 0)) { expression = 'normal'; mouth = 'o'; } // (*burp*)
     else if (b.hug || (b.huggedBy && b.huggedBy.hug && b.huggedBy.hug.o === b)) { expression = 'happy'; mouth = 'smile'; } // (a hug)
     else if (body.grab && b.wriggling) { expression = 'worried'; mouth = 'wobble'; }
     else if (body.grab || time < (b.surpriseUntil || 0)) { mouth = 'o'; }
