@@ -1446,6 +1446,13 @@ app.whenReady().then(async () => {
   });
   ipcMain.on('talk-new', (_e, folder) => { if (folder === 'pick') newSession(); else if (typeof folder === 'string' && folder) { hideTalk(); startSession(folder); } });
   ipcMain.on('talk-pickup', (_e, id) => { const p = hubPast.find((x) => x.id === id); if (p) { hideTalk(); pickUp(p); } });
+  ipcMain.on('talk-copy', (_e, text) => { if (typeof text === 'string' && text.length < 1e6) clipboard.writeText(text); });
+  // A file a turn changed, shown in Finder (never opened: it could be a program).
+  ipcMain.on('talk-reveal', (_e, id, file) => {
+    if (!id || id !== talkId || typeof file !== 'string' || !path.isAbsolute(file)) return;
+    if (!inbox.log(id).some((e) => e.who === 'step' && e.file === file)) return; // only files its steps named
+    try { if (fs.statSync(file).isFile()) shell.showItemInFolder(file); } catch { /* gone */ }
+  });
   // Another slime picked in the box (its dot, or a shortcut).
   ipcMain.on('talk-switch', (_e, id) => { if (id && id !== talkId && tracker.sessions.has(id) && win) win.webContents.send('open-talk', id); });
   ipcMain.on('talk-unsend', (_e, id, n) => { if (id && id === talkId) inbox.unsend(id, n); });

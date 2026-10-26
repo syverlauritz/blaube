@@ -69,7 +69,11 @@
       if (i % 2) {
         const pre = document.createElement('pre');
         pre.textContent = part.replace(/\n$/, '');
-        el.append(pre);
+        // A code block copies in one tap.
+        const box = document.createElement('div');
+        box.className = 'code';
+        box.append(pre, copyButton(() => pre.textContent));
+        el.append(box);
         return;
       }
       const lines = part.replace(/^\n+|\n+$/g, '').split('\n');
@@ -160,6 +164,7 @@
     const e = document.createElement('div');
     e.className = 'msg ' + m.who + (m.status === 'queued' || m.status === 'unsent' ? ' ' + m.status : '') + (fresh ? ' new' : '');
     e.dataset.at = m.at;
+    e.dataset.text = m.text; // (what find looks in: not its buttons)
     const cut = m.text.length > MAX && !current.owned; // a session Blaube started has nowhere else to read it
     rich(e, cut ? m.text.slice(0, MAX) : m.text);
     const out = [e];
@@ -189,7 +194,50 @@
       out.push(t);
     }
     if (m.via === 'terminal') e.title = 'Typed in the terminal';
+    // Under a reply: what its turn came to (the files show in Finder); on
+    // it, a copy button.
+    if (m.who === 'claude') {
+      const t = document.createElement('div');
+      t.className = 'turnmeta';
+      const bits = [];
+      if (m.turn && m.turn.took >= 60e3) bits.push(took(m.turn.took));
+      if (m.turn && m.turn.steps) bits.push(`${m.turn.steps} step${m.turn.steps === 1 ? '' : 's'}`);
+      t.append(bits.join(' · '));
+      const files = (m.turn && m.turn.files) || [];
+      files.slice(0, 4).forEach((f, i) => {
+        t.append(i || bits.length ? (i ? ', ' : ' · ') : '');
+        const b = document.createElement('button');
+        b.className = 'filelink';
+        b.textContent = f.split(/[\\/]/).pop();
+        b.title = `${f}\nShow it in ${navigator.platform.startsWith('Mac') ? 'Finder' : 'its folder'}`;
+        b.onclick = () => api.reveal && api.reveal(current.id, f);
+        t.append(b);
+      });
+      if (files.length > 4) t.append(` +${files.length - 4}`);
+      if (bits.length || files.length) out.push(t);
+      const c = copyButton(() => m.text, 'Copy reply');
+      c.classList.add('copyreply');
+      e.append(c);
+    }
     return out;
+  }
+
+  const took = (ms) => { const m = Math.round(ms / 60e3); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
+
+  // "Copy", then "Copied" for a moment.
+  function copyButton(get, label = 'Copy') {
+    const b = document.createElement('button');
+    b.className = 'copy';
+    b.type = 'button';
+    b.textContent = 'Copy';
+    b.setAttribute('aria-label', label);
+    b.onclick = (e) => {
+      e.stopPropagation();
+      if (api.copy) api.copy(get());
+      b.textContent = 'Copied';
+      setTimeout(() => { b.textContent = 'Copy'; }, 1200);
+    };
+    return b;
   }
 
   function render(s) {
@@ -424,7 +472,7 @@
         el.classList.toggle('miss', !!q && !any);
         continue;
       }
-      const m = !q || el.textContent.toLowerCase().includes(q);
+      const m = !q || (el.dataset.text != null ? el.dataset.text : el.textContent).toLowerCase().includes(q);
       el.classList.toggle('miss', !m);
       if (m && q && (el.classList.contains('msg') || el.classList.contains('note'))) hits++;
     }

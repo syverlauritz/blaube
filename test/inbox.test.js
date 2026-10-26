@@ -498,3 +498,24 @@ test('a hook payload too big to read whole still says what happened', async () =
     server.close();
   }
 });
+
+test('a reply says what its turn came to: time, steps, files changed', () => {
+  let t = 1000;
+  const inbox = new Inbox(() => t);
+  inbox.observe({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: 'fix it' });
+  t += 30e3;
+  const post = (tool_name, tool_input) => inbox.observe({ session_id: 's1', hook_event_name: 'PostToolUse', tool_name, tool_input });
+  post('Read', { file_path: '/w/a.js' });
+  post('Edit', { file_path: '/w/a.js', old_string: 'x', new_string: 'y' });
+  post('Edit', { file_path: '/w/a.js', old_string: 'y', new_string: 'z' });
+  post('Write', { file_path: '/w/b.js', content: 'new' });
+  t += 150e3;
+  inbox.observe({ session_id: 's1', hook_event_name: 'Stop', last_assistant_message: 'Fixed.' });
+  const reply = inbox.log('s1').find((e) => e.who === 'claude');
+  assert.deepEqual(reply.turn, { took: 180e3, steps: 4, files: ['/w/a.js', '/w/b.js'] });
+  assert.equal(inbox.log('s1')[1].file, '/w/a.js');
+  // A reply with nothing before it says nothing extra.
+  const inbox2 = new Inbox();
+  inbox2.observe({ session_id: 's2', hook_event_name: 'Stop', last_assistant_message: 'Hi.' });
+  assert.equal(inbox2.log('s2')[0].turn, undefined);
+});

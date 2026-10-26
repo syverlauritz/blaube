@@ -241,7 +241,8 @@ class Inbox extends EventEmitter {
   // A reply from a session Blaube started (from its own output).
   replied(id, text) {
     if (!String(text || '').trim()) return;
-    const entry = this.add(id, { who: 'claude', text: String(text) });
+    const turn = turnOf(this.log(id), this.now());
+    const entry = this.add(id, Object.assign({ who: 'claude', text: String(text) }, turn ? { turn } : {}));
     this.emit('reply', id, entry);
   }
 
@@ -265,7 +266,9 @@ class Inbox extends EventEmitter {
     // What it did, a line per step, between what was said.
     if (event === 'PostToolUse' || event === 'PostToolUseFailure') {
       const text = stepText(payload.tool_name, payload.tool_input);
-      if (text) this.add(id, { who: 'step', text, ok: event === 'PostToolUse', kind: classify(payload.tool_name, payload.tool_input), detail: stepDetail(payload) });
+      const i = payload.tool_input || {};
+      const file = /^(Edit|MultiEdit|Write|NotebookEdit|Read)$/.test(payload.tool_name) ? String(i.file_path || i.notebook_path || '') : '';
+      if (text) this.add(id, Object.assign({ who: 'step', text, ok: event === 'PostToolUse', kind: classify(payload.tool_name, payload.tool_input), detail: stepDetail(payload) }, file ? { file } : {}));
     }
     // A session Blaube started tells its own story (say/replied).
     if (this.owned.has(id) && (event === 'UserPromptSubmit' || event === 'Stop')) return;
@@ -294,7 +297,8 @@ class Inbox extends EventEmitter {
     } else if (event === 'Stop' && payload.last_assistant_message) {
       // The reply answers the turn that just ended, so it goes above
       // anything sent from the slime that hasn't been read yet.
-      const entry = this.add(id, { who: 'claude', text: String(payload.last_assistant_message) });
+      const turn = turnOf(this.log(id), this.now());
+      const entry = this.add(id, Object.assign({ who: 'claude', text: String(payload.last_assistant_message) }, turn ? { turn } : {}));
       const log = this.logs.get(id);
       log.pop();
       let at = log.length;
@@ -387,6 +391,21 @@ function describe(tool, input) {
   const v = input.command || input.file_path || input.notebook_path || input.url || input.pattern || input.path || input.query || input.description;
   const text = v ? String(v) : JSON.stringify(input);
   return clip(text);
+}
+
+// What the turn that just ended came to: how long since what started it,
+// how many steps, which files it changed. Null if there's nothing to say.
+function turnOf(log, now) {
+  let start = -1;
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if (e.who === 'claude') break;
+    if (e.who === 'you' && e.status !== 'queued' && e.status !== 'delivering') { start = i; break; }
+  }
+  if (start < 0) return null;
+  const steps = log.slice(start + 1).filter((e) => e.who === 'step');
+  const files = [...new Set(steps.filter((e) => e.file && e.kind === 'edit').map((e) => e.file))];
+  return { took: Math.max(0, now - log[start].at), steps: steps.length, files };
 }
 
 // Keeps a session's to-do list up to date from TodoWrite (the whole list
@@ -497,4 +516,4 @@ function alwaysLabel(updates, max = 70) {
   return text.length > max ? text.slice(0, max - 2) + '…' : text;
 }
 
-module.exports = { Inbox, frame, describe, toolName, alwaysLabel, stepText, stepDetail, STYLE };
+module.exports = { Inbox, frame, describe, toolName, alwaysLabel, stepText, stepDetail, turnOf, STYLE };

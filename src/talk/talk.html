@@ -151,6 +151,19 @@
   .msg code { font: 500 14px ui-monospace, Menlo, Consolas, monospace; background: var(--soft); border-radius: 5px; padding: 1px 4px; }
   .msg pre { margin: 4px 0; padding: 9px 12px; background: var(--soft); border-radius: 16px; font: 500 14px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: pre; overflow-x: auto; }
   .msg .head { font-weight: 700; }
+  /* Code blocks and replies copy in a tap; the button shows on hover. */
+  .msg .code { position: relative; }
+  .copy { border: 0; background: none; padding: 0 2px; font: 600 14px var(--ui); color: var(--faint); cursor: pointer; }
+  .copy:hover { color: var(--ink); }
+  .msg .code .copy { position: absolute; top: 8px; right: 8px; background: var(--soft); border-radius: 999px; padding: 1px 8px; opacity: 0; transition: opacity .15s; }
+  .msg .code:hover .copy, .msg .code .copy:focus-visible { opacity: 1; }
+  /* What a turn came to, under its reply. */
+  .turnmeta { margin-top: -6px; font: 600 14px var(--ui); color: var(--faint); }
+  .msg.claude { position: relative; }
+  .msg .copyreply { position: absolute; right: -6px; bottom: -2px; background: #fff; border-radius: 999px; padding: 1px 8px; opacity: 0; transition: opacity .15s; }
+  .msg.claude:hover .copyreply, .msg .copyreply:focus-visible { opacity: 1; }
+  .filelink { border: 0; background: none; padding: 0; font: inherit; color: var(--dim); cursor: pointer; text-decoration: underline; text-decoration-color: #dfe2ea; text-underline-offset: 3px; }
+  .filelink:hover { color: var(--ink); }
   .msg.folded { max-height: 15.5em; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); }
   .more { align-self: flex-start; border: 0; background: none; padding: 0; margin-top: -4px; font: 600 14px var(--ui); color: var(--dim); cursor: pointer; }
   .more:hover { color: var(--ink); }

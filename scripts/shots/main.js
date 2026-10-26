@@ -373,7 +373,7 @@ const SCENES = {
 			{ who: 'claude', text: 'All 66 tests pass. I also fixed a flaky timeout in the e2e test: it was waiting on the wrong event.' },
 			{ who: 'you', text: 'nice. can you commit that?', via: 'blaube', status: 'sent' },
 			{ who: 'note', text: 'Allowed Bash: git commit -m "Fix flaky e2e timeout"' },
-			{ who: 'claude', text: 'Committed as f3a91c2 “Fix flaky e2e timeout”.' },
+			{ who: 'claude', text: 'Committed as f3a91c2 “Fix flaky e2e timeout”.', turn: { took: 252e3, steps: 9, files: ['/w/test/e2e.js', '/w/src/main/inbox.js'] } },
 		] },
 	},
 	talkAsk: {
