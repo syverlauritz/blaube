@@ -1014,7 +1014,7 @@
       breatheTogether(b);
       // A setback (a failed tool or test) lets some air out for a moment.
       b.droop = (b.droop || 0) + ((time < (b.droopUntil || 0) ? 1 : 0) - (b.droop || 0)) * (time < (b.droopUntil || 0) ? 0.02 : 0.006);
-      body.areaScale = (1 + CFG.contextInflate * b.fill * b.fill) * (1 + CFG.breathe * Math.sin(time * b.breathRate + b.breathPhase)) * (1 - CFG.droop * b.droop);
+      body.areaScale = (1 + CFG.contextInflate * b.fill * b.fill) * (1 + CFG.breathe * (1 + 12 * CFG.sleepSlump * (b.sleep || 0)) * Math.sin(time * b.breathRate + b.breathPhase)) * (1 - CFG.droop * b.droop);
       // ...and firmer: more pressure inside, so a full one barely sags.
       // (Capped: past about 0.85 the pressure solve overshoots and the skin
       // jitters, worst while it's held.)
