@@ -937,7 +937,8 @@
     card.dataset.kind = kind;
     $('askWhat').textContent = kind === 'question' ? (ask.questions.length > 1 ? 'A couple of things first:' : 'Quick question:')
       : kind === 'plan' ? 'Here’s my plan. Shall I go ahead?' : `Can I use ${ask.tool}?`;
-    $('askDetail').textContent = ask.detail || '';
+    // (An edit's − and + lines tinted, as in its steps.)
+    if (/\n[−+] /.test(ask.detail || '')) colorDiff($('askDetail'), ask.detail); else $('askDetail').textContent = ask.detail || '';
     $('askDetail').hidden = kind !== 'tool' || !ask.detail;
     const plan = $('askPlan');
     plan.hidden = kind !== 'plan';

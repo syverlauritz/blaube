@@ -14,7 +14,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { clipboard } = require('electron');
-const { toolHookCommand } = require('../../src/main/claudeHooks');
+const { toolHookCommand, permissionCommand } = require('../../src/main/claudeHooks');
 
 const OUT = path.join(__dirname, '..', '..', 'shots');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -90,6 +90,15 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	for (const e of inbox.queue.get(ID) || []) inbox.unsend(ID, e.n);
 	await hook({ hook_event_name: 'PreToolUse', tool_name: 'KillShell', tool_input: { shell_id: 'bash_7' } });
 	check(await until(() => box(`document.getElementById('bg').hidden`)), 'and it goes once Claude stops it');
+
+	// Asked whether it may edit a file: the card shows the change, tinted.
+	const asking = spawn('sh', ['-c', permissionCommand(PORT)], { env: Object.assign({}, process.env, { CLAUDE_CODE_ENTRYPOINT: 'cli' }) });
+	asking.stdin.end(JSON.stringify({ session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'Edit', tool_input: { file_path: '/tmp/kalkis/src/tax.js', old_string: 'rate = 0.22', new_string: 'rate = 0.23' } }));
+	check(await until(() => box(`(() => { const d = document.getElementById('askDetail'); return !document.getElementById('ask').hidden && !!d.querySelector('.del') && /0\\.23/.test(d.querySelector('.add').textContent); })()`)), 'a permission card for an edit shows the change, tinted');
+	await sleep(500);
+	await box(`document.getElementById('deny').click()`);
+	await new Promise((r) => { asking.on('exit', r); setTimeout(r, 3000); });
+	await until(() => box(`document.getElementById('ask').hidden`));
 
 	// Tapping a step shows what it did.
 	await tool({ hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: '/tmp/kalkis/src/tax.js', old_string: 'export const brackets = [];', new_string: 'export const brackets = [2027];' }, tool_response: {} });
