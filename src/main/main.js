@@ -1826,7 +1826,7 @@ app.whenReady().then(async () => {
         if (!owned.has(id) || ++n > 36) return clearInterval(look);
         askMcp(id);
         const m = (mcpStates.get(id) || []).find((x) => x.name === name);
-        if (m && m.status === 'connected') { clearInterval(look); inbox.add(id, { who: 'note', text: `Signed in to ${name}: it’s connected` }); }
+        if (m && m.status === 'connected') { clearInterval(look); inbox.add(id, { who: 'note', text: `Signed in to ${name}: it’s connected` }); if (win) win.webContents.send('nod', id); }
       }, TEST ? 300 : 5000);
       look.unref();
       done(true);
@@ -1846,7 +1846,7 @@ app.whenReady().then(async () => {
     if (talkId === id) pushTalk(id);
   });
   // Something it saved to its memory, as the terminal shows it.
-  owned.on('remembered', (id, files) => inbox.add(id, { who: 'note', text: `Remembered in ${files.slice(0, 3).map((f) => path.basename(f)).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more` : ''}` }));
+  owned.on('remembered', (id, files) => (win && win.webContents.send('nod', id), inbox.add(id, { who: 'note', text: `Remembered in ${files.slice(0, 3).map((f) => path.basename(f)).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more` : ''}` })));
   owned.on('fallback', (id, f) => inbox.add(id, { who: 'note', text: f.text ? f.text.replace(/\s+/g, ' ').trim().slice(0, 300) : `It switched to ${modelName(f.to) || f.to}${f.from ? `, as ${modelName(f.from) || f.from} couldn’t answer` : ''}` }));
   owned.on('compacted', (id) => inbox.add(id, { who: 'note', text: 'Compacted: it carries on from a summary of the conversation so far' }));
   owned.on('result', (id, r) => {
@@ -2181,7 +2181,7 @@ app.whenReady().then(async () => {
       const install = (accept) => runForSession(id, `${sq(bin)} plugin install ${sq(name)} --json${accept ? ` --accept-command ${sq(accept)}` : ''}`, `Installed ${name} (claude plugin install)`, (code, out, step) => {
         let r = null;
         for (const line of String(out || '').split('\n').reverse()) { try { r = JSON.parse(line); break; } catch { /* not it */ } }
-        if (code === 0) { loaded(); inbox.add(id, { who: 'note', text: owned.has(id) ? `It can use ${name} now` : `${name} is installed: sessions started from now on have it` }); return; }
+        if (code === 0) { loaded(); inbox.add(id, { who: 'note', text: owned.has(id) ? `It can use ${name} now` : `${name} is installed: sessions started from now on have it` }); if (win) win.webContents.send('nod', id); return; }
         const sc = r && r.shownCommand;
         if (!accept && sc && /^[0-9a-f]{16,128}$/i.test(String(sc.sha256 || ''))) {
           const what = String(sc.command || sc.text || '').slice(0, 2000);
