@@ -779,11 +779,12 @@
         const d = Math.hypot(c.x - p.x, c.y - p.y) || 1;
         lx = (c.x - p.x) / d; ly = (c.y - p.y) / d;
       }
+      // (Its slime dozing off, it naps too: eyes shut.)
       // When happy it sways softly from side to side, rocking on its base.
       const sway = p.happy ? Math.sin((time - p.heartAt) * 1.8) * 0.13 * Math.min(1, (time - p.heartAt) * 2) : 0;
       D.drawPet(ctx, {
         x: p.x, y: p.y, size: petSize() * grow, angle: p.angle, sway, color, lx, ly,
-        blink: time > p.nextBlink - 0.13, happy: p.happy || time < (p.pettedUntil || 0), heart: p.heartAt >= 0 ? time - p.heartAt : Infinity,
+        blink: time > p.nextBlink - 0.13 || (!!p.owner && (p.owner.sleep || 0) > 0.6), happy: p.happy || time < (p.pettedUntil || 0), heart: p.heartAt >= 0 ? time - p.heartAt : Infinity,
       }, floorAt(p.x), CFG.shadow);
     }
   }
