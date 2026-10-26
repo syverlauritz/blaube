@@ -586,8 +586,8 @@ test('after you stop a turn it knows, until you say something new', () => {
 
 test('a turn that ended on an API error is offered a retry, until something else happens', () => {
   const { erredLast } = require('../src/main/inbox.js');
-  assert.equal(erredLast([{ who: 'you', text: 'go' }, { who: 'step', text: 'Read a' }, { who: 'note', text: 'Claude Code: overloaded', error: true }]), true);
-  assert.equal(erredLast([{ who: 'note', text: 'Claude Code: overloaded', error: true }, { who: 'you', text: 'again' }]), false);
-  assert.equal(erredLast([{ who: 'note', text: 'Claude Code: overloaded', error: true }, { who: 'claude', text: 'Done.' }]), false);
-  assert.equal(erredLast([{ who: 'note', text: 'Picked up here' }]), false);
+  assert.equal(erredLast([{ who: 'you', text: 'go' }, { who: 'step', text: 'Read a' }, { who: 'note', text: 'Claude Code: overloaded', error: true }]), 'Claude Code: overloaded');
+  assert.equal(erredLast([{ who: 'note', text: 'Claude Code: overloaded', error: true }, { who: 'you', text: 'again' }]), '');
+  assert.equal(erredLast([{ who: 'note', text: 'Claude Code: overloaded', error: true }, { who: 'claude', text: 'Done.' }]), '');
+  assert.equal(erredLast([{ who: 'note', text: 'Picked up here' }]), '');
 });

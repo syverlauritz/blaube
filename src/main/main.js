@@ -466,6 +466,7 @@ function pushTalk(id, focusField = false) {
     quick: id.startsWith('demo-') ? [] : git.quickActions(gitStates.get(id) || null, s.state, {
       stopped: stoppedLast(inbox.log(id)),
       apiError: erredLast(inbox.log(id)),
+      carryAt: carryFor(id),
       failedTests: failedTests(inbox.log(id)),
       context: contextOf(id),
     }),
@@ -482,6 +483,13 @@ function pushTalk(id, focusField = false) {
   }
 }
 let usageLimits = null; // (see limits.js)
+// Sessions that hit a usage limit and carry on by themselves once it lifts.
+const carryLater = new Map(); // id -> when
+function carryFor(id, now = Date.now()) {
+  if (carryLater.has(id)) return { at: carryLater.get(id), label: limits.when(carryLater.get(id), now), set: true };
+  const at = limits.liftsAt(usageLimits, erredLast(inbox.log(id)), now);
+  return at > now ? { at, label: limits.when(at, now) } : null;
+}
 let talkPicking = false; // (a file dialog from the box is open: it stays)
 let hubPast = [], hubFolders = [], hubCache = null; // what the overview last offered
 const gitStates = new Map(); // session id -> its last git status (or null: not a repository)
@@ -571,7 +579,7 @@ function sweepSoon() { if (!sweepTimer) sweepTimer = setTimeout(() => { sweepTim
 function sweep() {
   const live = (id) => tracker.sessions.has(id) || owned.has(id) || (id === talkId && !!talkWin && !talkWin.isDestroyed() && talkWin.isVisible());
   for (const id of [...inbox.logs.keys(), ...inbox.todos.keys(), ...inbox.steerable, ...inbox.typed.keys()]) if (!live(id)) inbox.forget(id);
-  const maps = { gitStates, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan };
+  const maps = { gitStates, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan, carryLater };
   for (const id of [...muted]) if (!live(id)) muted.delete(id);
   for (const m of Object.values(maps)) for (const id of [...m.keys()]) if (!live(id)) m.delete(id);
   for (const [k, at] of [...lastBubble]) if (Date.now() - at > 60e3) lastBubble.delete(k);
@@ -1640,6 +1648,30 @@ app.whenReady().then(async () => {
     goToSession(s);
   });
   ipcMain.on('talk', (_e, id, at) => openTalk(id, at || { x: 0, y: 0 }));
+  // "Carry on at 3pm" (at: when) after a usage limit, or not (at: 0).
+  ipcMain.on('talk-later', (_e, id, at) => {
+    if (!id || id !== talkId || !tracker.sessions.has(id) || id.startsWith('demo-')) return;
+    const was = carryLater.delete(id);
+    const lifts = carryFor(id);
+    if (at && lifts && Math.abs(lifts.at - at) < 60e3) {
+      carryLater.set(id, lifts.at);
+      inbox.add(id, { who: 'note', text: `It’ll carry on by itself at ${lifts.label}, when your usage limit lifts (keep Blaube open)` });
+    } else if (!at && was) inbox.add(id, { who: 'note', text: 'It won’t carry on by itself' });
+    pushTalk(id);
+  });
+  // (Checked against the clock, so a Mac that slept through it catches up.)
+  function carryTick(now = Date.now()) {
+    for (const [id, at] of carryLater) {
+      if (now < at + 30e3) continue;
+      carryLater.delete(id);
+      const s = tracker.sessions.get(id);
+      if (!s || s.state === 'working' || s.state === 'waiting') continue; // (gone, or already going)
+      inbox.add(id, { who: 'note', text: 'Your usage limit lifted: carrying on' });
+      sendMessage(id, 'Carry on where you left off.');
+    }
+  }
+  setInterval(() => carryTick(), 30e3).unref();
+  if (TEST) global.__blaubeCarryTick = carryTick;
   ipcMain.on('talk-send', (_e, id, text) => {
     if (!id || id !== talkId || !tracker.sessions.has(id) || id.startsWith('demo-')) return;
     sendMessage(id, text);

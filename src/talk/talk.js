@@ -893,7 +893,7 @@
       b.type = 'button';
       b.textContent = q.label;
       b.title = q.prompt;
-      b.onclick = () => { if (!current) return; if (q.here) api.continueHere(current.id); else if (q.bring) api.bringHere(current.id); else api.send(current.id, q.prompt); box.hidden = true; };
+      b.onclick = () => { if (!current) return; if (q.here) api.continueHere(current.id); else if (q.bring) api.bringHere(current.id); else if ('later' in q) api.later(current.id, q.later); else api.send(current.id, q.prompt); box.hidden = true; };
       box.append(b);
     }
   }

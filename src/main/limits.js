@@ -50,4 +50,20 @@ function warn(lim, now = Date.now()) {
   return `${Math.round(w.used * 100)}% of ${name} used`;
 }
 
-module.exports = { read, line, warn };
+// When a usage limit it hit lifts: from what Blaube last heard of your
+// limits, or else from Claude Code's words ("5-hour limit reached ∙ resets
+// 3pm", "…will reset at 3:30pm (Europe/Oslo)"), as your local time. 0 if
+// it doesn't say.
+function liftsAt(lim, text, now = Date.now()) {
+  const out = live(lim, now).filter((w) => (w.status === 'rejected' || w.used >= 1) && w.resetsAt);
+  if (out.length) return Math.max(...out.map((w) => w.resetsAt));
+  const m = /\breset(?:s)?(?: at)? (\d{1,2})(?::(\d\d))?\s*(am|pm)\b/i.exec(String(text || ''));
+  if (!m || !/limit/i.test(text)) return 0;
+  const h = (Number(m[1]) % 12) + (m[3].toLowerCase() === 'pm' ? 12 : 0);
+  const d = new Date(now);
+  d.setHours(h, Number(m[2] || 0), 0, 0);
+  if (d.getTime() <= now) d.setDate(d.getDate() + 1); // (that time tomorrow)
+  return d.getTime();
+}
+
+module.exports = { read, line, warn, when, liftsAt };

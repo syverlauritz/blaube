@@ -38,12 +38,18 @@ const MAIN = /^(main|master|trunk|develop)$/;
 // What you might want next, as { label, prompt }: only while it isn't busy.
 // `more`: { stopped: you stopped its last turn, failedTests: the test
 // command that failed in it, context: how full its context is (%),
-// apiError: its last turn ended on an API error }.
+// apiError: its last turn ended on an API error; carryAt: { at, label, set }
+// when that was a usage limit that lifts then (set: it'll carry on by itself) }.
 function quickActions(st, state, more = {}) {
   if (state === 'working' || state === 'waiting') return [];
   const out = [];
   if (more.stopped) out.push({ label: 'Carry on', prompt: 'Carry on where you stopped.' });
-  else if (more.apiError) out.push({ label: 'Try again', prompt: 'Carry on where you left off.' });
+  else if (more.apiError) {
+    // A usage limit: it can carry on by itself once the limit lifts.
+    if (more.carryAt && more.carryAt.set) out.push({ label: `Don’t carry on at ${more.carryAt.label}`, prompt: 'It won’t carry on by itself', later: 0 });
+    else if (more.carryAt) out.push({ label: `Carry on at ${more.carryAt.label}`, prompt: 'Carries on by itself when your usage limit lifts', later: more.carryAt.at });
+    out.push({ label: 'Try again', prompt: 'Carry on where you left off.' });
+  }
   if (more.failedTests) out.push({ label: 'Fix the tests', prompt: `The tests failed (\`${more.failedTests}\`). Fix them, then run them again and tell me what was wrong.` });
   const n = st ? st.changed + st.untracked : 0;
   if (st && st.conflicts) out.push({ label: 'Fix conflicts', prompt: 'There are merge conflicts. Resolve them, keeping both sides’ intent, then tell me what you chose.' });

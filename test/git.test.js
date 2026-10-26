@@ -82,3 +82,15 @@ test('a real repository: the diff of a changed file, the start of a new one', as
   assert.match(await got('a.js', 'changed'), /^@@ .*\n one\n-two\n\+three$/);
   assert.equal(await got('b.js', 'new'), '+fresh');
 });
+
+test('after a usage limit, it offers to carry on when it lifts, or to call that off', () => {
+  const { quickActions } = require('../src/main/git');
+  const at = Date.now() + 3600e3;
+  const q = quickActions(null, 'done', { apiError: 'Claude Code: 5-hour limit reached ∙ resets 3pm', carryAt: { at, label: '3pm' } });
+  assert.deepEqual(q.slice(0, 2).map((x) => x.label), ['Carry on at 3pm', 'Try again']);
+  assert.equal(q[0].later, at);
+  const set = quickActions(null, 'done', { apiError: 'x', carryAt: { at, label: '3pm', set: true } });
+  assert.equal(set[0].label, 'Don’t carry on at 3pm');
+  assert.equal(set[0].later, 0);
+  assert.equal(quickActions(null, 'done', { apiError: 'x' })[0].label, 'Try again');
+});

@@ -440,10 +440,10 @@ function failedTests(log) {
 function erredLast(log) {
   for (let i = log.length - 1; i >= 0; i--) {
     const e = log[i];
-    if ((e.who === 'you' && !e.midTurn && e.status !== 'queued') || e.who === 'claude') return false;
-    if (e.who === 'note' && e.error) return true;
+    if ((e.who === 'you' && !e.midTurn && e.status !== 'queued') || e.who === 'claude') return '';
+    if (e.who === 'note' && e.error) return e.text; // (what it said)
   }
-  return false;
+  return '';
 }
 
 function stoppedLast(log) {

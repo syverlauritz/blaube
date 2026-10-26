@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   image: (id, file) => ipcRenderer.invoke('talk-image', id, file),
   attach: (id) => ipcRenderer.invoke('talk-attach', id),
   answer: (id, key, choice) => ipcRenderer.send('talk-answer', id, key, choice),
+  later: (id, at) => ipcRenderer.send('talk-later', id, at),
   diff: (id, file) => ipcRenderer.invoke('talk-diff', id, file),
   earlier: (id) => ipcRenderer.invoke('talk-earlier', id),
   newIn: (folder, opts) => ipcRenderer.send('talk-new', folder, opts),

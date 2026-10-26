@@ -313,7 +313,16 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	// Claude Code couldn't get an answer: its box says why.
 	fs.appendFileSync(tx, JSON.stringify({ type: 'assistant', isApiErrorMessage: true, message: { model: '<synthetic>', content: [{ type: 'text', text: '5-hour limit reached ∙ resets 3pm' }] } }) + '\n');
 	check(await until(() => box(`[...document.querySelectorAll('#inner .note.error')].some((e) => e.textContent === 'Claude Code: 5-hour limit reached ∙ resets 3pm')`), 10000), 'an API error (a usage limit, say) shows in its box');
-	check(await until(() => box(`[...document.querySelectorAll('#quick button')][0].textContent === 'Try again'`)), 'with Try again a tap away');
+	const chips = () => box(`[...document.querySelectorAll('#quick button')].map((b) => b.textContent).join('|')`);
+	check(await until(async () => /^Carry on at 3pm\|Try again/.test(await chips())), 'with Try again a tap away, and Carry on at 3pm, when the limit lifts');
+	await box(`[...document.querySelectorAll('#quick button')].find((b) => b.textContent === 'Carry on at 3pm').click()`);
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'note' && /carry on by itself at 3pm/.test(e.text))), 'tapping it says it’ll carry on by itself then');
+	check(await until(async () => /^Don’t carry on at 3pm\|Try again/.test(await chips())), 'and offers to call it off');
+	global.__blaubeCarryTick(Date.now() + 2 * 86400e3);
+	const carried = () => [...inbox.log(ID3), ...(inbox.queue.get(ID3) || [])].some((e) => e.who === 'you' && e.text === 'Carry on where you left off.');
+	check(await until(carried), 'once it lifts, it carries on by itself');
+	check(inbox.log(ID3).some((e) => e.who === 'note' && /limit lifted/.test(e.text)), 'saying so');
+	for (const e of inbox.queue.get(ID3) || []) inbox.unsend(ID3, e.n);
 	// "!ls" runs right here, as the terminal's bash mode does, and goes along with the next message.
 	await type('!ls src');
 	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'You ran ls src' && e.ok && !e.running && /tax\.js/.test(e.detail))), '!ls runs in its folder and shows what it printed');

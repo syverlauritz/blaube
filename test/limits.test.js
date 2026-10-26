@@ -40,3 +40,12 @@ test('only the rateLimitType fields (no unifiedWindows) still count', () => {
   const l = limits.read({ status: 'allowed_warning', rateLimitType: 'five_hour', utilization: 0.8, resetsAt: s(Date.UTC(2026, 9, 26, 14)) });
   assert.equal(limits.line(l, NOW), 'Usage: 80% of 5 hours (resets 2pm)');
 });
+
+test('when a usage limit lifts: from its report, or from what Claude Code said', () => {
+  const out = limits.read({ status: 'rejected', unifiedWindows: { five_hour: { utilization: 1, resetsAt: s(Date.UTC(2026, 9, 26, 15)), status: 'rejected' } } });
+  assert.equal(limits.liftsAt(out, '', NOW), Date.UTC(2026, 9, 26, 15));
+  assert.equal(limits.liftsAt(null, '5-hour limit reached ∙ resets 3pm', NOW), Date.UTC(2026, 9, 26, 15));
+  assert.equal(limits.liftsAt(null, 'Claude usage limit reached. Your limit will reset at 9:30am (Europe/Oslo).', NOW), Date.UTC(2026, 9, 27, 9, 30), 'tomorrow, as it has passed today');
+  assert.equal(limits.liftsAt(null, 'API Error: 529 overloaded', NOW), 0, 'not a limit');
+  assert.equal(limits.liftsAt(limits.read(info), 'API Error: 500', NOW), 0, 'close to a limit isn’t at one');
+});
