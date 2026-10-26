@@ -183,6 +183,8 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check((await texts()).some((t) => /\/compact/.test(t) && /clipboard/.test(t)), 'where Blaube can’t type it in, the box says it’s on the clipboard');
 	const clip = await clipboard.readText();
 	check(clip === '/compact', `and it is (${JSON.stringify(clip)})`);
+	await type('/todos');
+	check(await until(() => inbox.log(ID).some((e) => e.text === 'Its to-do list: → Add the 2027 brackets · ○ Update the tests')) && inbox.view(ID).queued === 0, '/todos shows its to-do list in full');
 	await type('/api returns 500 on the brackets page');
 	check(await until(() => inbox.view(ID).queued === 1), 'a message that just starts with a path is a message');
 	for (const e of inbox.queue.get(ID) || []) inbox.unsend(ID, e.n);
@@ -351,6 +353,12 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await type('/cost');
 	check(await until(() => inbox.log(ID3).some((e) => /^\/cost is for Claude Code itself.*Or bring it here/.test(e.text || '')) && box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Bring it here')`)), 'a command only its terminal can take offers Bring it here');
 	tracker.sessions.get(ID3).pid = 0;
+	await type('/help');
+	check(await until(() => inbox.log(ID3).some((e) => /^Talk to it as you would in its terminal/.test(e.text || ''))), '/help says what works here');
+	await type('/resume');
+	check(await until(() => box(`document.body.classList.contains('overview') && document.getElementById('text').value === ''`)), '/resume opens the overview, where past sessions are picked up');
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
+	await until(() => box(`!document.body.classList.contains('overview')`));
 	await type('/agents');
 	check(await until(() => fs.existsSync(path.join(repo, '.claude', 'agents')) && inbox.log(ID3).some((e) => /^No agents of its own yet\. Opened .+\/\.claude\/agents/.test(e.text || ''))), '/agents opens the project’s agents folder');
 	await box(`document.getElementById('git').click()`);

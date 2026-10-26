@@ -297,7 +297,8 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(() => inbox.log(NID).some((e) => e.error && e.text === 'There’s no folder at /no/such/folder')), 'and says so when there’s no such folder');
 	await type('still there?');
 	check(await until(async () => (await said()).split('claude-opus here.').length > 2), 'and it still answers');
-	owned.end(NID);
+	await type('/exit');
+	check(await until(() => !owned.has(NID) && inbox.log(NID).some((e) => /^Ended\. Its conversation is kept/.test(e.text || ''))), '/exit ends a session Blaube started');
 
 	console.log(failed ? `\n${failed} failed` : '\nall passed');
 	return failed ? 1 : 0;

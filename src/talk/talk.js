@@ -1655,6 +1655,8 @@
     if ((!typed && !files.length) || !current || current.demo) return;
     // Pasted or dropped files go along as paths Claude can open.
     const v = files.length ? `${typed}${typed ? '\n\n' : ''}${files.length === 1 ? 'Attached file' : 'Attached files'} (open with your Read tool): ${files.map((f) => f.path).join(', ')}` : typed;
+    // "/resume": the overview, where past sessions are picked up.
+    if (!files.length && /^\/resume\s*$/i.test(typed)) { text.value = ''; fit(); drafts.delete(current.id); showOverview(true); return; }
     const forFiles = files.length;
     files = []; drawFiles();
     // A card is up and you typed this after it came: it's for the card.

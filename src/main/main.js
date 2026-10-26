@@ -2016,6 +2016,30 @@ app.whenReady().then(async () => {
       } catch (e) { inbox.add(id, { who: 'note', text: `Couldn’t open it: ${e.message}`, error: true }); }
       return;
     }
+    // "/help": what works here, in words.
+    if (/^\/help\s*$/i.test(String(text).trim())) {
+      inbox.add(id, { who: 'note', text: `Talk to it as you would in its terminal. Start with ! to run a command here, # to remember something in CLAUDE.md, @ for its files, / for commands (each says what it does)${owned.has(id) ? '' : '; the ones only its terminal can take go there, or bring it here and they go straight in'}. ⌘0 shows every session, ⌘F finds things, ⌘S saves the conversation, ⌘. stops it.` });
+      return;
+    }
+    // "/todos": its to-do list, in full.
+    if (/^\/todos\s*$/i.test(String(text).trim())) {
+      const t = inbox.todos.get(id) || [];
+      inbox.add(id, { who: 'note', text: t.length ? `Its to-do list: ${t.map((x) => `${x.status === 'completed' ? '✓' : x.status === 'in_progress' ? '→' : '○'} ${x.text || ''}`).join(' · ')}` : 'It has no to-do list right now' });
+      return;
+    }
+    // "/release-notes": what's new in Claude Code, in your browser.
+    if (/^\/release-notes\s*$/i.test(String(text).trim())) {
+      if (!TEST) shell.openExternal('https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md');
+      inbox.add(id, { who: 'note', text: 'Opened Claude Code’s release notes in your browser' });
+      return;
+    }
+    // "/exit" in a session Blaube started: it ends (its conversation is
+    // kept, to pick up later).
+    if (/^\/(exit|quit)\s*$/i.test(String(text).trim()) && owned.has(id)) {
+      inbox.add(id, { who: 'note', text: 'Ended. Its conversation is kept: pick it up from the overview.' });
+      owned.end(id);
+      return;
+    }
     // "/export": the conversation as Markdown, to Downloads (as ⌘S).
     if (/^\/export\s*$/i.test(String(text).trim())) {
       const file = saveConversation(id);
