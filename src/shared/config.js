@@ -159,6 +159,7 @@
       ['welcomeBack', true, 0, 0, 0, 'Back from away: say what changed while you were gone'],
       ['lowBattery', 0.15, 0, 0.5, 0.01, 'Tired below this battery level (0 = never)'],
       ['waitNudge', 3, 0, 30, 0.5, 'Needing you this many minutes: it reminds you, once (0 = never)'],
+      ['sulkAfter', 8, 0, 60, 0.5, 'Needing you this many minutes: a little rain cloud gathers over it until you point at it (0 = never)'],
       ['fullWarning', 0.85, 0, 1, 0.01, 'Says so when its context gets this full (0 = never)'],
       ['stuckAfter', 4, 0, 10, 1, 'This many errors in two minutes and a working slime gets steamed up: puffs and a cross face (0 = never)'],
     ]],

@@ -2844,6 +2844,70 @@
     }
   }
 
+  // Left waiting on you a long while (8 minutes by default), a little rain
+  // cloud gathers over its head and it slumps, glum: the one you've kept
+  // waiting longest is easy to spot. Point at it and the cloud puffs away.
+  function sulk(b) {
+    const cl = b.cloud;
+    if (CFG.sulkAfter <= 0 || b.kind !== 'mother' || b.state !== 'waiting' || sys.away || b.dying) {
+      if (cl && !cl.gone) cl.gone = time;
+      if (cl && time - cl.gone > 0.6) b.cloud = null;
+      return;
+    }
+    if (!cl) {
+      if (time - (b.stateSince ?? time) > CFG.sulkAfter * 60 && time > (b.cloudAfter || 0)) {
+        const box = b.body.bbox();
+        b.cloud = { x: (box.minX + box.maxX) / 2, y: box.minY - b.body.o.radius * 1.3, born: time };
+      }
+      return;
+    }
+    if (cl.gone) { if (time - cl.gone > 0.6) b.cloud = null; return; }
+    if (b === hovered || b === buddies.get(talkingTo)) {
+      // Noticed: the cloud puffs away and it perks up.
+      cl.gone = time;
+      b.cloudAfter = time + CFG.sulkAfter * 30;
+      if (b.body.onFloor() && !b.body.grab && !b.pendingHop) b.hop(0, -280);
+      return;
+    }
+    if (b.body.onFloor() && !b.body.grab) b.body.squashTop(35, DT); // (a glum slump)
+  }
+  function drawClouds() {
+    for (const b of buddies.values()) {
+      const cl = b.cloud;
+      if (!cl) continue;
+      const box = b.body.bbox(), r = b.body.o.radius;
+      const tx = (box.minX + box.maxX) / 2, ty = box.minY - r * 1.1 - 14;
+      cl.x += (tx - cl.x) * Math.min(1, DT * 3);
+      cl.y += (ty - cl.y) * Math.min(1, DT * 3);
+      const k = cl.gone ? 1 - (time - cl.gone) / 0.6 : Math.min(1, (time - cl.born) / 1.5);
+      if (k <= 0) continue;
+      const w = r * (cl.gone ? 1 + (time - cl.gone) : 1), x = cl.x, y = cl.y;
+      ctx.save();
+      // Rain: short streaks falling from the cloud onto its head.
+      if (!cl.gone) {
+        ctx.strokeStyle = '#7fa7d9';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        const fall = Math.max(10, box.minY - y - 6);
+        for (let i = 0; i < 7; i++) {
+          const ph = (time * 1.5 + i * 0.43) % 1, dx = (i - 3) * w * 0.2 + Math.sin(i * 7) * 3;
+          ctx.globalAlpha = k * 0.85 * Math.min(1, (1 - ph) * 4);
+          const yy = y + 6 + ph * fall;
+          ctx.beginPath(); ctx.moveTo(x + dx, yy); ctx.lineTo(x + dx - 1, yy + 8); ctx.stroke();
+        }
+      }
+      ctx.globalAlpha = k;
+      ctx.fillStyle = '#a7aec0';
+      ctx.beginPath();
+      ctx.ellipse(x, y + 2, w * 0.62, w * 0.24, 0, 0, Math.PI * 2);
+      ctx.arc(x - w * 0.28, y - w * 0.02, w * 0.24, 0, Math.PI * 2);
+      ctx.arc(x + w * 0.08, y - w * 0.14, w * 0.3, 0, Math.PI * 2);
+      ctx.arc(x + w * 0.4, y, w * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
   function nudgePet(b) {
     if (CFG.play <= 0 || b.kind === 'child' || b.dying) return;
     const ok = (b.state === 'idle' || b.state === 'done') && !b.body.grab && b.body.onFloor() && !b.tag && !b.prank && !b.trick && !b.blow && !b.nibbling && (b.sleep || 0) < 0.1 && idleFor() < 60;
@@ -3117,6 +3181,7 @@
       const what = b.status && b.status.state === 'waiting' && b.status.text;
       b.say([{ text: `Still waiting on you (${mins} min)` }, ...(what ? [{ text: what, size: 12 }] : [])], 6, false, false);
     }
+    sulk(b);
     if (b.kind !== 'home' && b.state === 'idle' && idleFor() > dozeAfter() && time > (b.nextIdleYawn || 0)) {
       if (b.nextIdleYawn) yawn(b, 1.6, 0.5);
       b.nextIdleYawn = time + (25 + Math.random() * 40) / (1 + lateness());
@@ -3268,6 +3333,7 @@
     else if (speed > 900 && !body.onFloor()) { mouth = 'grin'; }
     else if (time < (b.pounceUntil || 0) || (b.teaseSince && time - b.teaseSince > 0.3)) { mouth = b.caught ? 'grin' : 'o'; }
     else if (time < b.happyUntil) { expression = 'happy'; mouth = 'grin'; }
+    else if (st === 'waiting' && b.cloud && !b.cloud.gone) { expression = 'worried'; mouth = 'wobble'; }
     else if (st === 'waiting') { expression = 'worried'; mouth = 'o'; }
     else if (b.pain > 0.05) { expression = 'pained'; mouth = 'wobble'; }
     else if (st === 'done' && unseen(b)) { expression = 'happy'; mouth = 'grin'; }
@@ -3446,6 +3512,9 @@
     const lines = [{ text: info.title || label(b) }, { text, color: D.STATE_COLORS[b.state] }];
     const extra = [info.branch, modelName(info.model)].filter(Boolean).join(' · ');
     if (extra) lines.push({ text: extra, dim: true });
+    // How long it's been waiting on you.
+    const waited = b.state === 'waiting' && b.stateSince !== undefined ? Math.floor((time - b.stateSince) / 60) : 0;
+    if (waited >= 1) lines.push({ text: `Waiting ${waited} min`, dim: true });
     // How full its context window is.
     const tk = b.kind === 'mother' && b.session && b.session.tokens;
     if (tk && tk.limit && tk.context) lines.push({ text: `${Math.min(100, Math.round((tk.context / tk.limit) * 100))}% of context used`, dim: true });
@@ -3531,6 +3600,7 @@
       else if (b.state === 'done' && unseen(b)) D.drawExclaim(ctx, b.body, time, W);
     }
     drawSeason(false);
+    drawClouds();
     drawFlutters();
     drawRockets();
     drawPets();
