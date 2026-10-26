@@ -59,10 +59,12 @@ function url(file, max = 16 * 1024) {
     fd = fs.openSync(file, 'r');
     const buf = Buffer.alloc(max);
     const n = fs.readSync(fd, buf, 0, max, 0);
-    const text = buf.subarray(0, n).toString('utf8').replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '');
-    const m = LOCAL.exec(text);
-    return m ? m[0].replace(/[.,;:]+$/, '').replace('//0.0.0.0', '//localhost') : '';
+    return localUrl(buf.subarray(0, n).toString('utf8'));
   } catch { return ''; } finally { if (fd != null) fs.closeSync(fd); }
 }
+function localUrl(text) {
+  const m = LOCAL.exec(String(text).replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, ''));
+  return m ? m[0].replace(/[.,;:]+$/, '').replace('//0.0.0.0', '//localhost') : '';
+}
 
-module.exports = { find, tail, url, roots };
+module.exports = { find, tail, url, localUrl, roots };

@@ -449,6 +449,24 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	fs.rmSync(prFile);
 	check(await until(() => box(`!/PR/.test(document.getElementById('git').textContent)`), 10000), 'and once gh knows of no pull request, the git line says none');
 	global.__blaubeGh = '';
+	// Its own scripts, from the box: a dev server kept running, the rest as a step.
+	fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ name: 'tax', scripts: { test: 'node -e "console.log(\'tests ok\')"', dev: 'node server.js' } }));
+	fs.writeFileSync(path.join(repo, 'server.js'), "const s = require('http').createServer((q, r) => r.end('hi')).listen(0, () => console.log('ready on http://localhost:' + s.address().port + '/'));");
+	await type('/run');
+	check(await until(() => inbox.log(ID3).some((e) => e.text === 'Its scripts: dev, test. /run dev runs one.')), '/run lists its scripts');
+	check(await until(() => box(`[...document.querySelectorAll('#branches .runrow button')].map((b) => b.textContent).join() === 'dev,test'`), 10000), 'and the git line’s panel has them, a tap to run');
+	await box(`[...document.querySelectorAll('#branches .runrow button')].find((b) => b.textContent === 'test').click()`);
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'Ran npm run test' && e.ok && /tests ok/.test(e.detail || '')), 30000), 'a script that ends runs as a step, with what it printed');
+	await type('/run dev');
+	check(await until(() => inbox.log(ID3).some((e) => e.text === 'Started npm run dev: it keeps running in the background, with Stop beside it')), '/run dev starts the dev server in the background');
+	check(await until(() => box(`(() => { const li = [...document.querySelectorAll('#bg li')].find((l) => l.firstChild.textContent === 'dev'); return !!li && [...li.querySelectorAll('button')].some((b) => b.textContent === 'Open' && /^http:\\/\\/localhost:\\d+\\/$/.test(b.title)); })()`), 30000), 'and it’s listed with Open for where it’s up');
+	await box(`[...[...document.querySelectorAll('#bg li')].find((l) => l.firstChild.textContent === 'dev').querySelectorAll('button')].find((b) => b.textContent === 'Output').click()`);
+	check(await until(() => box(`[...document.querySelectorAll('#bg .bgout')].some((p) => !p.hidden && /ready on http/.test(p.textContent))`)), 'Output shows what it printed');
+	await sleep(500);
+	await shot('run');
+	await box(`[...[...document.querySelectorAll('#bg li')].find((l) => l.firstChild.textContent === 'dev').querySelectorAll('button')].find((b) => b.textContent === 'Stop').click()`);
+	check(await until(() => box(`![...document.querySelectorAll('#bg li')].some((l) => l.firstChild.textContent === 'dev')`), 10000) && !inbox.log(ID3).some((e) => /npm run dev stopped/.test(e.text || '')), 'Stop stops it, and that’s no news');
+	fs.rmSync(path.join(repo, 'package.json')); fs.rmSync(path.join(repo, 'server.js'));
 	// Files named in a reply open right in the box; a long reply's rest is a tap away.
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'what did you change?' });
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'Stop', last_assistant_message: 'I changed `src/tax.js:1` and [the notes](notes.md#L1), not `nope.js` or `console.log`.\n\n' + 'All of it. '.repeat(500) + 'THE END' });

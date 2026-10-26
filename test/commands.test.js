@@ -141,3 +141,18 @@ test('/bug: a new Claude Code issue with what you said, its version and system',
   assert.match(u.searchParams.get('body'), /^it hangs on start\n\n[\s\S]*- Claude Code: 2\.1\.0\n- System: darwin 24\.0\n$/);
   assert.equal(new URL(bugUrl('/bug')).searchParams.get('title'), '');
 });
+
+test('/run is the box’s own, unless you have a /run of your own', () => {
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const { blaubeCommand, commandNames } = require('../src/main/commands');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-cmd-'));
+  try {
+    assert.equal(blaubeCommand('run', '', home), true);
+    assert.equal(blaubeCommand('nope', '', home), false);
+    assert.deepEqual(commandNames('ru', '', home).map((c) => c.name), ['run']);
+    fs.mkdirSync(path.join(home, '.claude', 'commands'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.claude', 'commands', 'run.md'), 'Run the thing');
+    assert.equal(blaubeCommand('run', '', home), false);
+    assert.deepEqual(commandNames('ru', '', home).map((c) => `${c.name}${c.mine ? '*' : ''}`), ['run*']);
+  } finally { fs.rmSync(home, { recursive: true, force: true }); }
+});

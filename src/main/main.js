@@ -29,6 +29,7 @@ const branch = require('./branch');
 const ccDefaults = require('./ccDefaults');
 const cloner = require('./clone');
 const pulls = require('./pr');
+const runs = require('./runs');
 const installer = require('./installer');
 const away = require('./away');
 const taskOutput = require('./taskOutput');
@@ -474,12 +475,13 @@ function pushTalk(id, focusField = false) {
     usage: limits.line(usageLimits),
     signedOut: signedOutNow, signingIn: signingInNow(), // (Claude Code isn't signed in: see auth.js)
     canMode: owned.has(id), // (one Blaube started can be asked to change it)
-    tasks: (s.tasks || []).filter((t) => !t.demo).slice(0, 4).map((t) => ({ id: t.id, label: t.description || t.command, command: t.command, url: taskUrls.get(`${id}/${t.id}`) || '' })),
+    tasks: (s.tasks || []).filter((t) => !t.demo).slice(0, 4).map((t) => ({ id: t.id, label: t.description || t.command, command: t.command, url: taskUrls.get(`${id}/${t.id}`) || '' })).concat(runs.list(id)), // (and its scripts Blaube runs: runs.js)
     helpers: s.state === 'working' || s.state === 'waiting' ? (s.agents || []).slice(0, 5).map((a) => ({ name: helperName(s, a), doing: helperDoing.get(`${id}/${a.id}`) || '', waiting: a.state === 'waiting' })) : [],
     focus: focusField,
     // Its git status and what you might ask for next (see git.js).
     git: gitLine(id),
     gitFiles: gitFiles(id),
+    scripts: s.cwd && !id.startsWith('demo-') ? runs.scripts(s.cwd).slice(0, 6).map((x) => x.name) : [], // (its package.json's, for Run)
     pr: prStates.get(id) ? { number: prStates.get(id).number, url: prStates.get(id).url, title: prStates.get(id).title } : null,
     earlier: !id.startsWith('demo-') && !!transcriptPath(s) && fs.existsSync(transcriptPath(s)), // (its transcript has what came before)
     lookedAt: looked.get(id) || 0, // (when its box was last closed: what's new since shows)
@@ -623,6 +625,7 @@ function sweep() {
   for (const id of [...inbox.logs.keys(), ...inbox.todos.keys(), ...inbox.steerable, ...inbox.typed.keys()]) if (!live(id)) inbox.forget(id);
   const maps = { gitStates, prStates, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan, carryLater, mcpStates, rewound, foreground };
   for (const id of [...muted]) if (!live(id)) muted.delete(id);
+  for (const sid of runs.sessions()) if (!live(sid)) runs.stopAll(sid); // (its dev server goes with it)
   for (const m of Object.values(maps)) for (const id of [...m.keys()]) if (!live(id)) m.delete(id);
   for (const [k, at] of [...lastBubble]) if (Date.now() - at > 60e3) lastBubble.delete(k);
   for (const [id, c] of [...handedOver]) if (Date.now() - c.at > 30 * 60e3) handedOver.delete(id); // (kept past its end: bringing it here ends it first)
@@ -1776,6 +1779,20 @@ app.whenReady().then(async () => {
   setInterval(() => checkAway(), 30e3).unref();
   // (The box's "4m" and "waiting 5m" keep up even when nothing else happens.)
   setInterval(() => { if (talkWin && talkWin.isVisible() && talkId && tracker.list().some((o) => o.state === 'waiting' || o.state === 'working')) pushTalk(talkId); }, 30e3).unref();
+  // Its scripts Blaube runs: its slime says where one is up, and one that
+  // stops by itself says so, with its last line.
+  runs.events.on('url', (r) => {
+    if (talkId === r.session) pushTalk(r.session);
+    if (win) win.webContents.send('say', { id: r.session, text: `Up on ${r.url.replace(/^https?:\/\//, '').replace(/\/$/, '')}`, seconds: 5, status: true });
+  });
+  runs.events.on('exit', (r) => {
+    if (!r.stopped) {
+      const last = runs.lastLine(r.out);
+      inbox.add(r.session, { who: 'note', text: `${r.command} stopped${r.code ? ` (code ${r.code})` : ''}${last ? `: ${last.slice(0, 200)}` : ''}`, error: !!r.code });
+      if (r.code && win) win.webContents.send('say', { id: r.session, text: `${r.name} stopped`, seconds: 5, status: true });
+    }
+    if (talkId === r.session) pushTalk(r.session);
+  });
   // Each session's pull request (its branch's, from gh): how it stands on
   // its git line, and its slime says when its checks finish, or it's
   // approved or merged. gh is asked at most once a minute per branch.
@@ -2095,6 +2112,7 @@ app.whenReady().then(async () => {
   setInterval(checkTasks, 4000).unref();
   if (TEST) global.__blaubeCheckTasks = checkTasks;
   ipcMain.handle('talk-task-output', (_e, id, taskId) => {
+    if (String(taskId).startsWith('run:')) return id === talkId && runs.list(id).some((r) => r.id === taskId) ? runs.output(taskId) : null;
     const s = id === talkId && tracker.sessions.get(id);
     if (!s || !(s.tasks || []).some((t) => t.id === taskId)) return null;
     const file = taskOutput.find(id, taskId);
@@ -2189,6 +2207,21 @@ app.whenReady().then(async () => {
         const parts = [reads.length ? `It reads ${reads.join(', ')}` : '', kept.length ? `It remembers: ${kept.join(' · ')}${r.memories.length > 12 ? ` and ${r.memories.length - 12} more` : ''}` : ''].filter(Boolean);
         if (parts.length) inbox.add(id, { who: 'note', text: parts.join('. ') });
       });
+      return;
+    }
+    // "/run dev": one of its scripts (package.json). A dev server or a
+    // watcher keeps running in the background, Blaube's own (its box lists
+    // it with Output, Open and Stop); anything else runs as a step.
+    const toRun = /^\/run(?:\s+(\S+))?\s*$/i.exec(String(text).trim());
+    if (toRun && sess && sess.cwd && !id.startsWith('demo-') && require('./commands').blaubeCommand('run', sess.cwd)) {
+      const list = runs.scripts(sess.cwd);
+      const names = list.map((x) => x.name).join(', ');
+      const sc = toRun[1] && list.find((x) => x.name === toRun[1]);
+      if (!sc) { inbox.add(id, { who: 'note', text: !list.length ? 'It has no scripts to run here (no package.json with scripts in its folder)' : toRun[1] ? `It has no script called ${toRun[1].slice(0, 60)}: it has ${names}` : `Its scripts: ${names}. /run ${list[0].name} runs one.` }); return; }
+      if (!sc.long) return runForSession(id, sc.command, `Ran ${sc.command}`);
+      const r = runs.start(id, sess.cwd, sc.name);
+      inbox.add(id, r ? { who: 'note', text: `Started ${sc.command}: it keeps running in the background, with Stop beside it` } : { who: 'note', text: `Couldn’t start ${sc.command}`, error: true });
+      pushTalk(id);
       return;
     }
     // "/rename tax rewrite": its name, written where Claude Code keeps it.
@@ -2613,6 +2646,8 @@ app.whenReady().then(async () => {
   // Code itself (stop_task); in a terminal's, the processes writing its
   // output (its own, under its claude process). false: the box asks Claude.
   ipcMain.handle('talk-stop-task', (_e, id, taskId) => new Promise((done) => {
+    // (One of its scripts Blaube runs: Blaube stops it.)
+    if (String(taskId).startsWith('run:')) return done(id === talkId && runs.list(id).some((r) => r.id === taskId) && runs.stop(taskId));
     const s = id === talkId && tracker.sessions.get(id);
     const t = s && (s.tasks || []).find((x) => x.id === taskId);
     if (!t) return done(false);
@@ -2830,6 +2865,7 @@ app.whenReady().then(async () => {
     q = typeof q === 'string' ? q.slice(0, 200) : '';
     if (!s || !s.cwd || id.startsWith('demo-')) return resolve([]);
     if (kind === 'command') return resolve(commandNames(q, s.cwd).slice(0, 8).map((c) => ({ insert: '/' + c.name + ' ', label: '/' + c.name, about: c.about || '' })));
+    if (kind === 'script') return resolve(s && s.cwd ? runs.scripts(s.cwd).filter((x) => x.name.startsWith(q)).slice(0, 8).map((x) => ({ insert: x.name, label: x.name, about: x.long ? `${x.command}, kept running` : x.command })) : []);
     if (kind === 'effort') return resolve(owned.has(id) ? EFFORTS.filter((e) => e.startsWith(q.toLowerCase())).map((e) => ({ insert: e, label: e, about: e === (efforts.get(id) || '') ? 'now' : '' })) : []);
     if (kind === 'model') return modelsFor(id, (models) => {
       const want = q.toLowerCase();
@@ -2994,4 +3030,4 @@ async function moveAllToTerminals(open = openResumeTerminal) {
   })));
   for (const s of list) { try { open(s); } catch (e) { log(`couldn't move ${s.id} to a terminal: ${e.message}`); } }
 }
-app.on('will-quit', () => { globalShortcut.unregisterAll(); if (focus.stop) focus.stop(); owned.killAll(); });
+app.on('will-quit', () => { globalShortcut.unregisterAll(); if (focus.stop) focus.stop(); owned.killAll(); runs.stopAll(); });

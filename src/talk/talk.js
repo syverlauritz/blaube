@@ -1182,7 +1182,7 @@
     const box = $('branches');
     const busy = s.state === 'working' || s.state === 'waiting';
     const dirty = list.some((f) => f.how !== 'new');
-    const key = [s.id, gitOpen, s.git, busy, dirty, s.pr ? s.pr.url : ''].join('|');
+    const key = [s.id, gitOpen, s.git, busy, dirty, s.pr ? s.pr.url : '', (s.scripts || []).join()].join('|');
     box.hidden = !gitOpen;
     if (!gitOpen) { box.dataset.key = ''; return; }
     if (box.dataset.key === key) return;
@@ -1249,6 +1249,25 @@
         requestAnimationFrame(fitWindow);
       };
       box.append(add, said);
+      // Its scripts (package.json), a tap to run (as /run does).
+      if ((s.scripts || []).length) {
+        const row = document.createElement('div');
+        row.className = 'runrow';
+        const run = document.createElement('span');
+        run.className = 'branchon';
+        run.textContent = 'Run';
+        row.append(run);
+        box.append(row);
+        for (const n of s.scripts) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'script';
+          b.textContent = n;
+          b.title = `Run its ${n} script (/run ${n})`;
+          b.onclick = () => api.send(s.id, `/run ${n}`);
+          row.append(b);
+        }
+      }
       requestAnimationFrame(fitWindow);
       // Then its latest commits: tap one for what it changed.
       return api.commits ? api.commits(s.id) : [];
@@ -1314,7 +1333,7 @@
       const stop = document.createElement('button');
       stop.type = 'button';
       stop.textContent = 'Stop';
-      stop.title = s.owned ? `Stop ${t.command}` : `Ask Claude to stop ${t.command}`;
+      stop.title = s.owned || t.mine ? `Stop ${t.command}` : `Ask Claude to stop ${t.command}`;
       // (A session Blaube started stops it itself; any other is asked to.)
       stop.onclick = async () => {
         if (!current) return;
@@ -1782,6 +1801,9 @@
     // (/model in a session Blaube started: the models it can switch to.)
     m = /^\/model\s+([\w.[\]-]*)$/i.exec(before);
     if (m && current.owned) return { kind: 'model', q: m[1], from: c - m[1].length };
+    // (/run: its scripts.)
+    m = /^\/run\s+([\w:.@/-]*)$/i.exec(before);
+    if (m) return { kind: 'script', q: m[1], from: c - m[1].length };
     m = /^\/effort\s+(\w*)$/i.exec(before);
     if (m && current.owned) return { kind: 'effort', q: m[1], from: c - m[1].length };
     return null;

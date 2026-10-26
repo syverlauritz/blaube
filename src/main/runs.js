@@ -1,0 +1,101 @@
+// A project's own scripts (package.json), run from its box: a dev server
+// or a watcher keeps running in the background, Blaube's own, with what it
+// prints a tap away and Open for where it's up; anything else runs as a
+// step. No terminal tab left open for `npm run dev`.
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawn, spawnSync } = require('node:child_process');
+const { EventEmitter } = require('node:events');
+const { localUrl } = require('./taskOutput');
+
+// The ones that keep running (a server, a watcher), by their name.
+const LONG = /^(dev|start|serve|preview|watch|storybook)(:|$)|[:-](dev|serve|watch|start)$/;
+const NAME = /^[\w][\w:.@/-]{0,79}$/; // (what goes in the command: nothing a shell reads)
+
+// Its scripts, the usual ones first: [{ name, long, command }], or [].
+const seen = new Map(); // cwd -> { mtime, list } (read again only once package.json changes)
+function scripts(cwd) {
+  let mtime = 0;
+  try { mtime = fs.statSync(path.join(cwd, 'package.json')).mtimeMs; } catch { /* none */ }
+  const hit = seen.get(cwd);
+  if (hit && hit.mtime === mtime) return hit.list;
+  const list = mtime ? readScripts(cwd) : [];
+  seen.set(cwd, { mtime, list });
+  if (seen.size > 100) seen.delete(seen.keys().next().value);
+  return list;
+}
+function readScripts(cwd) {
+  let pkg;
+  try { pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8')); } catch { return []; }
+  const all = pkg && typeof pkg.scripts === 'object' && pkg.scripts ? Object.keys(pkg.scripts).filter((n) => NAME.test(n) && !/^(pre|post)/.test(n)) : [];
+  const rank = (n) => { const i = ['dev', 'start', 'test', 'build', 'serve', 'preview', 'lint', 'watch'].indexOf(n); return i < 0 ? 99 : i; };
+  const pm = manager(cwd);
+  return all.sort((a, b) => rank(a) - rank(b)).slice(0, 10).map((name) => ({ name, long: LONG.test(name), command: `${pm} run ${name}` }));
+}
+// npm, unless its lockfile says otherwise.
+function manager(cwd) {
+  const has = (f) => { try { return fs.existsSync(path.join(cwd, f)); } catch { return false; } };
+  return has('pnpm-lock.yaml') ? 'pnpm' : has('yarn.lock') ? 'yarn' : has('bun.lockb') || has('bun.lock') ? 'bun' : 'npm';
+}
+
+// The ones running: id -> { id, session, cwd, name, command, out, url, proc }.
+const KEEP = 64 << 10;
+const running = new Map();
+const events = new EventEmitter();
+let next = 1;
+function start(session, cwd, name, { platform = process.platform } = {}) {
+  const s = scripts(cwd).find((x) => x.name === name);
+  if (!s) return null;
+  for (const r of running.values()) if (r.cwd === cwd && r.name === name) return r; // (already running)
+  const win = platform === 'win32';
+  const shell = process.env.SHELL || (platform === 'darwin' ? '/bin/zsh' : '/bin/bash');
+  let proc;
+  try {
+    proc = win
+      ? spawn('cmd.exe', ['/d', '/s', '/c', s.command], { cwd, windowsHide: true })
+      : spawn(shell, ['-lc', s.command], { cwd, detached: true, env: Object.assign({}, process.env, { FORCE_COLOR: '0', BROWSER: 'none' }) });
+  } catch { return null; }
+  const r = { id: `run:${next++}`, session, cwd, name, command: s.command, out: '', url: '', proc, at: Date.now() };
+  running.set(r.id, r);
+  const keep = (d) => {
+    r.out += d;
+    if (r.out.length > KEEP * 2) r.out = r.out.slice(-KEEP);
+    if (!r.url) { const u = localUrl(r.out.slice(0, 16 << 10)); if (u) { r.url = u; events.emit('url', r); } }
+  };
+  proc.stdout.setEncoding('utf8'); proc.stderr.setEncoding('utf8');
+  proc.stdout.on('data', keep); proc.stderr.on('data', keep);
+  const end = (code) => {
+    if (!running.has(r.id)) return;
+    running.delete(r.id);
+    r.code = code;
+    events.emit('exit', r);
+  };
+  proc.on('error', (e) => { keep(e.message); end(1); });
+  proc.on('close', (code, signal) => end(r.stopped ? 0 : code == null ? (signal ? 1 : 0) : code));
+  return r;
+}
+function stop(id) {
+  const r = running.get(id);
+  if (!r) return false;
+  r.stopped = true;
+  if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(r.proc.pid), '/T', '/F'], { windowsHide: true });
+  else try { process.kill(-r.proc.pid, 'SIGTERM'); } catch { /* gone */ }
+  return true;
+}
+function stopAll(session) { for (const r of [...running.values()]) if (!session || r.session === session) stop(r.id); }
+const sessions = () => [...new Set([...running.values()].map((r) => r.session))];
+// For its box: [{ id, label, command, url, mine }].
+function list(session) {
+  return [...running.values()].filter((r) => r.session === session).map((r) => ({ id: r.id, label: r.name, command: r.command, url: r.url, mine: true }));
+}
+function output(id) {
+  const r = running.get(id);
+  if (!r) return null;
+  const text = r.out.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/\r(?!\n)/g, '\n');
+  const cut = text.length > 16 << 10;
+  return { text: (cut ? text.slice(text.indexOf('\n', text.length - (16 << 10)) + 1) : text).replace(/\s+$/, ''), exited: null, cut };
+}
+// Its last line that says something, for "stopped" notes.
+function lastLine(text) { return String(text || '').replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').split('\n').map((l) => l.trim()).filter(Boolean).pop() || ''; }
+
+module.exports = { scripts, manager, start, stop, stopAll, sessions, list, output, lastLine, events, LONG };

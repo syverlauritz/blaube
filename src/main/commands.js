@@ -100,6 +100,11 @@ const ABOUT = {
   usage: 'How much of your limits you’ve used',
 };
 
+// Commands only the box has (not Claude Code's): name -> what it does.
+const BLAUBE = { run: 'Runs one of its scripts: /run dev' };
+// Whether it's one of the box's own, here (one of yours by that name wins).
+function blaubeCommand(name, cwd = '', home = os.homedir()) { return Object.hasOwn(BLAUBE, name) && !yours(cwd, home).has(name); }
+
 // Every command you could type, for "/" in the talk box: [{ name, mine,
 // about }] (yours first), the ones starting with `q`.
 function commandNames(q = '', cwd = '', home = os.homedir()) {
@@ -109,6 +114,8 @@ function commandNames(q = '', cwd = '', home = os.homedir()) {
   const out = [...mine.keys()].sort().filter((n) => !BUILT_IN.has(n) && n.toLowerCase().startsWith(q)).slice(0, 50).map((name) => ({ name, mine: true, about: about(mine.get(name)) }));
   for (const k of skills(cwd, home)) if (!BUILT_IN.has(k.name) && !mine.has(k.name) && k.name.toLowerCase().startsWith(q)) out.push({ name: k.name, mine: true, skill: true, about: k.about || 'A skill' });
   for (const name of [...BUILT_IN].sort()) out.push(Object.assign({ name, mine: false }, ABOUT[name] ? { about: ABOUT[name] } : {}));
+  // (Blaube's own, unless you have one by that name.)
+  for (const [name, about] of Object.entries(BLAUBE)) if (!mine.has(name)) out.push({ name, mine: false, about });
   return out.filter((c) => c.name.toLowerCase().startsWith(q));
 }
 
@@ -203,4 +210,4 @@ function contextNote(r) {
   return { text: `Context: ${pct}% full (${kTokens(used)} of ${kTokens(r.maxTokens)})`, context: { max: r.maxTokens, parts: parts.map((p) => Object.assign(p, { label: `${p.name} ${kTokens(p.tokens)}` })) } };
 }
 
-module.exports = { skills, skillPrompt, askInWords, bugUrl, slashCommand, commandNames, expand, control, contextNote, kTokens, EFFORTS };
+module.exports = { blaubeCommand, skills, skillPrompt, askInWords, bugUrl, slashCommand, commandNames, expand, control, contextNote, kTokens, EFFORTS };
