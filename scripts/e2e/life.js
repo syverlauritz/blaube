@@ -113,6 +113,12 @@ module.exports = async function run({ win, tracker }) {
 	// A bored slime blows a bubble, and it floats off.
 	await until(() => js(`!__blaube.buddies.get('s1').tag && !__blaube.buddies.get('s2').tag`), 15000);
 	check(await until(() => js(`(() => { const a = __blaube.buddies.get('s2'), g = a.blow; __blaube.sys.idle = 0; __blaube.sys.idleAt = performance.now() / 1000; if (!g) a.nextBlow = 0; return !!(g && g.bubble && g.bubble.away); })()`), 15000), 'a bored slime blows a bubble and it floats off');
+	// Kept waiting a long while: a rain cloud, gone once you answer.
+	ev('s2', 'UserPromptSubmit'); ev('s2', 'Notification', { notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' });
+	await until(() => js(`__blaube.buddies.get('s2').state === 'waiting'`), 3000);
+	check(await until(() => js(`(() => { const b = __blaube.buddies.get('s2'); __blaube.sys.idle = 0; __blaube.sys.idleAt = performance.now() / 1000; b.stateSince = Math.min(b.stateSince, __blaube.now() - 600); return !!b.cloud; })()`), 4000), 'kept waiting, a rain cloud gathers');
+	ev('s2', 'PostToolUse', { tool_name: 'Bash' }); ev('s2', 'Stop', { last_assistant_message: 'Done.' });
+	check(await until(() => js(`!__blaube.buddies.get('s2').cloud`), 3000), 'answered, the cloud goes');
 	await sleep(1500);
 	check(await js(`[...__blaube.buddies.values()].every((b) => [...b.body.px].every(Number.isFinite))`), 'bodies still finite after all that');
 	check(errs.length === 0, 'no renderer errors ' + errs.slice(0, 3).join(' | '));
