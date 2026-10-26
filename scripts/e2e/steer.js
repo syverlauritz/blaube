@@ -619,6 +619,13 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await box(`${tidy}.querySelector('button').click()`);
 	check(await until(() => gq('branch', '--list', 'old-fix') === '' && inbox.log(ID3).some((e) => /^Deleted \d+ merged branch(es)?: .*old-fix/.test(e.text || '')), 10000), 'a second tap deletes them (all their work is in main)');
 	gq('update-ref', 'refs/heads/main', mainWas);
+	// Pushed, no pull request yet, its remote on GitHub: GitHub's own page to open one, a tap away.
+	gq('push', '-q', '-u', 'origin', 'HEAD');
+	gq('remote', 'set-url', 'origin', 'git@github.com:o/tax.git');
+	check(await until(async () => { await box(`document.getElementById('git').click(); document.getElementById('git').click()`); await sleep(300); return box(`(() => { const w = document.querySelector('#branches .prlink.web'); return !!w && w.textContent === 'Open a PR on GitHub ↗'; })()`); }, 10000), 'a pushed branch with no PR links to GitHub’s page to open one');
+	await box(`document.querySelector('#branches .prlink.web').click()`);
+	check(await until(() => global.__blaubeOpened === `https://github.com/o/tax/compare/${gq('branch', '--show-current')}?expand=1`), `and a tap opens it (${global.__blaubeOpened})`);
+	gq('remote', 'set-url', 'origin', bare);
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'what did you change?' });
 	// While it works: how long it's been at it, as the terminal counts.
 	tracker.sessions.get(ID3).turnStart = Date.now() - 75e3;

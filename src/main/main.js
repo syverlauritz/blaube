@@ -3061,6 +3061,12 @@ app.whenReady().then(async () => {
     if (!s || !s.cwd || id.startsWith('demo-')) return done([]);
     git.branches(s.cwd, done);
   }));
+  // Its branch (or repository) on GitHub, or GitHub's page to open a PR.
+  ipcMain.handle('talk-web', (_e, id) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    if (!s || !s.cwd || id.startsWith('demo-')) return done(null);
+    git.github(s.cwd, (repo) => done(git.webLink(repo, gitStates.get(id), prStates.get(id))));
+  }));
   // Branches already merged into its base, and tidying them away.
   ipcMain.handle('talk-merged', (_e, id) => new Promise((done) => {
     const s = id === talkId && tracker.sessions.get(id);
@@ -3246,6 +3252,7 @@ app.whenReady().then(async () => {
     let u = null;
     try { u = new URL(String(url)); } catch { return; }
     if ((u.protocol === 'https:' || u.protocol === 'http:') && !TEST) shell.openExternal(u.href);
+    if (TEST) global.__blaubeOpened = u.href;
   });
   ipcMain.on('talk-copy', (_e, text) => { if (typeof text === 'string' && text.length < 1e6) clipboard.writeText(text); });
   ipcMain.handle('talk-save', (_e, id) => (id && id === talkId ? saveConversation(id) : ''));

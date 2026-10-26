@@ -1319,7 +1319,7 @@
       btn.disabled = false;
       if (err) { said.textContent = err; requestAnimationFrame(fitWindow); }
     };
-    Promise.all([api.branches(s.id), api.parked ? api.parked(s.id) : [], api.merged ? api.merged(s.id) : { names: [] }]).then(([names, parked, done]) => {
+    Promise.all([api.branches(s.id), api.parked ? api.parked(s.id) : [], api.merged ? api.merged(s.id) : { names: [] }, api.web ? api.web(s.id) : null]).then(([names, parked, done, web]) => {
       if (box.dataset.key !== key || box.dataset.draw !== draw) return;
       box.textContent = '';
       // Its pull request, a tap from your browser.
@@ -1331,6 +1331,15 @@
         p.title = `Open it on GitHub\n${s.pr.url}`;
         p.onclick = () => api.openLink(s.pr.url);
         box.append(p);
+      } else if (web) {
+        // (Or, pushed, GitHub's own page to open one: no model call.)
+        const w = document.createElement('button');
+        w.type = 'button';
+        w.className = 'prlink web';
+        w.textContent = web.label;
+        w.title = web.url;
+        w.onclick = () => api.openLink(web.url);
+        box.append(w);
       }
       const label = document.createElement('span');
       label.className = 'branchon';

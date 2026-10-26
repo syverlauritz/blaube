@@ -422,6 +422,25 @@ function deleteMerged(cwd, names, cb) {
     });
   });
 }
+// Its repository on GitHub, from its remote's address (https or ssh):
+// 'https://github.com/owner/repo', or ''.
+function githubOf(url) {
+  const m = /^(?:https:\/\/(?:[^@/\s]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/.exec(String(url || '').trim());
+  return m ? `https://github.com/${m[1]}/${m[2]}` : '';
+}
+function github(cwd, cb) {
+  execFile('git', ['ls-remote', '--get-url'], { cwd, timeout: 3000, windowsHide: true }, (err, out) => cb(err ? '' : githubOf(out)));
+}
+// The link its branches show: a pushed branch with no open pull request,
+// GitHub's page to open one (no model call); otherwise the branch (or the
+// repository) on GitHub. { label, url } or null.
+function webLink(repo, st, pr) {
+  if (!repo || !st) return null;
+  const name = repo.replace('https://github.com/', '');
+  const branch = branchName(st.branch);
+  if (branch && st.upstream && !MAIN.test(branch) && !(pr && pr.state === 'OPEN')) return { label: 'Open a PR on GitHub ↗', url: `${repo}/compare/${encodeURI(branch)}?expand=1` };
+  return { label: `${name} on GitHub ↗`, url: branch && st.upstream ? `${repo}/tree/${encodeURI(branch)}` : repo };
+}
 const gitSaid = (errOut) => (String(errOut || '').split('\n').find((l) => /^(fatal|error):/.test(l)) || '').replace(/^(fatal|error):\s*/, '');
 
-module.exports = { merged, deleteMerged, settle, fetchQuietly, park, parked, unpark, canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };
+module.exports = { githubOf, github, webLink, merged, deleteMerged, settle, fetchQuietly, park, parked, unpark, canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };

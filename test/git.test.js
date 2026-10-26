@@ -528,3 +528,17 @@ test('branches already merged, to tidy away: not one just made, nor the one it�
     assert.notEqual(g('branch', '--list', 'not-yet'), '');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('its repository on GitHub, and the link its branches show', () => {
+  const { githubOf, webLink } = require('../src/main/git');
+  for (const u of ['https://github.com/o/r.git', 'https://github.com/o/r', 'git@github.com:o/r.git', 'ssh://git@github.com/o/r.git', 'https://x-access@github.com/o/r.git\n']) assert.equal(githubOf(u), 'https://github.com/o/r', u);
+  for (const u of ['https://gitlab.com/o/r.git', '/tmp/r.git', '', 'https://github.com/o', 'https://github.com/o/r/x']) assert.equal(githubOf(u), '', u);
+  const repo = 'https://github.com/o/r';
+  const st = (o) => Object.assign({ branch: 'feature/tax', upstream: true }, o);
+  assert.deepEqual(webLink(repo, st(), null), { label: 'Open a PR on GitHub ↗', url: 'https://github.com/o/r/compare/feature/tax?expand=1' });
+  assert.equal(webLink(repo, st(), { number: 4, state: 'MERGED' }).label, 'Open a PR on GitHub ↗', 'its last one is merged');
+  assert.deepEqual(webLink(repo, st(), { number: 5, state: 'OPEN' }), { label: 'o/r on GitHub ↗', url: 'https://github.com/o/r/tree/feature/tax' });
+  assert.deepEqual(webLink(repo, st({ upstream: false }), null), { label: 'o/r on GitHub ↗', url: repo }, 'not pushed yet');
+  assert.deepEqual(webLink(repo, st({ branch: 'main' }), null).url, 'https://github.com/o/r/tree/main');
+  assert.equal(webLink('', st(), null), null);
+});
