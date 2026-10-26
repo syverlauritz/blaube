@@ -3067,6 +3067,24 @@ app.whenReady().then(async () => {
     if (!s || !s.cwd || id.startsWith('demo-')) return done(null);
     git.github(s.cwd, (repo) => done(git.webLink(repo, gitStates.get(id), prStates.get(id))));
   }));
+  // Changes you set aside yourself (git stash), and bringing them back.
+  ipcMain.handle('talk-stashes', (_e, id) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    if (!s || !s.cwd || id.startsWith('demo-')) return done([]);
+    git.stashes(s.cwd, (list) => done(list.map((x) => Object.assign(x, { when: history.ago(x.at) }))));
+  }));
+  ipcMain.handle('talk-bring-back', (_e, id, ref, at) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    const st = gitStates.get(id);
+    if (!s || !s.cwd || !st || typeof ref !== 'string') return done('Can’t bring those back');
+    if (s.state === 'working' || s.state === 'waiting') return done('Not while it’s working: wait for it to finish');
+    if (st.changed || st.midway) return done('Commit or set aside your changes here first');
+    git.bringBack(s.cwd, ref, Number(at), (err) => {
+      inbox.add(id, { who: 'note', text: err ? `Couldn’t bring them back: ${err}` : 'Brought back the changes you’d set aside' });
+      git.status(s.cwd, (now) => { gitStates.set(id, now); pushTalk(id); });
+      done(err);
+    });
+  }));
   // Branches already merged into its base, and tidying them away.
   ipcMain.handle('talk-merged', (_e, id) => new Promise((done) => {
     const s = id === talkId && tracker.sessions.get(id);

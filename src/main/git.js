@@ -318,6 +318,26 @@ function undoCommit(cwd, hash, cb) {
     });
   });
 }
+// Changes you set aside yourself (git stash), newest first: not the ones
+// Blaube set aside. cb([{ ref, subject, at }]), the first 3.
+function stashes(cwd, cb) {
+  execFile('git', ['stash', 'list', '--format=%gd%x1f%gs%x1f%ct'], { cwd, timeout: 5000, windowsHide: true }, (err, out) => {
+    if (err) return cb([]);
+    cb(String(out).split('\n').map((l) => l.split('\x1f')).filter(([ref, subject]) => /^stash@\{\d+\}$/.test(ref || '') && subject && !subject.includes(PARKED) && !subject.includes(PUT_BACK))
+      .slice(0, 3).map(([ref, subject, at]) => ({ ref, subject: subject.replace(/^On [^:]+: /, '').replace(/^WIP on ([^:]+): [0-9a-f]+ /, 'Work in progress on $1: '), at: Number(at) * 1000 || 0 })));
+  });
+}
+// One of those brought back (`git stash pop --index`), as long as it's still
+// the one you saw. cb(error or '').
+function bringBack(cwd, ref, at, cb) {
+  stashes(cwd, (list) => {
+    if (!list.some((x) => x.ref === ref && x.at === at)) return cb('It isn’t there any more');
+    execFile('git', ['stash', 'pop', '--index', ref], { cwd, timeout: 10000, windowsHide: true }, (err, _o, errOut) => {
+      forget(cwd);
+      cb(err ? gitSaid(errOut) || 'git couldn’t bring them back (they’re still set aside)' : '');
+    });
+  });
+}
 // A pushed commit taken back with a new one that undoes it (`git revert
 // --no-edit`), history kept; not a merge. cb(error or '', whether it
 // stopped at a conflict to settle).
@@ -461,4 +481,4 @@ function webLink(repo, st, pr) {
 }
 const gitSaid = (errOut) => (String(errOut || '').split('\n').find((l) => /^(fatal|error):/.test(l)) || '').replace(/^(fatal|error):\s*/, '');
 
-module.exports = { revert, finishLabel, githubOf, github, webLink, merged, deleteMerged, settle, fetchQuietly, park, parked, unpark, canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };
+module.exports = { stashes, bringBack, revert, finishLabel, githubOf, github, webLink, merged, deleteMerged, settle, fetchQuietly, park, parked, unpark, canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };

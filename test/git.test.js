@@ -576,3 +576,26 @@ test('a pushed commit reverted with a new one; a conflict leaves a revert to fin
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('changes you set aside yourself (git stash), and bringing them back', async () => {
+  const { stashes, bringBack, park } = require('../src/main/git');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-stash-'));
+  const env = Object.assign({}, process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
+  const g = (...a) => execFileSync('git', a, { cwd: dir, env, stdio: 'pipe' }).toString().trim();
+  const list = () => new Promise((r) => stashes(dir, r));
+  try {
+    g('init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(dir, 'a.txt'), '1\n'); g('add', '.'); g('commit', '-qm', 'base');
+    assert.deepEqual(await list(), []);
+    fs.writeFileSync(path.join(dir, 'a.txt'), '2\n'); g('stash', 'push', '-q');
+    fs.writeFileSync(path.join(dir, 'a.txt'), '3\n'); await new Promise((r) => park(dir, 'main', r));
+    fs.writeFileSync(path.join(dir, 'a.txt'), '4\n'); g('stash', 'push', '-q', '-m', 'try the tax idea');
+    const l = await list();
+    assert.deepEqual(l.map((x) => [x.ref, x.subject]), [['stash@{0}', 'try the tax idea'], ['stash@{2}', 'Work in progress on main: base']], 'not the one Blaube set aside');
+    assert.ok(l[0].at > 0);
+    assert.equal(await new Promise((r) => bringBack(dir, 'stash@{2}', 1, r)), 'It isn’t there any more');
+    assert.equal(await new Promise((r) => bringBack(dir, l[1].ref, l[1].at, r)), '');
+    assert.equal(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8'), '2\n');
+    assert.deepEqual((await list()).map((x) => x.subject), ['try the tax idea']);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

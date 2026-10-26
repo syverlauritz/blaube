@@ -391,7 +391,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await type('/agents');
 	check(await until(() => fs.existsSync(path.join(repo, '.claude', 'agents')) && inbox.log(ID3).some((e) => /^No agents of its own yet\. Opened .+\/\.claude\/agents/.test(e.text || ''))), '/agents opens the project’s agents folder');
 	await box(`document.getElementById('git').click()`);
-	check(await until(() => box(`[...document.querySelectorAll('#gitFiles li > button:first-child')].map((b) => b.textContent).sort().join()`).then((t) => t === 'notes.mdnew,src/tax.jsnew')), 'tapping it lists the files');
+	check(await until(() => box(`[...document.querySelectorAll('#gitFiles li > button:first-child')].map((b) => b.textContent).sort().join()`).then((t) => t === 'notes.mdnew,src/tax.jsnew'), 10000), 'tapping it lists the files');
 	await box(`[...document.querySelectorAll('#gitFiles li > button:first-child')].find((b) => /tax\\.js/.test(b.textContent)).click()`);
 	check(await until(() => box(`[...document.querySelectorAll('#gitFiles .diff')].some((p) => !p.hidden && p.querySelector('.add') && /\\+x/.test(p.textContent) && p.offsetHeight > 20)`)), 'tapping a file shows what changed in it');
 	await sleep(800);
@@ -639,7 +639,16 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await until(() => box(`(() => { const r = ${oopsRow}.querySelector('.revert'); if (r) r.click(); return !!r; })()`));
 	check(await until(() => !fs.existsSync(path.join(repo, 'oops.txt')) && /^Revert "oops"/.test(gq('log', '-1', '--format=%s')) && inbox.log(ID3).some((e) => e.text === 'Reverted “oops”: a new commit undoes it (Push sends it)'), 10000), 'a second tap reverts it with a new commit');
 	gq('reset', '-q', '--keep', revBefore); gq('config', '--unset', 'user.name'); gq('config', '--unset', 'user.email');
-	if (stashed) gq('stash', 'pop', '-q');
+	// Changes you set aside yourself (git stash): Bring back, a tap.
+	const taxNow = fs.readFileSync(taxFile, 'utf8');
+	if (!stashed) { fs.writeFileSync(taxFile, taxNow + '// stashed\n'); gq('stash', 'push', '-q', '-m', 'e2e'); }
+	const stashRow = `([...document.querySelectorAll('#branches .behindrow.stashed')].find((r) => /^Set aside: e2e · /.test(r.firstChild.textContent)) || document)`;
+	check(await until(async () => { await box(`document.getElementById('git').click(); document.getElementById('git').click()`); await sleep(400); return box(`(() => { const b = ${stashRow}.querySelector('button'); return !!b && b.textContent === 'Bring back' && !b.disabled; })()`); }, 10000), 'changes you set aside with git stash show, with Bring back');
+	await sleep(300);
+	await shot('stashed');
+	await box(`${stashRow}.querySelector('button').click()`);
+	check(await until(() => !gq('stash', 'list').includes('e2e') && inbox.log(ID3).some((e) => e.text === 'Brought back the changes you’d set aside'), 10000), 'a tap brings them back');
+	if (!stashed) fs.writeFileSync(taxFile, taxNow);
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'what did you change?' });
 	// While it works: how long it's been at it, as the terminal counts.
 	tracker.sessions.get(ID3).turnStart = Date.now() - 75e3;

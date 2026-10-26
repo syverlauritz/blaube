@@ -149,7 +149,8 @@
   .branches .behindrow span { flex: 1; min-width: 0; }
   .branches .behindrow button { flex: none; border: 0; border-radius: 8px; padding: 2px 8px; background: var(--ink); color: #fff; font: 600 12px var(--ui); cursor: pointer; }
   .branches .behindrow button:disabled { opacity: .45; cursor: default; }
-  .branches .behindrow.merged button { background: var(--soft); color: var(--ink); }
+  .branches .behindrow.merged button, .branches .behindrow.stashed button { background: var(--soft); color: var(--ink); }
+  .branches .behindrow.stashed span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .branches .behindrow button.sure { background: #d04a3c; color: #fff; }
   .branches .branchfiles[hidden] { display: none; }
   .branches .commits { flex-basis: 100%; margin: 4px 0 0; max-height: 200px; }

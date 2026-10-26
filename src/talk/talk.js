@@ -1319,7 +1319,7 @@
       btn.disabled = false;
       if (err) { said.textContent = err; requestAnimationFrame(fitWindow); }
     };
-    Promise.all([api.branches(s.id), api.parked ? api.parked(s.id) : [], api.merged ? api.merged(s.id) : { names: [] }, api.web ? api.web(s.id) : null]).then(([names, parked, done, web]) => {
+    Promise.all([api.branches(s.id), api.parked ? api.parked(s.id) : [], api.merged ? api.merged(s.id) : { names: [] }, api.web ? api.web(s.id) : null, api.stashes ? api.stashes(s.id) : []]).then(([names, parked, done, web, stashed]) => {
       if (box.dataset.key !== key || box.dataset.draw !== draw) return;
       box.textContent = '';
       // Its pull request, a tap from your browser.
@@ -1381,6 +1381,26 @@
           requestAnimationFrame(fitWindow);
         };
         row.append(said, go);
+        extra.push(row);
+      }
+      // (Changes you set aside yourself, git stash: a tap brings them back.)
+      for (const x of stashed) {
+        const row = document.createElement('div');
+        row.className = 'behindrow stashed';
+        const what = document.createElement('span');
+        what.textContent = `Set aside: ${x.subject} · ${x.when}`;
+        what.title = `${x.ref}: ${x.subject}`;
+        const back = document.createElement('button');
+        back.type = 'button';
+        back.textContent = 'Bring back';
+        back.disabled = busy || dirty;
+        back.title = busy ? 'Once it’s done' : dirty ? 'Commit or set aside your changes here first' : 'Brings these changes back here (git stash pop)';
+        back.onclick = async () => {
+          back.disabled = true;
+          const err = await api.bringBack(s.id, x.ref, x.at);
+          if (err) { what.textContent = err; back.disabled = false; requestAnimationFrame(fitWindow); } else { row.remove(); requestAnimationFrame(fitWindow); }
+        };
+        row.append(what, back);
         extra.push(row);
       }
       const add = document.createElement('button');
