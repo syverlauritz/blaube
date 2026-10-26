@@ -68,6 +68,7 @@ module.exports = async function run({ win, tracker }) {
 	check(await until(() => js(`!!${b1}.wriggling`), 5000), 'held still, it wriggles');
 	for (let i = 0; i < 14; i++) { await js(`${b1}.body.moveGrab(__hold.x + ${i % 2 ? 160 : -160}, __hold.y)`); await sleep(70); }
 	check(await js(`${b1}.dizzyUntil > __blaube.now()`), 'shaken, it gets dizzy');
+	check(await js(`${b1}.mood < -0.2`), 'and a bit grumpy with you for a while');
 	await js(`${b1}.body.endGrab()`);
 	await sleep(1500);
 	// A failed test run lets some air out.
