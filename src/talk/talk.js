@@ -157,6 +157,10 @@
       pre.className = 'stepout';
       // (An edit's − and + lines are tinted, like a diff.)
       if (/^[−+] /.test(m.detail)) { pre.classList.add('diff'); colorDiff(pre, m.detail); } else pre.textContent = m.detail;
+      // (What it printed copies in one tap.)
+      const cp = copyButton(() => m.detail, 'Copy what it printed');
+      cp.classList.add('copyout');
+      pre.prepend(cp);
       const shown = () => openSteps.has(m.n);
       pre.hidden = !shown();
       e.classList.toggle('open', shown());

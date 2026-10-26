@@ -228,6 +228,9 @@
   button.step.failed:hover { color: #a93226; }
   .stepout { margin: 3px 0 6px 20px; padding: 8px 12px; background: var(--soft); border-radius: 14px; font: 500 14px/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow-y: auto; user-select: text; animation: squish .25s cubic-bezier(.3, 1.6, .5, 1); transform-origin: 0 0; }
   .stepout[hidden] { display: none; }
+  .stepout { position: relative; }
+  .stepout .copyout { float: right; margin: -2px -4px 0 6px; background: var(--soft); border-radius: 999px; padding: 1px 8px; font-size: 13px; opacity: 0; transition: opacity .15s; }
+  .stepout:hover .copyout, .stepout .copyout:focus-visible { opacity: 1; }
   .steps:not(.open) .step.early, .steps:not(.open) .step.early + .stepout { display: none; }
   .steps .earlier { align-self: flex-start; border: 0; background: none; padding: 0 0 1px 20px; font: 600 14px var(--ui); color: var(--faint); cursor: pointer; }
   .steps .earlier:hover { color: var(--ink); }

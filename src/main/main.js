@@ -499,6 +499,7 @@ function sweep() {
   const live = (id) => tracker.sessions.has(id) || owned.has(id) || (id === talkId && !!talkWin && !talkWin.isDestroyed() && talkWin.isVisible());
   for (const id of [...inbox.logs.keys(), ...inbox.todos.keys(), ...inbox.steerable, ...inbox.typed.keys()]) if (!live(id)) inbox.forget(id);
   const maps = { gitStates, looked, glances, talkHeights, notified, doing, errorCounts };
+  for (const id of [...muted]) if (!live(id)) muted.delete(id);
   for (const m of Object.values(maps)) for (const id of [...m.keys()]) if (!live(id)) m.delete(id);
   for (const [k, at] of [...lastBubble]) if (Date.now() - at > 60e3) lastBubble.delete(k);
   while (agentDescriptions.size > 200) agentDescriptions.delete(agentDescriptions.keys().next().value);
@@ -886,8 +887,10 @@ function statusBubble({ session: s, agentId, payload: p }) {
 // behind your windows); clicking it opens that slime's talk box.
 const notified = new Map(); // session id -> when it last notified
 const shown = new Set(); // notifications still on screen
+const muted = new Set(); // sessions you turned notifications off for (from its slime's menu)
 function notify(s, event, text, secs = 0) {
   if (TEST || !Notification.isSupported() || s.id.startsWith('demo-')) return;
+  if (muted.has(s.id)) return;
   const mode = prefs.config.notify || 'Behind windows';
   const seen = (talkWin && talkWin.isVisible() && talkId === s.id) || (mode !== 'Always' && prefs.config.onTop !== 'Off' && win && win.isVisible());
   const n = attention.notification({ event, project: s.project, title: usage.sessionInfo(transcriptPath(s)).title, text, secs, seen, enabled: mode !== 'Off' });
@@ -1112,6 +1115,7 @@ function sessionMenu(id) {
       { label: 'Resume in a new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
     ]),
     { label: 'Copy resume command', click: () => clipboard.writeText(`cd "${s.cwd}" && ${resumeCommand(s.id)}`) },
+    { label: 'Notify me about this one', type: 'checkbox', checked: !muted.has(id), enabled: !isDemo && (prefs.config.notify || 'Behind windows') !== 'Off', click: (item) => { if (item.checked) muted.delete(id); else muted.add(id); } },
     { label: 'Save conversation as Markdown', enabled: !isDemo && inbox.log(id).length > 0, click: () => { const f = saveConversation(id); if (f) shell.showItemInFolder(f); } },
     { label: 'Open project folder', enabled: !!s.cwd, click: () => shell.openPath(s.cwd) },
     { type: 'separator' },
