@@ -415,9 +415,9 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => box(`!document.querySelector('#gitFiles .putback') && [...document.querySelectorAll('#gitFiles li > button:first-child')].some((b) => b.textContent === 'notes.mdnew')`), 10000), 'and the list has it again');
 	check(await until(() => box(`(() => { const b = document.getElementById('branches'); return !b.hidden && [...b.querySelectorAll(':scope > button')].map((x) => x.textContent + (x.disabled ? '!' : '')).join() === 'feature/tax!,New branch…'; })()`)), 'the git line shows its branches too, the one it’s on marked');
 	await box(`[...document.querySelectorAll('#branches > button')].find((b) => b.textContent === 'New branch…').click()`);
-	await box(`(() => { const i = document.querySelector('#branches input'); i.value = 'bad name'; i.form.requestSubmit(); })()`);
+	await until(() => box(`(() => { const i = document.querySelector('#branches input'); if (!i) { const a = [...document.querySelectorAll('#branches > button')].find((b) => b.textContent === 'New branch…'); if (a) a.click(); return false; } i.value = 'bad name'; i.form.requestSubmit(); return true; })()`));
 	check(await until(() => box(`document.querySelector('#branches .clonesaid').textContent === 'That isn’t a name a branch can have'`)), 'a name a branch can’t have is said so');
-	await box(`(() => { const i = document.querySelector('#branches input'); i.value = 'try-it'; i.form.requestSubmit(); })()`);
+	await until(() => box(`(() => { const i = document.querySelector('#branches input'); if (!i) { const a = [...document.querySelectorAll('#branches > button')].find((b) => b.textContent === 'New branch…'); if (a) a.click(); return false; } i.value = 'try-it'; i.form.requestSubmit(); return true; })()`));
 	check(await until(() => execFileSync('git', ['branch', '--show-current'], { cwd: repo }).toString().trim() === 'try-it' && inbox.log(ID3).some((e) => e.text === 'Made a new branch, try-it, and switched to it')), 'New branch… makes one and switches to it');
 	check(await until(() => box(`/^try-it/.test(document.getElementById('git').textContent) && [...document.querySelectorAll('#branches > button')].map((x) => x.textContent).sort().join() === 'New branch…,feature/tax,try-it'`)), 'and the git line follows');
 	await sleep(500);
@@ -604,6 +604,21 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await box(`${callOff}.click()`);
 	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'Called off the merge: back to how it was before' && e.ok) && !fs.existsSync(path.join(repo, '.git', 'MERGE_HEAD')) && fs.readFileSync(clash, 'utf8') === 'mine\n', 15000), 'a second tap calls it off, git merge --abort');
 	gq('reset', '-q', '--keep', before); gq('branch', '-D', 'clash-b'); gq('config', '--unset', 'user.name'); gq('config', '--unset', 'user.email');
+	// Branches already merged into main: tidied away from its branches, two taps.
+	const mainWas = gq('rev-parse', 'main');
+	const fixTip = gq('commit-tree', 'main^{tree}', '-p', 'main', '-m', 'old fix');
+	gq('branch', 'old-fix', fixTip);
+	gq('update-ref', 'refs/heads/main', gq('commit-tree', 'main^{tree}', '-p', 'main', '-p', fixTip, '-m', 'merge old-fix'));
+	await box(`document.getElementById('git').click(); document.getElementById('git').click()`);
+	const tidy = `(document.querySelector('#branches .behindrow.merged') || document)`;
+	check(await until(() => box(`(() => { const r = ${tidy}; return /already merged into main$/.test((r.querySelector('span') || {}).textContent || '') && /old-fix/.test(r.querySelector('span').title) && r.querySelector('button').textContent === 'Delete them'; })()`), 10000), 'branches already merged into main are offered to tidy away');
+	await sleep(300);
+	await shot('merged');
+	await box(`${tidy}.querySelector('button').click()`);
+	check(await until(() => box(`${tidy}.querySelector('button').textContent === 'Delete them?'`)) && gq('branch', '--list', 'old-fix') !== '', 'one tap asks to be sure');
+	await box(`${tidy}.querySelector('button').click()`);
+	check(await until(() => gq('branch', '--list', 'old-fix') === '' && inbox.log(ID3).some((e) => /^Deleted \d+ merged branch(es)?: .*old-fix/.test(e.text || '')), 10000), 'a second tap deletes them (all their work is in main)');
+	gq('update-ref', 'refs/heads/main', mainWas);
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'what did you change?' });
 	// While it works: how long it's been at it, as the terminal counts.
 	tracker.sessions.get(ID3).turnStart = Date.now() - 75e3;

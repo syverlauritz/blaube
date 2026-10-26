@@ -388,6 +388,40 @@ function settle(root, rel, side, cb) {
     });
   });
 }
+// Local branches already merged into its base, to tidy away: not the one
+// it's on, not main and the like, none with changes set aside, and none
+// that's just a point on its base's own line (a branch made and not yet
+// worked on). cb({ base, names }).
+function merged(cwd, cb) {
+  baseOf(cwd, (base) => {
+    if (!base) return cb({ base: '', names: [] });
+    const o = { cwd, timeout: 5000, maxBuffer: 8e6, windowsHide: true };
+    execFile('git', ['for-each-ref', `--merged=${base}`, '--format=%(HEAD)%00%(refname:short)%00%(objectname)', 'refs/heads'], o, (err, out) => {
+      const short = base.replace(/^origin\//, '');
+      const refs = err ? [] : String(out).split('\n').map((l) => l.split('\0')).filter(([head, name, id]) => head !== '*' && branchName(name) && name !== short && !MAIN.test(name) && id);
+      if (!refs.length) return cb({ base: short, names: [] });
+      execFile('git', ['rev-list', '--first-parent', '-n', '5000', base], o, (e2, line) => {
+        const own = new Set(e2 ? [] : String(line).split('\n'));
+        parked(cwd, (kept) => cb({ base: short, names: refs.filter(([, name, id]) => !own.has(id) && !kept.includes(name)).map(([, name]) => name).slice(0, 30) }));
+      });
+    });
+  });
+}
+// Deletes those of `names` that are still merged into its base, checked
+// again just now (`git branch -D`: -d would only ask about the branch it's
+// on): cb(the ones deleted).
+function deleteMerged(cwd, names, cb) {
+  merged(cwd, ({ names: now }) => {
+    const gone = now.filter((n) => names.includes(n));
+    if (!gone.length) return cb([]);
+    execFile('git', ['branch', '-D', '--', ...gone], { cwd, timeout: 10000, windowsHide: true }, () => {
+      execFile('git', ['for-each-ref', '--format=%(refname:short)', 'refs/heads'], { cwd, timeout: 3000, maxBuffer: 8e6, windowsHide: true }, (err, out) => {
+        const left = err ? gone : String(out).split('\n');
+        cb(gone.filter((n) => !left.includes(n)));
+      });
+    });
+  });
+}
 const gitSaid = (errOut) => (String(errOut || '').split('\n').find((l) => /^(fatal|error):/.test(l)) || '').replace(/^(fatal|error):\s*/, '');
 
-module.exports = { settle, fetchQuietly, park, parked, unpark, canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };
+module.exports = { merged, deleteMerged, settle, fetchQuietly, park, parked, unpark, canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };

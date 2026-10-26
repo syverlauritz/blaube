@@ -3061,6 +3061,21 @@ app.whenReady().then(async () => {
     if (!s || !s.cwd || id.startsWith('demo-')) return done([]);
     git.branches(s.cwd, done);
   }));
+  // Branches already merged into its base, and tidying them away.
+  ipcMain.handle('talk-merged', (_e, id) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    if (!s || !s.cwd || id.startsWith('demo-')) return done({ base: '', names: [] });
+    git.merged(s.cwd, done);
+  }));
+  ipcMain.handle('talk-delete-merged', (_e, id, names) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    if (!s || !s.cwd || id.startsWith('demo-') || !Array.isArray(names)) return done([]);
+    git.deleteMerged(s.cwd, names.filter((n) => typeof n === 'string'), (gone) => {
+      if (gone.length) inbox.add(id, { who: 'note', text: `Deleted ${gone.length} merged branch${gone.length === 1 ? '' : 'es'}: ${gone.join(', ')}` });
+      pushTalk(id);
+      done(gone);
+    });
+  }));
   // The branches with changes set aside on them (see talk-switch-branch).
   ipcMain.handle('talk-parked', (_e, id) => new Promise((done) => {
     const s = id === talkId && tracker.sessions.get(id);

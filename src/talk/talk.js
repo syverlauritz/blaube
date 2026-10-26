@@ -1304,7 +1304,10 @@
     box.hidden = !gitOpen;
     if (!gitOpen) { box.dataset.key = ''; return; }
     if (box.dataset.key === key) return;
+    if (document.activeElement && document.activeElement.tagName === 'INPUT' && box.contains(document.activeElement)) return; // (not while you're naming a new branch)
     box.dataset.key = key;
+    const draw = String(Number(box.dataset.draw || 0) + 1); // (only the newest draws: a key can come back while an older one's still asking)
+    box.dataset.draw = draw;
     const on = String(s.git).split(' · ')[0];
     const said = document.createElement('div');
     said.className = 'clonesaid';
@@ -1316,8 +1319,8 @@
       btn.disabled = false;
       if (err) { said.textContent = err; requestAnimationFrame(fitWindow); }
     };
-    Promise.all([api.branches(s.id), api.parked ? api.parked(s.id) : []]).then(([names, parked]) => {
-      if (box.dataset.key !== key) return;
+    Promise.all([api.branches(s.id), api.parked ? api.parked(s.id) : [], api.merged ? api.merged(s.id) : { names: [] }]).then(([names, parked, done]) => {
+      if (box.dataset.key !== key || box.dataset.draw !== draw) return;
       box.textContent = '';
       // Its pull request, a tap from your browser.
       if (s.pr) {
@@ -1346,6 +1349,31 @@
         }
         box.append(b);
       }
+      // (Branches already merged: tidied away in a tap, two to be sure.)
+      const extra = [];
+      if (done.names.length) {
+        const row = document.createElement('div');
+        row.className = 'behindrow merged';
+        const said = document.createElement('span');
+        said.textContent = `${done.names.length} branch${done.names.length === 1 ? '' : 'es'} already merged into ${done.base}`;
+        said.title = done.names.join('\n');
+        const go = document.createElement('button');
+        go.type = 'button';
+        go.textContent = 'Delete them';
+        go.title = `Deletes ${done.names.join(', ')} (their work is all in ${done.base})`;
+        let sure = 0;
+        go.onclick = async () => {
+          if (Date.now() - sure > 4000) { sure = Date.now(); go.textContent = 'Delete them?'; go.classList.add('sure'); setTimeout(() => { if (go.isConnected && Date.now() - sure >= 4000) { go.textContent = 'Delete them'; go.classList.remove('sure'); } }, 4100); return; }
+          go.disabled = true;
+          const gone = await api.deleteMerged(s.id, done.names);
+          if (!gone.length) { go.disabled = false; go.textContent = 'Delete them'; go.classList.remove('sure'); said.textContent = 'git wouldn’t delete them'; return; }
+          if (row.isConnected) row.remove();
+          for (const c of [...box.querySelectorAll(':scope > button')]) if (gone.includes(c.textContent)) c.remove();
+          requestAnimationFrame(fitWindow);
+        };
+        row.append(said, go);
+        extra.push(row);
+      }
       const add = document.createElement('button');
       add.type = 'button';
       add.className = 'dim';
@@ -1368,7 +1396,7 @@
         input.focus();
         requestAnimationFrame(fitWindow);
       };
-      box.append(add, said);
+      box.append(add, said, ...extra);
       // Its scripts (package.json), a tap to run (as /run does).
       if ((s.scripts || []).length) {
         const row = document.createElement('div');
@@ -1392,7 +1420,7 @@
       // Then its latest commits: tap one for what it changed.
       return api.commits ? api.commits(s.id) : [];
     }).then((list) => {
-      if (box.dataset.key !== key || !list || !list.length) return;
+      if (box.dataset.key !== key || box.dataset.draw !== draw || !list || !list.length) return;
       const ul = document.createElement('ul');
       ul.className = 'gitfiles commits';
       for (const c of list) {
@@ -1443,7 +1471,7 @@
     }).then(() => (api.branchChanges && box.dataset.key === key ? api.branchChanges(s.id) : null)).then((ch) => {
       // And all its branch changed since it left main: a tap for the
       // files, a tap on one for its change (to look over before a PR).
-      if (!ch || box.dataset.key !== key) return;
+      if (!ch || box.dataset.key !== key || box.dataset.draw !== draw) return;
       // Main moved on since it branched off: Bring them in (Claude merges
       // them, sorting out any conflicts).
       const base = ch.base.replace(/^origin\//, '');

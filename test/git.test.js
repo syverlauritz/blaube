@@ -502,3 +502,29 @@ test('git status says when a merge or rebase is under way', async () => {
     assert.equal((await now()).midway, '');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('branches already merged, to tidy away: not one just made, nor the one it’s on', async () => {
+  const { merged, deleteMerged, park } = require('../src/main/git');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-merged-'));
+  const env = Object.assign({}, process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
+  const g = (...a) => execFileSync('git', a, { cwd: dir, env, stdio: 'pipe' }).toString().trim();
+  const work = (b, f) => { g('switch', '-q', '-c', b, 'main'); fs.writeFileSync(path.join(dir, f), b); g('add', '.'); g('commit', '-qm', b); g('switch', '-q', 'main'); };
+  const p = () => new Promise((r) => merged(dir, r));
+  try {
+    g('init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(dir, 'a.txt'), '1\n'); g('add', '.'); g('commit', '-qm', 'base');
+    work('done-one', 'b.txt'); g('merge', '-q', '--no-ff', '-m', 'merge one', 'done-one');
+    work('done-two', 'c.txt'); g('merge', '-q', '--no-ff', '-m', 'merge two', 'done-two');
+    work('not-yet', 'd.txt');
+    g('branch', 'just-made');
+    work('kept', 'e.txt'); g('merge', '-q', '--no-ff', '-m', 'merge kept', 'kept');
+    g('switch', '-q', 'kept'); fs.writeFileSync(path.join(dir, 'a.txt'), 'wip\n'); await new Promise((r) => park(dir, 'kept', r)); g('switch', '-q', 'main');
+    work('on-it', 'f.txt'); g('merge', '-q', '--no-ff', '-m', 'merge on-it', 'on-it'); g('switch', '-q', 'on-it');
+    assert.deepEqual(await p(), { base: 'main', names: ['done-one', 'done-two'] }, 'not not-yet, just-made, kept (changes set aside) or on-it (it’s on it)');
+    g('switch', '-q', 'main');
+    assert.deepEqual((await p()).names.sort(), ['done-one', 'done-two', 'on-it']);
+    assert.deepEqual(await new Promise((r) => deleteMerged(dir, ['done-one', 'not-yet', 'main'], r)), ['done-one'], 'only those still merged');
+    assert.equal(g('branch', '--list', 'done-one'), '');
+    assert.notEqual(g('branch', '--list', 'not-yet'), '');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
