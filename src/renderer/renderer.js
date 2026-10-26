@@ -2624,7 +2624,12 @@
     if (!by) return;
     const mins = Math.round((Date.now() - sys.awayFrom) / 60000);
     const head = morning ? 'Good morning!' : mins >= 2 ? `While you were away (${mins} min):` : 'While you were away:';
-    by.say([{ text: head }, ...(morning && news.length ? [{ text: 'While you were away:' }] : []),
+    // In the morning, how yesterday went (if they worked).
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    const days = morning ? [...buddies.values()].filter((b) => b.kind === 'mother' && b.session && b.session.today && b.session.today.turns && b.session.today.day === y.toDateString()).map((b) => b.session.today) : [];
+    const turns = days.reduce((n, d) => n + d.turns, 0);
+    const yesterday = turns ? [{ text: `Yesterday: ${turns} turn${turns > 1 ? 's' : ''} · ${workedFor(days.reduce((n, d) => n + d.workMs, 0))} of work`, size: 12 }] : [];
+    by.say([{ text: head }, ...yesterday, ...(morning && news.length ? [{ text: 'While you were away:' }] : []),
       ...news.map((b) => ({ text: `${label(b)}: ${word[b.state]}`, color: D.STATE_COLORS[b.state] }))], 8, false, false);
   }
 
