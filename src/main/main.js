@@ -444,6 +444,8 @@ function pushTalk(id, focusField = false) {
     // reached us (it was started with them, whatever the file says now).
     connected: hooksOk || inbox.reachable.has(id) || inbox.steerable.has(id) || inbox.asks.has(id) || inbox.owned.has(id),
     doing: s.state === 'working' ? doing.get(id) || '' : '',
+    mode: s.mode || '', // (its permission mode)
+    canMode: owned.has(id), // (one Blaube started can be asked to change it)
     tasks: (s.tasks || []).filter((t) => !t.demo).slice(0, 4).map((t) => ({ id: t.id, label: t.description || t.command, command: t.command })),
     helpers: s.state === 'working' || s.state === 'waiting' ? (s.agents || []).slice(0, 5).map((a) => ({ name: helperName(s, a), doing: helperDoing.get(`${id}/${a.id}`) || '', waiting: a.state === 'waiting' })) : [],
     focus: focusField,
@@ -1370,6 +1372,7 @@ app.whenReady().then(async () => {
     if (talkId === id) talkId = to;
     pushState();
   });
+  owned.on('mode', (id, mode) => tracker.setMode(id, mode));
   owned.on('result', (id, r) => {
     if (r.interrupted && !r.text) inbox.observe({ session_id: id, hook_event_name: 'Stop' }); // (stopped: nothing went wrong)
     else if (r.error && !r.text) inbox.add(id, { who: 'note', text: `Something went wrong${r.subtype ? ` (${r.subtype})` : ''}.` });
@@ -1541,6 +1544,7 @@ app.whenReady().then(async () => {
         owned.control(id, c.request, (ok, r) => {
           const what = c.request.subtype === 'set_model' ? (ok ? `Now using ${r.model || c.request.model}` : `Couldn’t switch to ${c.request.model}: ${r}`)
             : ok ? 'Plan mode: it shows you a plan before it changes anything' : `Couldn’t switch to plan mode: ${r}`;
+          if (ok && c.request.mode) tracker.setMode(id, r.mode || c.request.mode);
           inbox.add(id, { who: 'note', text: what });
           pushTalk(id);
         });
@@ -1638,6 +1642,15 @@ app.whenReady().then(async () => {
     git.diff(st.root, f.path, f.how, done);
   }));
   // ⌘F in the overview: what every session said.
+  // How a session Blaube started asks before it acts (⇧⇥ in its box).
+  const MODES = new Set(['default', 'acceptEdits', 'plan']);
+  ipcMain.on('talk-mode', (_e, id, mode) => {
+    if (!id || id !== talkId || !owned.has(id) || !MODES.has(mode)) return;
+    owned.control(id, { subtype: 'set_permission_mode', mode }, (ok, r) => {
+      if (!ok) { inbox.add(id, { who: 'note', text: `Couldn’t change how it asks: ${r}` }); return; }
+      tracker.setMode(id, r.mode || mode); // (shown under its field)
+    });
+  });
   // "@" and "/" in the box: the session's files, and the commands you could type.
   ipcMain.handle('talk-complete', (_e, id, kind, q) => new Promise((resolve) => {
     const s = id === talkId && tracker.sessions.get(id);

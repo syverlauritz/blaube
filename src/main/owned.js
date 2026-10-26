@@ -121,6 +121,7 @@ class Owned extends EventEmitter {
       return;
     }
     const s = this.sessions.get(id);
+    if (m.type === 'system' && typeof m.permissionMode === 'string') this.emit('mode', id, m.permissionMode);
     if (m.type === 'control_response' && m.response && s) {
       const answer = s.pending.get(m.response.request_id);
       if (!answer) return;

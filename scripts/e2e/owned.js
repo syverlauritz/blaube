@@ -15,12 +15,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const FAKE = `#!/usr/bin/env node
 let model = 'claude-opus', turn = null;
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
+out({ type: 'system', subtype: 'init', permissionMode: 'default' });
 require('node:readline').createInterface({ input: process.stdin }).on('line', (l) => {
   const m = JSON.parse(l);
   if (m.type === 'control_request') {
     const r = m.request, ok = (response) => out({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response } });
     if (r.subtype === 'set_model') { model = 'claude-' + r.model; return ok({ model }); }
-    if (r.subtype === 'set_permission_mode') return ok({ mode: r.mode });
+    if (r.subtype === 'set_permission_mode') { ok({ mode: r.mode }); return out({ type: 'system', subtype: 'status', permissionMode: r.mode }); }
     if (r.subtype === 'interrupt') { clearTimeout(turn); ok({}); return out({ type: 'result', subtype: 'error_during_execution', is_error: true }); }
     return;
   }
@@ -52,8 +53,19 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(async () => /claude-sonnet here\./.test(await said())), 'and it answers as that model');
 	await type('/model');
 	check(await until(async () => /Say which: \/model opus/.test(await said())), '/model alone says how');
+	check(await box(`document.getElementById('suggest').hidden`), 'and sending leaves no suggestions behind');
+	const mode = () => box(`(() => { const m = document.getElementById('mode'); return m.hidden ? '' : m.className + ' | ' + m.textContent; })()`);
+	check(/default can \| Asks before edits⇧⇥/.test(await mode()), 'how it asks shows under the field, as in the terminal');
+	const shiftTab = () => box(`document.getElementById('text').dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }))`);
+	await shiftTab();
+	check(await until(async () => /acceptEdits can \| ⏵⏵ Accepting edits/.test(await mode())), '⇧⇥ switches it to accepting edits');
+	if (process.env.BLAUBE_SHOTS) { await sleep(600); const img = await talk().webContents.capturePage(); fs.mkdirSync(path.join(__dirname, '..', '..', 'shots'), { recursive: true }); fs.writeFileSync(path.join(__dirname, '..', '..', 'shots', 'owned-mode.png'), img.toPNG()); }
+	await box(`document.getElementById('mode').click()`);
+	check(await until(async () => /plan can \| ⏸ Plan first/.test(await mode())), 'a tap, to planning first');
+	await shiftTab();
+	check(await until(async () => /^mode default/.test(await mode())), 'and round again');
 	await type('/plan');
-	check(await until(async () => /Plan mode: it shows you a plan/.test(await said())), '/plan puts it in plan mode');
+	check(await until(async () => /Plan mode: it shows you a plan/.test(await said()) && /^mode plan/.test(await mode())), '/plan puts it in plan mode');
 
 	await type('slow');
 	check(await until(() => tracker.sessions.get(id).state === 'working', 3000), 'a long turn starts');

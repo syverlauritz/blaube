@@ -87,6 +87,9 @@ class SessionTracker extends EventEmitter {
       agents: prev ? prev.agents : [],
       tasks: prev ? prev.tasks : [],
       tasksSeeded: !!(prev && prev.tasksSeeded),
+      // Its permission mode, as Claude Code last said ('default',
+      // 'acceptEdits', 'plan'...).
+      mode: typeof payload.permission_mode === 'string' ? payload.permission_mode : (prev && prev.mode) || '',
       updatedAt: this.now(),
     };
     this.sessions.set(id, session);
@@ -96,6 +99,14 @@ class SessionTracker extends EventEmitter {
     if (!prev || prev.state !== session.state) {
       this.emit('change', { session, from: prev ? prev.state : null, to: session.state });
     }
+  }
+
+  // Its permission mode changed (said by Claude Code outside a hook).
+  setMode(id, mode) {
+    const s = this.sessions.get(id);
+    if (!s || !mode || s.mode === mode) return;
+    s.mode = mode;
+    this.emit('change', { session: s, from: s.state, to: s.state });
   }
 
   // Subagent events only touch the session's list of subagents. Returns true

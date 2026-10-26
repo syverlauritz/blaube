@@ -354,6 +354,7 @@
     stop.hidden = !(s.stoppable && s.state === 'working' && !s.ended);
     stop.disabled = !!s.stopping;
     stop.lastChild.textContent = s.stopping ? 'Stopping…' : 'Stop';
+    renderMode(s);
     renderTodo(s);
     renderOthers(s);
     if (document.body.classList.contains('overview')) drawOverview(s);
@@ -1162,6 +1163,28 @@
   text.addEventListener('input', () => {
     if (askKey && current.ask && current.ask.kind === 'plan') planButtons();
     fit(); send.disabled = !current || current.demo || (!text.value.trim() && !files.length); requestAnimationFrame(fitWindow); });
+  // Its permission mode under the field, as the terminal shows it; ⇧⇥ (or
+  // a tap) changes it in a session Blaube started.
+  const MODES = { default: 'Asks before edits', acceptEdits: '⏵⏵ Accepting edits', plan: '⏸ Plan first', bypassPermissions: 'Bypassing permissions', dontAsk: 'Not asking first', auto: 'Auto mode' };
+  const CYCLE = ['default', 'acceptEdits', 'plan'];
+  function renderMode(s) {
+    const m = $('mode'), mode = s.mode || 'default';
+    m.hidden = !!s.ended || !!s.demo || (!s.canMode && mode === 'default');
+    m.className = 'mode ' + mode + (s.canMode ? ' can' : '');
+    m.textContent = MODES[mode] || mode;
+    if (s.canMode) { const k = document.createElement('kbd'); k.textContent = '⇧⇥'; m.append(k); }
+    m.title = s.canMode ? 'Change how it asks (Shift+Tab)' : 'Change it in its terminal (Shift+Tab there)';
+  }
+  function nextMode() {
+    if (!current || !current.canMode || !api.mode) return;
+    api.mode(current.id, CYCLE[(CYCLE.indexOf(current.mode || 'default') + 1) % CYCLE.length]);
+  }
+  $('mode').addEventListener('click', nextMode);
+  text.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab' || !e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || !current || !current.canMode || !$('suggest').hidden) return;
+    e.preventDefault();
+    nextMode();
+  });
   // "@" suggests the session's files and "/" at the start its commands, as
   // in the terminal: ↑↓ to choose, Tab or ↩ to put it in, Esc to leave it.
   const suggestEl = $('suggest');
@@ -1250,6 +1273,7 @@
   });
   $('form').addEventListener('submit', (e) => {
     e.preventDefault();
+    suggAsked++; drawSuggest([]); // (one still on its way stays away too)
     const typed = text.value.trim();
     if ((!typed && !files.length) || !current || current.demo) return;
     // Pasted or dropped files go along as paths Claude can open.
