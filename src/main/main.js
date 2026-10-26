@@ -1440,7 +1440,10 @@ function trayMenu() {
     // (Only macOS shows a sublabel: elsewhere the status goes on the line.)
     return { label: `${mark[o.state] || '•'}  ${o.project}${process.platform === 'darwin' || !g.status ? '' : `  ·  ${g.status.length > 40 ? g.status.slice(0, 39) + "…" : g.status}`}`, sublabel: g.status, toolTip: g.meta, click: () => { if (!win) return; if (process.platform === 'darwin') app.focus({ steal: true }); win.webContents.send('open-talk', o.id); } };
   });
-  return Menu.buildFromTemplate([...(rows.length ? [...rows, { type: 'separator' }] : []), ...appMenuTemplate()]);
+  // (And your usage limits, as /usage says them, once Blaube has heard.)
+  const used = limits.line(usageLimits).replace(/^Usage: /, '');
+  const usage = used ? [{ label: `Usage: ${used}`, enabled: false }, { type: 'separator' }] : [];
+  return Menu.buildFromTemplate([...(rows.length ? [...rows, { type: 'separator' }] : []), ...usage, ...appMenuTemplate()]);
 }
 
 function refreshTray() {
@@ -1850,6 +1853,7 @@ app.whenReady().then(async () => {
   if (TEST) global.__blaubeCarryTick = carryTick;
   if (TEST) global.__blaubeSessionMenu = sessionMenu;
   if (TEST) global.__blaubeMoveAll = moveAllToTerminals;
+  if (TEST) global.__blaubeTrayMenu = trayMenu;
   // A reply passed on to another session, as if pasted into its terminal.
   ipcMain.on('talk-forward', (_e, from, to, text) => {
     const a = from === talkId && tracker.sessions.get(from);

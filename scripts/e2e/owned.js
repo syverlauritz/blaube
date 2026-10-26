@@ -113,6 +113,7 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	// Its usage limits, asked of Claude Code after each turn (get_usage).
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
 	check(await until(() => box(`/^Usage: 12% of 5 hours \\(resets .+\\) · 40% of the week/.test((document.querySelector('#overview .usage') || {}).textContent || '')`)), 'the overview has your usage limits, asked of Claude Code after a turn');
+	check(global.__blaubeTrayMenu().items.some((i) => /^Usage: 12% of 5 hours \(resets .+\) · 40% of the week/.test(i.label)), 'and so does the menu bar menu');
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
 	await until(() => box(`!document.body.classList.contains('overview')`));
 	// "undo all": the turn's files put back by Claude Code itself (rewind_files).
