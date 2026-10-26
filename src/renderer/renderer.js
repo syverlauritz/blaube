@@ -1725,6 +1725,61 @@
   // into one and it pops (the slime giggles); a nearby slime might hop up to
   // pop it first.
   const bubbles = [], pops = [];
+  // Keepy-uppy: a bored slime has its task pet hop up onto its head, then
+  // bounces it up and catches it, again and again, counting ("1!", "2!",
+  // "3!"), until it misses or decides that's a record.
+  function keepy(b) {
+    if (CFG.keepy <= 0 || b.kind !== 'mother') return;
+    const k = b.keepy, ok = (b.state === 'idle' || b.state === 'done') && !b.body.grab && !b.merging && !b.dying && !b.tower && !b.frog && !b.tag && !b.parade && !b.trick && (b.sleep || 0) < 0.1 && b !== buddies.get(talkingTo);
+    if (k) {
+      const p = k.pet;
+      const stop = (word) => { b.keepy = null; if (p.ride === b) p.rideUntil = time + 1; p.rideOn = null; if (word) quip(b, word, 1.2); };
+      if (!ok || p.dying || p.held || !pets.has(p.key) || drag || time - k.start > 25) { stop(); return; }
+      b.nextHop = time + 1; b.happyUntil = time + 0.3;
+      if (p.ride === b) {
+        p.rideUntil = time + 5;
+        if (!k.caughtAt) {
+          k.caughtAt = time;
+          if (k.n > 0) quip(b, k.n + '!', 0.7);
+          if (k.n >= k.max) { stop(); b.cheerUntil = time + 1.2; hearts.push({ x: p.x, y: p.y - petSize(), vx: 0, born: time, size: 10 }); return; }
+        }
+        // A beat to line up, then a crouch, then pop: the pet flies up.
+        const t = time - k.caughtAt, r = b.body.o.radius;
+        if (t > 0.35 && !k.crouched) { k.crouched = true; b.body.squashTop(r * 3 * Math.min(1.5, CFG.keepy), DT); }
+        if (t > 0.5) {
+          b.body.squashTop(-r * 5 * Math.min(1.5, CFG.keepy), DT);
+          p.ride = null; p.rideOn = b; p.rideAt = time;
+          p.vy = -(560 + Math.random() * 140); p.vx = (b.body.centroid().x - p.x) * 2 + (Math.random() - 0.5) * 40 + (Math.random() < 0.12 ? (Math.random() < 0.5 ? -1 : 1) * (200 + Math.random() * 100) : 0); // (now and then one goes wild) p.va = (Math.random() - 0.5) * 8;
+          p.nextHop = time + 1.5;
+          k.n++; k.caughtAt = 0; k.crouched = false;
+        }
+        return;
+      }
+      if (p.rideOn === b && time - p.rideAt > 0.4 && p.vy === 0) p.rideOn = null; // (landed on the floor)
+      if (p.rideOn === b) {
+        // In the air: it shuffles under it to catch it.
+        const dx = p.x - b.body.centroid().x;
+        if (b.body.onFloor() && p.vy > 0) b.body.impulse((dx * 6 - b.body.velocity(DT).x) * 0.15, 0, DT);
+        return;
+      }
+      // Missed: down on the floor.
+      if (k.n > 0) { stop(k.n >= 3 ? 'aw, ' + k.n + '!' : 'aw'); return; }
+      if (time - k.start > 4) stop();
+      return;
+    }
+    if (!ok || !b.body.onFloor() || idleFor() > 60 || time < (b.nextKeepy ?? (b.nextKeepy = time + (120 + Math.random() * 300) / CFG.keepy))) return;
+    b.nextKeepy = time + (300 + Math.random() * 500) / CFG.keepy;
+    const c = b.body.centroid(), p = [...pets.values()].find((p) => p.owner === b && !p.dying && !p.held && !p.ride && !p.rideOn && p.vy === 0 && Math.abs(p.x - c.x) < b.body.o.radius * 2.5);
+    if (p) keepyNow(b, p);
+  }
+  function keepyNow(b, p) {
+    const PET = petSize(), ob = b.body, top = ob.bbox().minY, c = ob.centroid();
+    const up = Math.sqrt(2 * CFG.gravity * Math.max(PET, p.y - top + PET * 1.2)), air = up / CFG.gravity * 1.6;
+    p.vx = (c.x - p.x) / air; p.vy = -up; p.va = Math.sign(p.vx || 1) * 2;
+    p.rideOn = b; p.rideAt = time; p.nextHop = time + 1.5;
+    b.keepy = { pet: p, n: 0, max: 3 + Math.floor(Math.random() * 5), start: time, caughtAt: 0 };
+  }
+
   function blow(b) {
     if (CFG.bubbles <= 0 || b.kind === 'child' || b.dying) return;
     const ok = (b.state === 'idle' || b.state === 'done') && !b.body.grab && !b.merging && !b.prank && !b.trick && !b.tag && !b.sneeze && (b.sleep || 0) < 0.1 && idleFor() < 60 && b !== buddies.get(talkingTo);
@@ -4054,6 +4109,7 @@
     snowFight(b);
     parade(b);
     blow(b);
+    keepy(b);
     welcome(b);
     nibble(b);
     nudgePet(b);
@@ -4313,6 +4369,11 @@
     if (b.reachSince && !glaring) {
       const c = body.centroid();
       b.gazeTarget = { x: mouse.x, y: c.y + (mouse.y - c.y) * 3 };
+      wantLook = Math.max(wantLook, 1);
+    }
+    // Keepy-uppy: eyes on the pet.
+    if (b.keepy && !glaring) {
+      b.gazeTarget = { x: b.keepy.pet.x, y: b.keepy.pet.y };
       wantLook = Math.max(wantLook, 1);
     }
     // On the brink of a window: eyes down over the drop.
