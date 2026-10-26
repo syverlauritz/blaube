@@ -1128,6 +1128,7 @@
     }
     collidePets();
     stepDrops();
+    stepBubbles();
     stepSeason();
   }
 
@@ -1437,6 +1438,122 @@
       ctx.beginPath();
       ctx.ellipse(0, 0, d.r * st * fade, (d.r / Math.sqrt(st)) * fade, 0, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // --- Goo bubbles -----------------------------------------------------------
+  // A bored slime now and then blows a bubble of its own goo: it breathes
+  // in, puffs one out of its mouth, and watches it float off. Run the cursor
+  // into one and it pops (the slime giggles); a nearby slime might hop up to
+  // pop it first.
+  const bubbles = [], pops = [];
+  function blow(b) {
+    if (CFG.bubbles <= 0 || b.kind === 'child' || b.dying) return;
+    const ok = (b.state === 'idle' || b.state === 'done') && !b.body.grab && !b.merging && !b.prank && !b.trick && !b.tag && !b.sneeze && (b.sleep || 0) < 0.1 && idleFor() < 60 && b !== buddies.get(talkingTo);
+    const g = b.blow;
+    if (g) {
+      if (!ok) { if (g.bubble) g.bubble.free = true; b.blow = null; return; }
+      const body = b.body, r = body.o.radius, c = body.centroid();
+      if (time < g.at) { if (body.onFloor()) body.squashTop(-r * 0.1 * 60 * DT * 60 * DT, DT); return; } // breathing in
+      const mx = c.x + (b.faceTurn ? b.faceTurn.x : 0) + g.side * r * 0.08, my = c.y + r * 0.12;
+      if (!g.bubble) { g.bubble = { x: mx, y: my, vx: 0, vy: 0, r: 2, size: r * (0.18 + Math.random() * 0.14), born: time, owner: b, free: false }; bubbles.push(g.bubble); }
+      const u = g.bubble, k = Math.min(1, (time - g.at) / 0.9);
+      if (!u.free) {
+        // Swelling out in front of its mouth, like bubblegum.
+        u.r = Math.max(2, u.size * k);
+        u.x = mx; u.y = my + u.r * 0.3;
+        if (body.onFloor()) body.squashTop(r * 0.04 * 60 * DT, DT);
+        if (k >= 1) { u.free = true; u.vx = g.side * (20 + Math.random() * 25); u.vy = -50 - Math.random() * 30; u.born = time; }
+        return;
+      }
+      // Watching it go.
+      b.glanceAt = { spot: u }; b.glanceUntil = time + 0.2;
+      if (u.popped || time - u.born > 2.5) b.blow = null;
+      return;
+    }
+    if (!ok || !b.body.onFloor() || time < (b.nextBlow ?? (b.nextBlow = time + (120 + Math.random() * 300) / CFG.bubbles))) return;
+    b.nextBlow = time + (240 + Math.random() * 480) / CFG.bubbles;
+    b.blow = { at: time + 0.7, side: Math.random() < 0.5 ? -1 : 1 };
+  }
+  function popBubble(u, by) {
+    u.popped = true;
+    pops.push({ x: u.x, y: u.y, r: u.r, born: time, color: u.owner.color });
+    const o = u.owner;
+    if (by && !o.dying) { o.happyUntil = time + 1.4; if (Math.random() < 0.5) quip(o, by === 'you' ? 'hehe' : 'pop!', 1); }
+    if (by && by !== 'you' && !by.dying) by.happyUntil = time + 1.4;
+  }
+  function stepBubbles() {
+    for (let i = bubbles.length - 1; i >= 0; i--) {
+      const u = bubbles[i];
+      if (u.popped) { bubbles.splice(i, 1); continue; }
+      if (!u.free) { if (u.owner.dying || !u.owner.blow) u.free = true; continue; }
+      const age = time - u.born;
+      // Barely heavier than air: it drifts up, wanders and slows.
+      u.vy += (-30 + Math.sin(age * 1.7 + u.size) * 14) * DT;
+      u.vx += Math.sin(age * 1.1 + u.size * 3) * 12 * DT;
+      u.vx *= 1 - 0.6 * DT; u.vy *= 1 - 0.6 * DT;
+      u.x += u.vx * DT; u.y += u.vy * DT;
+      if (age > 6 + u.size / 8 || u.y < u.r || u.x < u.r || u.x > W - u.r) { popBubble(u, null); continue; }
+      if (Math.hypot(mouse.x - u.x, mouse.y - u.y) < u.r + 4 && performance.now() / 1000 - mouse.lastMove < 0.5) { popBubble(u, 'you'); continue; }
+      for (const o of buddies.values()) {
+        if (o.dying || (o === u.owner && !u.away)) continue;
+        const bb = o.body.bbox();
+        if (u.x < bb.minX - u.r || u.x > bb.maxX + u.r || u.y < bb.minY - u.r || u.y > bb.maxY + u.r) continue;
+        if (o.body.contains(u.x, u.y + u.r) || o.body.contains(u.x, u.y - u.r) || o.body.contains(u.x - u.r, u.y) || o.body.contains(u.x + u.r, u.y)) { popBubble(u, o === u.owner ? null : o); break; }
+      }
+      if (u.popped) continue;
+      if (!u.away && !u.owner.body.contains(u.x, u.y + u.r) && !u.owner.body.contains(u.x, u.y)) u.away = true;
+      // A bored slime nearby might jump up at it.
+      if (!u.chased && age > 0.8) {
+        for (const o of buddies.values()) {
+          if (o === u.owner || o.kind === 'child' || o.dying || o.state !== 'idle' || o.body.grab || !o.body.onFloor() || o.tag || o.prank || o.blow) continue;
+          const c = o.body.centroid(), r = o.body.o.radius, up = c.y - u.y;
+          if (Math.abs(u.x - c.x) > r * 2 || up < r * 1.2 || up > r * 5) continue;
+          u.chased = true;
+          if (Math.random() > 0.5 * CFG.bubbles) break;
+          // Aim to meet it on the way up.
+          const vy = Math.sqrt(2 * CFG.gravity * (up - r * 0.6)), air = vy / CFG.gravity;
+          o.hop((u.x + u.vx * air - c.x) / air, -vy);
+          o.glanceAt = { spot: u }; o.glanceUntil = time + 1.5;
+          break;
+        }
+      }
+    }
+    for (let i = pops.length - 1; i >= 0; i--) if (time - pops[i].born > 0.3) pops.splice(i, 1);
+  }
+  function drawBubbles() {
+    for (const u of bubbles) {
+      if (u.popped) continue;
+      const wob = Math.sin((time - u.born) * 6 + u.size) * 0.06;
+      ctx.save();
+      ctx.translate(u.x, u.y);
+      ctx.scale(1 + wob, 1 - wob);
+      // Its own goo, stretched thin: paler, and see-through.
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = u.owner.color;
+      ctx.beginPath(); ctx.arc(0, 0, u.r, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      // A little shine.
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.ellipse(-u.r * 0.38, -u.r * 0.4, u.r * 0.2, u.r * 0.12, -0.6, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    for (const p of pops) {
+      // Popped: a ring of little flecks flying out.
+      const k = (time - p.born) / 0.3;
+      ctx.save();
+      ctx.globalAlpha = 1 - k;
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      for (let j = 0; j < 8; j++) {
+        const a = j / 8 * Math.PI * 2, r0 = p.r * (0.8 + k * 0.8), r1 = r0 + 4 + p.r * 0.2;
+        ctx.beginPath(); ctx.moveTo(p.x + Math.cos(a) * r0, p.y + Math.sin(a) * r0); ctx.lineTo(p.x + Math.cos(a) * r1, p.y + Math.sin(a) * r1); ctx.stroke();
+      }
       ctx.restore();
     }
   }
@@ -2272,8 +2389,9 @@
     at(10, () => { const b = big()[1] || big()[0]; if (b) b.hics = { n: 3, next: time }; });
     at(14, () => charge());
     at(23, () => { const [b, o] = big(); if (b && o && !b.tag && !o.tag) tagNow(b, o); });
+    at(29, () => { const b = big()[1] || big()[0]; if (b && !b.blow) b.blow = { at: time + 0.7, side: 1 }; });
     at(17, () => { const b = buddies.get(HOME) || big()[0]; if (b) b.say([{ text: 'While you were away (demo):' }, ...summaryLines()], 6, false, false); });
-    at(30, () => { seasonOverride = was; showingOff = false; });
+    at(34, () => { seasonOverride = was; showingOff = false; });
   }
   let showingOff = false;
 
@@ -2373,6 +2491,7 @@
     tagAlong(b);
     trick(b);
     tag(b);
+    blow(b);
     hiccup(b);
     // Hanging over the edge of a window: it clings and shuffles back on.
     const l = b.body.onLedge;
@@ -2485,6 +2604,7 @@
     else if (body.grab || time < (b.surpriseUntil || 0)) { mouth = 'o'; }
     else if (time < (b.booUntil || 0)) { expression = 'normal'; mouth = 'o'; }
     else if (b.sneeze) { expression = 'pained'; mouth = 'o'; } // (about to sneeze)
+    else if (b.blow && time > b.blow.at) { expression = 'normal'; mouth = 'o'; } // (blowing a bubble)
     else if (b.patted) { expression = 'happy'; mouth = 'smile'; }
     else if (time < (b.wantsPetsUntil || 0) && time > (b.pettedUntil || 0)) { expression = 'normal'; mouth = 'smile'; }
     else if (time - (b.sneezedAt ?? -9) < 0.5) { expression = 'happy'; mouth = 'flat'; }
@@ -2755,6 +2875,7 @@
     }
     drawSeason(false);
     drawPets();
+    drawBubbles();
     drawHearts();
     for (const b of list) if (b.glasses) D.drawGlasses(ctx, b.glasses.x, b.glasses.y, b.glasses.r, b.glasses.a, CFG);
     // Names and status only show when you hover over a slime.
@@ -3317,6 +3438,7 @@
       sys: () => sys,
       season: (k) => { seasonOverride = k; },
       flakes: () => flakes,
+      goo: () => bubbles,
       now: () => time,
       idleFor: (seconds) => { mouse.lastMove = performance.now() / 1000 - seconds; },
       buddies: () => buddies,
