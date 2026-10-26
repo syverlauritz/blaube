@@ -99,6 +99,7 @@
       ['contactJiggle', 1, 0, 3, 0.05, 'A hard landing jiggles slimes it touches'],
       ['droop', 0.2, 0, 0.5, 0.01, 'Deflates on a failed tool or test'],
       ['tapAfter', 60, 0, 600, 5, 'One tool running this many seconds: it waits, tapping a foot (0 = never)'],
+      ['workLife', 1, 0, 1.5, 0.05, 'At work its head follows what it does: scanning lines as it reads, typing as it edits, looking up on the web'],
       ['strain', 1, 0, 3, 0.05, 'Strained shiver while a tool runs'],
       ['voiceBob', 1, 0, 3, 0.05, 'Body bobs along while it talks or sings'],
       ['eyeLife', 1, 0, 1, 0.05, 'Eye life (blinks on landing, wide eyes, looks where it flies)'],

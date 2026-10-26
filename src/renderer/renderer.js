@@ -1493,6 +1493,7 @@
     }
     strain(b, r);
     tapFoot(b, r);
+    typeAway(b, r);
     const calm = (b.state === 'idle' || b.state === 'done') && !meditating(b) && !b.stackedBy && time > (b.pounceUntil || 0);
     if (!calm) return;
     // A cursor close by: it leans over toward it, curious. Not when you're
@@ -2127,6 +2128,14 @@
     b.nextTap = time + 0.42;
     const side = b.key.length % 2 ? 1 : -1, c = b.body.centroid(), bot = b.body.bbox().maxY;
     b.body.pushAt(c.x + side * r * 0.55, bot, 0, 240, r * 0.32, DT);
+  }
+
+  // Editing, it types: quick little dips of its top, in bursts.
+  function typeAway(b, r) {
+    if (CFG.workLife <= 0 || b.state !== 'working' || meditating(b) || activityOf(b) !== 'edit' || time < (b.nextKey || 0)) return;
+    const burst = Math.sin(time * 0.9 + (b.breathPhase || 0)) > -0.3; // (now and then a pause)
+    b.nextKey = time + (burst ? 0.09 + Math.random() * 0.1 : 0.4);
+    if (burst) b.body.squashTop(r * 1.6 * Math.min(1.5, CFG.workLife), DT);
   }
 
   function strain(b, r) {
@@ -3605,6 +3614,23 @@
       wantLook = Math.max(wantLook, CFG.spectate);
       wideSeen = Math.max(0, 1 - seen.d / (body.o.radius * 4)) * 0.6 * Math.min(1, CFG.spectate);
       if (expression === 'concentrate' || expression === 'sleepy') { expression = 'normal'; mouth = 'o'; }
+    }
+    // Heads down at work, its face follows what it's doing: reading, it
+    // scans along line after line; editing, it looks down at its work; on
+    // the web, up and off to one side.
+    if (CFG.workLife > 0 && wantLook === 0 && expression === 'concentrate' && !body.grab) {
+      const act = activityOf(b), c = body.centroid(), r = body.o.radius, k = 0.55 * Math.min(1.5, CFG.workLife);
+      if (act === 'read') {
+        const line = (time * 0.6 + (b.breathPhase || 0)) % 1;
+        b.gazeTarget = { x: c.x + (line * 2.4 - 1.2) * r, y: c.y + r * (1.2 + 0.4 * Math.floor(time * 0.6 % 3)) };
+        wantLook = k;
+      } else if (act === 'edit') {
+        b.gazeTarget = { x: c.x + Math.sin(time * 1.3) * r * 0.5, y: c.y + r * 2.5 };
+        wantLook = k;
+      } else if (act === 'web') {
+        b.gazeTarget = { x: c.x + (b.key.length % 2 ? 1 : -1) * r * 1.6, y: c.y - r * 2.5 };
+        wantLook = k;
+      }
     }
     b.lookAmount = (b.lookAmount ?? wantLook) + (wantLook - (b.lookAmount ?? wantLook)) * 0.08;
     // While the face isn't turning (working, not looking at anything), its
