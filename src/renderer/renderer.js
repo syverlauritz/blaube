@@ -832,8 +832,29 @@
         } else if (wantsAttention(b)) b.hop((Math.random() - 0.5) * 200, -CFG.doneHopStrength * 1.1);
         b.happyUntil = time + 2.5;
         b.nextHop = time + CFG.doneHopEvery;
+        cheerOn(b, took > 300);
         break;
       }
+    }
+  }
+
+  // A slime finishes: the others look over, and calm ones nearby are
+  // pleased for it (a long one gets a little hop of applause).
+  function cheerOn(b, big) {
+    if (CFG.cheerOthers <= 0) return;
+    const c = b.body.centroid();
+    let i = 0;
+    for (const o of buddies.values()) {
+      if (o === b || o.dying || o.mother === b || o.kind === 'home') continue;
+      const oc = o.body.centroid(), near = Math.hypot(oc.x - c.x, oc.y - c.y) < b.body.o.radius * 12;
+      setTimeout(() => {
+        if (o.dying || b.dying) return;
+        o.glanceAt = b;
+        o.glanceUntil = time + 1.2 + Math.random() * 0.6;
+        if (!near || o.state === 'working' || o.state === 'waiting' || o.body.grab) return;
+        o.happyUntil = time + 1.5;
+        if (big && o.body.onFloor() && Math.random() < 0.7 * CFG.cheerOthers) o.hop(0, -(300 + Math.random() * 120) * Math.min(1.5, CFG.cheerOthers));
+      }, 300 + i++ * 140 + Math.random() * 200);
     }
   }
 
@@ -1398,10 +1419,16 @@
         }
       }, 250 + i++ * 220 + Math.random() * 150);
     }
-    if (!CFG.welcomeBack || !news.length) return;
-    const by = buddies.get(HOME) || news[0];
+    // First thing in the morning (away overnight): a big stretch all round.
+    const h = new Date().getHours();
+    const morning = h >= 5 && h < 12 && (new Date(sys.awayFrom).toDateString() !== new Date().toDateString() || Date.now() - sys.awayFrom > 4 * 3600e3);
+    if (morning) wakeUp();
+    if (!CFG.welcomeBack || (!news.length && !morning)) return;
+    const by = buddies.get(HOME) || news[0] || bigs()[0];
+    if (!by) return;
     const mins = Math.round((Date.now() - sys.awayFrom) / 60000);
-    by.say([{ text: mins >= 2 ? `While you were away (${mins} min):` : 'While you were away:' },
+    const head = morning ? 'Good morning!' : mins >= 2 ? `While you were away (${mins} min):` : 'While you were away:';
+    by.say([{ text: head }, ...(morning && news.length ? [{ text: 'While you were away:' }] : []),
       ...news.map((b) => ({ text: `${label(b)}: ${word[b.state]}`, color: D.STATE_COLORS[b.state] }))], 8, false, false);
   }
 

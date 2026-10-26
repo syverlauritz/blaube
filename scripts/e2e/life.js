@@ -77,7 +77,7 @@ module.exports = async function run({ win, tracker }) {
 	win.webContents.send('system', { kind: 'idle', seconds: 900 });
 	check(await until(() => js(`__blaube.sys.away`), 1000), 'idle a long time, you count as away');
 	ev('s2', 'UserPromptSubmit'); ev('s2', 'Stop', { last_assistant_message: 'Done.' });
-	await sleep(800);
+	check(await until(() => js(`__blaube.buddies.get('s1').glanceAt === __blaube.buddies.get('s2')`), 1500), 'one finishes, the other looks over');
 	win.webContents.send('system', { kind: 'idle', seconds: 1 });
 	check(await until(() => js(`[...__blaube.buddies.values()].some((b) => b.bubble && b.bubble.lines.some((l) => /p-s2: done/.test(l.text)))`), 2000), 'back, a slime says what finished while you were away');
 	win.webContents.send('system', { kind: 'ac' });
