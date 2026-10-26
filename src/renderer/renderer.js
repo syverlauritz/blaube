@@ -1800,13 +1800,17 @@
   // may hop up at one going past.
   const flutters = [];
   const WING_COLORS = ['#f2c14e', '#7fb3e6', '#f08aa5', '#f5f0e6'];
-  function addFlutter() {
+  // The week up to Halloween, a little bat flits across now and then
+  // instead (it never lands).
+  const spooky = () => { const d = new Date(); return d.getMonth() === 9 && d.getDate() >= 24; };
+  function addFlutter(bat) {
     const left = Math.random() < 0.5;
-    flutters.push({ x: left ? -20 : W + 20, y: H * (0.35 + Math.random() * 0.35), vx: 0, vy: 0, phase: Math.random() * 6, color: WING_COLORS[Math.floor(Math.random() * WING_COLORS.length)],
+    flutters.push({ bat: !!bat, x: left ? -20 : W + 20, y: H * (0.35 + Math.random() * 0.35), vx: 0, vy: 0, phase: Math.random() * 6, color: WING_COLORS[Math.floor(Math.random() * WING_COLORS.length)],
       to: { x: W * (0.2 + Math.random() * 0.6), y: H * (0.3 + Math.random() * 0.4) }, on: null, born: time, perches: 0, leaveAt: time + 40 + Math.random() * 30, rest: 0 });
   }
   function stepFlutters() {
     if ((CFG.seasons > 0 && season() === 'summer') && flutters.length < 2 && Math.random() < CFG.seasons * DT / 50) addFlutter();
+    if (CFG.seasons > 0 && spooky() && flutters.length < 2 && Math.random() < CFG.seasons * DT / 90) addFlutter(true);
     for (let i = flutters.length - 1; i >= 0; i--) {
       const u = flutters[i];
       const ms = Math.hypot(mouse.vx, mouse.vy), near = Math.hypot(mouse.x - u.x, mouse.y - u.y) < 60 && ms > 30;
@@ -1829,7 +1833,7 @@
         b.nextHop = Math.max(b.nextHop || 0, time + 0.5); // (holding still)
         continue;
       }
-      u.phase += DT * 22;
+      u.phase += DT * (u.bat ? 30 : 22);
       // Wandering flight: steer at a spot, with a bob on every wingbeat.
       const dx = u.to.x - u.x, dy = u.to.y - u.y, d = Math.hypot(dx, dy) || 1;
       u.vx += (dx / d * 90 - u.vx) * 1.5 * DT + (Math.random() - 0.5) * 300 * DT;
@@ -1837,6 +1841,7 @@
       if (near) { u.vx += Math.sign(u.x - mouse.x) * 900 * DT; u.vy -= 600 * DT; }
       u.x += u.vx * DT; u.y += u.vy * DT;
       if (time > u.leaveAt) { u.to = { x: u.x < W / 2 ? -100 : W + 100, y: u.y - 100 }; if (u.x < -60 || u.x > W + 60 || u.y < -60) { flutters.splice(i, 1); continue; } }
+      else if (d < 30 && u.bat) u.to = { x: Math.max(60, Math.min(W - 60, u.x + (Math.random() - 0.5) * 700)), y: H * (0.1 + Math.random() * 0.4) };
       else if (d < 30) {
         // Somewhere new, or a calm slime's head to rest on.
         const calm = [...buddies.values()].filter((b) => !b.dying && !b.body.grab && b.body.onFloor() && b.body.o.radius > 20 && !flutters.some((o) => o.on && o.on.b === b) && (b.state !== 'working' || Math.random() < 0.3));
@@ -1869,6 +1874,30 @@
   function drawFlutters() {
     for (const u of flutters) {
       const open = Math.abs(Math.cos(u.phase)), facing = u.on ? 1 : Math.sign(u.vx) || 1;
+      if (u.bat) {
+        // A little bat: scalloped wings flapping up and down.
+        const flap = Math.sin(u.phase);
+        ctx.save();
+        ctx.translate(u.x, u.y);
+        ctx.scale(1.6, 1.6);
+        ctx.fillStyle = '#3b3346';
+        for (const side of [-1, 1]) {
+          ctx.beginPath();
+          ctx.moveTo(side * 2, -1);
+          ctx.lineTo(side * 7, -4 - flap * 5);
+          ctx.lineTo(side * 12, -1 - flap * 6);
+          ctx.quadraticCurveTo(side * 10, 1 - flap * 3, side * 8.5, 2 - flap * 2.5);
+          ctx.quadraticCurveTo(side * 6.5, 1 - flap, side * 5, 3 - flap);
+          ctx.quadraticCurveTo(side * 3.5, 2, side * 2, 2.5);
+          ctx.fill();
+        }
+        ctx.beginPath(); ctx.ellipse(0, 0.5, 2.6, 3.2, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(-2.2, -1.5); ctx.lineTo(-1.6, -4.5); ctx.lineTo(-0.6, -2.2); ctx.moveTo(2.2, -1.5); ctx.lineTo(1.6, -4.5); ctx.lineTo(0.6, -2.2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-1.4, -0.6, 0.9, 0.9); ctx.fillRect(0.5, -0.6, 0.9, 0.9);
+        ctx.restore();
+        continue;
+      }
       ctx.save();
       ctx.translate(u.x, u.y - (u.on ? 6 : 0));
       ctx.scale(facing * 1.8, 1.8);
@@ -3691,7 +3720,7 @@
       season: (k) => { seasonOverride = k; },
       flakes: () => flakes,
       flutters: () => flutters,
-      flutter: () => addFlutter(),
+      flutter: (bat) => addFlutter(bat),
       goo: () => bubbles,
       strands: () => strands,
       now: () => time,
