@@ -143,6 +143,7 @@
       ['nightcap', 1, 0, 1, 1, 'Asleep at night (10 pm to 7 am), it wears a floppy nightcap'],
       ['witchHats', 1, 0, 1.3, 0.05, 'Halloween week (October 24 to 31): they wear pointy witch hats (how big)'],
       ['trickTreat', 1, 0, 2, 0.05, 'Halloween week: a calm slime now and then hops over to another, "trick or treat!" (a sweet, or a boo)'],
+      ['ghosts', 1, 0, 3, 0.05, 'Halloween week: now and then one goes as a ghost under a sheet and creeps up on another ("boooo!")'],
       ['snoreBubble', 1, 0, 2, 0.05, 'Fast asleep, it blows a bubble that swells and shrinks with each breath, and pops when it wakes'],
       ['busySweat', 10, 0, 60, 1, 'Working through this many tools a minute, it breaks a sweat (0 = never)'],
       ['sleepTalk', 1, 0, 3, 0.05, 'Fast asleep, it mumbles now and then, often about what it was last doing'],

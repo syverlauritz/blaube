@@ -3137,6 +3137,106 @@
     const others = [...buddies.values()].filter((o) => o !== b && o.kind === 'mother' && !o.totBy && !o.tot && free(o) && o.body.onFloor() && Math.abs(o.body.centroid().y - c.y) < r && Math.abs(o.body.centroid().x - c.x) < r * 10);
     if (others.length) totNow(b, others[Math.floor(Math.random() * others.length)]);
   }
+  // Halloween: a bored slime now and then pulls a sheet over itself and
+  // goes as a ghost, creeping up on another with slow little hops,
+  // swaying, "boooo!". The other bristles and jumps back ("eek!"); off
+  // comes the sheet ("it's me!") and they both laugh.
+  function ghost(b) {
+    const g = b.ghost, body = b.body;
+    if (g) {
+      const t = time - g.at, o = g.o, r = body.o.radius;
+      const end = () => { b.ghost = null; if (o) o.ghostBy = null; };
+      if (b.dying || t > 16 || (o && (o.dying || o.merging))) { end(); return; }
+      b.nextHop = time + 1;
+      g.amt = g.stage === 'off' ? Math.max(0, 1 - (time - g.offAt) / 0.5) : Math.min(1, t / 0.5);
+      if (body.grab) { if (g.stage !== 'off') { g.stage = 'off'; g.offAt = time; } }
+      if (g.stage === 'on' && t > 0.8) { g.stage = 'creep'; g.next = time; }
+      if (g.stage === 'creep') {
+        const c = body.centroid(), oc = o.body.centroid(), dx = oc.x - c.x;
+        // Sway as it goes, woo-ooo.
+        body.lean(Math.sin(t * 3) * r * 5 * DT, DT);
+        if (Math.abs(dx) < r + o.body.o.radius * 1.4) { g.stage = 'boo'; g.booAt = time; quip(b, 'boooo!', 1.4); body.squashTop(-r * 14, DT); return; }
+        if (time > g.next && body.onFloor() && !b.pendingHop) {
+          g.next = time + 0.55;
+          const v = launch(Math.sign(dx) * Math.min(Math.abs(dx) - (r + o.body.o.radius) * 1.1, r * 1.2), r * 0.35);
+          body.impulse(-body.velocity(DT).x, 0, DT);
+          b.hop(v.vx, v.vy);
+        }
+        if (time - g.at > 10) { g.stage = 'off'; g.offAt = time; }
+        return;
+      }
+      if (g.stage === 'boo') {
+        const bt = time - g.booAt;
+        body.lean(Math.sin(bt * 9) * r * 12 * DT, DT); // (waving its arms about, under the sheet)
+        if (body.onFloor()) body.squashTop(-r * 0.35 * 60 * DT, DT);
+        if (!g.scared && bt > 0.4) {
+          g.scared = true;
+          const away = Math.sign(o.body.centroid().x - body.centroid().x) || 1;
+          o.startleUntil = time + 0.7; o.surpriseUntil = time + 0.7;
+          o.hop(away * 220, -380);
+          bristle(o);
+          quip(o, 'eek!', 1);
+        }
+        if (bt > 1.8) { g.stage = 'off'; g.offAt = time; quip(b, "it's me!", 1.2); b.cheerUntil = time + 1.8; }
+        return;
+      }
+      if (g.stage === 'off') {
+        const ot = time - g.offAt;
+        if (o && ot > 0.7 && !g.laughed && !o.dying) { g.laughed = true; quip(o, Math.random() < 0.5 ? 'haha' : 'not funny!', 1); if (Math.random() < 0.6) o.cheerUntil = time + 1.2; else { o.annoyedAt = b; o.annoyedUntil = time + 1.2; } }
+        if (ot > 1.6) end();
+      }
+      return;
+    }
+    if (CFG.ghosts <= 0 || CFG.seasons <= 0 || !spooky() || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || !body.onFloor() || b.merging || b.dying || b.tower || b.pile || b.tug || b.rope || b.seek || b.balloon || b.frog || b.tag || b.parade || b.tot || b.shape || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
+    if (time < (b.nextGhost ?? (b.nextGhost = time + (120 + Math.random() * 300) / CFG.ghosts))) return;
+    b.nextGhost = time + (300 + Math.random() * 500) / CFG.ghosts;
+    const c = body.centroid(), r = body.o.radius;
+    const o = [...buddies.values()].find((o) => o !== b && o.kind === 'mother' && !o.dying && !o.ghostBy && !o.ghost && !o.body.grab && o.body.onFloor() && Math.abs(o.body.bbox().maxY - body.bbox().maxY) < 10 && Math.abs(o.body.centroid().x - c.x) < r * 9 && (o.state === 'idle' || o.state === 'done'));
+    if (o) ghostNow(b, o);
+  }
+  function ghostNow(b, o) {
+    b.ghost = { o, at: time, stage: 'on', amt: 0 };
+    o.ghostBy = b;
+  }
+  // The sheet: the body's outline a little bigger, a wavy hem that flutters
+  // as it goes, and two dark eye holes.
+  function drawGhost(b) {
+    const g = b.ghost;
+    if (!g || !g.amt) return;
+    const body = b.body, c = body.centroid(), r = body.o.radius, n = body.n, box = body.bbox();
+    const lift = (1 - g.amt) * (g.stage === 'off' ? r * 1.5 : r * 0.6); // (pulled on from above, pulled off upward)
+    const hem = box.maxY + 1;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, g.amt * 1.5);
+    ctx.translate(0, -lift);
+    ctx.fillStyle = '#f6f4f0';
+    ctx.strokeStyle = 'rgba(40,40,60,0.12)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    // Round the top half, then the hem along the bottom.
+    const left = box.minX - r * 0.1, right = box.maxX + r * 0.1, w = right - left, waves = 5;
+    const sway = Math.sin(time * 5) * r * 0.04;
+    const top = [];
+    for (let i = 0; i < n; i++) { const a = Math.atan2(body.py[i] - c.y, body.px[i] - c.x); if (a < 0) top.push([a, i]); }
+    top.sort((p, q) => p[0] - q[0]); // (left, over the top, to the right)
+    ctx.moveTo(left + sway, c.y);
+    for (const [, i] of top) ctx.lineTo(c.x + (body.px[i] - c.x) * 1.08, c.y + (body.py[i] - c.y) * 1.08);
+    ctx.lineTo(right + sway, c.y);
+    ctx.lineTo(right + sway * 2, hem);
+    for (let k = waves * 2; k >= 0; k--) ctx.lineTo(left + (w * k) / (waves * 2) + sway * 2, hem - (k % 2 ? r * 0.09 : 0) + Math.sin(time * 6 + k) * r * 0.02);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // Eye holes, where its eyes are under there.
+    const ft = b.faceTurn || { x: 0, y: 0 }, st = body.stretch();
+    ctx.fillStyle = '#2a2638';
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(c.x + (s * r * 0.3 + ft.x) * st.x, c.y + (-r * 0.22 + ft.y) * st.y, r * 0.075, r * 0.11, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (g.stage === 'boo') { ctx.beginPath(); ctx.ellipse(c.x + ft.x * st.x, c.y + (r * 0.08 + ft.y) * st.y, r * 0.07, r * 0.1, 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
   // A session going round in circles (steamed up, see struggle): a calm
   // slime nearby now and then hops over, leans in against it and cheers it
   // on ("you got this!"). It gets a moment's smile.
@@ -5029,6 +5129,7 @@
     dogpile(b);
     catchThrown(b);
     trickTreat(b);
+    ghost(b);
     comfort(b);
     snowFight(b);
     parade(b);
@@ -5510,6 +5611,7 @@
       const face = faceFor(b);
       if (b.body.o.radius > 12) D.drawFace(ctx, b.body, face);
       b.faceTurn = { x: face.turnX || 0, y: face.turnY || 0 };
+      drawGhost(b);
       if (face.expression === 'sleepy' && face.mouth !== 'yawn') D.drawZzz(ctx, b.body, time);
       nightcap(b);
       if (b.dream && time < b.dream.until && !b.bubble && b !== hovered && ((b.sleep || 0) > 0.8 || b.dream.demo)) D.drawDream(ctx, b.body, time, W, b.dream.what);
