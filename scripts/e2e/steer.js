@@ -359,6 +359,14 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => box(`document.body.classList.contains('overview') && document.getElementById('text').value === ''`)), '/resume opens the overview, where past sessions are picked up');
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
 	await until(() => box(`!document.body.classList.contains('overview')`));
+	fs.mkdirSync(path.join(repo, '.claude', 'skills', 'release'), { recursive: true });
+	fs.writeFileSync(path.join(repo, '.claude', 'skills', 'release', 'SKILL.md'), '---\nname: release\ndescription: Tags and ships a release\n---\n');
+	await type('/skills');
+	check(await until(() => inbox.log(ID3).some((e) => /^Skills it can use: release \(Tags and ships a release\)/.test(e.text || ''))), '/skills lists the skills it can use');
+	await type('/vim');
+	check(await until(() => inbox.log(ID3).some((e) => e.text === '/vim is for Claude Code’s terminal screen; the box doesn’t need it.')), 'a terminal-screen-only command says so');
+	await type('/plugin');
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'Your plugins (claude plugin list)' && !e.running), 30000), '/plugin runs claude plugin list right there');
 	await type('/agents');
 	check(await until(() => fs.existsSync(path.join(repo, '.claude', 'agents')) && inbox.log(ID3).some((e) => /^No agents of its own yet\. Opened .+\/\.claude\/agents/.test(e.text || ''))), '/agents opens the project’s agents folder');
 	await box(`document.getElementById('git').click()`);

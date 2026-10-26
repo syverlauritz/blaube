@@ -17,7 +17,7 @@ const projectFiles = require('./files');
 const shellRun = require('./shellRun');
 const { failedTests, stoppedLast, erredLast } = require('./inbox');
 const { Notification } = require('electron');
-const { slashCommand, commandNames, expand: expandCommand, control: controlFor, contextNote, EFFORTS } = require('./commands');
+const { skills: skillList, slashCommand, commandNames, expand: expandCommand, control: controlFor, contextNote, EFFORTS } = require('./commands');
 const limits = require('./limits');
 const usageProbe = require('./usageProbe');
 const auth = require('./auth');
@@ -1956,11 +1956,11 @@ app.whenReady().then(async () => {
     // (`claude doctor`, `claude update`), run right there as a step.
     // ("/mcp" in a terminal's session: `claude mcp list`, its MCP servers
     // and whether they connect; in one Blaube started, its box shows them.)
-    const own = /^\/(doctor|upgrade|update|mcp)\s*$/i.exec(String(text).trim());
+    const own = /^\/(doctor|upgrade|update|mcp|plugins?)\s*$/i.exec(String(text).trim());
     if (own && sess && !id.startsWith('demo-') && !(own[1].toLowerCase() === 'mcp' && owned.has(id))) {
       const bin = owned.findClaude() || owned.shellPath() || 'claude';
       const q = process.platform === 'win32' ? `"${bin}"` : `'${bin.replace(/'/g, `'\\''`)}'`;
-      const what = { doctor: ['doctor', 'Checked Claude Code (claude doctor)'], mcp: ['mcp list', 'Its MCP servers (claude mcp list)'] }[own[1].toLowerCase()] || ['update', 'Updated Claude Code (claude update)'];
+      const what = { doctor: ['doctor', 'Checked Claude Code (claude doctor)'], mcp: ['mcp list', 'Its MCP servers (claude mcp list)'], plugin: ['plugin list', 'Your plugins (claude plugin list)'], plugins: ['plugin list', 'Your plugins (claude plugin list)'] }[own[1].toLowerCase()] || ['update', 'Updated Claude Code (claude update)'];
       return runForSession(id, `${q} ${what[0]}`, what[1]);
     }
     if (own && owned.has(id)) {
@@ -2040,6 +2040,16 @@ app.whenReady().then(async () => {
       owned.end(id);
       return;
     }
+    // "/skills": the skills it can use (yours and the project's).
+    if (/^\/skills\s*$/i.test(String(text).trim()) && sess) {
+      const st = gitStates.get(id);
+      const list = skillList((st && st.root) || sess.cwd);
+      inbox.add(id, { who: 'note', text: list.length ? `Skills it can use: ${list.slice(0, 30).map((k) => `${k.name}${k.about ? ` (${k.about.length > 70 ? k.about.slice(0, 69) + '…' : k.about})` : ''}`).join(' · ')}. Ask for one by name, or it picks one when it fits.` : 'No skills of yours or this project’s (they go in .claude/skills).' });
+      return;
+    }
+    // Ones only the terminal itself has any use for.
+    const termOnly = /^\/(vim|terminal-setup|statusline)\s*$/i.exec(String(text).trim());
+    if (termOnly) { inbox.add(id, { who: 'note', text: `/${termOnly[1].toLowerCase()} is for Claude Code’s terminal screen; the box doesn’t need it.` }); return; }
     // "/export": the conversation as Markdown, to Downloads (as ⌘S).
     if (/^\/export\s*$/i.test(String(text).trim())) {
       const file = saveConversation(id);

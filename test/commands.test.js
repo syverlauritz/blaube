@@ -85,3 +85,16 @@ test('built-in commands the box handles itself say what they do', () => {
   assert.equal(byName.rename.mine, false);
   assert.equal(byName.vim.about, undefined);
 });
+
+test('lists your skills and the project’s, with what each is for', () => {
+  const { skills } = require('../src/main/commands.js');
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-home-')), proj = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-proj-'));
+  const put = (root, name, body) => { fs.mkdirSync(path.join(root, '.claude', 'skills', name), { recursive: true }); if (body) fs.writeFileSync(path.join(root, '.claude', 'skills', name, 'SKILL.md'), body); };
+  put(proj, 'deploy', '---\nname: deploy\ndescription: "Ships the site"\n---\nDo it.');
+  put(home, 'deploy', '---\ndescription: mine\n---\n');
+  put(home, 'notes', 'no front matter');
+  put(home, 'empty');
+  assert.deepEqual(skills(proj, home), [{ name: 'deploy', about: 'Ships the site', where: 'this project' }, { name: 'notes', about: '', where: 'yours' }]);
+  assert.deepEqual(skills('', path.join(home, 'none')), []);
+});

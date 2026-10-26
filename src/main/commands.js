@@ -44,6 +44,24 @@ function slashCommand(text, cwd = '', home = os.homedir()) {
 
 // Every command you could type, for "/" in the talk box: [{ name, mine,
 // about }] (yours first), the ones starting with `q`.
+// Your skills (yours, and the project's): [{ name, about, where }], from
+// each skills/<name>/SKILL.md's description.
+function skills(cwd = '', home = os.homedir()) {
+  const out = [];
+  for (const [dir, where] of [[cwd && path.join(cwd, '.claude', 'skills'), 'this project'], [path.join(home, '.claude', 'skills'), 'yours']]) {
+    if (!dir) continue;
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch { continue; }
+    for (const n of names.sort()) {
+      let text = '';
+      try { text = fs.readFileSync(path.join(dir, n, 'SKILL.md'), 'utf8').slice(0, 4000); } catch { continue; }
+      const m = /^---\r?\n[\s\S]*?^description:\s*(.+)$/m.exec(text);
+      if (!out.some((x) => x.name === n)) out.push({ name: n, about: m ? m[1].trim().replace(/^["']|["']$/g, '') : '', where });
+    }
+  }
+  return out;
+}
+
 // What the box does with the built-in ones it handles itself, in words.
 const ABOUT = {
   'add-dir': 'Another folder it may work in',
@@ -65,8 +83,10 @@ const ABOUT = {
   permissions: 'What it may do without asking',
   plan: 'Plans first, before changing anything',
   'release-notes': 'What’s new in Claude Code',
+  plugin: 'Your Claude Code plugins',
   rename: 'Names this session',
   resume: 'Pick up a past session',
+  skills: 'The skills it can use',
   status: 'What it’s running on',
   todos: 'Its to-do list',
   upgrade: 'Updates Claude Code',
@@ -135,4 +155,4 @@ function contextNote(r) {
   return { text: `Context: ${pct}% full (${kTokens(used)} of ${kTokens(r.maxTokens)})`, context: { max: r.maxTokens, parts: parts.map((p) => Object.assign(p, { label: `${p.name} ${kTokens(p.tokens)}` })) } };
 }
 
-module.exports = { slashCommand, commandNames, expand, control, contextNote, EFFORTS };
+module.exports = { skills, slashCommand, commandNames, expand, control, contextNote, EFFORTS };
