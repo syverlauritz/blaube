@@ -2881,7 +2881,8 @@ app.whenReady().then(async () => {
     if (!r) return done('Paste the issue’s or pull request’s link, or owner/repo#42');
     const go = (dest) => {
       const id = startNew(dest, opts);
-      if (id && r.pr) sendMessage(id, `Review GitHub pull request ${r.gh}#${r.number}. Check it out (\`gh pr checkout ${r.number}\`) and read it with its comments (\`gh pr view ${r.number} --comments\`). Then tell me what it does, whether it's correct, and any bugs, risks or missing tests, each with its file and line. Don't push or comment on GitHub.`);
+      if (id && r.pr && opts && opts.mine === true) sendMessage(id, `Get my GitHub pull request ${r.gh}#${r.number} ready to merge. Check it out (\`gh pr checkout ${r.number}\`), see how its checks are doing (\`gh pr checks ${r.number}\`) and what reviewers said (\`gh pr view ${r.number} --comments\`). Fix what's needed, push, and tell me what you did and anything left for me.`);
+      else if (id && r.pr) sendMessage(id, `Review GitHub pull request ${r.gh}#${r.number}. Check it out (\`gh pr checkout ${r.number}\`) and read it with its comments (\`gh pr view ${r.number} --comments\`). Then tell me what it does, whether it's correct, and any bugs, risks or missing tests, each with its file and line. Don't push or comment on GitHub.`);
       else if (id) sendMessage(id, `Work on GitHub issue ${r.gh}#${r.number}. Read it first, with its comments (\`gh issue view ${r.number} --repo ${r.gh} --comments\`). Then make a branch for it, fix it, and tell me what you changed. If it's unclear or big, tell me your plan before changing anything.`);
       done('');
     };
@@ -2901,7 +2902,7 @@ app.whenReady().then(async () => {
     const bin = (TEST ? global.__blaubeGh : pulls.findGh()) || ''; // (tests: a stand-in, never the real gh)
     if (!bin) return;
     require('./ghTodo').look((list) => {
-      if (ghSeen) for (const x of list) if (!ghSeen.has(x.url)) newOnGitHub(x);
+      if (ghSeen) for (const x of list) if (!ghSeen.has(x.url) && x.kind !== 'mine') newOnGitHub(x); // (your own new PR isn't news)
       ghSeen = new Set([...(ghSeen || []), ...list.map((x) => x.url)]);
     }, { bin, fresh: TEST ? 0 : 5 * 60e3 });
   }, TEST ? 1000 : 5 * 60e3).unref();

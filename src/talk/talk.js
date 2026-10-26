@@ -878,15 +878,15 @@
         const row = document.createElement('button');
         row.className = 'row past github';
         const name = document.createElement('b');
-        name.textContent = x.kind === 'review' ? `Review: ${x.title}` : x.title;
+        name.textContent = x.kind === 'review' ? `Review: ${x.title}` : x.kind === 'mine' ? `Yours: ${x.title}` : x.title;
         const m = document.createElement('small');
         m.textContent = `${x.repo}#${x.number}${x.when ? ` · ${x.when}` : ''}`;
         row.append(name, m);
-        row.title = x.kind === 'review' ? 'Starts a session that checks it out and reviews it' : 'Starts a session that reads it and fixes it';
+        row.title = x.kind === 'review' ? 'Starts a session that checks it out and reviews it' : x.kind === 'mine' ? 'Starts a session that gets it ready to merge: its checks, what reviewers said' : 'Starts a session that reads it and fixes it';
         row.onclick = async () => {
           row.disabled = true;
           m.textContent = 'Starting…';
-          const err = await api.issue(x.url, { plan: planFirst, model: newModel });
+          const err = await api.issue(x.url, { plan: planFirst, model: newModel, mine: x.kind === 'mine' });
           if (err) { row.disabled = false; m.textContent = err; requestAnimationFrame(fitWindow); }
         };
         box.append(row);

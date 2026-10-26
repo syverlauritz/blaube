@@ -18,14 +18,16 @@ test('looked up with your gh, reviews first, at most every five minutes', async 
   const run = (bin, args, opts, cb) => {
     calls.push(args.join(' '));
     assert.equal(opts.env.GH_PROMPT_DISABLED, '1');
-    const review = args[1] === 'prs';
-    setImmediate(() => cb(null, JSON.stringify(review ? [item({ url: 'https://github.com/acme/web/pull/3', title: 'Header' })] : [item(), item({ number: 8, url: 'https://github.com/acme/tax/issues/8', updatedAt: '2026-10-25T10:00:00Z' })])));
+    const out = args[2] === '--review-requested=@me' ? [item({ url: 'https://github.com/acme/web/pull/3', title: 'Header' })]
+      : args[2] === '--author=@me' ? [item({ url: 'https://github.com/acme/tax/pull/11', title: 'Mine' })]
+        : [item(), item({ number: 8, url: 'https://github.com/acme/tax/issues/8', updatedAt: '2026-10-25T10:00:00Z' })];
+    setImmediate(() => cb(null, JSON.stringify(out)));
   };
   const list = await new Promise((r) => look(r, { run, bin: 'gh', now: 1000 }));
-  assert.deepEqual(list.map((x) => `${x.kind} ${x.repo}#${x.number}`), ['review acme/web#3', 'issue acme/tax#8', 'issue acme/tax#7']);
-  assert.ok(calls.some((c) => /^search prs --review-requested=@me --state=open/.test(c)) && calls.some((c) => /^search issues --assignee=@me --state=open/.test(c)));
+  assert.deepEqual(list.map((x) => `${x.kind} ${x.repo}#${x.number}`), ['review acme/web#3', 'mine acme/tax#11', 'issue acme/tax#8', 'issue acme/tax#7']);
+  assert.ok(calls.some((c) => /^search prs --review-requested=@me --state=open/.test(c)) && calls.some((c) => /^search prs --author=@me --state=open/.test(c)) && calls.some((c) => /^search issues --assignee=@me --state=open/.test(c)));
   await new Promise((r) => look(r, { run, bin: 'gh', now: Date.now() + 1000 }));
-  assert.equal(calls.length, 2, 'not asked again so soon');
+  assert.equal(calls.length, 3, 'not asked again so soon');
   assert.deepEqual(await new Promise((r) => look(r, { run, bin: '' })), [], 'no gh: nothing');
   forget();
   assert.deepEqual(await new Promise((r) => look(r, { run: (b, a, o, cb) => cb(new Error('not signed in')), bin: 'gh' })), []);
