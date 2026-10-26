@@ -122,17 +122,18 @@ function markFrontSeen() {
 // --- Preferences (config + chosen display), kept in the app's data folder ---
 
 const prefsFile = () => path.join(app.getPath('userData'), 'prefs.json');
-let prefs = { config: {}, displayId: null, colors: {}, hiddenBlobs: {}, wantedBlobs: {} };
+let prefs = { config: {}, displayId: null, colors: {}, hiddenBlobs: {}, wantedBlobs: {}, hiddenHelpers: {} };
 
 function loadPrefs() {
   try { prefs = Object.assign(prefs, JSON.parse(fs.readFileSync(prefsFile(), 'utf8'))); } catch { /* first run */ }
   if (prefs.notify === false && prefs.config && !prefs.config.notify) prefs.config.notify = 'Off'; // (from before it was a setting)
   prefs.config = BlaubeConfig.sanitize(prefs.config);
   if (!prefs.colors || typeof prefs.colors !== 'object') prefs.colors = {};
-  // Blobs hidden by hand (and shown by hand over the max), per session id:
+  // Blobs hidden by hand (and shown by hand over the max), per session id
+  // (and helpers hidden by hand, per "session id/agent id"):
   // kept while it runs, so a restart doesn't bring them back. (Ones that
   // ended while Blaube was off are forgotten after a week.)
-  for (const k of ['hiddenBlobs', 'wantedBlobs']) {
+  for (const k of ['hiddenBlobs', 'wantedBlobs', 'hiddenHelpers']) {
     const kept = prefs[k] && typeof prefs[k] === 'object' ? prefs[k] : {};
     prefs[k] = {};
     for (const [id, at] of Object.entries(kept)) if (typeof at === 'number' && Date.now() - at < 7 * 864e5) prefs[k][id] = at;
@@ -1179,7 +1180,7 @@ function pushState() {
       todo: (() => { const t = inbox.todos.get(s.id) || []; const done = t.filter((x) => x.status === 'completed').length; return t.length && done < t.length ? { done, of: t.length } : null; })(),
       changes: s.cwd && !s.id.startsWith('demo-') ? gitChanges.get(s.cwd) : null,
       effort: efforts.get(s.id) || defaultEffort(),
-      agents: s.agents.map((a) => Object.assign({}, a, {
+      agents: s.agents.filter((a) => !prefs.hiddenHelpers[`${s.id}/${a.id}`]).map((a) => Object.assign({}, a, { // (not the ones hidden by hand: see Blobs)
         description: agentDescription(s, a),
         effort: efforts.get(`${s.id}/${a.id}`) || efforts.get(s.id) || defaultEffort(),
         // Its own tokens, so its slime grows with them too.
@@ -1220,6 +1221,7 @@ function setBlobHidden(id, hide) {
 function showAllBlobs() {
   blobsNote = null;
   prefs.hiddenBlobs = {};
+  prefs.hiddenHelpers = {};
   savePrefs();
   pushState();
 }
@@ -1231,11 +1233,33 @@ function hideIdleBlobs() {
   pushState();
 }
 function forgetBlob(id) {
-  if (!(id in prefs.hiddenBlobs) && !(id in prefs.wantedBlobs)) return;
+  const kids = Object.keys(prefs.hiddenHelpers).filter((k) => k.startsWith(`${id}/`));
+  if (!(id in prefs.hiddenBlobs) && !(id in prefs.wantedBlobs) && !kids.length) return;
   delete prefs.hiddenBlobs[id];
   delete prefs.wantedBlobs[id];
+  for (const k of kids) delete prefs.hiddenHelpers[k];
   if (blobsNote && blobsNote.id === id) blobsNote = null;
   savePrefs();
+}
+// A helper's own blob: hidden by hand or not ("session id/agent id"). Its
+// mother hidden, it's off the stage too, and back to this when she's out.
+function setHelperHidden(key, hide) {
+  const [sid, aid] = String(key).split('/');
+  const s = tracker.sessions.get(sid);
+  if (!s || !s.agents.some((a) => a.id === aid)) return;
+  if (hide) prefs.hiddenHelpers[key] = Date.now(); else delete prefs.hiddenHelpers[key];
+  savePrefs();
+  pushState();
+}
+// Helpers that have finished: their choice goes with them.
+function forgetGoneHelpers() {
+  let gone = false;
+  for (const key of Object.keys(prefs.hiddenHelpers)) {
+    const [sid, aid] = key.split('/');
+    const s = tracker.sessions.get(sid);
+    if (s && isReady(s) && !s.agents.some((a) => a.id === aid)) { delete prefs.hiddenHelpers[key]; gone = true; }
+  }
+  if (gone) savePrefs();
 }
 
 // A session's talk box: over its blob, or, its blob hidden, beside the
@@ -1254,7 +1278,9 @@ function askTalk(id) {
 // The Blobs overview: a small flat box, every live session in it with its
 // colour, name, how it is, its helpers, and an eye to show or hide its blob.
 let blobsWin = null;
-const BLOBS_W = 360;
+const BLOBS_W = 640, BLOBS_MIN_W = 420, BLOBS_MAX_H = 560;
+// Its size, as you last dragged it: width, and the most height it grows to.
+const blobsSize = () => Object.assign({ w: BLOBS_W, h: BLOBS_MAX_H }, prefs.blobsSize || {});
 function openBlobs(near) {
   if (blobsWin && !blobsWin.isDestroyed()) {
     if (TEST) blobsWin.showInactive(); else { blobsWin.show(); blobsWin.focus(); }
@@ -1263,11 +1289,11 @@ function openBlobs(near) {
   }
   const at = near || screen.getCursorScreenPoint();
   const area = screen.getDisplayNearestPoint(at).workArea;
-  const h = 300;
-  const x = Math.round(Math.min(Math.max(area.x + 8, at.x - BLOBS_W / 2), area.x + area.width - BLOBS_W - 8));
+  const h = 300, w = Math.min(blobsSize().w, area.width - 16);
+  const x = Math.round(Math.min(Math.max(area.x + 8, at.x - w / 2), area.x + area.width - w - 8));
   const y = Math.round(Math.min(Math.max(area.y + 8, at.y - 20), area.y + area.height - h - 8));
   blobsWin = new BrowserWindow({
-    x, y, width: BLOBS_W, height: h,
+    x, y, width: w, height: h,
     title: 'Blobs',
     show: false,
     frame: false,
@@ -1291,6 +1317,22 @@ function openBlobs(near) {
   });
   blobsWin.on('closed', () => { blobsWin = null; blobsNote = null; });
 }
+// Pushed at most every quarter second (what each one's on changes with
+// every tool call).
+let blobsSoon = null;
+function pushBlobsSoon() {
+  if (!blobsWin || blobsSoon) return;
+  blobsSoon = setTimeout(() => { blobsSoon = null; pushBlobs(); }, 250);
+}
+// What it's on, in a few words, as its hover bubble says it: its tool
+// ("Editing face.js"), else the todo it's at, else what you asked.
+function blobDoing(s) {
+  if (s.state === 'waiting') return s.message || '';
+  if (s.state !== 'working') return '';
+  const todo = (inbox.todos.get(s.id) || []).find((t) => t.status === 'in_progress');
+  const asked = lastPrompt.get(s.id);
+  return doing.get(s.id) || (todo && todo.doing) || (asked && asked.typed && asked.text ? asked.text.split('\n')[0] : '') || 'Thinking';
+}
 const blobWord = { working: 'Working', waiting: 'Needs you', done: 'Done', idle: 'Idle' };
 function pushBlobs() {
   if (!blobsWin || blobsWin.isDestroyed()) return;
@@ -1300,6 +1342,7 @@ function pushBlobs() {
   const names = new Map(live.map((s) => [s.id, shownOf(s).full]));
   // (In a steady order, by name, so rows don't jump about under the cursor.)
   live.sort((a, b) => names.get(a.id).localeCompare(names.get(b.id)) || a.id.localeCompare(b.id));
+  forgetGoneHelpers();
   const shownCount = live.filter((s) => vis.get(s.id).shown).length;
   blobsWin.webContents.send('blobs-state', {
     dark: !!prefs.talkDark,
@@ -1317,6 +1360,20 @@ function pushBlobs() {
       shown: vis.get(s.id).shown,
       why: vis.get(s.id).why,
       talk: !s.id.startsWith('demo-'),
+      doing: blobDoing(s),
+      // Its helpers, each with its own eye.
+      kids: (s.agents || []).map((a) => {
+        const key = `${s.id}/${a.id}`;
+        return {
+          key,
+          name: helperName(s, a),
+          state: a.state,
+          word: blobWord[a.state] || a.state,
+          doing: a.state === 'waiting' ? 'Asking you something' : helperDoing.get(key) || 'Thinking',
+          shown: !prefs.hiddenHelpers[key], // (its own choice)
+          byParent: !vis.get(s.id).shown, // (off the stage with its mother)
+        };
+      }),
     })),
   });
 }
@@ -2184,6 +2241,7 @@ app.whenReady().then(async () => {
     if (pinnedTalks.has(id)) { const r = pinnedTalks.get(id); pinnedTalks.delete(id); r.id = to; pinnedTalks.set(to, r); }
     if (talkLasts.has(id)) { talkLasts.set(to, talkLasts.get(id)); talkLasts.delete(id); }
     for (const k of ['hiddenBlobs', 'wantedBlobs']) if (id in prefs[k]) { prefs[k][to] = prefs[k][id]; delete prefs[k][id]; savePrefs(); }
+    for (const k of Object.keys(prefs.hiddenHelpers)) if (k.startsWith(`${id}/`)) { prefs.hiddenHelpers[to + k.slice(id.length)] = prefs.hiddenHelpers[k]; delete prefs.hiddenHelpers[k]; savePrefs(); }
     pushState();
   });
   owned.on('mode', (id, mode) => tracker.setMode(id, mode));
@@ -2698,6 +2756,22 @@ app.whenReady().then(async () => {
   // Blobs (see openBlobs): its eyes, its buttons, its size.
   ipcMain.on('talk-blobs', () => { const b = talkBox; openBlobs(b ? { x: b.x + b.w + BLOBS_W / 2 + 8, y: b.y + 20 } : undefined); });
   ipcMain.on('blobs-toggle', (_e, id) => setBlobHidden(id, onStage(id)));
+  ipcMain.on('blobs-helper-toggle', (_e, key) => setHelperHidden(key, !prefs.hiddenHelpers[key]));
+  tracker.on('activity', () => pushBlobsSoon()); // (what each one's on)
+  // Dragged by its edge or corner: wider (kept), and taller at most (kept).
+  let blobsDrag = null;
+  ipcMain.on('blobs-resize', (_e, phase, edge, x, y) => {
+    if (!blobsWin || blobsWin.isDestroyed()) return;
+    if (phase === 'start') { blobsDrag = { edge: String(edge), x, y, b: blobsWin.getBounds() }; return; }
+    if (!blobsDrag) return;
+    if (phase === 'end') { blobsDrag = null; return; }
+    const d = blobsDrag, area = screen.getDisplayMatching(d.b).workArea;
+    const w = /e/.test(d.edge) ? Math.round(Math.min(area.width - 16, Math.max(BLOBS_MIN_W, d.b.width + x - d.x))) : d.b.width;
+    const h = /s/.test(d.edge) ? Math.round(Math.min(area.height - 16, Math.max(160, d.b.height + y - d.y))) : d.b.height;
+    blobsWin.setBounds({ x: d.b.x, y: d.b.y, width: w, height: h });
+    prefs.blobsSize = { w, h: /s/.test(d.edge) ? h : blobsSize().h };
+    savePrefs();
+  });
   ipcMain.on('blobs-show-all', () => showAllBlobs());
   ipcMain.on('blobs-hide-idle', () => hideIdleBlobs());
   ipcMain.on('blobs-max', (_e, n) => setConfig(Object.assign({}, prefs.config, { maxBlobs: Number(n) || 0 })));
@@ -2706,7 +2780,7 @@ app.whenReady().then(async () => {
   ipcMain.on('blobs-height', (_e, h) => {
     if (!blobsWin || blobsWin.isDestroyed()) return;
     const b = blobsWin.getBounds(), area = screen.getDisplayMatching(b).workArea;
-    const height = Math.round(Math.min(Math.max(120, Number(h) || 0), area.height - 16));
+    const height = Math.round(Math.min(Math.max(120, Number(h) || 0), area.height - 16, blobsSize().h)); // (no taller than you made it)
     if (height === b.height) return;
     blobsWin.setBounds({ x: b.x, y: Math.min(b.y, area.y + area.height - height - 8), width: b.width, height });
   });

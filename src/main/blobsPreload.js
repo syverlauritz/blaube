@@ -4,6 +4,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('blaubeBlobs', {
 	onState: (cb) => ipcRenderer.on('blobs-state', (_e, s) => cb(s)),
 	toggle: (id) => ipcRenderer.send('blobs-toggle', id),
+	toggleHelper: (key) => ipcRenderer.send('blobs-helper-toggle', key),
+	resize: (phase, edge, x, y) => ipcRenderer.send('blobs-resize', phase, edge, x, y),
 	showAll: () => ipcRenderer.send('blobs-show-all'),
 	hideIdle: () => ipcRenderer.send('blobs-hide-idle'),
 	setMax: (n) => ipcRenderer.send('blobs-max', n),
