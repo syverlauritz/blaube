@@ -1788,6 +1788,28 @@ app.whenReady().then(async () => {
       done(ok);
     });
   }));
+  // An MCP server that needs you to sign in: Claude Code gives the address
+  // (mcp_authenticate) and waits for the browser to come back to it.
+  ipcMain.handle('talk-mcp-sign-in', (_e, id, name) => new Promise((done) => {
+    if (!id || id !== talkId || !owned.has(id) || !(mcpStates.get(id) || []).some((m) => m.name === name)) return done(false);
+    owned.control(id, { subtype: 'mcp_authenticate', serverName: name }, (ok, r) => {
+      if (!ok) { inbox.add(id, { who: 'note', text: `Couldn’t sign in to ${name}: ${r}`, error: true }); return done(false); }
+      if (r && r.authUrl && /^https?:\/\//.test(r.authUrl)) {
+        if (TEST) global.__blaubeMcpAuthUrl = r.authUrl; else shell.openExternal(r.authUrl);
+        inbox.add(id, { who: 'note', text: `Finish signing in to ${name} in your browser` });
+      }
+      // (Asked again for a while, until it's connected.)
+      let n = 0;
+      const look = setInterval(() => {
+        if (!owned.has(id) || ++n > 36) return clearInterval(look);
+        askMcp(id);
+        const m = (mcpStates.get(id) || []).find((x) => x.name === name);
+        if (m && m.status === 'connected') { clearInterval(look); inbox.add(id, { who: 'note', text: `Signed in to ${name}: it’s connected` }); }
+      }, TEST ? 300 : 5000);
+      look.unref();
+      done(true);
+    });
+  }));
   setInterval(askUsage, 5 * 60e3).unref();
   owned.on('compacted', (id) => inbox.add(id, { who: 'note', text: 'Compacted: it carries on from a summary of the conversation so far' }));
   owned.on('result', (id, r) => {
@@ -2198,6 +2220,14 @@ app.whenReady().then(async () => {
       const turns = inbox.log(id).filter((e) => e.who === 'claude' && e.turn);
       const took = turns.reduce((n, e) => n + (e.turn.took || 0), 0);
       inbox.add(id, u ? { who: 'note', text: `It has used ${require('./commands').kTokens(u.total)} tokens (new input, cache writes and output, its helpers’ too)${u.context ? ` · its context is ${Math.round(100 * u.context / u.limit)}% full` : ''}${turns.length ? ` · ${turns.length} ${turns.length === 1 ? 'turn' : 'turns'} here, ${Math.max(1, Math.round(took / 60e3))}m working` : ''}` } : { who: 'note', text: 'Nothing to show yet: Claude Code hasn’t saved any of it.' });
+      return;
+    }
+    // ... and in one Blaube started, Claude Code's own count (get_session_cost).
+    if (/^\/cost\s*$/i.test(String(text).trim()) && owned.has(id)) {
+      owned.control(id, { subtype: 'get_session_cost' }, (ok, r) => {
+        const lines = ok && r && typeof r.text === 'string' ? r.text.split('\n').map((l) => l.replace(/:\s+/, ': ').trim()).filter(Boolean) : [];
+        inbox.add(id, lines.length ? { who: 'note', text: lines.join(' · ') } : { who: 'note', text: `Couldn’t ask what it has used${ok ? '' : `: ${r}`}`, error: true });
+      });
       return;
     }
     // Ones only the terminal itself has any use for.

@@ -19,7 +19,7 @@ if (A === 'doctor') { console.log('Claude Code doctor\\n\\nNo problems found'); 
 if (A === 'auth status --json') { console.log(JSON.stringify({ loggedIn: require('node:fs').existsSync(SIGNED) })); process.exit(0); }
 if (A === 'auth logout') { try { require('node:fs').unlinkSync(SIGNED); } catch {} console.log('Successfully logged out from your Anthropic account.'); process.exit(0); }
 if (A === 'auth login') { console.log('Opening your browser… https://claude.ai/oauth/authorize?fake=1'); setTimeout(() => { require('node:fs').writeFileSync(SIGNED, ''); console.log('Login successful.'); process.exit(0); }, 300); return; }
-let model = 'claude-opus', turn = null, used = [12, 40], mcpUp = false; const seen = new Set();
+let model = 'claude-opus', turn = null, used = [12, 40], mcpUp = false, linear = 'connected'; const seen = new Set();
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
 require('node:fs').writeFileSync(require('node:path').join(process.cwd(), 'args-' + process.pid), JSON.stringify(process.argv.slice(2)));
 out({ type: 'system', subtype: 'init', permissionMode: 'default' });
@@ -35,7 +35,9 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
     if (r.subtype === 'list_models') return ok({ models: [{ value: 'default', displayName: 'Default (recommended)', description: 'Sonnet 5.5 · Efficient for routine tasks' }, { value: 'opus', displayName: 'Opus', description: 'Opus 5.5 · Best for everyday, complex tasks' }, { value: 'haiku', displayName: 'Haiku', description: 'Haiku 5.5 · Fastest for quick answers' }] });
     if (r.subtype === 'get_context_usage') return ok({ categories: [{ name: 'System tools', tokens: 29000, kind: 'used' }, { name: 'Messages', tokens: 61000, kind: 'used' }, { name: 'Free space', tokens: 410000, kind: 'free' }], totalTokens: 90000, maxTokens: 500000, percentage: 18 });
     if (r.subtype === 'rewind_files') return ok(seen.has(r.user_message_id) ? (r.dry_run ? { canRewind: true, filesChanged: ['/x/a.js', '/x/b.js'], insertions: 3, deletions: 1 } : { canRewind: true }) : { canRewind: false, error: 'No file checkpoint found for this message.' });
-    if (r.subtype === 'mcp_status') return ok({ mcpServers: [{ name: 'github', status: mcpUp ? 'connected' : 'failed', error: 'ENOENT: no such file' }, { name: 'linear', status: 'connected' }] });
+    if (r.subtype === 'mcp_status') return ok({ mcpServers: [{ name: 'github', status: mcpUp ? 'connected' : 'failed', error: 'ENOENT: no such file' }, { name: 'linear', status: linear }] });
+    if (r.subtype === 'mcp_authenticate') { setTimeout(() => { linear = 'connected'; }, 400); return ok({ authUrl: 'https://mcp.linear.app/authorize?state=fake', requiresUserAction: true, callbackExpected: true }); }
+    if (r.subtype === 'get_session_cost') return ok({ text: 'Total cost:            $0.0123\\nTotal duration (API):  4s\\nTotal duration (wall): 1m 2s\\nTotal code changes:    3 lines added, 1 line removed' });
     if (r.subtype === 'mcp_reconnect') { mcpUp = r.serverName === 'github'; return ok({}); }
     if (r.subtype === 'get_usage') return ok({ session: {}, rate_limits_available: true, rate_limits: { five_hour: { utilization: used[0], resets_at: new Date(Date.now() + 7200e3).toISOString() }, seven_day: { utilization: used[1], resets_at: new Date(Date.now() + 4 * 86400e3).toISOString() } } });
     if (r.subtype === 'interrupt') { clearTimeout(turn); ok({}); return out({ type: 'result', subtype: 'error_during_execution', is_error: true }); }
@@ -43,10 +45,11 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
   }
   if (m.type === 'user' && m.uuid && process.env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING === '1') seen.add(m.uuid);
   if (m.type === 'user' && m.message.content === '/compact') { out({ type: 'system', subtype: 'compact_boundary' }); return out({ type: 'result', subtype: 'success', result: '' }); }
-  if (m.type === 'user' && m.message.content === '/cost') { out({ type: 'assistant', message: { model: '<synthetic>', content: [{ type: 'text', text: 'Error: Nothing to show yet' }] } }); return out({ type: 'result', subtype: 'success', result: '' }); }
+  if (m.type === 'user' && m.message.content === '/output-style') { out({ type: 'assistant', message: { model: '<synthetic>', content: [{ type: 'text', text: 'Error: Nothing to show yet' }] } }); return out({ type: 'result', subtype: 'success', result: '' }); }
   if (m.type === 'user' && m.message.content === 'busy week') used = [30, 82];
   if (m.type === 'user' && m.message.content === 'nearly out') used = [93, 82];
   if (m.type === 'user' && m.message.content === 'busy week') out({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', rateLimitType: 'seven_day', utilization: 0.82, resetsAt: Math.round(Date.now() / 1000) + 3 * 86400, unifiedWindows: { five_hour: { utilization: 0.3, resetsAt: Math.round(Date.now() / 1000) + 3600, status: 'allowed' }, seven_day: { utilization: 0.82, resetsAt: Math.round(Date.now() / 1000) + 3 * 86400, status: 'allowed' } } } });
+  if (m.type === 'user' && m.message.content === 'need linear') linear = 'needs-auth';
   if (m.type === 'user' && m.message.content === 'signed out') return out({ type: 'result', subtype: 'success', is_error: true, result: 'Not logged in · Please run /login' });
   if (m.type === 'user') turn = setTimeout(() => out({ type: 'result', subtype: 'success', result: model + ' here.' }), m.message.content === 'slow' ? 20000 : m.message.content === 'edit two' ? 1500 : m.message.content === 'start the server' ? 6000 : 50);
 });
@@ -108,7 +111,7 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await type('/compact');
 	check(await until(async () => /Compacted: it carries on from a summary/.test(await said())), '/compact goes straight in, and says when it’s done');
 	check(inbox.log(id).some((e) => e.who === 'you' && e.text === '/compact'), 'a command stays a command, with what you ran held for the next message');
-	await type('/cost');
+	await type('/output-style');
 	check(await until(async () => /Nothing to show yet/.test(await said())), 'what Claude Code itself answers a command shows');
 	check(await until(() => tracker.sessions.get(id).state === 'done'), 'and the turn ends');
 	await type('thoughts?');
@@ -118,6 +121,14 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(() => box(`!document.getElementById('mcp').hidden && document.getElementById('mcp').textContent.startsWith('github couldn’t connect')`)), 'an MCP server that couldn’t connect shows in its box');
 	await box(`document.querySelector('#mcp button').click()`);
 	check(await until(() => box(`document.getElementById('mcp').hidden`)) && inbox.log(id).some((e) => e.text === 'Reconnected github'), 'and Reconnect connects it, asked of Claude Code itself');
+	await type('need linear');
+	check(await until(() => box(`!document.getElementById('mcp').hidden && document.getElementById('mcp').textContent === 'linear needs you to sign inSign in'`)), 'one that needs you to sign in offers Sign in');
+	await box(`document.querySelector('#mcp button').click()`);
+	check(await until(() => global.__blaubeMcpAuthUrl === 'https://mcp.linear.app/authorize?state=fake' && inbox.log(id).some((e) => e.text === 'Finish signing in to linear in your browser')), 'which opens its sign-in in your browser (mcp_authenticate)');
+	check(await until(() => inbox.log(id).some((e) => e.text === 'Signed in to linear: it’s connected') && box(`document.getElementById('mcp').hidden`)), 'and says when it’s connected');
+	await until(() => tracker.sessions.get(id).state === 'done');
+	await type('/cost');
+	check(await until(() => inbox.log(id).some((e) => e.text === 'Total cost: $0.0123 · Total duration (API): 4s · Total duration (wall): 1m 2s · Total code changes: 3 lines added, 1 line removed')), '/cost says what it has cost, asked of Claude Code (get_session_cost)');
 	// Its usage limits, asked of Claude Code after each turn (get_usage).
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
 	check(await until(() => box(`/^Usage: 12% of 5 hours \\(resets .+\\) · 40% of the week/.test((document.querySelector('#overview .usage') || {}).textContent || '')`)), 'the overview has your usage limits, asked of Claude Code after a turn');

@@ -1190,12 +1190,15 @@
       const li = document.createElement('li');
       const name = document.createElement('span');
       name.textContent = m.status === 'needs-auth' ? `${m.name} needs you to sign in` : `${m.name} couldn’t connect`;
-      name.title = m.error || (m.status === 'needs-auth' ? 'Sign in with /mcp in its terminal' : '');
+      name.title = m.error || '';
       const again = document.createElement('button');
       again.type = 'button';
-      again.textContent = 'Reconnect';
-      again.title = `Try connecting to ${m.name} again`;
-      again.onclick = async () => { if (!current) return; again.disabled = true; again.textContent = 'Connecting…'; if (!(await api.mcpReconnect(current.id, m.name))) { again.disabled = false; again.textContent = 'Reconnect'; } };
+      // (Signing in: in your browser, as /mcp does in the terminal.)
+      const auth = m.status === 'needs-auth' && api.mcpSignIn;
+      const word = auth ? 'Sign in' : 'Reconnect';
+      again.textContent = word;
+      again.title = auth ? `Sign in to ${m.name}, in your browser` : `Try connecting to ${m.name} again`;
+      again.onclick = async () => { if (!current) return; again.disabled = true; again.textContent = auth ? 'Signing in…' : 'Connecting…'; if (!(await (auth ? api.mcpSignIn : api.mcpReconnect)(current.id, m.name))) { again.disabled = false; again.textContent = word; } };
       li.append(name, again);
       box.append(li);
     }
