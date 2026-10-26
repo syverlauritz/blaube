@@ -84,7 +84,7 @@
       // turns back (mothers wander off now and then; helpers never, except
       // to follow their mum down).
       const l = this.body.onLedge;
-      if (l && vy < 0 && !this.toMum && (this.kind === 'child' || Math.random() < 0.85)) {
+      if (l && vy < 0 && !this.toMum && time > (this.leaving || 0) && (this.kind === 'child' || Math.random() < 0.85)) { // (unless it means to: see hopOff)
         const c = this.body.centroid(), r = this.body.o.radius;
         const land = c.x + vx * (-2 * vy / CFG.gravity);
         if (land < l.x0 + r * 0.6 || land > l.x1 - r * 0.6) {
@@ -685,7 +685,7 @@
 
   // The shots script (scripts/shots) opens the window with ?debug to look
   // inside while it plays a scene.
-  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, hearts: () => hearts, now: () => time, sys, spoken, input: { down: (e) => onDown(e), move: (e) => onMove(e), up: (e) => onUp(e) }, ownMouse: false, ghost: (b, o) => ghostNow(b, o), ledges: () => ledges };
+  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, hearts: () => hearts, now: () => time, sys, spoken, input: { down: (e) => onDown(e), move: (e) => onMove(e), up: (e) => onUp(e) }, ownMouse: false, ghost: (b, o) => ghostNow(b, o), ledges: () => ledges, roomFor: (b) => roomFor(b), mover: () => mover };
   const petSize = () => 34 * CFG.size;
 
   function syncPets(sessions) {
@@ -1299,12 +1299,12 @@
       b.look = lookOf(b);
       if (b.look !== 'none') Looks.stepLook(b, DT);
       if (b.splitting) pullStrand(b);
-      if (body.lastImpact > CFG.dizzySpeed) { if (time > (b.dizzyUntil || 0)) feel(b, -0.15); b.dizzyUntil = time + 0.9; }
+      if (body.lastImpact > CFG.dizzySpeed && time > (b.softUntil || 0)) { if (time > (b.dizzyUntil || 0)) feel(b, -0.15); b.dizzyUntil = time + 0.9; }
       // A good thump makes it blink (a hard one makes it dizzy, above).
       else if (body.lastImpact > 650 && CFG.eyeLife > 0 && time > (b.thumpBlinkAt || 0)) { b.nextBlink = time; b.thumpBlinkAt = time + 0.3; }
       if (body.lastImpact > 650 && CFG.contactJiggle > 0) passJiggle(b, body.lastImpact);
       if (flakes.length) stirFlakes(b, pre);
-      if (b.effort === 'high' && !b.glasses && !b.splitting && !b.merging && !b.dying && body.lastImpact > CFG.glassesSpeed) knockGlasses(b);
+      if (b.effort === 'high' && !b.glasses && !b.splitting && !b.merging && !b.dying && body.lastImpact > CFG.glassesSpeed && time > (b.softUntil || 0)) knockGlasses(b);
       if (b.glasses) stepGlasses(b);
       if (meditating(b)) levitate(b);
 
@@ -1358,6 +1358,7 @@
       }
     }
     collidePets();
+    spreadOut();
     stepBubbles();
     stepSeason();
     stepFlutters();
@@ -4793,7 +4794,7 @@
     if (Math.abs(dx) < r * 3) return;
     b.nextTagAlong = time + 1.2 + Math.random() * 1.5;
     b.happyUntil = time + 1;
-    b.hop(Math.sign(dx) * Math.min(480, (Math.abs(dx) - r * 2) * 1.2), -330);
+    cursorHop(b, Math.sign(dx) * Math.min(480, (Math.abs(dx) - r * 2) * 1.2), -330);
   }
 
   // The tuning panel's Show off button: a quick run through the rarer bits
@@ -5066,6 +5067,264 @@
     spawnHeart({ x: c.x, y: Math.min(b.body.bbox().minY, b.body.lookTop ?? Infinity) - 22, vx: 0, born: time, size: Math.max(10, r * 0.22), broken: true });
   }
 
+	// --- Crowding ---------------------------------------------------------------
+	// Packed in tight (pressed on by its neighbours, squeezed in between two,
+	// sat on), a slime gets fed up after a while: now and then a squeezed,
+	// wobbly face, a grumble puff and a little shove away from whoever's
+	// pressing hardest. And one at a time, a while apart, the crowded ones
+	// spread out: to an emptier stretch of floor within reach, or else up
+	// onto a window top (or a talk box) with room on it; one crowded up on a
+	// top hops down again. Family doesn't count: a helper pressed against its
+	// mother (or its brothers and sisters) likes it there.
+	const CROWDED = 1.6; // (about: pressed on from more than one side)
+	const kin = (a, o) => a.mother === o || o.mother === a || (!!a.mother && a.mother === o.mother);
+	// How crowded it is right now: each neighbour within half again its
+	// radius counts by how close it is (touching 1, less and less further off,
+	// squashed into it up to 2; more for a bigger one), more for being squeezed in between two or sat on.
+	function crowdOf(b) {
+		const c = b.body.centroid(), r = b.body.o.radius;
+		let v = 0, left = 0, right = 0, worst = null, most = 0;
+		for (const o of buddies.values()) {
+			if (o === b || o.dying || o.body.grab || o.merging || kin(b, o)) continue;
+			const oc = o.body.centroid(), or = o.body.o.radius;
+			const gap = Math.hypot(oc.x - c.x, oc.y - c.y) - r - or;
+			if (gap > r * 1.5) continue;
+			let press = (gap < 0 ? 1 + Math.min(1, -gap / (r * 0.5)) : (1 - gap / (r * 1.5)) ** 2) * Math.min(1.5, Math.sqrt(or / r));
+			if (oc.y > c.y + r * 0.6) press *= 0.3; // (standing on it: not much of a squeeze)
+			else if (gap < r * 0.15 && oc.y > c.y - r * 0.6) { if (oc.x < c.x) left = Math.max(left, press); else right = Math.max(right, press); }
+			v += press;
+			if (press > most) { most = press; worst = o; }
+		}
+		if (left && right) v += 0.5 * Math.min(left, right);
+		if (b.stackedBy && !kin(b, b.stackedBy)) v += 0.6;
+		return { v, worst };
+	}
+	// Every step, for each slime: how crowded it's been (eased over a few
+	// seconds), and, fed up, a grumble now and then (each 20-45 s apart, and
+	// at most one every 8 s on the whole stage).
+	let lastGrumble = -1e9;
+	function crowding(b) {
+		if (CFG.crowding <= 0 || b.dying || b.removed) { b.crowd = b.crowdedFor = 0; return; }
+		if (time - (b.crowdAt ?? -1) >= 0.05) {
+			const dt = Math.min(0.5, time - (b.crowdAt ?? time));
+			b.crowdAt = time;
+			const now = b.body.grab || b.merging || b.splitting ? { v: 0, worst: null } : crowdOf(b);
+			b.crowd = (b.crowd || 0) + (now.v - (b.crowd || 0)) * Math.min(1, dt / 2.5);
+			b.crowdWorst = now.worst;
+			b.crowdedFor = b.crowd > CROWDED ? (b.crowdedFor || 0) + dt : Math.max(0, (b.crowdedFor || 0) - 2 * dt);
+		}
+		const body = b.body, g = b.grumble;
+		if (g) {
+			// The shove: it leans away from the one pressing on it, easing in
+			// and out, and huffs a puff off the top of its head.
+			const t = time - g.at, r = body.o.radius;
+			if (body.grab || t > 2.2) { b.grumble = null; return; }
+			if (t < 0.9 && body.onFloor()) body.lean(g.away * Math.sin(t / 0.9 * Math.PI) * Math.min(1.5, CFG.crowding) * r * 10 * DT, DT);
+			if (!g.puffed && t > 0.5) {
+				g.puffed = true;
+				const c = body.centroid(), top = body.bbox().minY;
+				spawnHeart({ puff: true, x: c.x - g.away * r * 0.3, y: top + 4, vx: -g.away * 14, rise: 26, born: time, size: r * 0.09 });
+				if (body.onFloor()) body.squashTop(r * 0.9, DT);
+			}
+			return;
+		}
+		const calm = b.state === 'idle' || b.state === 'done' || b.state === 'working';
+		if (!calm || b.crowdedFor < 5 || body.grab || !body.onFloor() || b.merging || b.splitting || b.move || playing(b) || (b.sleep || 0) > 0.3) return;
+		if (!b.nextGrumble) { b.nextGrumble = time + Math.random() * 10; return; }
+		if (time < b.nextGrumble || time - lastGrumble < 8) return;
+		b.nextGrumble = time + 20 + Math.random() * 25;
+		lastGrumble = time;
+		const o = b.crowdWorst, c = body.centroid();
+		const away = o && !o.dying ? -Math.sign(o.body.centroid().x - c.x) || 1 : Math.random() < 0.5 ? -1 : 1;
+		b.grumble = { at: time, away };
+		b.grumbleUntil = time + 2.2;
+		if (o && !o.dying) { b.glanceAt = o; b.glanceUntil = time + 1.6; }
+		// Now and then a word for it (shown, not said: it's only grumbling),
+		// when there's room for a line of personality.
+		if (!b.bubble && Math.random() < 0.3 && mayTalk('flavour')) b.say([{ text: ['hmph', 'scooch…', 'squished…'][Math.floor(Math.random() * 3)] }], 1.6);
+	}
+
+	// Spreading out: who goes, and where. One slime at a time, each a good
+	// while after the last (8-14 s), so the stage spreads out bit by bit;
+	// one that has moved stays put a while (a minute, longer each time).
+	let mover = null, nextMove = 0;
+	// The room to either side at x on the floor, for b (its own family will
+	// squeeze in with it).
+	function floorRoom(b, x) {
+		const r = b.body.o.radius;
+		let room = Math.min(x - r, W - x - r);
+		for (const o of buddies.values()) {
+			if (o === b || o.dying || o.body.grab || o.body.onLedge || kin(b, o)) continue;
+			room = Math.min(room, Math.abs(o.body.centroid().x - x) - r - o.body.o.radius);
+		}
+		return room;
+	}
+	// The roomiest gap on a window top, for b (and its helpers, who'll come
+	// up after it): { x, room } or null.
+	function ledgeRoom(b, l) {
+		const r = b.body.o.radius;
+		let need = r * 2;
+		if (b.big) for (const k of kidsOf(b)) if (!k.merging) need += k.body.o.radius * 2.2;
+		const taken = [];
+		for (const o of buddies.values()) {
+			const ol = o.body.onLedge;
+			if (o === b || o.dying || !ol || ol.id !== l.id || Math.abs(ol.y - l.y) > 10 || kin(b, o)) continue;
+			const ox = o.body.centroid().x, or = o.body.o.radius + r * 0.2;
+			taken.push([ox - or, ox + or]);
+		}
+		taken.sort((p, q) => p[0] - q[0]);
+		let from = l.x0 + r * 0.15, best = null; // (its middle a good radius in from the edge)
+		for (const [a, z] of [...taken, [l.x1 - r * 0.15, Infinity]]) {
+			if (a - from >= need && (!best || a - from > best.z - best.a)) best = { a: from, z: a };
+			from = Math.max(from, z);
+		}
+		// (Snug toward one end of the gap, leaving the rest of it for others.)
+		return best && { x: best.a + need / 2 + Math.min((best.z - best.a - need) / 2, r * 0.2), room: (best.z - best.a - need) / 2 };
+	}
+	// How high it can hop to get up onto a window top, at most.
+	const climbOf = (b) => Math.min(520, b.body.o.radius * 8);
+	const canClimb = (b, l) => b.body.bbox().maxY - l.y <= climbOf(b) && !l.vx && !l.vy && l.y > b.body.o.radius * 3 && !(b.noGo && b.noGo.id === l.id && time < b.noGo.until);
+	// Where a crowded slime could go: free floor first (within reach), else
+	// the roomiest window top it can get up onto, not too far off.
+	function roomFor(b) {
+		const c = b.body.centroid(), r = b.body.o.radius, here = b.body.onLedge, reach = Math.max(r * 14, 700);
+		let floor = null;
+		for (let x = r * 1.5; x <= W - r * 1.5; x += r * 0.5) {
+			const d = Math.abs(x - c.x);
+			if (d > reach || (!here && d < r * 1.5)) continue;
+			if (floorRoom(b, x) >= r * 0.9 && (!floor || d < floor.d)) floor = { x, d };
+		}
+		if (floor) return { x: floor.x };
+		if (b.kind === 'child') return null; // (helpers only ever hop down: their mum is the place to be)
+		let best = null;
+		for (const l of ledges) {
+			if ((here && here.id === l.id) || l.x1 - l.x0 < r * 3 || l.y > H - r || !canClimb(b, l)) continue;
+			const spot = ledgeRoom(b, l);
+			if (!spot || spot.room < r * 0.3) continue;
+			const d = Math.abs(spot.x - c.x);
+			if (d > reach * 1.6) continue;
+			const score = Math.min(spot.room, r * 4) / r - d / 600;
+			if (!best || score > best.score) best = { ledge: l.id, y: l.y, off: spot.x - l.x0, score };
+		}
+		return best;
+	}
+	// Standing somewhere it can hop from: the floor, a window top, or up on
+	// the others it was squashed in with (jiggling about a bit on them).
+	const perched = (b) => b.body.onFloor() || (!b.body.grab && Math.hypot(b.body.velocity(DT).x, b.body.velocity(DT).y) < 150);
+	const movable = (b) => !b.dying && !b.removed && !b.merging && !b.splitting && !b.body.grab && !playing(b) && (b.state === 'idle' || b.state === 'done' || b.state === 'working')
+		&& !wantsAttention(b) && (b.sleep || 0) < 0.1 && b.key !== talkingTo && time > (b.talkHold || 0) && !b.gaveUp && !b.glasses;
+	function endMove(b, ok) {
+		if (!b.move) return;
+		if (!ok && b.move.to.ledge != null) b.noGo = { id: b.move.to.ledge, until: time + 300 }; // (couldn't get up there: not that one again for a while)
+		b.move = null;
+		b.moves = (b.moves || 0) + 1;
+		b.stayUntil = time + 60 * Math.min(4, b.moves);
+		b.crowdedFor = 0;
+		if (ok) b.happyUntil = time + 1.2; // (ahh, room)
+		else b.droopUntil = time + 1.5;
+		if (mover === b) mover = null;
+		nextMove = time + (ok ? 8 + Math.random() * 6 : 4 + Math.random() * 3); // (sooner after one that didn't get anywhere)
+	}
+	function spreadOut() {
+		if (mover) {
+			if (mover.removed || !movable(mover) || time - mover.move.since > 22) endMove(mover, false);
+			else {
+				// Landed on the window top it was going for: it stops (not
+				// sliding on along it); then it shuffles over to its spot, snug at
+				// one end, leaving the rest of the room for others (see moveOn).
+				const m = mover.move, l = mover.body.onLedge;
+				if (l && m.to.ledge === l.id && !m.landed) { m.landed = true; mover.body.impulse(-mover.body.velocity(DT).x * 0.7, 0, DT); mover.nextHop = Math.max(mover.nextHop, time + 0.6); }
+			}
+			return;
+		}
+		if (CFG.crowding <= 0 || time < nextMove) return;
+		nextMove = time + 0.5;
+		const mumHere = (b) => { const m = liveMother(b); return !!(m && m.body.onLedge && m.body.onLedge.id === b.body.onLedge.id); };
+		const fed = [...buddies.values()].filter((b) => b.crowdedFor > 6 && time > (b.stayUntil || 0) && perched(b) && movable(b) && !b.stackedBy && (b.kind !== 'child' || (b.body.onLedge && !mumHere(b))));
+		fed.sort((p, q) => q.crowd - p.crowd); // (the most crowded first; not one with another sat on it: it couldn't get out)
+		for (const b of fed.slice(0, 3)) {
+			const to = roomFor(b);
+			if (!to) { b.stayUntil = time + 20; continue; } // (nowhere better: it puts up with it a while)
+			b.move = { to, since: time, hops: 0 };
+			mover = b;
+			return;
+		}
+	}
+	// Up onto a window top: one aimed jump, high enough to clear its edge,
+	// coming down onto it at x. (False if it's too far off for one jump.)
+	function jumpOnto(b, l, x) {
+		const body = b.body, c = body.centroid(), r = body.o.radius, g = CFG.gravity;
+		const rise = body.bbox().maxY - l.y, dx = Math.max(l.x0 + r * 0.8, Math.min(l.x1 - r * 0.8, x)) - c.x;
+		const vy = Math.sqrt(2 * g * Math.max(r, rise + r * 2.4));
+		const air = (vy + Math.sqrt(Math.max(0, vy * vy - 2 * g * rise))) / g;
+		if (Math.abs(dx) / air > 560 && !body.onLedge) return false;
+		b.leaving = time + 0.6; b.softUntil = time + 3;
+		b.hop(Math.max(-600, Math.min(600, dx / air)), -vy);
+		return true;
+	}
+	// Off a window top: out over its edge on the side it's going (dir), to
+	// drop down and land softly.
+	function hopOff(b, dir) {
+		const l = b.body.onLedge, c = b.body.centroid(), r = b.body.o.radius, edge = dir < 0 ? l.x0 : l.x1;
+		// (Up long enough to get clear of the edge before it comes down.)
+		const out = Math.abs(edge - c.x) + r * 1.6, vy = Math.max(300, Math.min(700, out / 520 * CFG.gravity / 2));
+		b.leaving = time + 0.6; b.softUntil = time + 3;
+		b.hop(dir * Math.min(600, out / (2 * vy / CFG.gravity)), -vy);
+	}
+	// Each hop on the way (from behave, when it's ready for one): over
+	// whoever's in the way along the floor, then, near enough under a window
+	// top, one aimed jump up onto it; off a top, a hop out over the edge. A
+	// few tries at most (7 hops, 20 s), then it gives up on it.
+	function moveOn(b) {
+		const m = b.move, to = m.to, body = b.body, c = body.centroid(), r = body.o.radius, l = body.onLedge;
+		const target = to.ledge != null ? ledges.find((o) => o.id === to.ledge && Math.abs(o.y - to.y) < 40) : null;
+		if (to.ledge != null && !target) { endMove(b, false); return; } // (the window went away, or moved off)
+		const tx = target ? target.x0 + to.off : to.x, dx = tx - c.x, up = !!(target && l && l.id === target.id);
+		if (up ? Math.abs(dx) < r : !l && Math.abs(dx) < r * 0.8) { endMove(b, true); return; }
+		if (m.hops >= 7 || time - m.since > 20) { endMove(b, up); return; } // (up there, near enough)
+		m.hops++;
+		b.nextHop = time + 1 + Math.random() * 0.5;
+		if (up) { b.hop(Math.sign(dx) * Math.min(500, Math.abs(dx) / (460 / CFG.gravity) + 20), -230); return; } // (a shuffle along it)
+		if (target && jumpOnto(b, target, tx)) return;
+		if (!target && l) { hopOff(b, Math.sign(dx) || 1); return; }
+		// Along the floor: a hop toward it, high enough to clear whoever's in
+		// the way.
+		const step = Math.sign(dx) * Math.max(r, Math.min(Math.abs(dx) - (target ? 200 : 0), 420));
+		let over = r * 0.5;
+		for (const o of buddies.values()) {
+			if (o === b || o.dying || o.body.onLedge) continue;
+			const ox = o.body.centroid().x;
+			if ((ox - c.x) * Math.sign(step) > 0 && Math.abs(ox - c.x) < Math.abs(step) + o.body.o.radius) over = Math.max(over, (o.body.bbox().maxY - o.body.bbox().minY) * 1.1);
+		}
+		const vy = Math.sqrt(2 * CFG.gravity * over), air = 2 * vy / CFG.gravity;
+		b.hop(Math.max(-560, Math.min(560, step / air)), -vy);
+	}
+
+	// Hopping after your cursor (vx, vy: the hop it would take along the
+	// floor) works from window tops too: the cursor just over another window
+	// top it can get up onto, it jumps up there; off past the edge of the one
+	// it's on, or well below it, it hops down. Three jumps at one window top
+	// that don't get it there, and it leaves that one be for a few minutes.
+	function liftFor(b) {
+		const l = b.body.onLedge, r = b.body.o.radius;
+		return ledges.find((o) => (!l || o.id !== l.id) && mouse.x >= o.x0 + r * 0.5 && mouse.x <= o.x1 - r * 0.5 && mouse.y < o.y && o.y - mouse.y < r * 6 && o.x1 - o.x0 > r * 2.5 && canClimb(b, o)) || null;
+	}
+	function cursorHop(b, vx, vy) {
+		const l = b.body.onLedge, c = b.body.centroid(), r = b.body.o.radius, up = liftFor(b);
+		if (b.seekUp && l && l.id === b.seekUp.id) b.seekUp = null; // (made it)
+		if (up) {
+			if (!b.seekUp || b.seekUp.id !== up.id) b.seekUp = { id: up.id, n: 0 };
+			if (b.seekUp.n >= 3) { b.noGo = { id: up.id, until: time + 300 }; b.seekUp = null; }
+			else if (jumpOnto(b, up, mouse.x)) { b.seekUp.n++; return; }
+		}
+		if (l && (mouse.x < l.x0 || mouse.x > l.x1 || mouse.y > l.y + r * 3)) {
+			const dir = mouse.x < l.x0 ? -1 : mouse.x > l.x1 ? 1 : c.x - l.x0 < l.x1 - c.x ? -1 : 1;
+			hopOff(b, dir);
+			return;
+		}
+		b.hop(vx, vy);
+	}
+
   function behave(b) {
     // Blinking (shut in about 70 ms, open again in 80, so a blink still
     // shows when frames are drawn only 30 times a second).
@@ -5167,10 +5426,14 @@
     // A working slime rocks a little now and then while it thinks: a small
     // shuffle every 8-20 s (every 2-5 s was a slime that couldn't sit still).
     missMum(b);
-    if (b.kind !== 'home' && b.state === 'working' && !b.merging && !b.gaveUp && !b.body.grab && b.body.onFloor() && time > (b.nextFidget || 0)) {
+    crowding(b);
+    if (b.kind !== 'home' && b.state === 'working' && !b.merging && !b.gaveUp && !b.move && !b.body.grab && b.body.onFloor() && time > (b.nextFidget || 0)) {
       if (b.nextFidget) b.hop((Math.random() < 0.5 ? -1 : 1) * (40 + Math.random() * 40), (-110 - Math.random() * 60) * trait(b, 'bouncy'));
       b.nextFidget = time + (8 + Math.random() * 12) / trait(b, 'fidgety');
     }
+    // Spreading out (see spreadOut): from the floor, a window top, or up
+    // on top of the others it was squashed in with.
+    if (b.move && !b.body.grab && !b.pendingHop && time >= b.nextHop && (perched(b) || time > b.nextHop + 2)) { moveOn(b); return; } // (jostled about on top of the others a while: it goes anyway)
     if (b.body.grab || !b.body.onFloor() || b.merging || time < b.nextHop) return;
     if (b.kind === 'child' && b.mother && !b.mother.dying && !b.gaveUp) {
       if (stillTrying(b)) return;
@@ -5202,8 +5465,10 @@
       // Waiting a while and you haven't come: it comes to you, hopping
       // over toward your cursor (and stops once it's close).
       const c = b.body.centroid(), dx = mouse.x - c.x, r = b.body.o.radius;
-      const seek = CFG.seekYou > 0 && b.kind === 'mother' && time - (b.stateSince || 0) > CFG.seekAfter && mouse.x >= 0 && mouse.x <= W && Math.abs(dx) > r * 2.5;
-      b.hop(seek ? Math.sign(dx) * Math.min(520, Math.abs(dx) * 1.4 + 80) * CFG.seekYou : 0, -CFG.waitingHopStrength * (seek ? 0.75 : 1));
+      const seek = CFG.seekYou > 0 && b.kind === 'mother' && time - (b.stateSince || 0) > CFG.seekAfter && mouse.x >= 0 && mouse.x <= W
+        && (Math.abs(dx) > r * 2.5 || !!liftFor(b) || (!!b.body.onLedge && mouse.y > b.body.onLedge.y + r * 3)); // (up or down off a window top too: see cursorHop)
+      if (seek) cursorHop(b, Math.sign(dx) * Math.min(520, Math.abs(dx) * 1.4 + 80) * CFG.seekYou, -CFG.waitingHopStrength * 0.75);
+      else b.hop(0, -CFG.waitingHopStrength);
       b.nextHop = time + 2.2;
     } else {
       // Finished: bounce up and down until you look at it.
@@ -5305,6 +5570,7 @@
     else if (speed > 900 && !body.onFloor()) { mouth = 'grin'; }
     else if (time < (b.pounceUntil || 0) || (b.teaseSince && time - b.teaseSince > 0.3)) { mouth = b.caught ? 'grin' : 'o'; }
     else if (time < b.happyUntil) { expression = 'happy'; mouth = 'grin'; }
+    else if (time < (b.grumbleUntil || 0) && !body.grab && st !== 'waiting') { expression = 'pained'; mouth = 'wobble'; } // (squashed in: hmph; see crowding)
     else if (st === 'waiting' && b.cloud && !b.cloud.gone) { expression = 'worried'; mouth = 'wobble'; }
     else if (st === 'waiting') { expression = 'worried'; mouth = 'o'; }
     else if (b.pain > 0.05) { expression = 'pained'; mouth = 'wobble'; }
@@ -5313,6 +5579,8 @@
     else if (st === 'working' && b.tapping) { expression = 'normal'; mouth = 'flat'; calmWork = true; b.glanceAt = { spot: { x: body.centroid().x + (b.key.length % 2 ? 1 : -1) * body.o.radius * 2, y: body.bbox().maxY + body.o.radius } }; b.glanceUntil = time + 0.1; }
     else if (st === 'working') { expression = 'concentrate'; mouth = 'flat'; calmWork = true; }
     else if (st === 'idle' && idleFor() > dozeAfter()) { expression = 'sleepy'; mouth = 'flat'; }
+    // Crowded a while: not smiling about it.
+    if (expression === 'normal' && mouth === 'smile' && (b.crowdedFor || 0) > 4 && !body.grab && st !== 'waiting') mouth = 'flat';
     // Saying something by itself (a status bubble): eyes open to tell you.
     // Just hovering doesn't wake it from its work.
     if (expression === 'sleepy' && time < (b.mumbleUntil || 0)) mouth = b.mumbleUntil - time > 1.4 && Math.floor(time * 5) % 2 ? 'o' : 'flat'; // (talking in its sleep)

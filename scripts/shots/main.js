@@ -248,6 +248,17 @@ const SCENES = {
 		size: [1000, 560],
 		motion: { frames: 28, every: 100, drop: 0, still: true, hopAt: [], ledge: true },
 	},
+	// Ten slimes packed in along the bottom of a narrow (portrait) screen,
+	// two windows above them: over a couple of minutes they grumble and
+	// spread out, one at a time, some up onto the window tops. (A frame every
+	// 13 s; prints how crowded they are in each.)
+	crowding: {
+		sessions: ['blaube', 'kalkis', 'website', 'notes', 'api', 'docs', 'shop', 'game', 'cli', 'blog'].map((p, i) => session('cr' + i, p, i < 7 ? 'working' : 'idle', { color: ['#D97757', '#5B8DEF', '#E07BA8', '#6BBF8A', '#E8B04B', '#9B7FD4', '#4FB3BF', '#E06B5B', '#8FA3B8', '#C9A0DC'][i] })),
+		config: { size: 0.6 },
+		wait: 2500,
+		size: [760, 1000],
+		motion: { frames: 12, every: 13000, drop: 0, still: true, hopAt: [], crowd: true },
+	},
 	// A mother put up on a window: her helper and her pet jump up after her.
 	climb: {
 		sessions: [session('cl', 'blaube', 'working', {
@@ -1058,6 +1069,16 @@ async function shootMotion(win, name, m) {
 		await fakeWindow(120, 300);
 		await js(`(() => { const l = [...__blaube.buddies.values()]; l[0].body.teleport(300, 120); l[1].body.teleport(800, 420); })()`);
 	}
+	if (m.crowd) {
+		// Two windows, side by side, a hop up off the floor; the slimes
+		// packed in two rows below them.
+		const [cw, ch] = win.getContentSize(), r = await js(`[...__blaube.buddies.values()][0].body.o.radius`);
+		const tops = [{ id: 7, x0: 10, x1: Math.round(cw * 0.48), y: Math.round(ch - r * 4.2) }, { id: 8, x0: Math.round(cw * 0.52), x1: cw - 10, y: Math.round(ch - r * 5.4) }];
+		win.webContents.send('fire', 'ledges', tops.map((t) => Object.assign({ wx: t.x0, at: Date.now() }, t)));
+		await js(`(() => { for (const t of ${JSON.stringify(tops)}) { const d = document.createElement('div'); d.style.cssText = 'position:fixed;left:' + t.x0 + 'px;top:' + t.y + 'px;width:' + (t.x1 - t.x0) + 'px;height:900px;background:#3a3d44;border-top:28px solid #4a4e57;box-sizing:border-box;z-index:-1'; document.body.prepend(d); } })()`);
+		await js(`(() => { const l = [...__blaube.buddies.values()], r = ${r}, gap = r * 1.6; l.forEach((b, i) => { const row = i % 2, k = Math.floor(i / 2); b.body.teleport(${cw / 2} + (k - 2) * gap + row * gap * 0.5, ${ch} - r * (row ? 3.2 : 1.1)); }); })()`);
+		await sleep(4000);
+	}
 	if (m.huddle) {
 		await js(`(() => { const l = [...__blaube.buddies.values()]; l.forEach((b, i) => b.body.teleport(300 + i * 150, 400)); })()`);
 		await sleep(1500);
@@ -1145,6 +1166,7 @@ async function shootMotion(win, name, m) {
 		if (!m.orbit && !m.still && i === m.frames) mouse('mouseUp', start.x, start.y - 60 - i * 6);
 		await sleep(m.every);
 		frames.push((await win.webContents.capturePage()).toDataURL());
+		if (m.crowd) console.log(`frame ${i + 1}: ` + await js(`(() => { const l = [...__blaube.buddies.values()], c = l.map((b) => b.crowd || 0); return 'mean crowding ' + (c.reduce((a, v) => a + v, 0) / c.length).toFixed(2) + ', ' + c.filter((v) => v > 1.6).length + ' crowded, ' + l.filter((b) => b.body.onLedge).length + ' on window tops'; })()`));
 		track.push(await looks());
 		spots.push(await drawn());
 		if (m.shove) dent = Math.min(dent, ...(await dents()));

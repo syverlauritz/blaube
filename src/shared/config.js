@@ -152,6 +152,7 @@
     ['Life: together', [
       ['socialize', 1, 0, 3, 0.05, 'Calm blobs chat; mothers lean in to catch helpers'],
       ['nuzzle', 1, 0, 3, 0.05, 'Helpers nuzzle their mother'],
+      ['crowding', 1, 0, 2, 0.05, 'Packed in tight a while, a blob grumbles and shoves, and one at a time they spread out: to emptier floor, or up onto a window top with room (or down from a crowded one)'],
       ['gulp', 1, 0, 3, 0.05, 'A mother gulps a helper back in (ripple and swell)'],
       ['trampoline', 1, 0, 1.5, 0.05, 'Drop one onto another from high up and the one below gives like a trampoline and springs it back up'],
       ['burps', 1, 0, 3, 0.05, 'Now and then gulping a helper back in is followed by a little burp (and a blush)'],
