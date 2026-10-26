@@ -3047,19 +3047,35 @@ app.whenReady().then(async () => {
     if (!s || !s.cwd) return done('');
     git.show(s.cwd, hash, done);
   }));
+  // (A new branch takes its changes along; switching to another sets them
+  // aside on this one, to come back when you switch back: git's stash.)
   ipcMain.handle('talk-switch-branch', (_e, id, name, create) => new Promise((done) => {
     const s = id === talkId && tracker.sessions.get(id);
     const st = gitStates.get(id);
     if (!s || !s.cwd || !st) return done('It isn’t in a git repository');
     if (s.state === 'working' || s.state === 'waiting') return done('Not while it’s working: wait for it to finish');
-    if (st.changed) return done('It has changes that aren’t committed: commit them first');
-    git.switchTo(s.cwd, name, !!create, (err) => {
-      if (err) return done(err);
+    const from = st.branch, parking = !create && st.changed > 0 && !st.conflicts;
+    if (!create && st.conflicts) return done('It’s in the middle of a merge: sort out the conflicts first');
+    const go = () => git.switchTo(s.cwd, name, !!create, (err) => {
+      if (err) {
+        // (Couldn't switch: its changes come straight back.)
+        if (parking) git.unpark(s.cwd, from, () => git.status(s.cwd, (now) => { gitStates.set(id, now); pushTalk(id); }));
+        return done(err);
+      }
       if (win) win.webContents.send('nod', id);
-      inbox.add(id, { who: 'note', text: create ? `Made a new branch, ${git.branchName(name)}, and switched to it` : `Switched to ${git.branchName(name)}` });
-      git.status(s.cwd, (now) => { gitStates.set(id, now); pushTalk(id); });
-      done('');
+      const b = git.branchName(name);
+      inbox.add(id, { who: 'note', text: create ? `Made a new branch, ${b}, and switched to it` : parking ? `Switched to ${b}; your changes on ${from} are set aside until you switch back to it` : `Switched to ${b}` });
+      const after = () => git.status(s.cwd, (now) => { gitStates.set(id, now); pushTalk(id); });
+      if (create) { after(); return done(''); }
+      // (Changes set aside on the one it's back on: they come back.)
+      git.unpark(s.cwd, b, (e2, found) => {
+        if (found) inbox.add(id, { who: 'note', text: e2 ? `Couldn’t bring back your changes on ${b}: ${e2} (they’re in git stash)` : `Brought back your changes on ${b}` });
+        after();
+        done('');
+      });
     });
+    if (!parking) return go();
+    git.park(s.cwd, from, (err) => (err ? done(err) : go()));
   }));
   // ⌘F in the overview: what every session said.
   // Files named in its replies: which are real (they become tappable), and

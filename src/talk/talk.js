@@ -1286,7 +1286,7 @@
     const on = String(s.git).split(' · ')[0];
     const said = document.createElement('div');
     said.className = 'clonesaid';
-    const why = busy ? 'Switching waits until it’s done.' : dirty ? 'Commit its changes to switch branches.' : '';
+    const why = busy ? 'Switching waits until it’s done.' : '';
     const switchTo = async (name, create, btn) => {
       btn.disabled = true;
       said.textContent = '';
@@ -1317,7 +1317,7 @@
         b.textContent = n;
         if (n === on) { b.className = 'on'; b.disabled = true; b.title = 'It’s on this branch'; } else {
           b.disabled = !!why;
-          b.title = why || `Switch to ${n}`;
+          b.title = why || (dirty ? `Switch to ${n}: your changes here are set aside, and come back when you switch back` : `Switch to ${n}`);
           b.onclick = () => switchTo(n, false, b);
         }
         box.append(b);

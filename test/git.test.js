@@ -362,3 +362,26 @@ test('Back to main deletes a squash-merged branch only while it is just what the
     assert.equal(g('branch', '--list', 'other'), 'other', 'a commit GitHub never saw: kept');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(bare, { recursive: true, force: true }); }
 });
+
+test('changes set aside on their branch come back with it', async () => {
+  const { park, unpark } = require('../src/main/git');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-park-'));
+  const env = Object.assign({}, process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
+  const g = (...a) => execFileSync('git', a, { cwd: dir, env }).toString().trim();
+  const p = (f, ...a) => new Promise((r) => f(dir, ...a, (...out) => r(out)));
+  try {
+    g('init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(dir, 'a.txt'), '1\n'); g('add', '.'); g('commit', '-qm', 'base');
+    g('branch', 'topic');
+    fs.writeFileSync(path.join(dir, 'a.txt'), '2\n');
+    assert.deepEqual(await p(park, 'main'), ['']);
+    assert.equal(g('status', '--porcelain'), '');
+    g('switch', '-q', 'topic');
+    assert.deepEqual(await p(unpark, 'topic'), ['', false], 'nothing set aside on topic');
+    g('switch', '-q', 'main');
+    assert.deepEqual(await p(unpark, 'main'), ['', true]);
+    assert.equal(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8'), '2\n');
+    assert.equal(g('stash', 'list'), '');
+    assert.deepEqual(await p(park, '-x'), ['It isn’t on a branch']);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

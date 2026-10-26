@@ -302,6 +302,29 @@ function undoCommit(cwd, hash, cb) {
     });
   });
 }
+// Switching branches with changes: they're set aside on the branch they
+// were made on (git's stash, named for it), and come back when you switch
+// back to it. park cb(error or ''); unpark cb(error or '', whether any were).
+const PARKED = 'Blaube: parked on ';
+function park(cwd, branch, cb) {
+  if (!branchName(branch)) return cb('It isn’t on a branch');
+  execFile('git', ['stash', 'push', '-m', PARKED + branch], { cwd, timeout: 10000, windowsHide: true }, (err, _o, errOut) => {
+    cache.delete(cwd);
+    cb(err ? gitSaid(errOut) || 'git couldn’t set them aside' : '');
+  });
+}
+function unpark(cwd, branch, cb) {
+  execFile('git', ['stash', 'list', '--format=%gd%x1f%gs'], { cwd, timeout: 5000, windowsHide: true }, (err, out) => {
+    const line = !err && String(out).split('\n').find((l) => l.split('\x1f')[1] && l.split('\x1f')[1].endsWith(PARKED + branch));
+    if (!line) return cb('', false);
+    const ref = line.split('\x1f')[0];
+    if (!/^stash@\{\d+\}$/.test(ref)) return cb('', false);
+    execFile('git', ['stash', 'pop', '--index', ref], { cwd, timeout: 10000, windowsHide: true }, (e2, _o, errOut) => {
+      cache.delete(cwd);
+      cb(e2 ? gitSaid(errOut) || 'git couldn’t bring them back' : '', true);
+    });
+  });
+}
 const gitSaid = (errOut) => (String(errOut || '').split('\n').find((l) => /^(fatal|error):/.test(l)) || '').replace(/^(fatal|error):\s*/, '');
 
-module.exports = { canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };
+module.exports = { park, unpark, canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };

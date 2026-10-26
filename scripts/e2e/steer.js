@@ -500,6 +500,19 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(execFileSync('git', ['branch', '--show-current'], { cwd: repo }).toString().trim() === 'main' && !execFileSync('git', ['branch', '--list', 'feature/tax'], { cwd: repo }).toString().trim(), 'and git agrees');
 	execFileSync('git', ['switch', '-q', '-c', 'feature/tax'], { cwd: repo });
 	execFileSync('git', ['branch', '-f', 'main', 'HEAD~1'], { cwd: repo });
+	// Switching with changes: they're set aside on their branch, and come back with it.
+	const taxFile = path.join(repo, 'src', 'tax.js'), taxWas = fs.readFileSync(taxFile, 'utf8');
+	fs.writeFileSync(taxFile, taxWas + 'half done\n');
+	await box(`document.getElementById('git').click(); document.getElementById('git').click()`);
+	const chip = (n) => `[...document.querySelectorAll('#branches > button')].find((b) => b.textContent === '${n}')`;
+	check(await until(() => box(`(() => { const b = ${chip('main')}; return !!b && !b.disabled && /set aside/.test(b.title); })()`), 10000), 'with changes, another branch is still a tap away (they’re set aside)');
+	await box(`${chip('main')}.click()`);
+	check(await until(() => execFileSync('git', ['branch', '--show-current'], { cwd: repo }).toString().trim() === 'main' && !fs.existsSync(taxFile) && inbox.log(ID3).some((e) => e.text === 'Switched to main; your changes on feature/tax are set aside until you switch back to it'), 10000), 'a tap sets them aside and switches');
+	await box(`document.getElementById('git').click(); document.getElementById('git').click()`);
+	await until(() => box(`(() => { const b = ${chip('feature/tax')}; return !!b && !b.disabled; })()`), 10000);
+	await box(`${chip('feature/tax')}.click()`);
+	check(await until(() => execFileSync('git', ['branch', '--show-current'], { cwd: repo }).toString().trim() === 'feature/tax' && fs.readFileSync(taxFile, 'utf8') === taxWas + 'half done\n' && inbox.log(ID3).some((e) => e.text === 'Brought back your changes on feature/tax'), 10000), 'and switching back brings them back');
+	fs.writeFileSync(taxFile, taxWas);
 	fs.rmSync(prFile);
 	check(await until(() => box(`!/PR/.test(document.getElementById('git').textContent)`), 10000), 'and once gh knows of no pull request, the git line says none');
 	global.__blaubeGh = '';
