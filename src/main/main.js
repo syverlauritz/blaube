@@ -1605,7 +1605,8 @@ app.whenReady().then(async () => {
     lastAuth = Date.now();
     auth.status(bin, (ok) => { if (ok === null || ok === !signedOutNow) return; signedOutNow = !ok; if (talkId) pushTalk(talkId); });
   };
-  ipcMain.on('talk-sign-in', (_e, id) => {
+  ipcMain.on('talk-sign-in', (_e, id) => signIn(id));
+  const signIn = (id) => {
     const bin = owned.findClaude() || owned.shellPath();
     if (signingIn || !bin) return;
     signingIn = true;
@@ -1617,7 +1618,7 @@ app.whenReady().then(async () => {
       say(ok ? 'Signed in. Try again to carry on.' : `It didn’t sign in: ${why}`);
       checkAuth(true);
     }, (url) => say(`If your browser didn’t open, the page is ${url}`));
-  });
+  };
   setTimeout(probeUsage, 20e3).unref();
   setInterval(probeUsage, 15 * 60e3).unref();
   // Its MCP servers, as /mcp shows them: one that couldn't connect shows
@@ -1925,6 +1926,18 @@ app.whenReady().then(async () => {
       try { if (!fs.existsSync(file)) fs.writeFileSync(file, `# ${path.basename(path.dirname(file))}\n\n`); } catch (e) { inbox.add(id, { who: 'note', text: `Couldn’t make CLAUDE.md: ${e.message}`, error: true }); return; }
       if (!TEST) shell.openPath(file);
       inbox.add(id, { who: 'note', text: `Opened ${path.basename(path.dirname(file))}/CLAUDE.md, what every session there reads first` });
+      return;
+    }
+    // "/login": Claude Code signed in through your browser (see auth.js).
+    if (/^\/login\s*$/i.test(String(text).trim())) {
+      if (owned.findClaude() || owned.shellPath()) return signIn(id);
+      inbox.add(id, { who: 'note', text: 'Blaube can’t find Claude Code to sign it in', error: true });
+      return;
+    }
+    // "/usage": your usage limits, as Blaube last heard them.
+    if (/^\/usage\s*$/i.test(String(text).trim())) {
+      const line = limits.line(usageLimits);
+      inbox.add(id, { who: 'note', text: line ? line.replace(/^Usage: /, 'Used: ') : 'Blaube hasn’t heard your usage limits yet (with an API key there are none). The overview shows them once it has.' });
       return;
     }
     // "# always use pnpm": remembered in its project's CLAUDE.md, as the

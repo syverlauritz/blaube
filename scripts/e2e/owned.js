@@ -128,6 +128,11 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(() => inbox.log(id).some((e) => /the page is https:\/\/claude\.ai\/oauth\/authorize\?fake=1/.test(e.text || ''))), 'it says the sign-in page, for when no browser opens');
 	check(await until(() => inbox.log(id).some((e) => e.text === 'Signed in. Try again to carry on.')), 'and says when it’s signed in');
 	check(fs.existsSync(path.join(dir, 'signed-in')), 'through claude auth login');
+	fs.rmSync(path.join(dir, 'signed-in'));
+	await type('/login');
+	check(await until(() => fs.existsSync(path.join(dir, 'signed-in'))) && !inbox.log(id).some((e) => e.who === 'you' && e.text === '/login'), '/login signs in the same way, without going to Claude');
+	await type('/usage');
+	check(await until(() => inbox.log(id).some((e) => /^Used: 12% of 5 hours \(resets .+\) · 40% of the week/.test(e.text || ''))), '/usage says how much of your limits you’ve used');
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
 	check(await until(() => box(`document.body.classList.contains('overview') && !document.querySelector('#overview .signedout')`)), 'and the overview no longer says signed out');
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
