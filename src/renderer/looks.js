@@ -348,7 +348,7 @@
 			const shortest = name === 'bunny' ? 0.85 : 0.45;
 			ctx.scale(Math.max(0.6, Math.cos(yaw)) * part.scale * near, Math.max(shortest, Math.cos(pitch)) * part.scale * near);
 			// Its highest point, about 2.6 u out along the look.
-			const reach = u * (name === 'bunny' ? 5 : 2.6) * part.scale, ang = Math.atan2(p.ny, p.nx) + Math.PI / 2 + swing;
+			const reach = u * (name === 'bunny' ? 5 : name === 'horns' ? 2.7 : 2.6) * part.scale, ang = Math.atan2(p.ny, p.nx) + Math.PI / 2 + swing;
 			const topY = p.y - p.ny * u * sink - reach * Math.cos(ang);
 			if (body.lookTop == null || topY < body.lookTop) body.lookTop = topY;
 			body.lookTips.push({ x: p.x - p.nx * u * sink + reach * Math.sin(ang), y: topY, w: u * 1.6 * part.scale }); // (a sheet over it drapes over these)
@@ -416,12 +416,12 @@
 					// dino plates), the ones off to the side leaning outward (the
 					// middle one stands straight).
 					if (back) at(0, () => {
-						const lean = Math.sign(part.shift) * Math.min(1, Math.abs(part.shift) * 2) * u * 0.3;
-						const bw = u * 1.0, by = u * 0.8, ay = -u * 1.15, t = 0.88; // base half-width, base y, apex y, where the straight sides stop
+						const lean = Math.sign(part.shift) * Math.min(1, Math.abs(part.shift) * 2) * u * 0.4;
+						const bw = u * 1.7, by = u * 0.9, ay = -u * 2.3, t = 0.82; // base half-width, base y, apex y, where the straight sides stop
 						ctx.beginPath();
 						ctx.moveTo(-bw, by);
 						ctx.lineTo(lean - bw * (1 - t), by + (ay - by) * t);
-						ctx.quadraticCurveTo(lean, ay - u * 0.08, lean + bw * (1 - t), by + (ay - by) * t);
+						ctx.quadraticCurveTo(lean, ay - u * 0.12, lean + bw * (1 - t), by + (ay - by) * t);
 						ctx.lineTo(bw, by);
 						ctx.closePath();
 						ctx.fill();
