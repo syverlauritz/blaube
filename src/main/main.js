@@ -569,7 +569,7 @@ function pastSessionsMenu() {
   return [{ label: 'Pick up a past session', submenu: past.map((p) => ({ label: p.title, sublabel: `${path.basename(p.cwd)} · ${history.ago(p.at)}`, click: () => pickUp(p) })) }];
 }
 
-async function newSession() {
+async function newSession(extra = []) {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     title: 'New session',
     message: 'Pick the folder Claude should work in',
@@ -577,7 +577,7 @@ async function newSession() {
     properties: ['openDirectory', 'createDirectory'],
     defaultPath: (prefs.recentFolders || [])[0],
   });
-  if (!canceled && filePaths[0]) startSession(filePaths[0]);
+  if (!canceled && filePaths[0]) startSession(filePaths[0], Array.isArray(extra) ? extra : []);
 }
 
 function newSessionMenu() {
@@ -1565,12 +1565,13 @@ app.whenReady().then(async () => {
     return hub;
   });
   // Only a folder the overview offered, and only if it's still there.
-  ipcMain.on('talk-new', (_e, folder) => {
-    if (folder === 'pick') return newSession();
+  ipcMain.on('talk-new', (_e, folder, opts) => {
+    const extra = opts && opts.plan === true ? ['--permission-mode', 'plan'] : []; // (Plan first)
+    if (folder === 'pick') return newSession(extra);
     if (!hubFolders.includes(folder)) return;
     try { if (!fs.statSync(folder).isDirectory()) return; } catch { hubCache = null; return; }
     hideTalk();
-    startSession(folder);
+    startSession(folder, extra);
   });
   // One changed file's diff, for the git line's file list.
   ipcMain.handle('talk-diff', (_e, id, file) => new Promise((done) => {

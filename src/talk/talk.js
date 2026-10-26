@@ -465,7 +465,7 @@
     requestAnimationFrame(fitWindow);
   }
   // Below the sessions: start one in a recent folder, or pick up a past one.
-  let hub = null;
+  let hub = null, planFirst = false;
   function loadHub() {
     if (!api.hub) return;
     api.hub().then((h) => { hub = h; if (document.body.classList.contains('overview') && current) drawOverview(current); });
@@ -474,19 +474,30 @@
     if (!hub) return;
     const section = (title) => { const h = document.createElement('div'); h.className = 'hubhead'; h.textContent = title; box.append(h); };
     section('New session in');
+    // Plan first: it starts in plan mode, and shows you a plan to approve
+    // before it changes anything.
+    const plan = document.createElement('label');
+    plan.className = 'planfirst';
+    const tick = document.createElement('input');
+    tick.type = 'checkbox';
+    tick.checked = planFirst;
+    tick.onchange = () => { planFirst = tick.checked; };
+    plan.append(tick, ' Plan first');
+    plan.title = 'It shows you a plan to approve before it changes anything';
+    box.lastChild.append(plan);
     const chips = document.createElement('div');
     chips.className = 'chips';
     for (const f of hub.folders) {
       const b = document.createElement('button');
       b.textContent = f.name;
       b.title = f.path;
-      b.onclick = () => api.newIn(f.path);
+      b.onclick = () => api.newIn(f.path, { plan: planFirst });
       chips.append(b);
     }
     const pick = document.createElement('button');
     pick.textContent = 'Another folder…';
     pick.className = 'dim';
-    pick.onclick = () => api.newIn('pick');
+    pick.onclick = () => api.newIn('pick', { plan: planFirst });
     chips.append(pick);
     box.append(chips);
     if (hub.past.length) {

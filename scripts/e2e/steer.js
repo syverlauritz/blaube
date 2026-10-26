@@ -181,6 +181,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	check(await until(() => box(`document.body.classList.contains('overview')`)), '⌘0 opens the overview');
 	check(await until(() => box(`[...document.querySelectorAll('#overview .row:not(.past)')].map((r) => r.querySelector('b').textContent).join(',')`).then((t) => /kalkis/.test(t) && /website/.test(t))), 'with a row for each session');
 	check(await box(`/Today/.test((document.querySelector('#overview .today') || {}).textContent || '')`), 'and the day so far');
+	check(await until(() => box(`!!document.querySelector('#overview .planfirst input[type=checkbox]')`)), 'new sessions can start with a plan first');
 	await shot('overview');
 	await box(`[...document.querySelectorAll('#overview .row:not(.past)')].find((r) => /website/.test(r.textContent)).click()`);
 	check(await until(() => talkId() === ID2), 'tapping a row goes to that session');
