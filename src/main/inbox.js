@@ -13,6 +13,7 @@
 // started (prompts typed in the terminal, messages sent from the slime and
 // Claude's replies), for the talk box.
 const { EventEmitter } = require('node:events');
+const { testCounts, words: countWords } = require('./testCounts');
 const { classify } = require('../shared/actions');
 
 const MAX_LOG = 60;
@@ -273,7 +274,10 @@ class Inbox extends EventEmitter {
       const i = payload.tool_input || {};
       const file = /^(Edit|MultiEdit|Write|NotebookEdit|Read)$/.test(payload.tool_name) ? String(i.file_path || i.notebook_path || '') : '';
       const cmd = (payload.tool_name === 'Bash' || payload.tool_name === 'PowerShell') && payload.tool_input && typeof payload.tool_input.command === 'string' ? payload.tool_input.command.slice(0, 200) : '';
-      if (text) this.add(id, Object.assign({ who: 'step', text, ok: event === 'PostToolUse', kind: classify(payload.tool_name, payload.tool_input), detail: stepDetail(payload) }, file ? { file } : {}, cmd ? { cmd } : {}));
+      const detail = stepDetail(payload);
+      // (A test run says how it went: "Ran npm test · 2 failing".)
+      const counts = cmd && TESTS.test(cmd) ? testCounts(detail) : null;
+      if (text) this.add(id, Object.assign({ who: 'step', text: text + countWords(counts), ok: event === 'PostToolUse', kind: classify(payload.tool_name, payload.tool_input), detail }, file ? { file } : {}, cmd ? { cmd } : {}, counts ? { tests: counts } : {}));
     }
     // A session Blaube started tells its own story (say/replied).
     if (this.owned.has(id) && (event === 'UserPromptSubmit' || event === 'Stop')) return;

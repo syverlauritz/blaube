@@ -614,3 +614,14 @@ test('a script that stopped is not Claude’s error, and counts until something 
   assert.equal(runFailed([failed, { who: 'you', text: 'fix it' }]), null);
   assert.equal(runFailed([failed, { who: 'claude', text: 'fixed' }]), null);
 });
+
+test('a test run says how it went: how many fail, or pass', () => {
+  const inbox = new Inbox();
+  inbox.observe({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: 'fix it' });
+  inbox.observe({ session_id: 's1', hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', tool_input: { command: 'npm test', description: 'Run the tests' }, error: 'Exit code 1\n# pass 10\n# fail 2' });
+  inbox.observe({ session_id: 's1', hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'npx vitest run' }, tool_response: { stdout: '      Tests  12 passed (12)\n', stderr: '' } });
+  inbox.observe({ session_id: 's1', hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'ls' }, tool_response: { stdout: '3 passed\n', stderr: '' } });
+  const steps = inbox.log('s1').filter((e) => e.who === 'step');
+  assert.deepEqual(steps.map((e) => e.text), ['Run the tests · 2 failing', 'Ran npx vitest run · 12 pass', 'Ran ls']);
+  assert.deepEqual(steps[0].tests, { pass: 10, fail: 2 });
+});

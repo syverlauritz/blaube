@@ -1696,6 +1696,11 @@ app.whenReady().then(async () => {
     const kind = classify(p.tool_name, p.tool_input);
     const react = failed ? (kind === 'test' ? 'testfail' : '') : { push: 'push', test: 'cheer', commit: 'commit' }[kind];
     if (win && react) win.webContents.send('react', { id: agentId ? `${s.id}/${agentId}` : s.id, kind: react });
+    // Tests that fail: its slime says how many (when the box is closed).
+    if (win && failed && kind === 'test' && !agentId && !(talkWin && talkId === s.id && talkWin.isVisible())) {
+      const c = require('./testCounts').testCounts(require('./inbox').stepDetail(Object.assign({}, p, { hook_event_name: 'PostToolUseFailure' })));
+      if (c && c.fail) win.webContents.send('say', { id: s.id, text: `${c.fail} test${c.fail === 1 ? '' : 's'} failing`, seconds: 4, status: true });
+    }
   });
 
   // Sessions Blaube started: their slime, their replies, their end.
