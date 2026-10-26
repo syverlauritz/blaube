@@ -1176,6 +1176,7 @@
     stepBubbles();
     stepSeason();
     stepFlutters();
+    stepFireworks();
   }
 
   // --- Effort ---------------------------------------------------------------
@@ -1595,7 +1596,7 @@
         }
       }
     }
-    for (let i = pops.length - 1; i >= 0; i--) if (time - pops[i].born > 0.3) pops.splice(i, 1);
+    for (let i = pops.length - 1; i >= 0; i--) if (time - pops[i].born > (pops[i].life || 0.3)) pops.splice(i, 1);
   }
   function drawBubbles() {
     // Fast asleep, it blows a bubble at its mouth that swells and shrinks
@@ -1639,7 +1640,8 @@
     }
     for (const p of pops) {
       // Popped: a ring of little flecks flying out.
-      const k = (time - p.born) / 0.3;
+      const k = (time - p.born) / (p.life || 0.3);
+      if (k < 0) continue;
       ctx.save();
       ctx.globalAlpha = 1 - k;
       ctx.strokeStyle = p.color;
@@ -2121,9 +2123,72 @@
   // off sooner when left alone and yawn more. 0..1, deepest around 3 am.
   // Asleep at night, it's wearing a floppy nightcap, its tip swinging as the
   // body moves.
+  // Christmas week, awake or asleep, it's a red one with white trim.
+  let holiday = null; // (dev: force 'christmas' or 'newyear')
+  const christmas = () => { const d = new Date(); return holiday === 'christmas' || (d.getMonth() === 11 && d.getDate() >= 20 && d.getDate() <= 26); };
+  // The first minutes of the new year: fireworks, and they all cheer.
+  const newYear = () => { const d = new Date(); return holiday === 'newyear' || (d.getMonth() === 0 && d.getDate() === 1 && d.getHours() === 0 && d.getMinutes() < 10); };
+  const rockets = [], sparks = [];
+  let cheeredYear = 0;
+  function stepFireworks() {
+    if (CFG.seasons <= 0) return;
+    if (newYear()) {
+      const y = new Date().getFullYear();
+      if (cheeredYear !== y) {
+        cheeredYear = y;
+        const all = bigs().filter((o) => !o.dying);
+        all.forEach((o, i) => setTimeout(() => { if (o.dying) return; o.happyUntil = time + 3; if (o.body.onFloor() && !o.body.grab) o.hop(0, -420); }, 200 * i));
+        if (all[0]) quip(all[0], 'Happy new year!', 4);
+      }
+      if (Math.random() < DT * 1.2) rockets.push({ x: W * (0.15 + Math.random() * 0.7), y: H, vy: -(H * 0.9 + Math.random() * H * 0.4), color: ['#ffd166', '#ef476f', '#06d6a0', '#118ab2', '#f78c6b'][Math.floor(Math.random() * 5)] });
+    }
+    for (let i = rockets.length - 1; i >= 0; i--) {
+      const k = rockets[i];
+      k.vy += CFG.gravity * 0.35 * DT;
+      k.y += k.vy * DT;
+      if (k.vy > -60) {
+        // Bang: a ring of sparks, and everyone looks up.
+        rockets.splice(i, 1);
+        const n = 22 + Math.floor(Math.random() * 10), sp = 160 + Math.random() * 120;
+        for (let j = 0; j < n; j++) {
+          const a = j / n * Math.PI * 2 + Math.random() * 0.2, v = sp * (0.8 + Math.random() * 0.3);
+          sparks.push({ x: k.x, y: k.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, born: time, life: 1 + Math.random() * 0.5, color: j % 4 ? k.color : '#ffd166' });
+        }
+        for (const o of buddies.values()) if (!o.dying && Math.random() < 0.5) { o.glanceAt = { spot: { x: k.x, y: k.y } }; o.glanceUntil = time + 1; }
+      }
+    }
+    // Sparks fall and slow, then fade.
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const p = sparks[i];
+      if (time - p.born > p.life) { sparks.splice(i, 1); continue; }
+      const drag = Math.exp(-1.6 * DT);
+      p.vx *= drag; p.vy = p.vy * drag + CFG.gravity * 0.12 * DT;
+      p.x += p.vx * DT; p.y += p.vy * DT;
+    }
+  }
+  function drawRockets() {
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    for (const p of sparks) {
+      const k = (time - p.born) / p.life;
+      ctx.globalAlpha = Math.max(0, 1 - k * k);
+      ctx.strokeStyle = p.color;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.vx * 0.04, p.y - p.vy * 0.04); ctx.stroke();
+    }
+    ctx.restore();
+    for (const k of rockets) {
+      ctx.save();
+      ctx.fillStyle = k.color;
+      ctx.beginPath(); ctx.arc(k.x, k.y, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.4;
+      ctx.fillRect(k.x - 1, k.y, 2, 18);
+      ctx.restore();
+    }
+  }
   function nightcap(b) {
-    const h = new Date().getHours();
-    const k = CFG.nightcap > 0 && (h >= 22 || h < 7) && b.body.o.radius > 12 && !b.dying ? ramp(b.sleep || 0, 0.5, 0.85) : 0;
+    const h = new Date().getHours(), santa = CFG.seasons > 0 && christmas();
+    const k = b.body.o.radius <= 12 || b.dying ? 0 : santa ? 1 : CFG.nightcap > 0 && (h >= 22 || h < 7) ? ramp(b.sleep || 0, 0.5, 0.85) : 0;
     if (k <= 0) { b.capSwing = 0; return; }
     const body = b.body, r = body.o.radius;
     let top = 0;
@@ -2134,7 +2199,7 @@
     b.capSwing = (b.capSwing || 0) + (-v.x * 0.0015 - (b.capSwing || 0)) * 0.08;
     const w = r * 0.95 * k, ht = r * 0.75 * k, tipX = x + side * w * 0.55 + b.capSwing * r, tipY = y - ht * 0.75;
     ctx.save();
-    ctx.fillStyle = '#5f6fd6';
+    ctx.fillStyle = santa ? '#d8333f' : '#5f6fd6';
     ctx.beginPath();
     ctx.moveTo(x - side * w / 2, y + ht * 0.12);
     ctx.quadraticCurveTo(x - side * w * 0.2, y - ht * 1.05, tipX, tipY);
@@ -3348,6 +3413,7 @@
     }
     drawSeason(false);
     drawFlutters();
+    drawRockets();
     drawPets();
     drawBubbles();
     drawHearts();
@@ -3914,6 +3980,7 @@
       flakes: () => flakes,
       flutters: () => flutters,
       flutter: (bat) => addFlutter(bat),
+      holiday: (k) => { holiday = k; },
       goo: () => bubbles,
       strands: () => strands,
       now: () => time,

@@ -107,7 +107,9 @@ module.exports = async function run({ win, tracker }) {
 	const ok = await until(() => js(startTag), 9000);
 	if (!ok) console.log(await js(`JSON.stringify(['s1', 's2'].map((k) => { const o = __blaube.buddies.get(k); return { k, st: o.state, g: !!o.body.grab, m: !!o.merging, p: !!o.prank, t: !!o.trick, bl: !!o.blow, s: o.sleep, sb: !!o.stackedBy, f: o.body.onFloor(), x: Math.round(o.body.centroid().x), y: Math.round(o.body.centroid().y), nt: o.nextTag }; }).concat([__blaube.now()]))`));
 	check(ok, 'two bored slimes start a game of tag');
-	check(await until(() => js(`(__blaube.buddies.get('s1').tag || {}).n > 0`), 15000), 'a bump, and the other is it');
+	// (A game cut short, say by a slime dozing off under xvfb, gets restarted.)
+	const bumped = startTag.replace('if (a.tag) return true;', 'if (a.tag) return a.tag.n > 0;');
+	check(await until(() => js(bumped), 20000), 'a bump, and the other is it');
 	// A bored slime blows a bubble, and it floats off.
 	await until(() => js(`!__blaube.buddies.get('s1').tag && !__blaube.buddies.get('s2').tag`), 15000);
 	check(await until(() => js(`(() => { const a = __blaube.buddies.get('s2'), g = a.blow; __blaube.sys.idle = 0; __blaube.sys.idleAt = performance.now() / 1000; if (!g) a.nextBlow = 0; return !!(g && g.bubble && g.bubble.away); })()`), 15000), 'a bored slime blows a bubble and it floats off');
