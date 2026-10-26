@@ -1780,7 +1780,13 @@ app.whenReady().then(async () => {
         // (A dev server: where it says it's on, to open with a tap.)
         if (file && !taskUrls.has(key)) {
           const u = taskOutput.url(file);
-          if (u) { taskUrls.set(key, u); if (taskUrls.size > 200) taskUrls.delete(taskUrls.keys().next().value); if (talkId === s.id) pushTalk(s.id); }
+          if (u) {
+            taskUrls.set(key, u);
+            if (taskUrls.size > 200) taskUrls.delete(taskUrls.keys().next().value);
+            if (talkId === s.id) pushTalk(s.id);
+            // (And its slime says it's up.)
+            else if (win && readySessions.has(s.id)) win.webContents.send('say', { id: s.id, text: `Up on ${u.replace(/^https?:\/\//, '').replace(/\/$/, '')}`, seconds: 5, status: true });
+          }
         }
         const r = file && taskOutput.tail(file, 4096);
         if (!r || r.exited == null) continue;
