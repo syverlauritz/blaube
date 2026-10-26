@@ -30,6 +30,24 @@ const ccDefaults = require('./ccDefaults');
 const cloner = require('./clone');
 const pulls = require('./pr');
 const runs = require('./runs');
+const editor = require('./editor');
+// Your code editor (editor.js), looked for at most once a minute.
+let editorSeen = { at: 0, ed: null };
+const editorNow = () => {
+  if (TEST) return global.__blaubeEditor || null;
+  if (Date.now() - editorSeen.at > 60e3) editorSeen = { at: Date.now(), ed: editor.find() };
+  return editorSeen.ed;
+};
+// Opens a session's file (at a line) or its folder ('') in your editor.
+function openInEditor(id, rel, line = 0) {
+  const s = tracker.sessions.get(id);
+  const ed = editorNow();
+  if (!s || !s.cwd || !ed) return;
+  const st = gitStates.get(id);
+  const target = rel ? sessionFile(id, rel) : (st && st.root) || s.cwd;
+  if (!target) return;
+  editor.open(ed, target, Number(line) > 0 ? Math.min(Number(line), 1e7) : 0, (err) => { if (err) inbox.add(id, { who: 'note', text: `Couldn’t open it in ${ed.name}: ${err}`, error: true }); });
+}
 const installer = require('./installer');
 const away = require('./away');
 const taskOutput = require('./taskOutput');
@@ -481,6 +499,7 @@ function pushTalk(id, focusField = false) {
     // Its git status and what you might ask for next (see git.js).
     git: gitLine(id),
     gitFiles: gitFiles(id),
+    editor: id.startsWith('demo-') || !editorNow() ? '' : editorNow().name, // (your code editor, to open its files in)
     scripts: s.cwd && !id.startsWith('demo-') ? runs.scripts(s.cwd).slice(0, 6).map((x) => x.name) : [], // (its package.json's, for Run)
     pr: prStates.get(id) ? { number: prStates.get(id).number, url: prStates.get(id).url, title: prStates.get(id).title } : null,
     earlier: !id.startsWith('demo-') && !!transcriptPath(s) && fs.existsSync(transcriptPath(s)), // (its transcript has what came before)
@@ -1359,6 +1378,7 @@ function sessionMenu(id) {
     { label: 'Notify me about this one', type: 'checkbox', checked: !muted.has(id), enabled: !isDemo && (prefs.config.notify || 'Behind windows') !== 'Off', click: (item) => { if (item.checked) muted.delete(id); else muted.add(id); } },
     { label: 'Save conversation as Markdown', enabled: !isDemo && inbox.log(id).length > 0, click: () => { const f = saveConversation(id); if (f) shell.showItemInFolder(f); } },
     { label: 'Open project folder', enabled: !!s.cwd, click: () => shell.openPath(s.cwd) },
+    ...(!isDemo && s.cwd && editorNow() ? [{ label: `Open in ${editorNow().name}`, click: () => openInEditor(id, '') }] : []),
     ...(isDemo || !s.cwd ? [] : [allowedMenu(s)]),
     { type: 'separator' },
     { label: 'Colour', submenu: colorMenu(colorOf(s) || prefs.config.color, (hex) => { prefs.colors[colorKey(s)] = hex; savePrefs(); pushState(); }) },
@@ -2842,6 +2862,7 @@ app.whenReady().then(async () => {
     return paths.slice(0, 40).filter((p) => sessionFile(id, p));
   });
   const PEEK = 64 << 10;
+  ipcMain.on('talk-open-editor', (_e, id, rel, line) => { if (id === talkId && typeof rel === 'string') openInEditor(id, rel, line); });
   ipcMain.handle('talk-peek', (_e, id, rel) => {
     const file = id === talkId ? sessionFile(id, rel) : '';
     if (!file) return null;

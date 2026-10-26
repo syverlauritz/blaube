@@ -477,11 +477,17 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => box(`![...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Try again')`)), 'and it isn’t taken for Claude’s own error');
 	fs.rmSync(path.join(repo, 'package.json')); fs.rmSync(path.join(repo, 'server.js'));
 	// Files named in a reply open right in the box; a long reply's rest is a tap away.
+	const edLog = repo + '-editor.txt', fakeEd = repo + '-code.sh';
+	fs.writeFileSync(fakeEd, `#!/bin/sh\necho "$@" > '${edLog}'\n`, { mode: 0o755 });
+	global.__blaubeEditor = { name: 'VS Code', bin: fakeEd, kind: 'code' };
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'what did you change?' });
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'Stop', last_assistant_message: 'I changed `src/tax.js:1` and [the notes](notes.md#L1), not `nope.js` or `console.log`.\n\n' + 'All of it. '.repeat(500) + 'THE END' });
 	check(await until(() => box(`(() => { const l = [...document.querySelectorAll('#inner .msg.claude .filelink')].map((e) => e.textContent).join(); return l === 'src/tax.js:1,the notes'; })()`)), 'files named in a reply become tappable (only real ones)');
 	await box(`[...document.querySelectorAll('#inner .filelink')].find((e) => e.textContent === 'src/tax.js:1').click()`);
 	check(await until(() => box(`(() => { const p = document.querySelector('#inner .peek'); return !!p && /src\\/tax\\.js, line 1/.test(p.textContent) && p.querySelector('mark') && p.querySelector('mark').textContent === 'x'; })()`)), 'a tap shows the file in the box, its line marked');
+	await box(`document.querySelector('#inner .peek .ined').click()`);
+	check(await until(() => fs.existsSync(edLog) && fs.readFileSync(edLog, 'utf8').trim() === `-g ${path.join(repo, 'src', 'tax.js')}:1`), 'Open in VS Code opens it in your editor, at that line');
+	global.__blaubeEditor = null;
 	await sleep(500);
 	await shot('peek');
 	await box(`[...document.querySelectorAll('#inner .filelink')].find((e) => e.textContent === 'src/tax.js:1').click()`);

@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   copy: (text) => ipcRenderer.send('talk-copy', text),
   openLink: (url) => ipcRenderer.send('talk-link', url),
   reveal: (id, file) => ipcRenderer.send('talk-reveal', id, file),
+  openInEditor: (id, rel, line) => ipcRenderer.send('talk-open-editor', id, rel, line || 0),
   save: (id) => ipcRenderer.invoke('talk-save', id),
   copyAll: (id) => ipcRenderer.send('talk-copy-all', id),
   showFile: (file) => ipcRenderer.send('talk-show-file', file),

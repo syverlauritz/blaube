@@ -246,6 +246,8 @@
   .peekhead span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .peekhead button { border: 0; background: none; width: 24px; height: 24px; border-radius: 50%; padding: 0; font: 700 13px var(--ui); color: var(--faint); cursor: pointer; }
   .peekhead button:hover { color: var(--ink); background: #e6e8ee; }
+  .peekhead button.ined { width: auto; border-radius: 999px; padding: 0 9px; font-size: 12px; white-space: nowrap; }
+  .peekhead button.ined[hidden] { display: none; }
   .peek pre { margin: 0; padding: 6px 12px 10px; max-height: 240px; overflow: auto; font: 500 13px/1.45 ui-monospace, Menlo, Consolas, monospace; white-space: pre; user-select: text; }
   .peek mark { background: color-mix(in srgb, var(--color) 28%, transparent); color: inherit; border-radius: 3px; }
   .msg pre { margin: 4px 0; padding: 9px 12px; background: var(--soft); border-radius: 16px; font: 500 14px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: pre; overflow-x: auto; }

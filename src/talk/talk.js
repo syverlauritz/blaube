@@ -142,7 +142,13 @@
       const close = document.createElement('button');
       close.type = 'button'; close.textContent = '✕'; close.title = 'Close';
       close.onclick = () => { box.remove(); fitWindow(); };
-      head.append(name, reveal, close);
+      // (And your code editor, at that line.)
+      const edit = document.createElement('button');
+      edit.type = 'button'; edit.className = 'ined'; edit.textContent = current && current.editor ? `Open in ${current.editor}` : '';
+      edit.title = 'Open it in your editor' + (line ? `, at line ${line}` : '');
+      edit.hidden = !(current && current.editor);
+      edit.onclick = () => api.openInEditor(id, rel, line);
+      head.append(name, edit, reveal, close);
       const pre = document.createElement('pre');
       const lines = f.text.split('\n');
       if (line && line <= lines.length) {
