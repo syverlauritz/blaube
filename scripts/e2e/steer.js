@@ -124,6 +124,21 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	check(await until(() => box(`(() => { const t = [...document.querySelectorAll('#inner .turnmeta')].pop(); return !!t && /step/.test(t.textContent) && /tax\\.js/.test(t.textContent); })()`)), 'the reply says how many steps it took and which files changed');
 	await shot('stopped');
 
+	// Take the conversation with you: ⌘S saves it as Markdown, ⇧⌘C copies
+	// it, and files and replies drag out into other apps.
+	await key('s', mod);
+	check(await until(() => box(`!document.getElementById('toast').hidden && /Saved to Downloads/.test(document.getElementById('toast').textContent)`)), '⌘S saves the conversation, and says where');
+	const saved = await box(`document.getElementById('toast').title`);
+	const md = saved && fs.existsSync(saved) ? fs.readFileSync(saved, 'utf8') : '';
+	check(/^# kalkis/.test(md) && /> add the 2027 tax brackets/.test(md) && /\*\*Claude\*\*/.test(md) && /- Read tax\.js/.test(md) && /2028 isn’t started/.test(md), 'as Markdown: what you said, its steps, its replies');
+	await key('s', mod);
+	const second = await until(async () => (await box(`document.getElementById('toast').title`)) !== saved);
+	check(second && fs.existsSync(saved), 'saving again never writes over the first');
+	await key('c', Object.assign({ shiftKey: true }, mod));
+	check(await until(async () => /^# kalkis/.test(await clipboard.readText())), '⇧⌘C copies it as Markdown');
+	check(await box(`(() => { const b = document.querySelector('#inner .msg.claude .copyreply'); return !!b && b.draggable; })()`), 'a reply drags out as text');
+	check(await box(`[...document.querySelectorAll('#inner .filelink')].every((b) => b.draggable)`), 'a changed file drags out as the file');
+
 	// The overview: every session, and a tap goes to one.
 	await hook({ session_id: ID2, cwd: '/tmp/website', hook_event_name: 'SessionStart' });
 	await hook({ session_id: ID2, cwd: '/tmp/website', hook_event_name: 'UserPromptSubmit', prompt: 'fix the footer' });

@@ -10,6 +10,7 @@ const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
 const history = require('./history');
 const attention = require('./attention');
+const markdown = require('./markdown');
 const git = require('./git');
 const { slashCommand } = require('./commands');
 const { openResumeTerminal, resumeCommand, focusSessionApp, typeIntoSession } = require('./terminal');
@@ -29,7 +30,7 @@ const PORT = Number(process.env.BLAUBE_PORT) || DEFAULT_PORT;
 // with no tray icon, its own data folder, and none of your real sessions.
 // The script is run with the app's insides once it's up (scripts/e2e).
 const TEST = process.env.BLAUBE_TEST || '';
-if (TEST) app.setPath('userData', fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'blaube-test-')));
+if (TEST) { app.setPath('userData', fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'blaube-test-'))); app.setPath('downloads', path.join(app.getPath('userData'), 'Downloads')); fs.mkdirSync(app.getPath('downloads')); }
 
 // When Blaube is started from inside a Claude Code session (e.g. `npm start`
 // run by Claude), it inherits that session's markers. A `claude --resume` it
@@ -407,7 +408,7 @@ function pushTalk(id, focusField = false) {
     return;
   }
   talkLast = {
-    id, project: s.project, color: colorOf(s) || prefs.config.color || '#D97757', font: prefs.config.font, demo: id.startsWith('demo-'), connected: true,
+    id, project: s.project, cwd: s.cwd, color: colorOf(s) || prefs.config.color || '#D97757', font: prefs.config.font, demo: id.startsWith('demo-'), connected: true,
   };
   talkWin.webContents.send('talk-state', Object.assign({
     id,
@@ -877,6 +878,27 @@ function handOver(s, cmd) {
   if (!TEST) goToSession(s);
 }
 
+// A conversation as Markdown (see markdown.js), and saved to Downloads
+// (no dialog: it would take focus and close the talk box). Never over
+// another file. Returns where it went, or ''.
+function conversationMarkdown(id) {
+  const s = tracker.sessions.get(id) || (talkLast && talkLast.id === id ? talkLast : null);
+  return markdown.toMarkdown({ project: s ? s.project : '', cwd: s ? s.cwd : '', log: inbox.log(id) });
+}
+function saveConversation(id) {
+  if (!inbox.log(id).length) return '';
+  const s = tracker.sessions.get(id) || (talkLast && talkLast.id === id ? talkLast : {});
+  try {
+    const dir = app.getPath('downloads');
+    const name = markdown.fileName(s.project);
+    let file = path.join(dir, name);
+    for (let n = 2; fs.existsSync(file) && n < 100; n++) file = path.join(dir, name.replace(/\.md$/, ` (${n}).md`));
+    fs.writeFileSync(file, conversationMarkdown(id), { flag: 'wx' });
+    log(`saved ${s.project}'s conversation to ${file}`);
+    return file;
+  } catch (e) { log(`couldn't save the conversation: ${e.message}`); return ''; }
+}
+
 // The talk shortcut: opens the talk box of the slime that needs you most
 // (or closes the open one).
 function talkShortcut() {
@@ -1058,6 +1080,7 @@ function sessionMenu(id) {
       { label: 'Resume in a new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
     ]),
     { label: 'Copy resume command', click: () => clipboard.writeText(`cd "${s.cwd}" && ${resumeCommand(s.id)}`) },
+    { label: 'Save conversation as Markdown', enabled: !isDemo && inbox.log(id).length > 0, click: () => { const f = saveConversation(id); if (f) shell.showItemInFolder(f); } },
     { label: 'Open project folder', enabled: !!s.cwd, click: () => shell.openPath(s.cwd) },
     { type: 'separator' },
     { label: 'Colour', submenu: colorMenu(colorOf(s) || prefs.config.color, (hex) => { prefs.colors[colorKey(s)] = hex; savePrefs(); pushState(); }) },
@@ -1509,6 +1532,17 @@ app.whenReady().then(async () => {
   ipcMain.on('talk-pickup', (_e, id) => { const p = hubPast.find((x) => x.id === id); if (p) { hubCache = null; hideTalk(); pickUp(p); } });
   ipcMain.on('talk-copy', (_e, text) => { if (typeof text === 'string' && text.length < 1e6) clipboard.writeText(text); });
   // A file a turn changed, shown in Finder (never opened: it could be a program).
+  ipcMain.handle('talk-save', (_e, id) => (id && id === talkId ? saveConversation(id) : ''));
+  ipcMain.on('talk-copy-all', (_e, id) => { if (id && id === talkId) clipboard.writeText(conversationMarkdown(id)); });
+  ipcMain.on('talk-show-file', (_e, file) => { if (typeof file === 'string' && path.dirname(file) === app.getPath('downloads') && /\.md$/.test(file)) shell.showItemInFolder(file); });
+  // A changed file dragged out of the box, into another app (only files its
+  // steps named, as for revealing them).
+  ipcMain.on('talk-drag', (e, id, file) => {
+    if (!id || id !== talkId || typeof file !== 'string' || !path.isAbsolute(file)) return;
+    if (!inbox.log(id).some((x) => x.who === 'step' && x.file === file)) return;
+    try { if (!fs.statSync(file).isFile()) return; } catch { return; }
+    e.sender.startDrag({ file, icon: nativeImage.createFromPath(path.join(ASSETS, 'icon.png')).resize({ width: 32, height: 32 }) });
+  });
   ipcMain.on('talk-reveal', (_e, id, file) => {
     if (!id || id !== talkId || typeof file !== 'string' || !path.isAbsolute(file)) return;
     if (!inbox.log(id).some((e) => e.who === 'step' && e.file === file)) return; // only files its steps named

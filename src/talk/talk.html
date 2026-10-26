@@ -86,6 +86,9 @@
   /* Find (⌘F): a field over the log; what doesn't match steps aside. */
   .findbar { display: flex; align-items: center; gap: 8px; margin: 0 16px 6px; }
   .findbar[hidden] { display: none; }
+  /* A word about what just happened (saved, copied); tap to see the file. */
+  .toast { margin: 0 16px 6px; padding: 6px 12px; border: 0; border-radius: 999px; background: var(--soft); font: 600 13px var(--ui); color: var(--ink); text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .toast[hidden] { display: none; }
   .findbar input { flex: 1; min-width: 0; border: 0; border-radius: 999px; padding: 7px 14px; background: var(--soft); font: 600 14px var(--ui); color: var(--ink); outline: none; user-select: text; }
   .findbar input::placeholder { color: var(--faint); }
   #findCount { flex: none; font: 600 14px var(--ui); color: var(--dim); }
@@ -301,6 +304,7 @@
     </header>
     <div class="git" id="git" hidden></div>
     <div class="findbar" id="findBar" hidden><input id="find" type="search" placeholder="Find in this conversation…" aria-label="Find in this conversation"><span id="findCount"></span></div>
+    <button class="toast" id="toast" type="button" hidden aria-live="polite"></button>
     <div class="todo" id="todo" hidden>
       <button id="todoHead"><span class="bar"><i id="todoFill"></i></span><span id="todoNow"></span><span id="todoCount"></span></button>
       <ul id="todoList" hidden></ul>

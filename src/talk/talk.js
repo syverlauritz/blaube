@@ -209,8 +209,11 @@
         const b = document.createElement('button');
         b.className = 'filelink';
         b.textContent = f.split(/[\\/]/).pop();
-        b.title = `${f}\nShow it in ${navigator.platform.startsWith('Mac') ? 'Finder' : 'its folder'}`;
+        b.title = `${f}\nShow it in ${navigator.platform.startsWith('Mac') ? 'Finder' : 'its folder'}, or drag it into another app`;
         b.onclick = () => api.reveal && api.reveal(current.id, f);
+        // Drag it out: the file itself, into a mail, a chat, Finder.
+        b.draggable = true;
+        b.addEventListener('dragstart', (ev) => { ev.preventDefault(); if (api.dragOut) api.dragOut(current.id, f); });
         t.append(b);
         // Not what you wanted? Ask for that file's change back.
         const undo = document.createElement('button');
@@ -242,6 +245,10 @@
     // not in what you select and copy, not in what find reads.)
     b.dataset.label = 'Copy';
     b.setAttribute('aria-label', label);
+    b.title = `${label} (or drag it into another app)`;
+    // Drag it into another app and the text goes there.
+    b.draggable = true;
+    b.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', get()); e.dataTransfer.effectAllowed = 'copy'; });
     b.onclick = (e) => {
       e.stopPropagation();
       if (api.copy) api.copy(get());
@@ -507,6 +514,30 @@
       $('find').focus();
       $('find').select();
       requestAnimationFrame(fitWindow);
+    }
+  });
+  // ⌘S saves the conversation as Markdown (to Downloads), ⇧⌘C copies it.
+  let toastTimer = null;
+  function toast(words, file = '') {
+    const t = $('toast');
+    t.textContent = words;
+    t.title = file;
+    t.onclick = () => { if (file && api.showFile) api.showFile(file); t.hidden = true; requestAnimationFrame(fitWindow); };
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.hidden = true; requestAnimationFrame(fitWindow); }, 4000);
+    requestAnimationFrame(fitWindow);
+  }
+  document.addEventListener('keydown', (e) => {
+    if (!current || current.demo || !(e.metaKey || e.ctrlKey) || e.altKey || !current.log.length) return;
+    const k = e.key.toLowerCase();
+    if (k === 's' && !e.shiftKey && api.save) {
+      e.preventDefault();
+      api.save(current.id).then((file) => toast(file ? `Saved to Downloads as ${file.split(/[\\/]/).pop()}` : 'Couldn’t save it', file));
+    } else if (k === 'c' && e.shiftKey && api.copyAll) {
+      e.preventDefault();
+      api.copyAll(current.id);
+      toast('Copied the conversation as Markdown');
     }
   });
   document.addEventListener('keydown', (e) => {
