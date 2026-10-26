@@ -1014,6 +1014,9 @@
       warnFull(b);
       b.breathPhase += DT * b.breathRate * 1.5 * b.pain;
       breatheTogether(b);
+      if (b.mood) b.mood *= 1 - DT / 90;
+      if (time < (b.pettedUntil || 0)) feel(b, 0.35 * DT);
+      else if (b.patted) feel(b, 0.2 * DT);
       // A setback (a failed tool or test) lets some air out for a moment.
       b.droop = (b.droop || 0) + ((time < (b.droopUntil || 0) ? 1 : 0) - (b.droop || 0)) * (time < (b.droopUntil || 0) ? 0.02 : 0.006);
       body.areaScale = (1 + CFG.contextInflate * b.fill * b.fill) * (1 + CFG.breathe * (1 + 12 * CFG.sleepSlump * (b.sleep || 0)) * Math.sin(time * b.breathRate + b.breathPhase)) * (1 - CFG.droop * b.droop);
@@ -1045,7 +1048,7 @@
       b.look = lookOf(b);
       if (b.look !== 'none') Looks.stepLook(b, DT);
       if (b.splitting) pullStrand(b);
-      if (body.lastImpact > CFG.dizzySpeed) b.dizzyUntil = time + 0.9;
+      if (body.lastImpact > CFG.dizzySpeed) { if (time > (b.dizzyUntil || 0)) feel(b, -0.15); b.dizzyUntil = time + 0.9; }
       // A good thump makes it blink (a hard one makes it dizzy, above).
       else if (body.lastImpact > 650 && CFG.eyeLife > 0 && time > (b.thumpBlinkAt || 0)) { b.nextBlink = time; b.thumpBlinkAt = time + 0.3; }
       if (body.lastImpact > 650 && CFG.contactJiggle > 0) passJiggle(b, body.lastImpact);
@@ -1183,6 +1186,13 @@
   // whizzes past, shifts its weight when it's bored, and wriggles when it's
   // held up too long. All of it goes in as forces; the body does the rest.
 
+  // How it feels about you lately, -1 (grumpy) to 1 (fond); it fades
+  // back to neutral over a few minutes.
+  const YOU = { body: { centroid: () => ({ x: mouse.x, y: mouse.y }) } }; // (to glare at)
+  function feel(b, d) {
+    if (CFG.moods > 0) b.mood = Math.max(-1, Math.min(1, (b.mood || 0) + d * CFG.moods));
+  }
+
   // The slime you're dangling right over this one (it braces), if any.
   function heldOver(b) {
     const h = drag && drag.buddy;
@@ -1296,8 +1306,12 @@
     // on it (that's petting), and not if it's been sitting still a while.
     const near = 1 - ramp(d, r * 1.4, r * 4.5);
     const fresh = performance.now() / 1000 - mouse.lastMove < 4;
+    // Its mood toward you: fond (petted lately) leans in more; grumpy
+    // (poked, shaken, splatted) leans away and gives you a look.
+    const mood = b.mood || 0;
+    if (mood < -0.45 && near > 0.3 && fresh) { b.annoyedAt = YOU; b.annoyedUntil = time + 0.3; }
     if (CFG.leanToCursor > 0 && near > 0 && fresh && !body.contains(mouse.x, mouse.y)) {
-      const side = Math.max(-1, Math.min(1, dx / r));
+      const side = Math.max(-1, Math.min(1, dx / r)) * (mood < -0.3 ? -0.6 : 1 + 0.6 * Math.max(0, mood));
       body.lean(side * near * CFG.leanToCursor * trait(b, 'curious') * r * 25 * DT, DT);
       // Its bottom grips the floor, so leaning doesn't scoot it along.
       body.impulse(-body.velocity(DT).x * 0.15, 0, DT);
@@ -1644,6 +1658,7 @@
     if (!hit) return;
     hit.until = time + CFG.splatHold * (0.8 + Math.random() * 0.4);
     b.splat = hit;
+    feel(b, -0.2);
     b.pendingHop = null;
   }
 
@@ -1869,7 +1884,7 @@
       b[key] = dir;
     }
     while (flips.length && time - flips[0] > 1.5) flips.shift();
-    if (CFG.shakeDizzy > 0 && flips.length >= CFG.shakeDizzy) { b.dizzyUntil = time + 1.8; flips.length = 0; }
+    if (CFG.shakeDizzy > 0 && flips.length >= CFG.shakeDizzy) { b.dizzyUntil = time + 1.8; flips.length = 0; feel(b, -0.35); }
     b.stillFor = Math.hypot(g.vx, g.vy) < 90 ? (b.stillFor || 0) + DT : 0;
     b.wriggling = CFG.wriggle > 0 && b.stillFor > CFG.wriggleAfter && time > b.dizzyUntil && (b.stillFor - CFG.wriggleAfter) % 2.6 < 1.3;
     if (b.wriggling && time > (b.nextKick || 0)) {
@@ -2867,6 +2882,7 @@
       if (edge < 0.6) b.body.squashTop(CFG.pokeDent * r * 6 * (0.6 - edge), DT);
     }
     b.startleUntil = time + 0.3;
+    feel(b, -0.04); // (poke it over and over and it gets grumpy)
     if (b.merging) b.merging.since = time; // being held resets the trip home
   }
 
