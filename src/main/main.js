@@ -2123,7 +2123,7 @@ app.whenReady().then(async () => {
     // commands, run right there as a step. One that installs by running a
     // command of its own shows you that command first.
     const plug = /^\/plugins?\s+(install|i|uninstall|remove|enable|disable|update)\s+([\w.@\/:+-]{1,200})\s*$/i.exec(String(text).trim());
-    const market = !plug && /^\/plugins?\s+marketplace\s+(add|remove|rm|update)\s+(\S{1,300})\s*$/i.exec(String(text).trim());
+    const market = !plug && /^\/plugins?\s+marketplace\s+(add|remove|rm|update)\s+([\w.@\/:~+#=-]{1,300})\s*$/i.exec(String(text).trim());
     if ((plug || market) && sess && !id.startsWith('demo-')) {
       const bin = owned.findClaude() || owned.shellPath() || 'claude';
       const sq = (a) => (process.platform === 'win32' ? `"${a.replace(/"/g, '')}"` : `'${a.replace(/'/g, `'\\''`)}'`);
