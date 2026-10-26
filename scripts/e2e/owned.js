@@ -277,10 +277,13 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await until(() => win.webContents.executeJavaScript(`!!__blaube.buddies.get(${JSON.stringify(BID)})`), 8000);
 	await win.webContents.executeJavaScript(`window.blaube.talk(${JSON.stringify(BID)}, { x: 300, y: 600, r: 60 })`);
 	check(await until(() => talkId() === BID && box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Bring it here')`), 8000), 'a session that can’t hear Blaube offers to bring it here');
+	await type('/compact');
+	check(await until(() => inbox.log(BID).some((e) => /^\/compact is for Claude Code itself.*Or bring it here: it goes straight in then/.test(e.text || ''))), 'a command it can’t take there says bringing it here would');
 	await box(`[...document.querySelectorAll('#quick button')].find((b) => b.textContent === 'Bring it here').click()`);
 	check(await Promise.race([gone, sleep(5000).then(() => 'still there')]) === 'SIGTERM', 'it closes in its terminal');
 	check(await until(() => owned.has(BID), 8000), 'and carries on in Blaube, same session');
 	check(await until(async () => talkId() === BID && /Brought here from its terminal/.test(await said()) && /Renamed it to taxOf/.test(await said()), 8000), 'its box says so, with the conversation so far');
+	check(await until(() => inbox.log(BID).some((e) => e.text === 'Compacted: it carries on from a summary of the conversation so far'), 8000), 'and the command you typed goes in, now it can take it');
 	await type('and the tests?');
 	check(await until(async () => /claude-opus here\./.test(await said())), 'and it answers right here');
 	owned.end(BID);

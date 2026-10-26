@@ -607,6 +607,7 @@ function sweep() {
   for (const id of [...muted]) if (!live(id)) muted.delete(id);
   for (const m of Object.values(maps)) for (const id of [...m.keys()]) if (!live(id)) m.delete(id);
   for (const [k, at] of [...lastBubble]) if (Date.now() - at > 60e3) lastBubble.delete(k);
+  for (const [id, c] of [...handedOver]) if (Date.now() - c.at > 30 * 60e3) handedOver.delete(id); // (kept past its end: bringing it here ends it first)
   while (agentDescriptions.size > 200) agentDescriptions.delete(agentDescriptions.keys().next().value);
   return Object.entries(maps).filter(([, m]) => [...m.keys()].some((id) => !live(id))).map(([name]) => name)
     .concat([...inbox.logs.keys()].some((id) => !live(id)) ? ['inbox'] : []);
@@ -666,10 +667,17 @@ async function pickUp(p) {
     return;
   }
   const id = startSession(p.cwd, [], p.id);
-  if (!id) return;
+  if (!id) return null;
   // (Ended while you watched: the conversation is still here.)
-  if (p.file && !inbox.log(id).length) for (const m of history.recentMessages(p.file, 4)) inbox.add(id, m);
+  // (Its box may have notes already, from before it was brought here.)
+  if (p.file && !inbox.log(id).some((e) => e.who === 'you' || e.who === 'claude')) {
+    const had = inbox.log(id).slice();
+    inbox.logs.set(id, []);
+    for (const m of history.recentMessages(p.file, 4)) inbox.add(id, m);
+    inbox.logs.set(id, [...inbox.log(id), ...had]);
+  }
   inbox.add(id, { who: 'note', text: p.note || (p.at ? `Picked up from ${history.ago(p.at)}` : 'Picked up here') });
+  return id;
 }
 
 // "Bring it into Blaube": a session in a terminal ends there and carries on
@@ -698,7 +706,10 @@ async function bringIn(s) {
     clearInterval(wait);
     if (alive()) { inbox.add(p.id, { who: 'note', text: 'It didn’t close in its terminal, so it stays there.' }); return; }
     if (tracker.sessions.has(p.id)) tracker.handle({ session_id: p.id, hook_event_name: 'SessionEnd' }, 'blaube');
-    pickUp(p);
+    // (The command it couldn't take there goes in now, as you typed it.)
+    const cmd = handedOver.get(p.id);
+    handedOver.delete(p.id);
+    pickUp(p).then((id) => { if (id && cmd && Date.now() - cmd.at < 30 * 60e3 && replyTo) replyTo(id, cmd.text); });
   }, 100);
 }
 
@@ -1089,10 +1100,12 @@ function notify(s, event, text, secs = 0) {
 // A slash command Blaube can't type in for you (Windows, or a terminal it
 // can't drive): it goes on the clipboard and its terminal comes forward,
 // so it's one paste away.
+const handedOver = new Map(); // session id -> { text, at }: the command it couldn't take, for when it's brought here
 function handOver(s, cmd) {
   clipboard.writeText(cmd);
   const bring = canBringIn(s);
-  inbox.add(s.id, { who: 'note', text: `${cmd.split(/\s/)[0]} is for Claude Code itself, so it’s on your clipboard: paste it into its terminal.${bring ? ' Or bring it here, and commands like it go straight in.' : ''}`, bring });
+  if (bring) handedOver.set(s.id, { text: cmd, at: Date.now() });
+  inbox.add(s.id, { who: 'note', text: `${cmd.split(/\s/)[0]} is for Claude Code itself, so it’s on your clipboard: paste it into its terminal.${bring ? ' Or bring it here: it goes straight in then, and commands like it too.' : ''}`, bring });
   if (!TEST) goToSession(s);
 }
 
