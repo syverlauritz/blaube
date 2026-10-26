@@ -262,6 +262,7 @@ function moveToDisplay(id) {
   savePrefs();
   fitWindow();
   send('come-here');
+  if (win) win.webContents.send('jar-spot', jarSpotNow());
 }
 
 function displayMenu() {
@@ -714,6 +715,11 @@ function pushTalk(id, focusField = false) {
   }
 }
 let usageLimits = null; // (see limits.js)
+let noPlanLimits = false; // (Claude Code says there are none: an API key)
+// The snack jar on the stage shows them (see shared/snack.js), and is left
+// where you put it, per screen.
+function sendLimits() { if (win && !win.isDestroyed()) win.webContents.send('limits', { lim: usageLimits, noPlan: noPlanLimits }); }
+const jarSpotNow = () => (prefs.jarSpots && prefs.jarSpots[String(currentDisplay().id)]) || null;
 let signedOutNow = false, signingInNow = () => false; // (Claude Code signed out; signing in now)
 const mcpStates = new Map(); // id -> its MCP servers, for a session Blaube started
 const rewound = new Map(); // id -> what Claude should hear with your next message (files you put back, notes you added)
@@ -2282,8 +2288,9 @@ app.whenReady().then(async () => {
     }
     const before = JSON.stringify(usageLimits);
     usageLimits = l;
-    if (JSON.stringify(usageLimits) !== before ) pushTalks();
+    if (JSON.stringify(usageLimits) !== before ) { pushTalks(); sendLimits(); }
   };
+  if (TEST) global.__blaubeSetLimits = setLimits;
   owned.on('limits', (info) => setLimits(limits.read(info)));
   // (And asked for now and then: get_usage, which calls no model.)
   const askUsage = () => {
@@ -2293,14 +2300,14 @@ app.whenReady().then(async () => {
   owned.on('result', askUsage);
   // With none of Blaube's running, a Claude Code of its own is asked (one
   // that calls no model), when the overview opens: at most every 10 minutes.
-  let lastProbe = 0, noPlanLimits = false;
+  let lastProbe = 0;
   const probeUsage = () => {
     if (TEST || noPlanLimits || owned.list().length || Date.now() - lastProbe < 10 * 60e3) return;
     const bin = owned.findClaude() || owned.shellPath();
     if (!bin) return;
     lastProbe = Date.now();
     usageProbe.probe(bin, (r) => {
-      if (r && r.rate_limits_available === false) noPlanLimits = true; // (an API key: no plan limits to show)
+      if (r && r.rate_limits_available === false && !noPlanLimits) { noPlanLimits = true; sendLimits(); } // (an API key: no plan limits to show)
       setLimits(limits.fromUsage(r && r.rate_limits));
     });
   };
@@ -2589,7 +2596,14 @@ app.whenReady().then(async () => {
   ipcMain.on('ready', () => {
     win.webContents.send('config', prefs.config);
     win.webContents.send('world', world);
+    win.webContents.send('jar-spot', jarSpotNow());
+    sendLimits();
     pushState();
+  });
+  ipcMain.on('jar-spot', (_e, spot) => {
+    if (!spot || !Number.isFinite(spot.x) || !Number.isFinite(spot.y)) return;
+    prefs.jarSpots = Object.assign({}, prefs.jarSpots, { [String(currentDisplay().id)]: { x: Math.round(spot.x), y: Math.round(spot.y) } });
+    savePrefs();
   });
   ipcMain.on('open-tuning', openTuning);
   ipcMain.on('demo', runDemo);

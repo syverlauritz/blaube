@@ -857,6 +857,22 @@ SCENES.talkHarnessOverview = Object.assign({}, SCENES.talkHarness, { talkJs: `se
 // The speech bubbles in each of the other fonts Settings offers.
 for (const font of ['Concert One', 'DynaPuff', 'Rubik Spray Paint', 'System']) SCENES['speech' + font.replace(/ /g, '')] = Object.assign({}, SCENES.speech, { config: { size: 0.7, font } });
 SCENES.talkOverview = Object.assign({}, SCENES.talkChat, { talkJs: `setTimeout(() => document.getElementById('allSessions').click(), 400)` });
+// The snack jar (your usage limits): full, half, empty with crumbs, its
+// hover bubble, a cookie flying into a slime's mouth, and up on a window.
+const usage = (five, week, models = []) => ({ lim: { status: five >= 1 ? 'rejected' : 'allowed', windows: [
+	{ kind: 'five_hour', used: five, resetsAt: Date.now() + 2.3 * 3600e3, status: five >= 1 ? 'rejected' : 'allowed' },
+	{ kind: 'seven_day', used: week, resetsAt: Date.now() + 4.2 * 864e5, status: 'allowed' },
+	...models.map(([kind, used]) => ({ kind, used, resetsAt: Date.now() + 4.2 * 864e5, status: 'allowed' })),
+] } });
+const jarScene = (limits, extra = {}) => Object.assign({ sessions: [session('a', 'blaube', 'idle')], limits, jar: { x: 300, y: 516 }, wait: 3500 }, extra);
+SCENES.jarFull = jarScene(usage(0.02, 0.1));
+SCENES.jarHalf = jarScene(usage(0.5, 0.2));
+SCENES.jarEmpty = jarScene(usage(1, 0.4), { wait: 14000 });
+SCENES.jarHover = jarScene(usage(0.62, 0.41, [['seven_day_opus', 0.12]]), { mouse: [300, 490] });
+SCENES.jarUnknown = jarScene(null, { mouse: [300, 490] });
+SCENES.jarCookie = jarScene(usage(0.62, 0.41), { sessions: [session('a', 'blaube', 'working')], jar: { x: 700, y: 516 }, motion: { frames: 24, every: 60, drop: 0, still: true, hopAt: [], jsAt: { 0: 'cookieFar', 1: 'cookie' } } });
+SCENES.jarClose = jarScene(usage(0.45, 0.2), { config: { size: 2 }, jar: { x: 1050, y: 516 }, size: [1200, 560] });
+SCENES.jarLedge = jarScene(usage(0.3, 0.2), { window: [420, 300], jar: { x: 700, y: 300 } });
 
 // The Blobs overview by itself, with a made-up state (scene.blobs).
 async function shootBlobs(name, scene) {
@@ -888,6 +904,14 @@ async function shoot(win, name, scene) {
 	fire('world', { obstacles: [{ x: 0, y: h - 44, width: w, height: 44 }] });
 	await win.webContents.executeJavaScript(`document.body.style.background = 'linear-gradient(transparent calc(100% - 44px), ${scene.bg ? '#d9d6d0' : '#121316'} 0)'`);
 	fire('state', { sessions: scene.sessions, settings: { hooksInstalled: true } });
+	// The snack jar: your usage, where it stands, and a window to stand on.
+	if ('limits' in scene) fire('limits', scene.limits || { lim: null });
+	if (scene.window) {
+		const [x, y] = scene.window;
+		fire('ledges', [{ id: 7, x0: x, x1: x + 420, y, wx: x, at: Date.now() }]);
+		await win.webContents.executeJavaScript(`(() => { const d = document.createElement('div'); d.style.cssText = 'position:fixed;left:${x}px;top:${y}px;width:420px;height:400px;background:#3a3d44;border-top:28px solid #4a4e57;box-sizing:border-box;z-index:-1'; document.body.prepend(d); })()`);
+	}
+	if (scene.jar) fire('jar-spot', scene.jar);
 	await sleep(scene.wait || 2500);
 	if (scene.rub) {
 		// Back and forth across the slime's middle, like stroking it.
@@ -1133,6 +1157,8 @@ async function shootMotion(win, name, m) {
 			if (m.commandAt && m.commandAt[i]) win.webContents.send('fire', 'command', m.commandAt[i]);
 			// Two slimes stood apart, and the left one going as a ghost.
 			if (m.jsAt && m.jsAt[i] === 'teleport') await js(`(() => { const l = [...__blaube.buddies.values()]; l[0].body.teleport(220, 300); l[1].body.teleport(760, 300); })()`);
+			if (m.jsAt && m.jsAt[i] === 'cookieFar') { await js(`[...__blaube.buddies.values()][0].body.teleport(260, 430)`); await sleep(1500); }
+			if (m.jsAt && m.jsAt[i] === 'cookie') await js(`__blaube.throwCookie()`);
 			if (m.jsAt && m.jsAt[i] === 'giveUp') await js(`(() => { const k = [...__blaube.buddies.values()].find((b) => b.kind === 'child'); k.tries = { key: 'shot', n: 9 }; })()`);
 			if (m.jsAt && m.jsAt[i] === 'ghost') await js(`(() => { const l = [...__blaube.buddies.values()]; __blaube.ghost(l[0], l[1]); })()`);
 			if (m.mouseAt && m.mouseAt[i]) {
