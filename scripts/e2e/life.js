@@ -47,9 +47,10 @@ module.exports = async function run({ win, tracker }) {
 	await sleep(2000);
 	check(await js(`[...__blaube.buddies.values()].every((b) => [...b.body.px].every(Number.isFinite))`), 'still finite');
 	// Thrown hard at the wall, s2 splats there for a moment, then drops.
-	await js(`(() => { const b = __blaube.buddies.get('s2').body; b.impulse(4000, -300, 1 / 120); })()`);
+	// (From a set spot near the right wall, so it can't fall short.)
+	await js(`(() => { const b = __blaube.buddies.get('s2').body; b.teleport(b.bounds.right - b.o.radius * 3, b.bounds.bottom - b.o.radius * 2); b.impulse(4000 - b.velocity(1 / 120).x, -b.velocity(1 / 120).y, 1 / 120); })()`);
 	let stuck = false;
-	for (let i = 0; i < 30 && !stuck; i++) { await sleep(30); stuck = await js(`!!__blaube.buddies.get('s2').splat`); }
+	for (let i = 0; i < 60 && !stuck; i++) { await sleep(20); stuck = await js(`!!__blaube.buddies.get('s2').splat`); }
 	check(stuck, 'a hard throw splats against the wall');
 	await sleep(2500);
 	check(await js(`!__blaube.buddies.get('s2').splat && __blaube.buddies.get('s2').body.onFloor()`), 'and peels off back to the floor');
