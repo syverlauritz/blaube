@@ -81,9 +81,10 @@
       if (sys.low > 0) { vx *= 1 - 0.3 * sys.low; vy *= 1 - 0.3 * sys.low; }
       if ((talkingTo && buddies.get(talkingTo) === this) || time < (this.talkHold || 0)) return; // stays put while you talk to it (and while its box opens)
       // Up on a window it minds the edge: a hop that would land past it
-      // turns back (mothers wander off now and then; helpers never).
+      // turns back (mothers wander off now and then; helpers never, except
+      // to follow their mum down).
       const l = this.body.onLedge;
-      if (l && vy < 0 && (this.kind === 'child' || Math.random() < 0.85)) {
+      if (l && vy < 0 && !this.toMum && (this.kind === 'child' || Math.random() < 0.85)) {
         const c = this.body.centroid(), r = this.body.o.radius;
         const land = c.x + vx * (-2 * vy / CFG.gravity);
         if (land < l.x0 + r * 0.6 || land > l.x1 - r * 0.6) {
@@ -1324,7 +1325,8 @@
           const close = Math.hypot(dx, dy) < m.body.o.radius + r * 0.4;
           // (Given up on getting to her: after its sad moment it fades back
           // into her from where it is.)
-          if (close || (b.gaveUp ? time > b.gaveUp.until : time - b.merging.since > 8)) {
+          // (Still jumping for her up on a window, it keeps at it longer.)
+          if (close || (b.gaveUp ? time > b.gaveUp.until : time - b.merging.since > (b.tries || stillTrying(b) ? 25 : 8))) {
             b.dying = time;
             b.targetR = 2;
             m.happyUntil = time + 1.2;
@@ -1335,10 +1337,9 @@
               m.gulpAt = time;
               if (Math.random() < 0.3 * CFG.burps) m.burpAt = time + 0.9 + Math.random() * 0.6;
             }
-          } else if (body.onFloor() && !body.grab && !b.gaveUp && time - (b.merging.lastHop || 0) > 0.6) {
+          } else if (body.onFloor() && !body.grab && !b.gaveUp && !stillTrying(b) && time - (b.merging.lastHop || 0) > 0.6) {
             b.merging.lastHop = time;
-            if (b.reach) b.reach.hops++;
-            b.hop(Math.sign(dx) * Math.min(700, Math.abs(dx) * 2.2 + 120), -520 - Math.max(0, -dy) * 1.5);
+            if (!jumpUpTo(b, m)) hopToMum(b, Math.sign(dx) * Math.min(700, Math.abs(dx) * 2.2 + 120), -520 - Math.max(0, -dy) * 1.5);
           }
         }
       }
@@ -2784,7 +2785,7 @@
       return;
     }
     if (rel >= CFG.dizzySpeed * 0.8) { hit.dizzyUntil = time + 1; return; }
-    if (hit.kind === 'home' || hit.body.grab || time < (hit.annoyCooldown || 0)) return;
+    if (hit.kind === 'home' || hit.body.grab || homeward(hit) || time < (hit.annoyCooldown || 0)) return; // (a helper heading for mum pays it no mind)
 	if (hit.state === 'working' && time - (by.hoppedAt ?? -9) < 2) return; // (a neighbour hopping about bumps into it: it keeps its head down)
     hit.annoyedUntil = time + 1.1 + Math.random() * 0.6;
     hit.annoyedAt = by;
@@ -4882,61 +4883,124 @@
     return pair(a, b) || pair(b, a) || a.dying || b.dying;
   }
 
-  // A helper that can't get to its mum (she's up a window too high, it
-  // won't jump off the window it's on, she's being carried off) gives up
-  // after a while of getting no closer (about 7 s and a few hops; 3 s on
-  // its way home, its hops being quicker): a sigh, a heart breaking above
-  // it, a slump. Then it rests for minutes (4 to 8, twice that each time it
-  // has to give up again, 20 at most) before it tries again, unless she
-  // comes near by herself: then it's glad and goes to her. A finished one
-  // fades back into her after its sad moment.
+  // A helper that truly can't get to its mum gives up for a while: she's up
+  // on a window it keeps jumping for and falling short of. Only those jumps
+  // count, each judged once it has landed and stood still a moment: five
+  // in a row and it gives up (a heart breaking above it, a slow sigh out,
+  // a slump). A chase that's just taking a while, or a hop it didn't make
+  // because it was busy, held or bumped, never counts. Then it rests for
+  // minutes (4 to 8, twice that each time it has to give up again, 20 at
+  // most) and doesn't go after her at all, unless she comes to it by
+  // herself (standing right by it, on the same floor or window): then it's
+  // glad and goes to her. A finished one fades back into her after its sad
+  // moment.
+  const mumOf = (b) => (b.merging && b.mergeInto) || b.mother;
   function mumOutOfReach(b) {
-    const m = b.mother, c = b.body.centroid(), mc = m.body.centroid(), r = b.body.o.radius;
+    const m = mumOf(b), c = b.body.centroid(), mc = m.body.centroid(), r = b.body.o.radius;
     if (b.merging) return Math.hypot(mc.x - c.x, mc.y - c.y) >= m.body.o.radius + r * 0.4;
     const far = m.body.o.radius * 2 + r * 6, rise = b.body.bbox().maxY - m.body.bbox().maxY;
     return Math.abs(mc.x - c.x) > far || (rise > r && !!m.body.onLedge);
   }
+  // She's come to it: standing (not mid-hop, not carried) on the same
+  // window or floor, close by.
+  function mumNear(b) {
+    const m = mumOf(b), ml = m.body.onLedge, l = b.body.onLedge, r = b.body.o.radius;
+    if (!m.body.onFloor() || m.body.grab || m.pendingHop) return false;
+    const same = l || ml ? !!(l && ml && l.id === ml.id) : Math.abs(b.body.bbox().maxY - m.body.bbox().maxY) < r;
+    return same && Math.abs(m.body.centroid().x - b.body.centroid().x) < m.body.o.radius * 2 + r * 6;
+  }
+  // A hop toward her that has to get up onto her window (above it): a try.
+  // Anything else is just a hop along.
+  function tryKind(b) {
+    const m = mumOf(b), ml = m.body.onLedge, l = b.body.onLedge;
+    return ml && !(l && l.id === ml.id) && b.body.bbox().maxY - m.body.bbox().maxY > b.body.o.radius ? { up: ml.id } : null;
+  }
+  // Every hop toward her goes through here (see behave, and the trip home
+  // in step). Heading for her, it may hop down off a window (it otherwise
+  // never wanders off one), and other slimes' bumps don't bother it.
+  function hopToMum(b, vx, vy) {
+    const k = tryKind(b);
+    b.trying = k && Object.assign(k, { at: time });
+    b.seekUntil = time + 3;
+    const l = b.body.onLedge, ml = mumOf(b).body.onLedge;
+    b.toMum = !(l && ml && l.id === ml.id); // (on her window with her, it minds the edge as ever)
+    b.hop(vx, vy);
+    b.toMum = false;
+  }
+  // She's up on a window: an aimed jump, high enough to clear its edge,
+  // landing near her (the near side of her, or the far side if that has no
+  // room). False if she isn't.
+  function jumpUpTo(b, m) {
+    const rise = b.body.bbox().maxY - m.body.bbox().maxY, l = m.body.onLedge;
+    if (!(rise > b.body.o.radius && l)) return false;
+    const c = b.body.centroid(), mc = m.body.centroid(), dx = mc.x - c.x, cr = b.body.o.radius;
+    const gap = m.body.o.radius + cr * 1.3;
+    let tx = mc.x - Math.sign(dx) * gap;
+    if (tx < l.x0 + cr * 1.2 || tx > l.x1 - cr * 1.2) tx = mc.x + Math.sign(dx) * gap;
+    tx = Math.max(l.x0 + cr * 1.2, Math.min(l.x1 - cr * 1.2, tx));
+    const v = launch(tx - c.x, rise + cr * 2, rise); // (with the air slowing it: see launch)
+    hopToMum(b, Math.max(-600, Math.min(600, v.vx)), v.vy);
+    return true;
+  }
+  // A try that hasn't been judged yet (it's still in the air, or hasn't
+  // stood still since): it waits for that before the next.
+  const stillTrying = (b) => !!b.trying && time - b.trying.at < 6;
+  const homeward = (b) => b.kind === 'child' && !b.gaveUp && (b.merging || time < (b.seekUntil || 0));
   function missMum(b) {
     if (b.kind !== 'child' || b.dying) return;
     const m = b.mother;
-    if (!m || m.dying || m.removed) { b.reach = b.gaveUp = null; return; }
-    // Where it can get to is judged only when it's standing somewhere (a
-    // jump that sails up past her and falls back is a miss, not a reach).
-    const grounded = b.body.onFloor() && !b.pendingHop && !b.body.grab;
+    if (!m || m.dying || m.removed) { b.trying = b.tries = b.gaveUp = null; return; }
+    if (b.body.grab) { b.trying = b.tries = null; b.stillSince = 0; } // (carried off: it starts over wherever it's put)
+    // Standing still on something for a moment (not a landing's bounce,
+    // not crouched for a hop).
+    const still = b.body.onFloor() && !b.pendingHop && !b.body.grab && Math.abs(b.body.velocity(DT).y) < 60;
+    b.stillSince = still ? b.stillSince || time : 0;
+    const settled = still && time - b.stillSince > 0.4;
     const g = b.gaveUp;
     if (g) {
-      // The sigh comes as the heart's halves fall away (its bubble would
-      // hide the heart). It shows; it's heard only when there's room for a
-      // line (mayTalk).
-      if (!g.sighed && time > g.at + 1.1) {
+      // The sigh, as the heart's halves fall away: a breath in (it rises a
+      // little), then a long breath out (a little puff from its mouth, and
+      // it sinks).
+      const r = b.body.o.radius, t = time - g.at;
+      if (t > 0.7 && t < 1.1 && b.body.onFloor()) b.body.squashTop(-r * 0.5 * 60 * DT, DT);
+      if (t > 1.1 && t < 2.3 && b.body.onFloor()) b.body.squashTop(r * 0.45 * 60 * DT, DT);
+      if (!g.sighed && t > 1.1) {
         g.sighed = true;
-        if (!b.dying) b.say([{ text: 'haah…' }], 2.4, false, mayTalk('flavour') ? { softer: 0.6, pace: 1.6 } : false);
+        const c = b.body.centroid();
+        const side = b.faceTurn && b.faceTurn.x < 0 ? -1 : 1; // (out the side it faces, drifting off its face)
+        spawnHeart({ x: c.x + (b.faceTurn ? b.faceTurn.x : 0) + side * r * 0.3, y: c.y + r * 0.3, vx: side * 45, rise: -8, born: time, size: Math.max(4, r * 0.1), puff: true });
       }
       if (b.merging && !g.merging) { b.gaveUp = null; return; } // (done now: it tries again, to get home)
-      if (grounded && !mumOutOfReach(b) && !b.merging) {
+      if (settled && !b.merging && mumNear(b)) {
         // She came: all better.
-        b.gaveUp = b.reach = null;
+        b.gaveUp = null;
         b.gaveUps = 0;
         b.happyUntil = time + 1.5;
         spawnHeart({ x: b.body.centroid().x, y: b.body.bbox().minY - 10, vx: 0, born: time, size: 10 });
         b.nextHop = Math.min(b.nextHop, time + 0.3);
-      } else if (time > g.until) b.gaveUp = b.reach = null;
+      } else if (time > g.until) b.gaveUp = null;
       return;
     }
-    if (b.body.grab || b.splitting || (b.merging && time - b.merging.since < 0.9)) { b.reach = null; return; }
-    if (!grounded) return; // (in the air: nothing's decided till it lands, and it gives up only once it has)
-    if (!m.body.onFloor() && !m.body.grab) return; // (nor while she's mid-hop or falling)
-    if (!mumOutOfReach(b)) { b.reach = null; return; }
-    const c = b.body.centroid(), mc = m.body.centroid(), d = Math.hypot(mc.x - c.x, mc.y - c.y), r = b.body.o.radius;
-    const k = b.reach;
-    if (!k || d < k.best - r * 1.5) { b.reach = { best: d, since: time, hops: 0 }; return; }
-    if (k.hops < 4 || time - k.since < (b.merging ? 3 : 7)) return;
+    if (!settled) return;
+    const mm = mumOf(b);
+    if (!mm.body.onFloor() && !mm.body.grab) return; // (she's mid-hop or falling: wait and see where she lands)
+    if (!mumOutOfReach(b)) { b.trying = b.tries = null; return; }
+    // A try just made: did it get up there?
+    const k = b.trying;
+    if (k) {
+      b.trying = null;
+      const ml = mm.body.onLedge, l = b.body.onLedge;
+      const failed = !!ml && ml.id === k.up && !(l && l.id === k.up);
+      b.tries = !failed ? null : b.tries && b.tries.up === k.up ? { up: k.up, n: b.tries.n + 1 } : { up: k.up, n: 1 };
+    }
+    if (!b.tries || b.tries.n < 5) return;
     // No use.
+    const c = b.body.centroid(), r = b.body.o.radius;
+    b.tries = null;
     b.gaveUps = (b.gaveUps || 0) + 1;
-    const rest = b.merging ? 2.8 : Math.min(20 * 60, (240 + Math.random() * 240) * 2 ** (b.gaveUps - 1));
+    const rest = b.merging ? 3 : Math.min(20 * 60, (240 + Math.random() * 240) * 2 ** (b.gaveUps - 1));
     b.gaveUp = { at: time, until: time + rest, merging: !!b.merging };
-    b.reach = null;
-    b.droopUntil = time + 2.5;
+    b.droopUntil = time + 3.5;
     b.body.squashTop(r * 2, DT);
     spawnHeart({ x: c.x, y: Math.min(b.body.bbox().minY, b.body.lookTop ?? Infinity) - 22, vx: 0, born: time, size: Math.max(10, r * 0.22), broken: true });
   }
@@ -5048,28 +5112,15 @@
     }
     if (b.body.grab || !b.body.onFloor() || b.merging || time < b.nextHop) return;
     if (b.kind === 'child' && b.mother && !b.mother.dying && !b.gaveUp) {
-      if (b.reach) b.reach.hops++; // (each try counts; see missMum)
+      if (stillTrying(b)) return;
       const c = b.body.centroid(), mc = b.mother.body.centroid();
       const dx = mc.x - c.x, far = b.mother.body.o.radius * 2 + b.body.o.radius * 6;
-      // Mum up on a window: jump high enough to get up there too.
-      const rise = b.body.bbox().maxY - b.mother.body.bbox().maxY;
-      const up = rise > b.body.o.radius && b.mother.body.onLedge;
-      if (up) {
-        // Aimed: high enough to clear the edge, landing near mum.
-        const vy = Math.sqrt(2 * CFG.gravity * (rise + b.body.o.radius * 2));
-        const air = (vy + Math.sqrt(vy * vy - 2 * CFG.gravity * rise)) / CFG.gravity;
-        const l = b.mother.body.onLedge, cr = b.body.o.radius;
-        // Land on the near side of mum, or the far side if that has no room.
-        const gap = b.mother.body.o.radius + cr * 1.3;
-        let tx = mc.x - Math.sign(dx) * gap;
-        if (tx < l.x0 + cr * 1.2 || tx > l.x1 - cr * 1.2) tx = mc.x + Math.sign(dx) * gap;
-        tx = Math.max(l.x0 + cr * 1.2, Math.min(l.x1 - cr * 1.2, tx));
-        b.hop(Math.max(-600, Math.min(600, (tx - c.x) / air)), -vy);
+      if (jumpUpTo(b, b.mother)) {
         b.nextHop = time + 1.4 + Math.random() * 1.6;
         return;
       }
       if (Math.abs(dx) > far) {
-        b.hop(Math.sign(dx) * Math.min(600, (Math.abs(dx) - far * 0.7) * 1.8 + 120), -380 - Math.random() * 140);
+        hopToMum(b, Math.sign(dx) * Math.min(600, (Math.abs(dx) - far * 0.7) * 1.8 + 120), -380 - Math.random() * 140);
         b.nextHop = time + 1.4 + Math.random() * 1.6;
         return;
       }
@@ -5159,7 +5210,7 @@
     else if (time < (b.raspUntil || 0) && !body.grab) { expression = 'annoyed'; mouth = 'raspberry'; } // (pbbbt!)
     else if (b.balloon && b.balloon.stage === 'zip') { expression = 'happy'; mouth = 'raspberry'; } // (the air rushing out)
     else if (b.balloon && b.balloon.stage !== 'land') { expression = 'normal'; mouth = 'flat'; } // (cheeks full, holding it)
-    else if (time < (b.annoyedUntil || 0) && b.annoyedAt && !b.annoyedAt.dying && !body.grab) { expression = 'annoyed'; mouth = 'flat'; }
+    else if (time < (b.annoyedUntil || 0) && b.annoyedAt && !b.annoyedAt.dying && !body.grab && !homeward(b)) { expression = 'annoyed'; mouth = 'flat'; }
     else if (time < (b.yawnUntil || 0)) { expression = 'sleepy'; mouth = 'yawn'; }
     else if (time < (b.napUntil || 0) && !body.grab) { expression = 'sleepy'; mouth = 'flat'; } // (a quick nap, for show)
     else if (time < (b.winceUntil || 0)) { expression = 'pained'; mouth = 'wobble'; }
