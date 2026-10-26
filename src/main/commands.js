@@ -56,6 +56,7 @@ const ABOUT = {
   effort: 'How hard it thinks',
   hooks: 'Opens the settings file hooks go in',
   login: 'Signs Claude Code in, in your browser',
+  mcp: 'Its MCP servers, and how they are',
   memory: 'Opens the project’s CLAUDE.md',
   model: 'Switches its model',
   permissions: 'What it may do without asking',

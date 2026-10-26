@@ -133,6 +133,8 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	fs.rmSync(path.join(dir, 'signed-in'));
 	await type('/login');
 	check(await until(() => fs.existsSync(path.join(dir, 'signed-in'))) && !inbox.log(id).some((e) => e.who === 'you' && e.text === '/login'), '/login signs in the same way, without going to Claude');
+	await type('/mcp');
+	check(await until(() => inbox.log(id).some((e) => e.text === 'Its MCP servers: github (connected) · linear (connected)')), '/mcp lists its MCP servers and how they are');
 	await type('/doctor');
 	check(await until(() => inbox.log(id).some((e) => e.who === 'step' && e.text === 'Checked Claude Code (claude doctor)' && !e.running && /No problems found/.test(e.detail || ''))), '/doctor runs Claude Code’s checkup right there, as a step');
 	await type('/usage');

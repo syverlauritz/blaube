@@ -344,6 +344,8 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => inbox.log(ID3).some((e) => /^Allowed without asking: Run npm test… \(this project, just you\)/.test(e.text || ''))), '/permissions lists what it may do without asking');
 	await type('/permissions remove Bash(npm test:*)');
 	check(await until(() => JSON.parse(fs.readFileSync(local, 'utf8')).permissions.allow.length === 0 && inbox.log(ID3).some((e) => e.text === 'It asks first again before: Run npm test…')), 'and /permissions remove takes it back');
+	await type('/mcp');
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'Its MCP servers (claude mcp list)' && !e.running), 30000), '/mcp in a terminal’s session runs claude mcp list right there');
 	await type('/agents');
 	check(await until(() => fs.existsSync(path.join(repo, '.claude', 'agents')) && inbox.log(ID3).some((e) => /^No agents of its own yet\. Opened .+\/\.claude\/agents/.test(e.text || ''))), '/agents opens the project’s agents folder');
 	await box(`document.getElementById('git').click()`);

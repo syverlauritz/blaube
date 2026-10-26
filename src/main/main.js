@@ -1952,12 +1952,20 @@ app.whenReady().then(async () => {
     }
     // "/doctor" and "/upgrade": Claude Code's own checkup and update
     // (`claude doctor`, `claude update`), run right there as a step.
-    const own = /^\/(doctor|upgrade|update)\s*$/i.exec(String(text).trim());
-    if (own && sess && !id.startsWith('demo-')) {
+    // ("/mcp" in a terminal's session: `claude mcp list`, its MCP servers
+    // and whether they connect; in one Blaube started, its box shows them.)
+    const own = /^\/(doctor|upgrade|update|mcp)\s*$/i.exec(String(text).trim());
+    if (own && sess && !id.startsWith('demo-') && !(own[1].toLowerCase() === 'mcp' && owned.has(id))) {
       const bin = owned.findClaude() || owned.shellPath() || 'claude';
       const q = process.platform === 'win32' ? `"${bin}"` : `'${bin.replace(/'/g, `'\\''`)}'`;
-      const doctor = own[1].toLowerCase() === 'doctor';
-      return runForSession(id, `${q} ${doctor ? 'doctor' : 'update'}`, doctor ? 'Checked Claude Code (claude doctor)' : 'Updated Claude Code (claude update)');
+      const what = { doctor: ['doctor', 'Checked Claude Code (claude doctor)'], mcp: ['mcp list', 'Its MCP servers (claude mcp list)'] }[own[1].toLowerCase()] || ['update', 'Updated Claude Code (claude update)'];
+      return runForSession(id, `${q} ${what[0]}`, what[1]);
+    }
+    if (own && owned.has(id)) {
+      const list = mcpStates.get(id) || [];
+      inbox.add(id, { who: 'note', text: list.length ? `Its MCP servers: ${list.map((m) => `${m.name} (${m.status === 'connected' ? 'connected' : m.status === 'needs-auth' ? 'needs you to sign in' : m.status === 'failed' ? 'couldn’t connect' : m.status})`).join(' · ')}` : 'It has no MCP servers.' });
+      askMcp(id);
+      return;
     }
     // "/permissions": what it may do without asking; "allow Bash(npm
     // test:*)" adds a rule (this project, just you), "remove …" takes one back.
