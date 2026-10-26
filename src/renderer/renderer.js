@@ -4191,6 +4191,9 @@
     // How long it's been waiting on you.
     const waited = b.state === 'waiting' && b.stateSince !== undefined ? Math.floor((time - b.stateSince) / 60) : 0;
     if (waited >= 1) lines.push({ text: `Waiting ${waited} min`, dim: true });
+    // How long since it finished, or since it last did anything.
+    const quiet = (b.state === 'done' || b.state === 'idle') && b.kind === 'mother' && b.stateSince !== undefined ? Math.floor((time - b.stateSince) / 60) : 0;
+    if (quiet >= 1) lines.push({ text: b.state === 'done' ? `Finished ${ago(quiet)}` : `Idle for ${ago(quiet, true)}`, dim: true });
     // How long this turn has been going.
     const turn = b.state === 'working' && b.kind === 'mother' && b.session && b.session.turnStart ? Math.floor((Date.now() - b.session.turnStart) / 60000) : 0;
     if (turn >= 1) lines.push({ text: `Working for ${turn} min`, dim: true });
@@ -4211,6 +4214,12 @@
       else if (!settings.talked) lines.push({ text: 'Click to talk', dim: true });
     }
     return lines;
+  }
+
+  // 3 -> "3 min ago", 135 -> "2 h ago" (or "3 min", "2 h" for a stretch of time).
+  function ago(mins, span) {
+    const t = mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)} h`;
+    return span ? t : t + ' ago';
   }
 
   // "claude-opus-5-5" -> "Opus 5.5", "claude-haiku-4-5-20251001" -> "Haiku 4.5".
