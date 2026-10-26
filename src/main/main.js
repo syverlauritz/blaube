@@ -18,6 +18,7 @@ const { failedTests, stoppedLast, erredLast } = require('./inbox');
 const { Notification } = require('electron');
 const { slashCommand, commandNames, expand: expandCommand, control: controlFor, contextNote, EFFORTS } = require('./commands');
 const limits = require('./limits');
+const usageProbe = require('./usageProbe');
 const taskOutput = require('./taskOutput');
 const permRules = require('./permRules');
 const taskKill = require('./taskKill');
@@ -1577,6 +1578,21 @@ app.whenReady().then(async () => {
     if (id) owned.control(id, { subtype: 'get_usage', skip_behaviors: true }, (ok, r) => { if (ok && r) setLimits(limits.fromUsage(r.rate_limits)); });
   };
   owned.on('result', askUsage);
+  // With none of Blaube's running, a Claude Code of its own is asked (one
+  // that calls no model), when the overview opens: at most every 10 minutes.
+  let lastProbe = 0, noPlanLimits = false;
+  const probeUsage = () => {
+    if (TEST || noPlanLimits || owned.list().length || Date.now() - lastProbe < 10 * 60e3) return;
+    const bin = findClaude() || owned.shellPath();
+    if (!bin) return;
+    lastProbe = Date.now();
+    usageProbe.probe(bin, (r) => {
+      if (r && r.rate_limits_available === false) noPlanLimits = true; // (an API key: no plan limits to show)
+      setLimits(limits.fromUsage(r && r.rate_limits));
+    });
+  };
+  setTimeout(probeUsage, 20e3).unref();
+  setInterval(probeUsage, 15 * 60e3).unref();
   // Its MCP servers, as /mcp shows them: one that couldn't connect shows
   // in its box with Reconnect.
   const askMcp = (id) => owned.control(id, { subtype: 'mcp_status' }, (ok, r) => {
@@ -2040,6 +2056,7 @@ app.whenReady().then(async () => {
   // The overview's lower half: folders to start a session in, and recent
   // past sessions to pick up (read only when the overview opens).
   ipcMain.handle('talk-hub', () => {
+    probeUsage();
     // (Looking through past transcripts is slow-ish: at most every 30 s.)
     if (hubCache && Date.now() - hubCache.at < 30000) return hubCache.hub;
     const live = tracker.list();
