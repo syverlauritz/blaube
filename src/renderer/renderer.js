@@ -5407,35 +5407,43 @@
     const bx = talkRect.x + PAD, by = talkRect.y + PAD, bw = talkRect.w - PAD * 2, bh = talkRect.h - PAD * 2;
     let base, tip, across; // where it leaves the bubble, where it ends, and which way its base runs
     if (talkRect.side === 'bottom') {
-      base = { x: Math.max(bx + 30, Math.min(bx + bw - 30, c.x)), y: by + bh - 18 }; // well inside: no gap while it moves
-      tip = { x: c.x, y: headTop(b).y - 9 }; // just above the head and what it wears
+      base = { x: Math.max(bx + 46, Math.min(bx + bw - 46, c.x)), y: by + bh - 6 }; // just inside: no gap while it moves
+      tip = { x: c.x, y: headTop(b).y - 7 }; // a small gap above the head and what it wears
       across = { x: 1, y: 0 };
     } else {
       const left = talkRect.side === 'left';
-      base = { x: left ? bx + 18 : bx + bw - 18, y: Math.max(by + 30, Math.min(by + bh - 30, c.y - r * 0.4)) };
-      tip = { x: c.x + (left ? r * 0.7 : -r * 0.7), y: c.y - r * 0.4 };
+      base = { x: left ? bx + 18 : bx + bw - 18, y: Math.max(by + 46, Math.min(by + bh - 46, c.y - r * 0.4)) };
+      // Points at the body, stopping a small gap short of its edge.
+      const ax = c.x - base.x, ay = c.y - r * 0.4 - base.y, al = Math.hypot(ax, ay) || 1, reach = Math.max(0, al - r - 12);
+      tip = { x: base.x + ax / al * reach, y: base.y + ay / al * reach };
       across = { x: 0, y: 1 };
     }
     // Grows out from the bubble when it opens (with the bubble's own pop).
     const grow = Math.min(1, (time - talkTailAt) / 0.26), ease = 1 - Math.pow(1 - grow, 3) * (1 - 1.6 * grow);
     tip = { x: base.x + (tip.x - base.x) * ease, y: base.y + (tip.y - base.y) * ease };
-    // The balloons' tail: a 9 px half base, slightly lopsided sides, bent
-    // against the bubble's movement.
-    const bend = Math.max(-18, Math.min(18, -(talkRect.vx || 0) * 0.05));
-    const mx = (base.x + tip.x) / 2 + bend * across.x, my = (base.y + tip.y) / 2 + bend * across.y;
-    // Chubby, with a round tip: a cartoon tail, not a pointer.
+    // A speech tail: a wedge, wide where it joins the bubble (it starts well
+    // inside it, same white, so there's no seam), narrowing to a sharp point
+    // (just softened by a hair) at the slime. Both sides curve the same way,
+    // and the whole bends a little against the bubble's movement.
+    const bend = Math.max(-14, Math.min(14, -(talkRect.vx || 0) * 0.04));
+    const W = 20;
+    const dx = tip.x - base.x, dy = tip.y - base.y, len = Math.hypot(dx, dy) || 1;
+    const flip = -dy * across.x + dx * across.y < 0 ? -1 : 1; // (same way as the base runs)
+    const nx = -dy / len * flip, ny = dx / len * flip; // across the wedge's own axis
+    const mx = base.x + dx * 0.5 + bend * across.x, my = base.y + dy * 0.5 + bend * across.y;
+    // Control points pinch the wedge in towards the tip, so it reads as a swoosh.
+    const k = W * 0.42;
     ctx.save();
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = ctx.strokeStyle = '#ffffff';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 2; // same white: only rounds the point by a pixel
     ctx.beginPath();
-    ctx.moveTo(base.x - across.x * 22, base.y - across.y * 22);
-    ctx.quadraticCurveTo(mx - across.x * 12, my - across.y * 12, tip.x - across.x * 7, tip.y - across.y * 7);
-    ctx.lineTo(tip.x + across.x * 7, tip.y + across.y * 7);
-    ctx.quadraticCurveTo(mx + across.x * 13, my + across.y * 13, base.x + across.x * 22, base.y + across.y * 22);
+    ctx.moveTo(base.x - across.x * W, base.y - across.y * W);
+    ctx.quadraticCurveTo(mx - nx * k, my - ny * k, tip.x, tip.y);
+    ctx.quadraticCurveTo(mx + nx * k, my + ny * k, base.x + across.x * W, base.y + across.y * W);
     ctx.closePath();
     ctx.fill();
-    ctx.beginPath();
-    ctx.arc(tip.x, tip.y, 8.5, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.stroke();
     ctx.restore();
   }
 
