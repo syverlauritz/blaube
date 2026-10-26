@@ -2693,13 +2693,15 @@ app.whenReady().then(async () => {
   ipcMain.on('talk-git-run', (_e, id, run) => {
     const s = id === talkId && tracker.sessions.get(id);
     const st = gitStates.get(id);
-    const cmd = s && st && s.state !== 'working' && s.state !== 'waiting' && git.command(run, st);
+    const pr = prStates.get(id);
+    const cmd = s && st && s.state !== 'working' && s.state !== 'waiting' && git.command(run, st, pr);
     if (!cmd) return;
-    const as = run === 'push' ? `Pushed ${st.branch || 'it'}` : `Pulled into ${st.branch || 'it'}`;
+    const as = run === 'push' ? `Pushed ${st.branch || 'it'}` : run === 'home' ? `Back on ${pr.base}, up to date, ${st.branch} deleted` : `Pulled into ${st.branch || 'it'}`;
     const entry = runForSession(id, cmd, as, (code) => {
       if (code === 0 && win) win.webContents.send('nod', id);
       if (code === 0 && run === 'push') pulls.forget(s.cwd, st.branch); // (its checks start again)
-      if (code !== 0) entry.text = run === 'push' ? 'git couldn’t push (tap for why); Push again asks Claude to' : 'git couldn’t pull without a merge (tap for why); Pull again asks Claude to';
+      if (code !== 0) entry.text = run === 'push' ? 'git couldn’t push (tap for why); Push again asks Claude to' : run === 'home' ? `git couldn’t do all of it (tap for why): ${st.branch} may still be there` : 'git couldn’t pull without a merge (tap for why); Pull again asks Claude to';
+      if (run === 'home') { prStates.delete(id); pulls.forget(s.cwd, st.branch); }
       git.forget(s.cwd);
       git.status(s.cwd, (now) => { gitStates.set(id, now); pushTalk(id); });
     }, { GIT_TERMINAL_PROMPT: '0' });

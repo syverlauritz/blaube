@@ -78,8 +78,11 @@ function quickActions(st, state, more = {}) {
   // (Its pull request, if it has one (see pr.js): failing checks first.)
   const pr = more.pr && more.pr.state === 'OPEN' ? more.pr : null;
   if (pr && pr.review === 'CHANGES_REQUESTED') out.unshift({ label: 'Answer the review', prompt: `A reviewer asked for changes on pull request #${pr.number}. Read the review and its comments (\`gh pr view ${pr.number} --comments\`, and the inline ones with \`gh api repos/{owner}/{repo}/pulls/${pr.number}/comments\`), make the changes that are right, push, and tell me what you changed and anything you disagreed with.` });
+  // (Merged: back to where it went, a step, no model call.)
+  const merged = more.pr && more.pr.state === 'MERGED' && more.pr.base && st && st.branch && st.branch !== more.pr.base && !st.changed ? more.pr : null; // (new files go along)
+  if (merged && more.gitFailed !== 'home') out.unshift({ label: `Back to ${merged.base}`, prompt: `Its pull request is merged: switches to ${merged.base}, pulls it, and deletes ${st.branch}`, run: 'home' });
   if (pr && pr.checks.fail) out.unshift({ label: 'Fix the checks', prompt: `The checks on pull request #${pr.number} are failing. Find out why (\`gh pr checks ${pr.number}\` and the failing run's log), fix it, push, and tell me what was wrong.` });
-  if (st && st.branch && !MAIN.test(st.branch) && !pr) out.push({ label: 'Open a PR', prompt: 'Open a pull request for this branch (commit and push first if needed) and give me the link.' });
+  if (st && st.branch && !MAIN.test(st.branch) && !pr && !merged) out.push({ label: 'Open a PR', prompt: 'Open a pull request for this branch (commit and push first if needed) and give me the link.' });
   if (!more.failedTests) out.push({ label: 'Run tests', prompt: 'Run the tests and tell me what fails, if anything.' });
   if (st && st.behind) out.push(Object.assign({ label: 'Pull', prompt: 'Pull the latest changes into this branch and tell me if anything conflicts.' }, n ? {} : direct('pull')));
   // Nearly out of room: tidy up before it has to (first, so it's seen).
@@ -140,9 +143,17 @@ function diff(root, rel, how, cb) {
 
 // What Push and Pull run (fixed commands: nothing of yours in them). A
 // branch that was never pushed goes up to origin under its own name.
-function command(run, st) {
+// Home: its pull request merged, back to the branch it went into, that
+// brought up to date, and the merged one deleted (only if git agrees it's
+// merged: -d, not -D).
+function command(run, st, pr = null) {
   if (run === 'push') return st && !st.upstream ? 'git push --set-upstream origin HEAD' : 'git push';
   if (run === 'pull') return 'git pull --ff-only';
+  if (run === 'home') {
+    const base = pr && pr.state === 'MERGED' && branchName(pr.base), branch = st && branchName(st.branch);
+    if (!base || !branch || base === branch) return '';
+    return `git switch ${base} && git pull --ff-only && git branch -d ${branch}`;
+  }
   return '';
 }
 // Its latest commits, newest first: [{ hash, short, at, subject }].

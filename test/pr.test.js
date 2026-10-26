@@ -58,3 +58,9 @@ test('gh is asked once a minute per branch, never on main, and never prompts', a
   const none = await new Promise((r) => look('/w', 'other', r, { run: (b, a, o, cb) => cb(new Error('no pull requests found')), bin: 'gh' }));
   assert.equal(none, null);
 });
+
+test('the branch it goes into, only a name a branch can have', () => {
+  assert.equal(parse(view({ baseRefName: 'main' })).base, 'main');
+  assert.equal(parse(view({ baseRefName: 'release/2.0' })).base, 'release/2.0');
+  for (const bad of ['', '-x', 'a b', 'main;rm', '../x']) assert.equal(parse(view({ baseRefName: bad })).base, '', bad);
+});

@@ -483,6 +483,18 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => { const o = ((global.__blaubeState || {}).sessions || []).find((x) => x.id === ID3); return !!o && /^feature\/tax · .*PR #5 · 1 check failing$/.test(o.info.branch); }), 'and hovering its slime says so too, with its branch');
 	await sleep(500);
 	await shot('pr');
+	// Merged: Back to main (switched, pulled, the branch deleted), no terminal.
+	const tip = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo }).toString().trim();
+	execFileSync('git', ['branch', '-f', 'main', tip], { cwd: repo });
+	execFileSync('git', ['push', '-q', 'origin', 'main'], { cwd: repo });
+	execFileSync('git', ['branch', '-q', '--set-upstream-to=origin/main', 'main'], { cwd: repo });
+	fs.writeFileSync(prFile, JSON.stringify({ number: 5, url: 'https://github.com/o/r/pull/5', state: 'MERGED', isDraft: false, title: 'Tax rounding', reviewDecision: 'APPROVED', statusCheckRollup: [], baseRefName: 'main' }));
+	check(await until(() => inbox.log(ID3).some((e) => e.text === 'PR #5 is merged') && box(`(() => { const b = document.querySelector('#quick button'); return !!b && b.textContent === 'Back to main' && /deletes feature\\/tax/.test(b.title); })()`), 10000), 'once its PR is merged: Back to main, first');
+	await box(`document.querySelector('#quick button').click()`);
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'Back on main, up to date, feature/tax deleted' && e.ok && !e.running), 15000), 'a tap switches to main, pulls it and deletes the merged branch');
+	check(execFileSync('git', ['branch', '--show-current'], { cwd: repo }).toString().trim() === 'main' && !execFileSync('git', ['branch', '--list', 'feature/tax'], { cwd: repo }).toString().trim(), 'and git agrees');
+	execFileSync('git', ['switch', '-q', '-c', 'feature/tax'], { cwd: repo });
+	execFileSync('git', ['branch', '-f', 'main', 'HEAD~1'], { cwd: repo });
 	fs.rmSync(prFile);
 	check(await until(() => box(`!/PR/.test(document.getElementById('git').textContent)`), 10000), 'and once gh knows of no pull request, the git line says none');
 	global.__blaubeGh = '';

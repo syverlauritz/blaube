@@ -319,3 +319,18 @@ test('the newest commit, pushed nowhere, can be undone with its changes kept', a
     fs.rmSync(bare, { recursive: true, force: true });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('its pull request merged: Back to main, a step (git agreeing it’s merged)', () => {
+  const { command } = require('../src/main/git');
+  const st = { branch: 'feature/tax', ahead: 0, behind: 0, changed: 0, untracked: 0, upstream: true, conflicts: 0, files: [] };
+  const merged = { number: 5, state: 'MERGED', base: 'main', review: '', checks: { pass: 1, fail: 0, pending: 0 } };
+  const q = quickActions(st, 'idle', { pr: merged });
+  assert.deepEqual(q[0], { label: 'Back to main', prompt: 'Its pull request is merged: switches to main, pulls it, and deletes feature/tax', run: 'home' });
+  assert.ok(!q.some((x) => x.label === 'Open a PR'), 'no new PR offered for a merged branch');
+  assert.equal(command('home', st, merged), 'git switch main && git pull --ff-only && git branch -d feature/tax');
+  assert.ok(!quickActions(Object.assign({}, st, { changed: 1 }), 'idle', { pr: merged }).some((x) => x.run === 'home'), 'not with changes');
+  assert.ok(!quickActions(st, 'idle', { pr: merged, gitFailed: 'home' }).some((x) => x.run === 'home'));
+  assert.ok(!quickActions(st, 'idle', { pr: Object.assign({}, merged, { state: 'OPEN' }) }).some((x) => x.run === 'home'));
+  for (const base of ['', 'main; rm -rf ~', '-x', 'a..b']) assert.equal(command('home', st, Object.assign({}, merged, { base })), '', base);
+  assert.equal(command('home', Object.assign({}, st, { branch: 'x$(id)' }), merged), '');
+});
