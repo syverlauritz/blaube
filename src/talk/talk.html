@@ -71,7 +71,7 @@
   .state { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px 3px 9px; border-radius: 999px; background: var(--soft); font: 700 13px/1.3 var(--ui); color: var(--dim); white-space: nowrap; }
   .state i { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
   .state.working { color: var(--ink); }
-  .state.working i { animation: breathe 1.4s ease-in-out infinite; }
+  .state.working i { animation: breathe 1.4s steps(6) infinite; } /* (in steps: see .dots i) */
   @keyframes breathe { 50% { transform: scale(.6); } }
   .state.waiting { background: #fde8ec; color: #b4233f; }
   /* Buttons with words on them: All sessions, Terminal. */
@@ -356,7 +356,10 @@
   .steps .earlier:hover { color: var(--ink); background: #fff; }
   /* It's working: three hopping dots and what it's on, and its helpers. */
   .dots { align-self: stretch; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 4px 0; max-width: 100%; }
-  .dots i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--color); animation: bob 1.1s ease-in-out infinite; transform-origin: 50% 100%; }
+  .dots i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--color); animation: bob 1.1s steps(3) infinite; transform-origin: 50% 100%; }
+  /* (In steps, not smoothly: a smooth one redraws the whole box every screen
+     refresh, 144 times a second on a fast screen, which cost more GPU than
+     all the slimes; too small to see the difference.) */
   .dots i:nth-child(2) { animation-delay: .15s; }
   .dots i:nth-child(3) { animation-delay: .3s; }
   /* Each dot hops like a tiny slime: squashed on landing, stretched in the air. */

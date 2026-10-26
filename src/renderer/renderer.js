@@ -21,7 +21,7 @@
   let mouse = { x: -1e4, y: -1e4, lastMove: performance.now() / 1000, vx: 0, vy: 0, px: -1e4, py: -1e4 };
   // The computer: how long you've been idle anywhere (from the app), whether
   // you're away, the battery, and how tired a low battery makes them (0..1).
-  const sys = { idle: 0, idleAt: -1, away: false, awayFrom: 0, before: null, battery: null, low: 0, lowSaid: false };
+  const sys = { idle: 0, idleAt: -1, away: false, asleep: false, awayFrom: 0, before: null, battery: null, low: 0, lowSaid: false };
   let drag = null; // { buddy, pet or glasses, x0, y0, t0, moved }
   let settings = { hooksInstalled: true };
   let time = 0;
@@ -2395,6 +2395,7 @@
 
   function onSystem(m) {
     if (m.kind === 'idle') {
+      if (m.seconds < sys.idle) sys.asleep = false; // (used since: in case a wake went missing)
       sys.idle = m.seconds;
       sys.idleAt = performance.now() / 1000;
       if (!sys.away && m.seconds > CFG.awayAfter) goAway(m.seconds);
@@ -2402,8 +2403,8 @@
       return;
     }
     if (m.kind === 'battery-level') { sys.battery = { level: m.level, charging: !!m.charging }; return; }
-    if (m.kind === 'sleep') goAway(0);
-    else if (m.kind === 'wake') { wakeUp(); comeBack(); }
+    if (m.kind === 'sleep') { goAway(0); sys.asleep = true; sys.idle = 0; }
+    else if (m.kind === 'wake') { sys.asleep = false; wakeUp(); comeBack(); }
     else if (m.kind === 'ac') charge();
   }
 
@@ -5596,12 +5597,16 @@
     return { x: c.x, y: Math.min(b.body.lookTop ?? Infinity, c.y - r), r };
   }
 
-  // Drawing is what costs the GPU, so it isn't done on every screen refresh:
-  // at most CFG.maxFps (an even share of the refresh, so motion stays
-  // smooth: 72 on a 144 Hz screen), and CFG.calmFps while nothing on the
-  // stage is moving. Everything else still runs every refresh, so timings
-  // don't change with the frame rate.
-  let vsync = 1 / 60, lastTick = 0, paintedAt = 0, calmSince = null, wasEmpty = false;
+  // Drawing is what costs the GPU (every frame shown costs about the same,
+  // however little changed), so it isn't done on every screen refresh: only
+  // as often as what's moving needs to stay smooth, a few pixels a frame at
+  // most. Slow goings-on (breathing, working, leaves) get CFG.calmFps, faster
+  // ones more, up to CFG.maxFps (an even share of the refresh: 72 on a
+  // 144 Hz screen); anything held, flung or flying, or the cursor moving
+  // near a slime, gets the full rate. Everything else still runs every
+  // refresh, so timings don't change with the frame rate.
+  const PX_PER_FRAME = 4;
+  let vsync = 1 / 60, lastTick = 0, paintedAt = 0, wasEmpty = false, wantFps = 0;
   function paintNow(now) {
     const gap = now - lastTick;
     if (lastTick && gap > 0.002 && gap < 0.05) vsync += (gap - vsync) * 0.05;
@@ -5612,31 +5617,45 @@
       return true;
     }
     wasEmpty = false;
-    calmSince = stageCalm() ? calmSince ?? now : null;
+    if (sys.asleep) return false; // the screen locked or the computer asleep: nobody can see
+    // Speeding up shows at once; slowing down takes a moment (a hop's top
+    // isn't the end of it).
+    wantFps = Math.min(CFG.maxFps, Math.max(stageSpeed() / PX_PER_FRAME, wantFps - CFG.maxFps * Math.min(0.05, gap) / 0.4));
     // Away from the computer: nobody's watching closely.
-    const fps = sys.away ? Math.min(10, CFG.calmFps) : calmSince !== null && now - calmSince > 0.5 ? CFG.calmFps : CFG.maxFps;
+    const fps = sys.away ? Math.min(10, CFG.calmFps) : Math.max(Math.min(CFG.calmFps, CFG.maxFps), wantFps);
     const every = Math.max(1, Math.ceil(1 / vsync / fps - 0.05)) * vsync;
     if (now - paintedAt < every - vsync / 2) return false;
     paintedAt = now;
     return true;
   }
 
-  // Still enough that a lower frame rate wouldn't show: no slime (no bit of
-  // its skin) or the cursor moving more than a slow drift, nothing held.
-  function stageCalm() {
-    if (drag || pet.target || Math.hypot(mouse.vx, mouse.vy) > 60) return false;
-    let moved = false;
+  // How fast the stage is moving: the fastest thing on it, in px/s (for a
+  // slime, most of its skin, not the odd quick bit of it).
+  let skin = new Float64Array(64);
+  function stageSpeed() {
+    if (drag || pet.target || rockets.length || sparks.length || snowballs.length) return Infinity;
+    const near = Math.hypot(mouse.vx, mouse.vy) > 60; // (the cursor moving: near a slime, see below)
+    let speed = 0;
+    const dt = Math.max(1 / 240, vsync);
     for (const p of pets.values()) {
-      if (Math.abs(p.x - (p.calmX ?? p.x)) + Math.abs(p.y - (p.calmY ?? p.y)) > 0.3) moved = true;
+      speed = Math.max(speed, (Math.abs(p.x - (p.calmX ?? p.x)) + Math.abs(p.y - (p.calmY ?? p.y))) / dt);
       p.calmX = p.x; p.calmY = p.y;
     }
-    if (moved) return false;
+    for (const u of flutters) speed = Math.max(speed, Math.hypot(u.vx, u.vy));
     for (const b of buddies.values()) {
       const s = b.body;
-      if (s.grab || b.splitting || b.dying || b.merging) return false;
-      for (let i = 0; i < s.n; i++) if (Math.abs(s.px[i] - s.ox[i]) > 25 * DT || Math.abs(s.py[i] - s.oy[i]) > 25 * DT) return false;
+      if (s.grab || b.splitting || b.dying) return Infinity;
+      if (b.glasses && !b.glasses.held) speed = Math.max(speed, Math.hypot(b.glasses.vx, b.glasses.vy));
+      if (skin.length < s.n) skin = new Float64Array(s.n);
+      for (let i = 0; i < s.n; i++) skin[i] = Math.max(Math.abs(s.px[i] - s.ox[i]), Math.abs(s.py[i] - s.oy[i]));
+      speed = Math.max(speed, skin.subarray(0, s.n).sort()[Math.floor(s.n * 0.75)] / DT);
+      // Its eyes follow the cursor, it may perk up.
+      if (near) {
+        const c = s.centroid();
+        if (Math.hypot(mouse.x - c.x, mouse.y - c.y) < s.o.radius * 3 + 150) return Infinity;
+      }
     }
-    return true;
+    return speed;
   }
 
   function frame() {

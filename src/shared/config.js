@@ -197,7 +197,7 @@
     ['World', [
       ['dockCollision', true, 0, 0, 0, 'Collide with the Dock / taskbar'],
       ['maxFps', 75, 20, 240, 1, 'Frame rate cap (an even share of the screen refresh)'],
-      ['calmFps', 30, 10, 120, 1, 'Frame rate while nothing is moving'],
+      ['calmFps', 30, 10, 120, 1, 'Frame rate while nothing moves fast (breathing, working)'],
       ['debugOverlay', false, 0, 0, 0, 'Show physics debug overlay'],
       ['pollClaudeAgents', true, 0, 0, 0, 'Also watch `claude agents` (no hooks needed)'],
     ]],
