@@ -44,6 +44,36 @@ const SCENES = {
 	done: { sessions: [session('a', 'blaube', 'done')] },
 	waiting: { sessions: [session('a', 'blaube', 'waiting', { message: 'Claude needs your permission to use Bash' })] },
 	sweat: { sessions: [session('a', 'blaube', 'working', { tokens: full(0.75) })], wait: 4000 },
+	// Talking: a big one and a small one babble; the mouth should open and
+	// shut with each syllable (vowels shaping it), then settle back.
+	talking: {
+		sessions: [session('t1', 'blaube', 'idle', { tokens: { total: 6000000, context: 20000, limit: 200000 } }), session('t2', 'kalkis', 'idle', { color: '#5B8DEF' })],
+		config: { size: 0.85 },
+		wait: 3000,
+		size: [1000, 460],
+		motion: { frames: 16, every: 70, drop: 0, still: true, hopAt: [], sayAt: { 0: [{ id: 't1', text: 'Okay! I fixed the bug, and the tests pass.', seconds: 4 }, { id: 't2', text: 'Want me to push it?', seconds: 4 }] } },
+	},
+	// The choir: five slimes sing Silent Night in parts (biggest on the bass),
+	// eyes shut, mouths open on the notes, swaying, little notes rising.
+	choir: {
+		sessions: [
+			session('c1', 'blaube', 'idle', { tokens: { total: 6000000, context: 20000, limit: 200000 } }),
+			session('c2', 'kalkis', 'idle', { color: '#5B8DEF' }),
+			session('c3', 'playground', 'idle', { color: '#5FB57A', agents: [{ id: 'ca', type: 'general-purpose', description: 'Helper', state: 'working', activity: 'thinking' }] }),
+			session('c4', 'notes', 'idle', { color: '#9B7BD8' }),
+		],
+		config: { size: 0.75 },
+		wait: 4500,
+		size: [1200, 520],
+		motion: { frames: 16, every: 160, drop: 0, still: true, hopAt: [], commandAt: { 0: 'choir:silent-night' } },
+	},
+	// The same slime at four context fills: the fuller, the rounder and firmer.
+	fills: {
+		sessions: [0.05, 0.4, 0.75, 1].map((f, i) => session('f' + i, 'fill' + Math.round(f * 100), 'idle', { tokens: full(f) })),
+		config: { size: 0.6 },
+		wait: 9000,
+		size: [1300, 520],
+	},
 	pain: { sessions: [session('a', 'blaube', 'working', { tokens: full(0.97) })], wait: 4000 },
 	helpers: {
 		sessions: [session('a', 'playground', 'done', {
@@ -501,6 +531,8 @@ async function shoot(win, name, scene) {
 			win.webContents.sendInputEvent({ type: 'mouseMove', x: Math.round(c.x + (i % 2 ? 45 : -45)), y: Math.round(c.y - 10) });
 			await sleep(45);
 		}
+		const giggled = await win.webContents.executeJavaScript(`(() => { const b = __blaube.buddies.get(${JSON.stringify(scene.rub)}); return b.giggles || 0; })()`);
+		console.log(`check tickle: ${giggled ? `it giggled ${giggled}x ok` : 'no giggle -- silent'}`);
 	}
 	if (scene.later) {
 		fire('state', { sessions: scene.later.sessions, settings: { hooksInstalled: true } });
@@ -677,6 +709,7 @@ async function shootMotion(win, name, m) {
 			if (m.ledge && i === 8) await js(`(() => { const b = [...__blaube.buddies.values()][1]; b.body.teleport(420, 420); b.body.impulse(0, -1200, 1 / 120); })()`);
 			if (m.ledge && i >= 18 && i <= 22) await fakeWindow(120 + (i - 17) * 40, 300 - (i - 17) * 12);
 			if (m.commandAt && m.commandAt[i]) win.webContents.send('fire', 'command', m.commandAt[i]);
+			if (m.sayAt && m.sayAt[i]) for (const say of [].concat(m.sayAt[i])) win.webContents.send('fire', 'say', say);
 			if (m.tease) {
 				// Wiggle above it, low enough to reach.
 				const top = await js(`[...__blaube.buddies.values()][0].body.bbox().minY`);
@@ -754,6 +787,7 @@ app.whenReady().then(async () => {
 		webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, offscreen: true, backgroundThrottling: false },
 	});
 	win.webContents.setFrameRate(60);
+	win.webContents.setAudioMuted(true); // they babble; not out loud here
 	win.webContents.on('console-message', (e) => { if (e.level === 'error') console.log('page error:', e.message); });
 	const wanted = process.argv.slice(2).filter((a) => SCENES[a]);
 	for (const name of wanted.length ? wanted : Object.keys(SCENES)) await shoot(win, name, SCENES[name]);
