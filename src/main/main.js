@@ -505,17 +505,7 @@ function pushTalk(id, focusField = false) {
     pr: prStates.get(id) ? { number: prStates.get(id).number, url: prStates.get(id).url, title: prStates.get(id).title } : null,
     earlier: !id.startsWith('demo-') && !!transcriptPath(s) && fs.existsSync(transcriptPath(s)), // (its transcript has what came before)
     lookedAt: looked.get(id) || 0, // (when its box was last closed: what's new since shows)
-    quick: id.startsWith('demo-') ? [] : git.quickActions(gitStates.get(id) || null, s.state, {
-      stopped: stoppedLast(inbox.log(id)),
-      apiError: erredLast(inbox.log(id)),
-      carryAt: carryFor(id),
-      failedTests: failedTests(inbox.log(id)),
-      gitFailed: gitFailed(inbox.log(id)),
-      runFailed: require('./inbox').runFailed(inbox.log(id)),
-      install: s.cwd && !installingPackages.has(id) ? runs.needsInstall(s.cwd) : '',
-      pr: prStates.get(id) || null,
-      context: contextOf(id),
-    }),
+    quick: quickFor(id, s),
     // Every slime, to switch between them from the box.
     today: attention.today([...inbox.logs.values()]),
     others: tracker.list().filter(isReady).map((o) => Object.assign({ id: o.id, project: o.project, color: colorOf(o) || prefs.config.color || '#D97757', state: o.state, ask: askOf(o.id), urls: (o.tasks || []).map((t) => ({ label: t.description || t.command, url: taskUrls.get(`${o.id}/${t.id}`) || '' })).concat(runs.list(o.id)).filter((t) => t.url).slice(0, 2).map((t) => ({ label: t.label, url: t.url })) }, glanceAt(o))),
@@ -635,6 +625,20 @@ function gitFailed(log) {
     if (log[i].gitRun && !log[i].running) return log[i].ok ? '' : log[i].gitRun;
   }
   return '';
+}
+// What you might want next from its box (or the menu bar): see git.js.
+function quickFor(id, s) {
+  return id.startsWith('demo-') ? [] : git.quickActions(gitStates.get(id) || null, s.state, {
+    stopped: stoppedLast(inbox.log(id)),
+    apiError: erredLast(inbox.log(id)),
+    carryAt: carryFor(id),
+    failedTests: failedTests(inbox.log(id)),
+    gitFailed: gitFailed(inbox.log(id)),
+    runFailed: require('./inbox').runFailed(inbox.log(id)),
+    install: s.cwd && !installingPackages.has(id) ? runs.needsInstall(s.cwd) : '',
+    pr: prStates.get(id) || null,
+    context: contextOf(id),
+  });
 }
 function gitFiles(id) {
   const st = gitStates.get(id);
@@ -1107,6 +1111,7 @@ function statusBubble({ session: s, agentId, payload: p }) {
 const notified = new Map(); // session id -> when it last notified
 const shown = new Set(); // notifications still on screen
 let replyTo = null; // sendMessage, once the app is up
+let doQuick = null; // runs one of a session's quick actions, once the app is up
 const muted = new Set(); // sessions you turned notifications off for (from its slime's menu)
 function notify(s, event, text, secs = 0) {
   if (TEST || !Notification.isSupported() || s.id.startsWith('demo-')) return;
@@ -1592,6 +1597,10 @@ function trayMenu() {
         if (owned.has(o.id)) { if (!asked && !inbox.stops.has(o.id)) inbox.add(o.id, { who: 'note', text: 'You asked it to stop', stop: true }); owned.control(o.id, { subtype: 'interrupt' }, () => {}); }
       } });
     }
+    // Free: its quick actions (Commit, Push, Fix the checks…), as in its box.
+    if ((o.state === 'done' || o.state === 'idle') && doQuick) {
+      for (const q of quickFor(o.id, o).filter((x) => !x.here && !x.signIn && !x.bring && !('later' in x))) acts.push({ label: q.label, toolTip: q.prompt, click: () => doQuick(o.id, q) });
+    }
     return acts.length ? Object.assign(row, { submenu: [{ label: 'Open', click: open }, { type: 'separator' }, ...acts] }) : Object.assign(row, { click: open });
   });
   // (And your usage limits, as /usage says them, once Blaube has heard.)
@@ -1851,6 +1860,8 @@ app.whenReady().then(async () => {
           if (said) {
             inbox.add(o.id, { who: 'note', text: said });
             if (win) win.webContents.send('say', { id: o.id, text: said, seconds: 6, status: true, aloud: true });
+            // (And feels it: a wince for failing checks or asked-for changes, a nod for good news.)
+            if (win) { if (/failed|changes requested/.test(said)) win.webContents.send('react', { id: o.id, kind: 'oops', count: 1 }); else win.webContents.send('nod', o.id); }
             notify(o, 'pr', said); // (only if you can't see its slime)
           }
           if (o.id === talkId) pushTalk(o.id);
@@ -2690,8 +2701,9 @@ app.whenReady().then(async () => {
   replyTo = sendMessage;
   // Push and Pull from its quick actions: git itself, right there (a step
   // with what it printed; no model call). It never waits on a password.
-  ipcMain.on('talk-git-run', (_e, id, run) => {
-    const s = id === talkId && tracker.sessions.get(id);
+  ipcMain.on('talk-git-run', (_e, id, run) => { if (id === talkId) gitRunFor(id, run); });
+  function gitRunFor(id, run) {
+    const s = tracker.sessions.get(id);
     const st = gitStates.get(id);
     const pr = prStates.get(id);
     const cmd = s && st && s.state !== 'working' && s.state !== 'waiting' && git.command(run, st, pr);
@@ -2706,11 +2718,12 @@ app.whenReady().then(async () => {
       git.status(s.cwd, (now) => { gitStates.set(id, now); pushTalk(id); });
     }, { GIT_TERMINAL_PROMPT: '0' });
     if (entry) entry.gitRun = run;
-  });
+  }
   // Install packages, from its quick actions: npm install (or pnpm, yarn,
   // bun, as its lockfile says) right there, a step, up to ten minutes.
-  ipcMain.on('talk-install', (_e, id) => {
-    const s = id === talkId && tracker.sessions.get(id);
+  ipcMain.on('talk-install', (_e, id) => { if (id === talkId) installFor(id); });
+  function installFor(id) {
+    const s = tracker.sessions.get(id);
     const cmd = s && s.cwd && s.state !== 'working' && s.state !== 'waiting' && !installingPackages.has(id) && runs.needsInstall(s.cwd);
     if (!cmd) return;
     installingPackages.add(id);
@@ -2720,7 +2733,9 @@ app.whenReady().then(async () => {
       pushTalk(id);
     }, null, 10 * 60e3);
     pushTalk(id);
-  });
+  }
+  // A quick action from the menu bar, as a tap on it in the box would.
+  doQuick = (id, q) => (q.run ? gitRunFor(id, q.run) : q.install ? installFor(id) : sendMessage(id, q.prompt));
   // Stops a background task: in a session Blaube started, asked of Claude
   // Code itself (stop_task); in a terminal's, the processes writing its
   // output (its own, under its claude process). false: the box asks Claude.

@@ -480,6 +480,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	prSays([{ __typename: 'CheckRun', status: 'COMPLETED', conclusion: 'FAILURE' }]);
 	check(await until(() => inbox.log(ID3).some((e) => e.who === 'note' && e.text === 'PR #5: 1 check failed') && box(`/PR #5 · 1 check failing$/.test(document.getElementById('git').textContent)`), 10000), 'when its checks finish, it says so');
 	check(await until(() => box(`(() => { const b = document.querySelector('#quick button'); return !!b && b.textContent === 'Fix the checks' && /gh pr checks 5/.test(b.title); })()`)), 'with Fix the checks first among its quick actions');
+	check(await until(() => { const row = global.__blaubeTrayMenu().items.find((i) => i.label.includes(path.basename(repo)) && i.submenu); return !!row && row.submenu.items.some((i) => i.label === 'Fix the checks' && /gh pr checks 5/.test(i.toolTip)); }), 'the menu bar has its quick actions too, Fix the checks among them');
 	check(await until(() => { const o = ((global.__blaubeState || {}).sessions || []).find((x) => x.id === ID3); return !!o && /^feature\/tax · .*PR #5 · 1 check failing$/.test(o.info.branch); }), 'and hovering its slime says so too, with its branch');
 	await sleep(500);
 	await shot('pr');
