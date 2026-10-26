@@ -290,6 +290,9 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	check(await until(() => box(`(() => { const i = document.querySelector('#inner .stepimg img'); return !!i && i.complete && i.naturalWidth > 0; })()`)), 'an image it looked at shows in the box with a tap');
 	check(await box(`window.blaubeTalk.image(${JSON.stringify(ID3)}, ${JSON.stringify(path.join(repo, 'other.png'))})`) === null, 'only images its steps named');
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'Stop', last_assistant_message: 'It is a tiny red square.' });
+	// Claude Code couldn't get an answer: its box says why.
+	fs.appendFileSync(tx, JSON.stringify({ type: 'assistant', isApiErrorMessage: true, message: { model: '<synthetic>', content: [{ type: 'text', text: '5-hour limit reached ∙ resets 3pm' }] } }) + '\n');
+	check(await until(() => box(`[...document.querySelectorAll('#inner .note.error')].some((e) => e.textContent === 'Claude Code: 5-hour limit reached ∙ resets 3pm')`), 10000), 'an API error (a usage limit, say) shows in its box');
 	// "!ls" runs right here, as the terminal's bash mode does, and goes along with the next message.
 	await type('!ls src');
 	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'You ran ls src' && e.ok && !e.running && /tax\.js/.test(e.detail))), '!ls runs in its folder and shows what it printed');

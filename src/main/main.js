@@ -556,7 +556,7 @@ function sweepSoon() { if (!sweepTimer) sweepTimer = setTimeout(() => { sweepTim
 function sweep() {
   const live = (id) => tracker.sessions.has(id) || owned.has(id) || (id === talkId && !!talkWin && !talkWin.isDestroyed() && talkWin.isVisible());
   for (const id of [...inbox.logs.keys(), ...inbox.todos.keys(), ...inbox.steerable, ...inbox.typed.keys()]) if (!live(id)) inbox.forget(id);
-  const maps = { gitStates, looked, glances, talkHeights, notified, doing, errorCounts, pickedModel, shellRan };
+  const maps = { gitStates, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan };
   for (const id of [...muted]) if (!live(id)) muted.delete(id);
   for (const m of Object.values(maps)) for (const id of [...m.keys()]) if (!live(id)) m.delete(id);
   for (const [k, at] of [...lastBubble]) if (Date.now() - at > 60e3) lastBubble.delete(k);
@@ -842,6 +842,7 @@ function pushState() {
 const tokens = new Map();
 // Failed tool calls seen per session, to notice new ones.
 const errorCounts = new Map();
+const apiErrorCounts = new Map(); // (and API errors, to say new ones)
 const demoTokens = new Map();
 // Effort level per session id (and `${id}/${agentId}` for helpers), from
 // the newest call in their transcripts.
@@ -872,6 +873,13 @@ function refreshUsage() {
       win.webContents.send('react', { id: s.id, kind: 'oops', count: errs - errorCounts.get(s.id) });
     }
     errorCounts.set(s.id, errs);
+    // Claude Code couldn't get an answer (overloaded, a usage limit): said in its box.
+    const api = file ? usage.sessionApiErrors(file) : { count: 0 };
+    if (readySessions.has(s.id) && apiErrorCounts.has(s.id) && api.count > apiErrorCounts.get(s.id)) {
+      const last = inbox.log(s.id).slice(-1)[0];
+      if (!(last && last.who === 'claude' && last.text.trim() === api.text)) inbox.add(s.id, { who: 'note', text: `Claude Code: ${api.text}`, error: true });
+    }
+    apiErrorCounts.set(s.id, api.count);
     if (caughtUp && !s.tasksSeeded && file && tracker.seedTasks(s.id, usage.sessionTasks(file))) changed = true;
     if (caughtUp && !readySessions.has(s.id)) {
       if (s.id.startsWith('demo-')) checkedTasks.add(s.id);

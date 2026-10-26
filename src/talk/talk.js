@@ -327,7 +327,7 @@
   function message(m, fresh) {
     if (m.who === 'note') {
       const e = document.createElement('div');
-      e.className = 'note';
+      e.className = 'note' + (m.error ? ' error' : '');
       e.textContent = m.text;
       return [e];
     }
