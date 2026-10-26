@@ -2219,12 +2219,15 @@ app.whenReady().then(async () => {
 
   // The computer's own goings on, for the slimes to react to: you stepping
   // away and coming back (keyboard too, not just the mouse), the lid
-  // closing and opening, the charger going in and out.
+  // closing and opening, the charger going in and out. (Not in test mode:
+  // a test sends its own, and must not count you away because you are.)
   const system = (m) => { if (win && !win.isDestroyed()) win.webContents.send('system', m); };
-  for (const [ev, kind] of [['suspend', 'sleep'], ['lock-screen', 'sleep'], ['resume', 'wake'], ['unlock-screen', 'wake'], ['on-ac', 'ac'], ['on-battery', 'battery']]) {
-    powerMonitor.on(ev, () => system({ kind }));
+  if (!TEST) {
+    for (const [ev, kind] of [['suspend', 'sleep'], ['lock-screen', 'sleep'], ['resume', 'wake'], ['unlock-screen', 'wake'], ['on-ac', 'ac'], ['on-battery', 'battery']]) {
+      powerMonitor.on(ev, () => system({ kind }));
+    }
+    setInterval(() => system({ kind: 'idle', seconds: powerMonitor.getSystemIdleTime() }), 5000);
   }
-  setInterval(() => system({ kind: 'idle', seconds: powerMonitor.getSystemIdleTime() }), 5000);
 
   ipcMain.on('ready', () => {
     win.webContents.send('config', prefs.config);
