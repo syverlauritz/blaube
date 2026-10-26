@@ -1315,6 +1315,43 @@
       }
       box.append(ul);
       requestAnimationFrame(fitWindow);
+    }).then(() => (api.branchChanges && box.dataset.key === key ? api.branchChanges(s.id) : null)).then((ch) => {
+      // And all its branch changed since it left main: a tap for the
+      // files, a tap on one for its change (to look over before a PR).
+      if (!ch || !ch.files.length || box.dataset.key !== key) return;
+      const head = document.createElement('button');
+      head.type = 'button';
+      head.className = 'onbranch';
+      head.textContent = `On this branch since ${ch.base.replace(/^origin\//, '')}: ${ch.stat || `${ch.files.length} files`}`;
+      head.setAttribute('aria-expanded', 'false');
+      const ul = document.createElement('ul');
+      ul.className = 'gitfiles commits branchfiles';
+      ul.hidden = true;
+      for (const f of ch.files) {
+        const li = document.createElement('li');
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = f.how;
+        const name = document.createElement('span');
+        name.textContent = f.path;
+        const how = document.createElement('small');
+        how.textContent = f.how;
+        b.append(name, how);
+        const pre = document.createElement('pre');
+        pre.className = 'stepout diff';
+        pre.hidden = true;
+        b.onclick = () => {
+          if (f.how === 'deleted') return;
+          pre.hidden = !pre.hidden;
+          if (!pre.hidden && !pre.textContent) api.branchDiff(s.id, f.path).then((t) => { colorDiff(pre, t || '(can’t show it)'); requestAnimationFrame(fitWindow); });
+          requestAnimationFrame(fitWindow);
+        };
+        li.append(b, pre);
+        ul.append(li);
+      }
+      head.onclick = () => { ul.hidden = !ul.hidden; head.setAttribute('aria-expanded', String(!ul.hidden)); requestAnimationFrame(fitWindow); };
+      box.append(head, ul);
+      requestAnimationFrame(fitWindow);
     });
   }
 

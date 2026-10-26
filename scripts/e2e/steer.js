@@ -426,6 +426,14 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => box(`(() => { const p = document.querySelector('#branches .commits .diff'); return !!p && !p.hidden && /^tax\\n\\n── /.test(p.textContent) && /── notes\\.md/.test(p.textContent) && /── src\\/tax\\.js/.test(p.textContent) && p.querySelector('.add'); })()`)), 'and a tap shows what one changed, file by file');
 	await sleep(500);
 	await shot('commits');
+	// All the branch changed since it left main, to look over before a PR.
+	execFileSync('git', ['branch', 'main', 'HEAD~1'], { cwd: repo });
+	await box(`document.getElementById('git').click(); document.getElementById('git').click()`);
+	check(await until(() => box(`/^On this branch since main: \\d+ files? changed/.test((document.querySelector('#branches .onbranch') || {}).textContent || '')`), 10000), 'it says what its branch changed since main');
+	await box(`document.querySelector('#branches .onbranch').click()`);
+	await until(() => box(`[...document.querySelectorAll('#branches .branchfiles li > button')].some((b) => b.firstChild.textContent === 'src/tax.js')`));
+	await box(`[...document.querySelectorAll('#branches .branchfiles li > button')].find((b) => b.firstChild.textContent === 'src/tax.js').click()`);
+	check(await until(() => box(`[...document.querySelectorAll('#branches .branchfiles .diff')].some((p) => !p.hidden && /\\+x/.test(p.textContent))`)), 'and a tap on a file shows its change on the branch');
 	execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'more'], { cwd: repo });
 	execFileSync('git', ['remote', 'set-url', 'origin', bare + '-gone'], { cwd: repo });
 	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Push' && /git push/.test(b.title))`), 10000), 'one more commit: Push again');

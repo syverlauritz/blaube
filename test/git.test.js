@@ -216,3 +216,25 @@ test('a script the box ran that stopped with an error: Fix it, with its last lin
   assert.equal(q[0].label, 'Fix it');
   assert.match(q[0].prompt, /^`npm run dev` stopped with an error\. Its last lines:\n\n```\nError: port 3000 in use\n```/);
 });
+
+test('what a branch changed since it left main, file by file', async () => {
+  const { branchChanges, branchDiff, parseNameStatus } = require('../src/main/git');
+  assert.deepEqual(parseNameStatus('M\tsrc/a.js\nA\tnew.md\nD\told.txt\nR100\tx.js\ty.js\n'), [{ path: 'src/a.js', how: 'changed' }, { path: 'new.md', how: 'new' }, { path: 'old.txt', how: 'deleted' }, { path: 'y.js', how: 'renamed' }]);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-br-'));
+  const env = Object.assign({}, process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
+  const g = (...a) => execFileSync('git', a, { cwd: dir, env }).toString().trim();
+  try {
+    g('init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'one\n'); g('add', '.'); g('commit', '-qm', 'base');
+    assert.equal(await new Promise((r) => branchChanges(dir, 'main', r)), null, 'on main itself');
+    g('switch', '-qc', 'topic');
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'two\n'); fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n'); g('add', '.'); g('commit', '-qm', 'work');
+    g('switch', '-q', 'main'); fs.writeFileSync(path.join(dir, 'c.txt'), 'later on main\n'); g('add', '.'); g('commit', '-qm', 'main moved'); g('switch', '-q', 'topic');
+    const ch = await new Promise((r) => branchChanges(dir, 'topic', r));
+    assert.equal(ch.base, 'main');
+    assert.deepEqual(ch.files, [{ path: 'a.txt', how: 'changed' }, { path: 'b.txt', how: 'new' }], 'only its own, not main’s since');
+    assert.match(ch.stat, /2 files changed/);
+    assert.equal(await new Promise((r) => branchDiff(dir, 'main', 'a.txt', r)), '@@ -1 +1 @@\n-one\n+two');
+    assert.equal(await new Promise((r) => branchDiff(dir, '--output=/tmp/x', 'a.txt', r)), '');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

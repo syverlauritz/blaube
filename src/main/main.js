@@ -2850,6 +2850,22 @@ app.whenReady().then(async () => {
     if (!s || !s.cwd || id.startsWith('demo-')) return done([]);
     git.branches(s.cwd, done);
   }));
+  // What its branch changed since it left main (all of it, to look over
+  // before a pull request), and one file's change.
+  const branchSeen = new Map(); // id -> its last branchChanges
+  ipcMain.handle('talk-branch-changes', (_e, id) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    const st = gitStates.get(id);
+    if (!s || !s.cwd || !st || !st.branch) return done(null);
+    git.branchChanges(s.cwd, st.branch, (ch) => { if (ch) branchSeen.set(id, ch); else branchSeen.delete(id); while (branchSeen.size > 20) branchSeen.delete(branchSeen.keys().next().value); done(ch); });
+  }));
+  ipcMain.handle('talk-branch-diff', (_e, id, rel) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    const ch = branchSeen.get(id);
+    const f = s && ch && ch.files.find((x) => x.path === rel);
+    if (!f || f.how === 'deleted') return done('');
+    git.branchDiff((gitStates.get(id) || {}).root || s.cwd, ch.base, f.path, done);
+  }));
   // Its latest commits (which aren't pushed yet), and what one changed.
   ipcMain.handle('talk-commits', (_e, id) => new Promise((done) => {
     const s = id === talkId && tracker.sessions.get(id);

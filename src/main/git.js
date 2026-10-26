@@ -166,6 +166,44 @@ function show(cwd, hash, cb) {
   execFile('git', ['show', '--no-color', '--no-ext-diff', '--format=%B', hash], { cwd, timeout: 4000, maxBuffer: 8e6, windowsHide: true }, (err, out) => cb(err ? '' : commitText(out)));
 }
 
+// What its branch changed since it left its base (origin's default branch,
+// or main or master): cb({ base, files: [{ path, how }], stat }) or null
+// (on the base itself, or no base found).
+function baseOf(cwd, cb) {
+  execFile('git', ['rev-parse', '--abbrev-ref', 'origin/HEAD'], { cwd, timeout: 3000, windowsHide: true }, (err, out) => {
+    const remote = !err && String(out).trim();
+    const tries = [remote, 'main', 'master', 'origin/main', 'origin/master'].filter((b) => b && /^[\w./-]+$/.test(b) && !b.startsWith('-'));
+    const next = (i) => {
+      if (i >= tries.length) return cb('');
+      execFile('git', ['rev-parse', '--verify', '--quiet', tries[i]], { cwd, timeout: 3000, windowsHide: true }, (e2) => (e2 ? next(i + 1) : cb(tries[i])));
+    };
+    next(0);
+  });
+}
+function parseNameStatus(out) {
+  return String(out || '').split('\n').filter(Boolean).slice(0, 60).map((l) => {
+    const [code, ...rest] = l.split('\t');
+    const how = /^A/.test(code) ? 'new' : /^D/.test(code) ? 'deleted' : /^R/.test(code) ? 'renamed' : 'changed';
+    return { path: rest[rest.length - 1] || '', how };
+  }).filter((f) => f.path);
+}
+function branchChanges(cwd, branch, cb) {
+  baseOf(cwd, (base) => {
+    if (!base || !branch || base === branch || base.endsWith('/' + branch)) return cb(null);
+    execFile('git', ['diff', '--name-status', '--no-color', `${base}...HEAD`], { cwd, timeout: 5000, maxBuffer: 4e6, windowsHide: true }, (err, out) => {
+      if (err) return cb(null);
+      const files = parseNameStatus(out);
+      execFile('git', ['diff', '--shortstat', `${base}...HEAD`], { cwd, timeout: 5000, windowsHide: true }, (e3, stat) => cb({ base, files, stat: e3 ? '' : String(stat).trim() }));
+    });
+  });
+}
+// One file's change on its branch (`base` from branchChanges, `rel` one of
+// its files): the diff without its headers.
+function branchDiff(cwd, base, rel, cb) {
+  if (!/^[\w./-]+$/.test(String(base)) || String(base).startsWith('-')) return cb('');
+  execFile('git', ['diff', '--no-color', '--no-ext-diff', `${base}...HEAD`, '--', rel], { cwd, timeout: 5000, maxBuffer: 4e6, windowsHide: true }, (err, out) => cb(err ? '' : compactDiff(out) || '(no changes in the text)'));
+}
+
 // Forgets what it read (something just changed it).
 function forget(cwd) { cache.delete(cwd); }
 
@@ -199,4 +237,4 @@ function switchTo(cwd, name, create, cb) {
   });
 }
 
-module.exports = { parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show };
+module.exports = { parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };
