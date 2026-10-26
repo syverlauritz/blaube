@@ -418,11 +418,14 @@
 					if (back) at(0, () => {
 						const lean = Math.sign(part.shift) * Math.min(1, Math.abs(part.shift) * 2) * u * 0.4;
 						const bw = u * 1.2, by = u * 0.63, ay = -u * 1.6, t = 0.82; // base half-width, base y, apex y, where the straight sides stop
+						const deep = u * 2.6; // (and straight on down behind the head, so a squash or a turn never shows its bottom edge)
 						ctx.beginPath();
-						ctx.moveTo(-bw, by);
+						ctx.moveTo(-bw, deep);
+						ctx.lineTo(-bw, by);
 						ctx.lineTo(lean - bw * (1 - t), by + (ay - by) * t);
 						ctx.quadraticCurveTo(lean, ay - u * 0.12, lean + bw * (1 - t), by + (ay - by) * t);
 						ctx.lineTo(bw, by);
+						ctx.lineTo(bw, deep);
 						ctx.closePath();
 						ctx.fill();
 					});
