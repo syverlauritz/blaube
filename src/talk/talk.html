@@ -114,6 +114,9 @@
   button.git.opens:hover { color: var(--ink); }
   .gitfiles { margin: -2px 22px 8px; padding: 0; list-style: none; max-height: 160px; overflow-y: auto; }
   .gitfiles[hidden] { display: none; }
+  .since { display: flex; align-items: center; gap: 10px; margin: 6px 0; font: 600 12px var(--ui); color: var(--color); }
+  .since::before, .since::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
+  body.searching .since { display: none; }
   .glance .row b .title { font-style: normal; font-weight: 500; color: var(--dim); margin-left: 6px; }
   .gitfiles button { display: flex; gap: 8px; width: 100%; border: 0; background: none; padding: 1px 0; font: 500 13px var(--ui); color: var(--dim); text-align: left; cursor: pointer; }
   .gitfiles button:hover { color: var(--ink); }

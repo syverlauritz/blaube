@@ -185,8 +185,11 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await box(`[...document.querySelectorAll('#overview .row:not(.past)')].find((r) => /website/.test(r.textContent)).click()`);
 	check(await until(() => talkId() === ID2), 'tapping a row goes to that session');
 	check(await until(() => box(`!document.body.classList.contains('overview')`)), 'back in the chat');
+	await sleep(300);
+	await hook({ hook_event_name: 'Stop', last_assistant_message: 'This came while you were looking at the website.' });
 	await key('[', mod);
 	check(await until(() => talkId() === ID), '⌘[ goes to the one before');
+	check(await until(() => box(`(() => { const d = document.querySelector('#inner .since'); return !!d && /while you were looking/.test(d.nextElementSibling.textContent); })()`)), 'a line shows where what came in since you last looked begins');
 
 	// ⌘F in the overview looks through every session.
 	await key('0', mod);

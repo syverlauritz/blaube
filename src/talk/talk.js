@@ -376,7 +376,11 @@
           inner.append(e);
         }
       } else if (from === 0) inner.textContent = '';
+      // Where what came in since you last looked begins (when replies did).
+      const since = s.lookedAt ? s.log.findIndex((m, i) => i > 0 && m.at > s.lookedAt && s.log[i - 1].at <= s.lookedAt) : -1;
+      const sinceShows = since > 0 && s.log.slice(since).some((m) => m.who === 'claude');
       for (let i = from; i < s.log.length; i++) {
+        if (i === since && sinceShows) { const d = document.createElement('div'); d.className = 'since'; d.textContent = 'Since you last looked'; inner.append(d); }
         if (s.log[i].who === 'step') { ends[i] = addStep(s.log[i], !switched && i >= seen); continue; }
         const nodes = message(s.log[i], !switched && i >= seen);
         inner.append(...nodes);

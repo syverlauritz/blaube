@@ -434,6 +434,7 @@ function pushTalk(id, focusField = false) {
     // Its git status and what you might ask for next (see git.js).
     git: gitStates.has(id) ? git.summary(gitStates.get(id)) : '',
     gitFiles: gitFiles(id),
+    lookedAt: looked.get(id) || 0, // (when its box was last closed: what's new since shows)
     quick: id.startsWith('demo-') ? [] : git.quickActions(gitStates.get(id) || null, s.state, {
       stopped: stoppedLast(inbox.log(id)),
       failedTests: failedTests(inbox.log(id)),
