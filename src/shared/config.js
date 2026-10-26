@@ -167,6 +167,7 @@
       ['greetNew', 1, 0, 2, 0.05, 'A new session\'s slime lands and the nearest calm one hops over to say hi'],
       ['allDoneWave', 1, 0, 2, 0.05, 'When the last busy session finishes, they do a wave of hops along the row: all done!'],
       ['highFive', 1, 0, 2, 0.05, 'Two sessions that finish close together jump up and bump in the air: high five!'],
+      ['comfort', 1, 0, 2, 0.05, 'A calm slime now and then hops over to one that keeps failing, leans in and cheers it on'],
       ['leapfrog', 1, 0, 2, 0.05, 'Now and then two bored slimes side by side play leapfrog, taking turns hopping right over each other'],
       ['tower', 1, 0, 3, 0.05, 'Two bored slimes now and then make a tower: one hops up onto the other\'s head and stands tall'],
       ['measure', 1, 0, 2, 0.05, 'Two bored slimes now and then stand back to back and stretch up to see who\'s taller'],

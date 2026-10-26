@@ -3056,6 +3056,42 @@
     const others = [...buddies.values()].filter((o) => o !== b && o.kind === 'mother' && !o.totBy && !o.tot && free(o) && o.body.onFloor() && Math.abs(o.body.centroid().y - c.y) < r && Math.abs(o.body.centroid().x - c.x) < r * 10);
     if (others.length) totNow(b, others[Math.floor(Math.random() * others.length)]);
   }
+  // A session going round in circles (steamed up, see struggle): a calm
+  // slime nearby now and then hops over, leans in against it and cheers it
+  // on ("you got this!"). It gets a moment's smile.
+  function comfort(b) {
+    if (CFG.comfort <= 0 || b.kind !== 'mother') return;
+    const g = b.comforting;
+    if (g) {
+      const o = g.o;
+      if (b.body.grab || o.dying || o.body.grab || !o.stuck || drag || time - g.at > 7 || (b.state !== 'idle' && b.state !== 'done')) { b.comforting = null; return; }
+      b.nextHop = time + 1;
+      if (!b.body.onFloor() || b.pendingHop || time - g.at < 0.4) return;
+      const c = b.body.centroid(), oc = o.body.centroid(), r = b.body.o.radius, d = Math.abs(oc.x - c.x);
+      if (d > (r + o.body.o.radius) * 1.8) { if (time - g.at > 2) b.comforting = null; return; }
+      // Leaning in against it, a gentle push.
+      b.body.lean(Math.sign(oc.x - c.x) * r * 1.4 * Math.min(1.5, CFG.comfort), DT);
+      b.body.impulse(-b.body.velocity(DT).x * 0.2, 0, DT);
+      b.glanceAt = o; b.glanceUntil = time + 0.3;
+      if (!g.said) {
+        g.said = true;
+        quip(b, ['you got this!', 'there there', "you'll get it!"][Math.floor(Math.random() * 3)], 1.8);
+        b.happyUntil = time + 1.5;
+        setTimeout(() => { if (!o.dying) { o.glanceAt = b; o.glanceUntil = time + 1; o.blushUntil = time + 1.5; } }, 600);
+      }
+      return;
+    }
+    if ((b.state !== 'idle' && b.state !== 'done') || b.body.grab || b.merging || b.dying || !b.body.onFloor() || b.stackedBy || b.tower || b.frog || b.tag || b.parade || b.trick || b.keepy || b.roll || b.measure || b.tot || (b.sleep || 0) > 0.1 || b === buddies.get(talkingTo) || time < (b.nextComfort || 0)) return;
+    b.nextComfort = time + 5;
+    const c = b.body.centroid(), r = b.body.o.radius;
+    const o = [...buddies.values()].find((o) => o !== b && o.stuck && time - o.stuck.since > 4 && !o.body.grab && o.body.onFloor() && time > (o.comfortedUntil || 0) && Math.abs(o.body.centroid().x - c.x) < r * 10 && Math.abs(o.body.centroid().y - c.y) < r * 1.5);
+    if (!o || Math.random() > 0.5 * CFG.comfort) return;
+    o.comfortedUntil = time + 60;
+    b.nextComfort = time + 40;
+    b.comforting = { o, at: time };
+    const oc = o.body.centroid(), side = Math.sign(c.x - oc.x) || 1, tx = oc.x + side * (o.body.o.radius + r) * 1.02;
+    if (Math.abs(tx - c.x) > r * 0.3) { const v = launch(tx - c.x, r * 0.6); b.body.impulse(-b.body.velocity(DT).x, 0, DT); b.hop(v.vx, v.vy); }
+  }
   function totNow(b, o) {
     const c = b.body.centroid(), r = b.body.o.radius, oc = o.body.centroid();
     const side = Math.sign(c.x - oc.x) || 1, tx = oc.x + side * (o.body.o.radius + r * 1.1);
@@ -4396,6 +4432,7 @@
     tower(b);
     measure(b);
     trickTreat(b);
+    comfort(b);
     snowFight(b);
     parade(b);
     blow(b);
