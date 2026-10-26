@@ -1667,8 +1667,15 @@ app.whenReady().then(async () => {
 
   loadPrefs();
 
+  // Restarting (after a code change, or an update) the old Blaube can still
+  // hold the port for a moment: keep trying for a few seconds first.
   try {
-    await startHookServer(tracker, PORT, inbox);
+    for (let tries = 0; ; tries++) {
+      try { await startHookServer(tracker, PORT, inbox); break; } catch (e) {
+        if (e.code !== 'EADDRINUSE' || tries >= 20) throw e;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    }
   } catch (e) {
     dialog.showErrorBox('Blaube', `Could not listen on 127.0.0.1:${PORT} (${e.code || e.message}). Is another Blaube running? Set BLAUBE_PORT to use a different port.`);
   }
