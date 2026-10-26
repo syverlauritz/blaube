@@ -57,13 +57,16 @@ function manager(cwd) {
 }
 
 // Whether its packages need installing: its node_modules is missing, or
-// older than its lockfile (a pull brought new ones). The command that
+// older than its lockfile (a pull brought new ones); or uv's .venv is missing. The command that
 // installs them (`npm install`), or ''. Only where its lockfile is (not
 // a package inside a workspace, whose packages are installed above it).
 const LOCKS = { npm: 'package-lock.json', pnpm: 'pnpm-lock.yaml', yarn: 'yarn.lock' };
 const MARKS = { npm: '.package-lock.json', pnpm: '.modules.yaml', yarn: '.yarn-integrity' };
 function needsInstall(cwd) {
   const mtime = (f) => { try { return fs.statSync(path.join(cwd, f)).mtimeMs; } catch { return 0; } };
+  // (A Python project uv keeps: its .venv missing, a fresh clone. Whether
+  // one is behind uv.lock can't be told from the outside: uv sync then.)
+  if (mtime('uv.lock')) return mtime(path.join('.venv', 'pyvenv.cfg')) ? '' : 'uv sync';
   const pm = manager(cwd);
   const lock = pm === 'bun' ? Math.max(mtime('bun.lockb'), mtime('bun.lock')) : mtime(LOCKS[pm]);
   if (!lock) return '';

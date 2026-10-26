@@ -102,3 +102,17 @@ test('a Makefile’s targets, and Cargo’s and Go’s own, after package.json�
     assert.deepEqual(runs.scripts(dir), []);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('a Python project uv keeps: uv sync when its .venv is missing', () => {
+  const { needsInstall } = require('../src/main/runs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-uv-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'pyproject.toml'), '[project]\nname = "x"\n');
+    assert.equal(needsInstall(dir), '', 'no lockfile');
+    fs.writeFileSync(path.join(dir, 'uv.lock'), '');
+    assert.equal(needsInstall(dir), 'uv sync');
+    fs.mkdirSync(path.join(dir, '.venv'));
+    fs.writeFileSync(path.join(dir, '.venv', 'pyvenv.cfg'), '');
+    assert.equal(needsInstall(dir), '');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
