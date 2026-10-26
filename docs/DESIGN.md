@@ -43,9 +43,9 @@ ships that breaks a "must".
   for a moment, pull together or lift. This face is approved: do not redesign it.
   (Open "glancing up" eyes read shell-shocked; half-lidded eyes read bored
   and judging; keep those for specific reactions only.)
-- Hovered while it works, it looks up at you: its eyes ease fully open (no
+- With the cursor over or near it while it works, it looks up at you: its eyes ease fully open (no
   squint, no half-lid, brows staying, still blinking) and follow the cursor;
-  when you move off they ease shut again. Dizzy, struggling, shy or talking
+  when you move off they ease shut again. Dizzy, struggling or talking
   faces win over it.
 - The Halloween ghost: a plain white sheet (flat, no outline) draped over
   the body and whatever it wears, with two dark eye holes and a scalloped
