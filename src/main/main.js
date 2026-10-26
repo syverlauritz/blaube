@@ -12,9 +12,10 @@ const history = require('./history');
 const attention = require('./attention');
 const markdown = require('./markdown');
 const git = require('./git');
+const projectFiles = require('./files');
 const { failedTests, stoppedLast } = require('./inbox');
 const { Notification } = require('electron');
-const { slashCommand } = require('./commands');
+const { slashCommand, commandNames, expand: expandCommand } = require('./commands');
 const { openResumeTerminal, resumeCommand, focusSessionApp, typeIntoSession } = require('./terminal');
 const { startAgentsPoller, listAgents, findClaude } = require('./agents');
 const { Owned } = require('./owned');
@@ -1525,6 +1526,10 @@ app.whenReady().then(async () => {
   // What you say to a session (from its box, or a notification's reply).
   function sendMessage(id, text) {
     if (!prefs.talked) { prefs.talked = true; savePrefs(); pushState(); } // no more "click to talk" hints
+    // One of your own commands (/deploy staging) is only a prompt: it goes
+    // as a message, so it needs no terminal.
+    const prompt = expandCommand(text, (tracker.sessions.get(id) || {}).cwd);
+    if (prompt) { inbox.add(id, { who: 'note', text: `${String(text).trim().split(/\s/)[0]}: sent what it says` }); text = prompt; }
     // A session Blaube started: straight in, and its turn starts.
     if (owned.has(id)) {
       if (!owned.send(id, text)) { inbox.add(id, { who: 'you', text: String(text), via: 'blaube', status: 'unsent' }); return; }
@@ -1613,6 +1618,15 @@ app.whenReady().then(async () => {
     git.diff(st.root, f.path, f.how, done);
   }));
   // ⌘F in the overview: what every session said.
+  // "@" and "/" in the box: the session's files, and the commands you could type.
+  ipcMain.handle('talk-complete', (_e, id, kind, q) => new Promise((resolve) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    q = typeof q === 'string' ? q.slice(0, 200) : '';
+    if (!s || !s.cwd || id.startsWith('demo-')) return resolve([]);
+    if (kind === 'command') return resolve(commandNames(q, s.cwd).slice(0, 8).map((c) => ({ insert: '/' + c.name + ' ', label: '/' + c.name, about: c.about || '' })));
+    if (kind !== 'file') return resolve([]);
+    projectFiles.list(s.cwd, (all) => resolve(projectFiles.match(all, q).map((p) => ({ insert: '@' + p + ' ', label: p, about: '' }))));
+  }));
   ipcMain.handle('talk-search', (_e, q) => attention.search(tracker.list().filter(isReady).filter((o) => !o.id.startsWith('demo-')).map((o) => ({ id: o.id, project: o.project, log: inbox.log(o.id) })), typeof q === 'string' ? q.slice(0, 200) : '').slice(0, 10));
   // A session that ended while its box was open, picked up right there.
   ipcMain.on('talk-continue', (_e, id) => {

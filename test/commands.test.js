@@ -23,3 +23,29 @@ test('slash commands, and messages that only start with a slash', () => {
   assert.equal(is('/usr/local/bin is missing'), '');
   assert.equal(is('hello /compact'), '');
 });
+
+test('your own commands go as the prompt they stand for; "/" lists them first', () => {
+  const { expand, commandNames } = require('../src/main/commands.js');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-cmd-'));
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-proj-'));
+  const dir = path.join(home, '.claude', 'commands');
+  fs.mkdirSync(path.join(dir, 'git'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'git', 'ship.md'), '---\ndescription: "Ship a branch"\n---\nShip $1 to $2. ($ARGUMENTS)\n');
+  fs.writeFileSync(path.join(dir, 'tidy.md'), 'Tidy the diff.');
+  fs.writeFileSync(path.join(dir, 'st.md'), 'Status: !`git status`');
+  fs.mkdirSync(path.join(proj, '.claude', 'commands'), { recursive: true });
+  fs.writeFileSync(path.join(proj, '.claude', 'commands', 'tidy.md'), 'Tidy it the project way.');
+  assert.equal(expand('/git:ship web prod', proj, home), 'Ship web to prod. (web prod)');
+  assert.equal(expand('/tidy', proj, home), 'Tidy it the project way.', 'the project’s wins');
+  assert.equal(expand('/tidy  carefully', '', home), 'Tidy the diff.\n\ncarefully', 'words with nowhere to go are added');
+  assert.equal(expand('/st', '', home), '', 'shell commands need Claude Code');
+  assert.equal(expand('/compact', '', home), '');
+  fs.writeFileSync(path.join(dir, 'review.md'), 'Mine.');
+  assert.equal(expand('/review', '', home), '', 'a built-in stays Claude Code’s');
+  assert.equal(expand('/api is down', '', home), '');
+  const names = commandNames('', proj, home);
+  assert.deepEqual(names.slice(0, 4).map((c) => c.name), ['git:ship', 'ship', 'st', 'tidy']);
+  assert.equal(names[0].about, 'Ship a branch');
+  assert.ok(names.some((c) => c.name === 'compact' && !c.mine));
+  assert.deepEqual(commandNames('co', proj, home).map((c) => c.name), ['compact', 'config', 'context', 'cost']);
+});

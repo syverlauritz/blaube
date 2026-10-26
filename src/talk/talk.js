@@ -1138,7 +1138,7 @@
   api.onState((s) => {
     const first = !current || current.id !== s.id;
     if (first && current) drafts.set(current.id, text.value);
-    if (first) { document.body.classList.remove('overview'); $('find').value = ''; $('findBar').hidden = true; document.body.classList.remove('searching'); $('toast').hidden = true; gitOpen = false; recall = -1; }
+    if (first) { document.body.classList.remove('overview'); $('find').value = ''; $('findBar').hidden = true; document.body.classList.remove('searching'); $('toast').hidden = true; gitOpen = false; recall = -1; suggAsked++; drawSuggest([]); }
     if (first) { seen = s.log.length; text.value = drafts.get(s.id) || ''; if (files.length) { files = []; drawFiles(); } } // before the card reads it
     render(s);
     if (first) { fit(); send.disabled = text.disabled || (!text.value.trim() && !files.length); }
@@ -1162,6 +1162,69 @@
   text.addEventListener('input', () => {
     if (askKey && current.ask && current.ask.kind === 'plan') planButtons();
     fit(); send.disabled = !current || current.demo || (!text.value.trim() && !files.length); requestAnimationFrame(fitWindow); });
+  // "@" suggests the session's files and "/" at the start its commands, as
+  // in the terminal: ↑↓ to choose, Tab or ↩ to put it in, Esc to leave it.
+  const suggestEl = $('suggest');
+  let sugg = { items: [], at: 0, from: 0 }, suggAsked = 0;
+  function suggestToken() {
+    const c = text.selectionStart;
+    if (c !== text.selectionEnd) return null;
+    const before = text.value.slice(0, c);
+    let m = /(^|\s)@([^\s@]*)$/.exec(before);
+    if (m) return { kind: 'file', q: m[2], from: c - m[2].length - 1 };
+    m = /^\/([\w:-]*)$/.exec(before);
+    if (m) return { kind: 'command', q: m[1], from: 0 };
+    return null;
+  }
+  async function suggest() {
+    const t = current && !current.demo && api.complete ? suggestToken() : null;
+    const n = ++suggAsked;
+    if (!t) return drawSuggest([]);
+    const items = await api.complete(current.id, t.kind, t.q);
+    if (n !== suggAsked) return;
+    sugg = { items, at: 0, from: t.from };
+    drawSuggest(items);
+  }
+  function drawSuggest(items) {
+    if (!items.length) sugg.items = [];
+    const was = !suggestEl.hidden;
+    suggestEl.hidden = !items.length;
+    suggestEl.textContent = '';
+    items.forEach((it, i) => {
+      const li = document.createElement('li');
+      const b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('role', 'option');
+      if (i === sugg.at) b.className = 'on';
+      const name = document.createElement('span'); name.className = 'pick'; name.textContent = it.label;
+      b.append(name);
+      if (it.about) { const a = document.createElement('span'); a.className = 'about'; a.textContent = it.about; b.append(a); }
+      b.addEventListener('mousedown', (e) => e.preventDefault()); // (keeps the field focused)
+      b.addEventListener('click', () => pickSuggestion(i));
+      li.append(b); suggestEl.append(li);
+    });
+    if (was !== !suggestEl.hidden || items.length) requestAnimationFrame(fitWindow);
+  }
+  function pickSuggestion(i) {
+    const it = sugg.items[i];
+    if (!it) return;
+    const c = text.selectionStart;
+    text.value = text.value.slice(0, sugg.from) + it.insert + text.value.slice(c);
+    const at = sugg.from + it.insert.length;
+    text.setSelectionRange(at, at);
+    drawSuggest([]);
+    text.dispatchEvent(new Event('input'));
+  }
+  text.addEventListener('input', suggest);
+  text.addEventListener('blur', () => { suggAsked++; drawSuggest([]); });
+  text.addEventListener('keydown', (e) => {
+    if (suggestEl.hidden || !sugg.items.length || e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
+    const n = sugg.items.length;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') sugg.at = (sugg.at + (e.key === 'ArrowDown' ? 1 : n - 1)) % n, drawSuggest(sugg.items);
+    else if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) pickSuggestion(sugg.at);
+    else if (e.key === 'Escape') { suggAsked++; drawSuggest([]); }
+    else return;
+    e.preventDefault(); e.stopImmediatePropagation();
+  });
   // ↑ in an empty field brings back what you said before (↓ goes forward
   // again), as in the terminal.
   let recall = -1;

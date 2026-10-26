@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   pathOf: (file) => { try { return webUtils.getPathForFile(file); } catch { return ''; } },
   hub: () => ipcRenderer.invoke('talk-hub'),
   searchAll: (q) => ipcRenderer.invoke('talk-search', q),
+  complete: (id, kind, q) => ipcRenderer.invoke('talk-complete', id, kind, q),
   diff: (id, file) => ipcRenderer.invoke('talk-diff', id, file),
   earlier: (id) => ipcRenderer.invoke('talk-earlier', id),
   newIn: (folder, opts) => ipcRenderer.send('talk-new', folder, opts),

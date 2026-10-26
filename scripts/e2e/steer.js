@@ -248,6 +248,23 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await sleep(800);
 	await shot('gitfiles');
 	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Commit')`)), 'with Commit a tap away');
+	// "@" suggests its files, "/" its commands; your own command goes as a message.
+	const typeIn = (v) => box(`(() => { const t = document.getElementById('text'); t.focus(); t.value = ${JSON.stringify(v)}; t.setSelectionRange(t.value.length, t.value.length); t.dispatchEvent(new Event('input')); })()`);
+	await typeIn('look at @tax');
+	check(await until(() => box(`(() => { const s = document.getElementById('suggest'); return !s.hidden && /^src\\/tax\\.js/.test(s.querySelector('button.on').textContent); })()`)), '@ suggests the session’s files, best match first');
+	await box(`document.getElementById('text').dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))`);
+	check(await box(`document.getElementById('text').value === 'look at @src/tax.js ' && document.getElementById('suggest').hidden`), 'Tab puts the path in');
+	fs.mkdirSync(path.join(repo, '.claude', 'commands'), { recursive: true });
+	fs.writeFileSync(path.join(repo, '.claude', 'commands', 'ship.md'), '---\ndescription: Ship it somewhere\n---\nShip $1 now, carefully.\n');
+	await typeIn('/sh');
+	check(await until(() => box(`(() => { const b = document.querySelector('#suggest button.on'); return !!b && /^\\/shipShip it somewhere$/.test(b.textContent); })()`)), '/ suggests commands, yours first with what they do');
+	await sleep(500);
+	await shot('suggest');
+	await box(`document.getElementById('text').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))`);
+	check(await box(`document.getElementById('text').value === '/ship '`), '↩ on a suggestion picks it (and doesn’t send)');
+	await type('/ship web');
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'you' && e.text === 'Ship web now, carefully.')), 'your own command goes as the message it stands for, no terminal needed');
+	await type('');
 	await hook({ session_id: ID3, hook_event_name: 'SessionEnd' });
 	await page(`window.blaube.talk(${JSON.stringify(ID)}, { x: 300, y: 600, r: 60 })`);
 	await until(() => talkId() === ID);
