@@ -2191,30 +2191,33 @@
     const src = b.kind === 'child' ? b.agent : b.session;
     b.tapping = CFG.tapAfter > 0 && b.state === 'working' && src && src.activity === 'tool' && time - (b.toolSince ?? time) > CFG.tapAfter && !meditating(b);
     if (!b.tapping || time < (b.nextTap || 0)) return;
-    b.nextTap = time + 0.42;
+    b.nextTap = time + 0.6;
     const side = b.key.length % 2 ? 1 : -1, c = b.body.centroid(), bot = b.body.bbox().maxY;
-    b.body.pushAt(c.x + side * r * 0.55, bot, 0, 240, r * 0.32, DT);
+    b.body.pushAt(c.x + side * r * 0.55, bot, 0, 200, r * 0.32, DT);
   }
 
-  // Editing, it types: quick little dips of its top, in bursts.
+  // Editing, it types: soft little dips of its top, in short bursts with
+  // pauses between (a few a second at most: any faster read as buzzing).
   function typeAway(b, r) {
     if (CFG.workLife <= 0 || b.state !== 'working' || meditating(b) || activityOf(b) !== 'edit' || time < (b.nextKey || 0)) return;
-    const burst = Math.sin(time * 0.9 + (b.breathPhase || 0)) > -0.3; // (now and then a pause)
-    b.nextKey = time + (burst ? 0.09 + Math.random() * 0.1 : 0.4);
-    if (burst) b.body.squashTop(r * 1.6 * Math.min(1.5, CFG.workLife), DT);
+    const burst = Math.sin(time * 0.5 + (b.breathPhase || 0)) > 0.3; // (pauses between bursts)
+    b.nextKey = time + (burst ? 0.25 + Math.random() * 0.15 : 0.5);
+    if (burst) b.body.squashTop(r * 0.8 * Math.min(1.5, CFG.workLife), DT);
   }
 
   function strain(b, r) {
     if (CFG.strain <= 0 || b.state !== 'working' || meditating(b)) return;
     const src = b.kind === 'child' ? b.agent : b.session;
     if (!src || src.activity !== 'tool') { b.strainUntil = 0; return; }
+    // Now and then, not all the time: a short, small shiver every 8-18 s.
     if (time > (b.nextStrain || 0)) {
-      if (b.nextStrain) b.strainUntil = time + 0.3 + Math.random() * 0.25;
-      b.nextStrain = time + 2.5 + Math.random() * 4;
+      if (b.nextStrain) b.strainUntil = time + 0.35 + Math.random() * 0.25;
+      b.nextStrain = time + 8 + Math.random() * 10;
     }
-    if (time < (b.strainUntil || 0) && Math.round(time / DT) % 4 === 0) {
+    if (time < (b.strainUntil || 0) && time > (b.strainFlip || 0)) {
+      b.strainFlip = time + 1 / 15;
       b.strainDir = -(b.strainDir || 1);
-      b.body.lean(b.strainDir * CFG.strain * r * 1.2, DT);
+      b.body.lean(b.strainDir * CFG.strain * r * 0.6, DT);
     }
   }
 
@@ -2615,23 +2618,24 @@
     const f = b.shift;
     if (f && time < f.until) {
       const p = (time - f.from) / (f.until - f.from);
-      b.body.lean(f.dir * Math.sin(p * Math.PI * 2) * CFG.idleFidget * r * 14 * DT, DT);
+      b.body.lean(f.dir * Math.sin(p * Math.PI * 2) * CFG.idleFidget * r * 10 * DT, DT);
     }
     if (time < (b.nextIdleFidget || 0)) return;
     const first = !b.nextIdleFidget;
-    b.nextIdleFidget = time + (3 + Math.random() * 6) / Math.max(0.3, CFG.idleFidget * trait(b, 'fidgety'));
+    b.nextIdleFidget = time + (6 + Math.random() * 8) / Math.max(0.3, CFG.idleFidget * trait(b, 'fidgety'));
     if (first) return;
     const roll = Math.random();
-    if (roll < 0.45) b.shift = { dir: Math.random() < 0.5 ? -1 : 1, from: time, until: time + 1.2 + Math.random() * 0.8 };
-    else if (roll < 0.65) b.body.squashTop(CFG.idleFidget * r * 3, DT);
-    else if (roll < 0.8) b.body.squashTop(-CFG.idleFidget * r * 3.5, DT);
-    else {
-      // A look around: at another slime, or at nothing in particular.
+    if (roll < 0.45) b.shift = { dir: Math.random() < 0.5 ? -1 : 1, from: time, until: time + 1.6 + Math.random() * 1 };
+    else if (roll < 0.65) b.body.squashTop(CFG.idleFidget * r * 2, DT);
+    else if (roll < 0.8) b.body.squashTop(-CFG.idleFidget * r * 2.5, DT);
+    else if (!lookedAway(b)) {
+      // A look around: at another slime, or at nothing in particular, held
+      // a while.
       const others = [...buddies.values()].filter((o) => o !== b && !o.dying);
       const c = b.body.centroid();
       b.glanceAt = others.length && Math.random() < 0.6 ? others[Math.floor(Math.random() * others.length)]
         : { spot: { x: c.x + (Math.random() < 0.5 ? -1 : 1) * r * (1.5 + Math.random() * 3), y: c.y - r * Math.random() * 2.5 } };
-      b.glanceUntil = time + 0.6 + Math.random() * 1.2;
+      b.glanceUntil = b.lookedAt = time + LOOK_HOLD.idle[0] + Math.random() * LOOK_HOLD.idle[1];
     }
   }
 
@@ -4916,10 +4920,11 @@
       if (c.x < l.x0 + r * 0.5) b.body.impulse(8, 0, DT);
       else if (c.x > l.x1 - r * 0.5) b.body.impulse(-8, 0, DT);
     }
-    // A working slime rocks a little now and then while it thinks.
+    // A working slime rocks a little now and then while it thinks: a small
+    // shuffle every 8-20 s (every 2-5 s was a slime that couldn't sit still).
     if (b.kind !== 'home' && b.state === 'working' && !b.merging && !b.body.grab && b.body.onFloor() && time > (b.nextFidget || 0)) {
-      if (b.nextFidget) b.hop((Math.random() < 0.5 ? -1 : 1) * (60 + Math.random() * 60), (-140 - Math.random() * 90) * trait(b, 'bouncy'));
-      b.nextFidget = time + (1.8 + Math.random() * 3) / trait(b, 'fidgety');
+      if (b.nextFidget) b.hop((Math.random() < 0.5 ? -1 : 1) * (40 + Math.random() * 40), (-110 - Math.random() * 60) * trait(b, 'bouncy'));
+      b.nextFidget = time + (8 + Math.random() * 12) / trait(b, 'fidgety');
     }
     if (b.body.grab || !b.body.onFloor() || b.merging || time < b.nextHop) return;
     if (b.kind === 'child' && b.mother && !b.mother.dying) {
@@ -4974,19 +4979,31 @@
     }
   }
 
-  // Where a slime is looking. It chases the mouse on a soft spring (so it
-  // lags and overshoots a little), and now and then its eyes dart a bit off
-  // target and back, like real eyes never quite hold still.
+  // Looking around by itself (not at something happening) has a calm
+  // rhythm: each look is held a while ([least, + up to] s), and the next
+  // waits a good while after it ([least, + up to] s at work, where it
+  // mostly keeps its eyes on what it's doing; at least LOOK_GAP.idle s
+  // otherwise).
+  const LOOK_HOLD = { work: [1.2, 1.3], idle: [2, 4] };
+  const LOOK_GAP = { work: [15, 35], idle: 5 };
+  const lookedAway = (b) => time - (b.lookedAt ?? -99) < LOOK_GAP.idle;
+
+  // Where a slime is looking. It follows what it looks at on a soft,
+  // critically damped spring (about 0.6 s to get there, no overshoot), so
+  // its face glides from one thing to the next instead of snapping, and
+  // now and then its eyes drift a little off target and back, like real
+  // eyes never quite hold still. (It used to be a stiff, bouncy spring
+  // with a dart every second or so: the eyes never settled.)
   function updateGaze(b) {
-    const g = b.gaze || (b.gaze = { x: mouse.x, y: mouse.y, vx: 0, vy: 0, jx: 0, jy: 0, nextDart: time + Math.random() });
+    const g = b.gaze || (b.gaze = { x: mouse.x, y: mouse.y, vx: 0, vy: 0, jx: 0, jy: 0, nextDart: time + 2 + Math.random() * 3 });
     if (time > g.nextDart) {
       const r = b.body.o.radius;
-      const dart = Math.random() < 0.7;
-      g.jx = dart ? (Math.random() - 0.5) * r * 0.8 : 0;
-      g.jy = dart ? (Math.random() - 0.5) * r * 0.5 : 0;
-      g.nextDart = time + 0.3 + Math.random() * 1.6;
+      const dart = Math.random() < 0.5;
+      g.jx = dart ? (Math.random() - 0.5) * r * 0.4 : 0;
+      g.jy = dart ? (Math.random() - 0.5) * r * 0.25 : 0;
+      g.nextDart = time + 2 + Math.random() * 4;
     }
-    const k = 45, d = 9, to = b.gazeTarget || mouse;
+    const k = 25, d = 10, to = b.gazeTarget || mouse;
     g.vx += (k * (to.x + g.jx - g.x) - d * g.vx) * DT;
     g.vy += (k * (to.y + g.jy - g.y) - d * g.vy) * DT;
     g.x += g.vx * DT;
@@ -5080,7 +5097,7 @@
     if (time > (b.nextFurrow || 0)) {
       b.browMove = Math.random() < 0.6 ? 'furrow' : 'raise';
       b.furrowUntil = time + 0.8 + Math.random() * 1.2;
-      b.nextFurrow = time + 4 + Math.random() * 8;
+      b.nextFurrow = time + 6 + Math.random() * 10;
     }
     // Hovered while it works: it looks up at you, eyes opening wide (and
     // its brows calm) and following the cursor, then goes back to work when
@@ -5113,20 +5130,23 @@
             const c = body.centroid(), r = body.o.radius;
             b.glanceAt = { spot: { x: c.x + (Math.random() < 0.5 ? -1 : 1) * r * (1.5 + Math.random() * 2), y: c.y - r * (1 + Math.random() * 2.5) } };
           }
-          b.glanceUntil = time + 0.3 + Math.random() * Math.random() * 1.6;
+          b.glanceUntil = time + LOOK_HOLD.work[0] + Math.random() * LOOK_HOLD.work[1];
+          b.lookedAt = b.glanceUntil;
         }
-        // Sometimes a quick second look right after; otherwise a while
-        // before the next, depending on how curious this one is.
-        b.nextGlance = b.nextGlance && Math.random() < 0.2 ? b.glanceUntil + 0.25 + Math.random() * 0.4
-          : time + (2 + Math.random() * Math.random() * 12) / b.curiosity;
+        // Sometimes a second look a little after; otherwise a good while
+        // before the next, depending on how curious this one is: at work
+        // it mostly keeps its eyes on its work.
+        b.nextGlance = b.nextGlance && Math.random() < 0.1 ? b.glanceUntil + 1.5 + Math.random()
+          : time + (LOOK_GAP.work[0] + Math.random() * Math.random() * LOOK_GAP.work[1]) / b.curiosity;
       }
     }
     // A leaf (or snowflake) drifting down close by: its eyes follow it.
-    if (flakes.length && CFG.seasons > 0 && !body.grab && time > (b.nextLeafLook || 0) && !(b.glanceAt && time < (b.glanceUntil || 0))) {
-      b.nextLeafLook = time + 2 + Math.random() * 4;
+    // (Not at work, though, and not right after another look around.)
+    if (flakes.length && CFG.seasons > 0 && !body.grab && st !== 'working' && time > (b.nextLeafLook || 0) && !lookedAway(b) && !(b.glanceAt && time < (b.glanceUntil || 0))) {
+      b.nextLeafLook = time + 6 + Math.random() * 6;
       const c = body.centroid(), r = body.o.radius;
       const f = flakes.find((f) => !f.on && !f.landed && Math.abs(f.x - c.x) < r * 3 && c.y - f.y > r && c.y - f.y < r * 6);
-      if (f) { b.glanceAt = { spot: f }; b.glanceUntil = time + 1.5 + Math.random(); }
+      if (f) { b.glanceAt = { spot: f }; b.glanceUntil = time + 2 + Math.random() * 1.5; b.lookedAt = b.glanceUntil; }
     }
     // Listening to you type: eyes on the talk box, attentive.
     const listening = CFG.listen > 0 && time - (b.listenAt ?? -9) < 1.2 && talkRect && !body.grab;
@@ -5185,20 +5205,23 @@
     // scans along line after line; editing, it looks down at its work; on
     // the web, up and off to one side.
     if (CFG.workLife > 0 && wantLook === 0 && expression === 'concentrate' && !body.grab) {
-      const act = activityOf(b), c = body.centroid(), r = body.o.radius, k = 0.55 * Math.min(1.5, CFG.workLife);
+      // (Slow and small: a line every few seconds, the gaze gliding back
+      // to the start of the next on its spring, see updateGaze.)
+      const act = activityOf(b), c = body.centroid(), r = body.o.radius, k = 0.4 * Math.min(1.5, CFG.workLife);
       if (act === 'read') {
-        const line = (time * 0.6 + (b.breathPhase || 0)) % 1;
-        b.gazeTarget = { x: c.x + (line * 2.4 - 1.2) * r, y: c.y + r * (1.2 + 0.4 * Math.floor(time * 0.6 % 3)) };
+        const line = (time * 0.25 + (b.breathPhase || 0)) % 1;
+        b.gazeTarget = { x: c.x + (line * 1.6 - 0.8) * r, y: c.y + r * (1.4 + 0.25 * Math.floor(time * 0.25 % 3)) };
         wantLook = k;
       } else if (act === 'edit') {
-        b.gazeTarget = { x: c.x + Math.sin(time * 1.3) * r * 0.5, y: c.y + r * 2.5 };
+        b.gazeTarget = { x: c.x + Math.sin(time * 0.5) * r * 0.35, y: c.y + r * 2.5 };
         wantLook = k;
       } else if (act === 'web') {
         b.gazeTarget = { x: c.x + (b.key.length % 2 ? 1 : -1) * r * 1.6, y: c.y - r * 2.5 };
         wantLook = k;
       }
     }
-    b.lookAmount = (b.lookAmount ?? wantLook) + (wantLook - (b.lookAmount ?? wantLook)) * ease(0.08);
+    // (About 0.75 s to turn most of the way: unhurried.)
+    b.lookAmount = (b.lookAmount ?? wantLook) + (wantLook - (b.lookAmount ?? wantLook)) * ease(0.02);
     // While the face isn't turning (working, not looking at anything), its
     // gaze waits right on what it would look at, so a glance turns straight
     // there (it used to start from wherever the mouse was, often the
@@ -5235,7 +5258,7 @@
     }
     // Startled (poked, flinching): eyes go wide for a moment.
     const wide = CFG.eyeLife * Math.max(wideBy, wideSeen, over ? 0.5 : 0, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
-    return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.6 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: b.shy > 0 ? { ...CFG, cheeks: Math.min(0.95, CFG.cheeks + b.shy * 0.55) } : CFG, bodyColor: b.color,
+    return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.35 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: b.shy > 0 ? { ...CFG, cheeks: Math.min(0.95, CFG.cheeks + b.shy * 0.55) } : CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal' && !b.peek, peek: b.peek,
       fullTurn: (body.fullTurn = !!((b.flip && b.flip.spun) || b.tumble || b.roll)), // (mid-somersault the face, and what it wears, go all the way round)
     };
