@@ -70,3 +70,8 @@ test('a permission it asks for can be answered from the notification', () => {
   assert.deepEqual(n, { title: 'kalkis asks to use Bash', body: 'Run npm test', actions: ['Allow', 'Deny'] });
   assert.equal(notification({ event: 'waiting', project: 'kalkis', text: 'Pick one', ask: { kind: 'question' } }).actions, undefined, 'a question needs the box');
 });
+
+test('an API error is worth a notification', () => {
+  const { notification } = require('../src/main/attention.js');
+  assert.deepEqual(notification({ event: 'error', project: 'kalkis', text: '5-hour limit reached ∙ resets 3pm' }), { title: 'kalkis couldn’t go on', body: '5-hour limit reached ∙ resets 3pm' });
+});

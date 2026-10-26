@@ -882,6 +882,7 @@ function refreshUsage() {
       if (!(last && last.who === 'claude' && last.text.trim() === api.text)) inbox.add(s.id, { who: 'note', text: `Claude Code: ${api.text}`, error: true });
       // (And its slime says so, for when its box is closed.)
       if (win) win.webContents.send('say', { id: s.id, text: shorten(api.text, 80), seconds: 6, status: true, aloud: true });
+      notify(s, 'error', api.text);
     }
     apiErrorCounts.set(s.id, api.count);
     if (caughtUp && !s.tasksSeeded && file && tracker.seedTasks(s.id, usage.sessionTasks(file))) changed = true;
