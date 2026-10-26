@@ -46,7 +46,7 @@
 
   function hint(s) {
     if (s.demo) return 'Demo slimes can’t talk back. Try a real session!';
-    if (s.ended) return (s.log.some((m) => m.status === 'unsent') ? `${s.project} has ended, so what you sent last didn’t go in.` : `${s.project} has ended.`) + ' Right-click its slime next time to resume it in a new terminal.';
+    if (s.ended) return (s.log.some((m) => m.status === 'unsent') ? `${s.project} has ended, so what you sent last didn’t go in.` : `${s.project} has ended.`) + (s.cwd ? ' Pick it up here to keep going.' : ' Right-click its slime next time to resume it in a new terminal.');
     if (s.owned) return s.log.length ? '' : 'Started by Blaube. Right-click me to end it or move it to a terminal.';
     if (s.ask) return '';
     if (!s.connected && !s.typeable) return 'Connect Claude Code from Blaube’s menu, then restart this session to talk to it.';
@@ -558,7 +558,9 @@
   // while a card is up, it's busy, or before anything has been said.
   function renderQuick(s) {
     const box = $('quick');
-    const list = s.ask || s.ended || s.demo || !s.log.length || (!s.connected && !s.typeable && !s.owned) ? [] : (s.quick || []);
+    // (One that ended can be picked up right here, without a terminal.)
+    const list = s.ended ? (s.cwd && !s.demo && api.continueHere ? [{ label: 'Pick it up here', prompt: 'Keep going with it here, no terminal needed', here: true }] : [])
+      : s.ask || s.demo || !s.log.length || (!s.connected && !s.typeable && !s.owned) ? [] : (s.quick || []);
     const key = JSON.stringify(list.map((q) => q.label));
     box.hidden = !list.length;
     if (box.dataset.key === key) return;
@@ -569,7 +571,7 @@
       b.type = 'button';
       b.textContent = q.label;
       b.title = q.prompt;
-      b.onclick = () => { if (!current) return; api.send(current.id, q.prompt); box.hidden = true; };
+      b.onclick = () => { if (!current) return; if (q.here) api.continueHere(current.id); else api.send(current.id, q.prompt); box.hidden = true; };
       box.append(b);
     }
   }

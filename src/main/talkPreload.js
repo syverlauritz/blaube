@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   hub: () => ipcRenderer.invoke('talk-hub'),
   newIn: (folder) => ipcRenderer.send('talk-new', folder),
   pickUp: (id) => ipcRenderer.send('talk-pickup', id),
+  continueHere: (id) => ipcRenderer.send('talk-continue', id),
   switchTo: (id) => ipcRenderer.send('talk-switch', id),
   copy: (text) => ipcRenderer.send('talk-copy', text),
   reveal: (id, file) => ipcRenderer.send('talk-reveal', id, file),

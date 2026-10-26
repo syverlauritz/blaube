@@ -157,6 +157,8 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 
 	await hook({ session_id: ID2, hook_event_name: 'SessionEnd' });
 	await hook({ hook_event_name: 'SessionEnd' });
+	check(await until(async () => (await box(`[...document.querySelectorAll('#quick button')].map((b) => b.textContent).join()`)) === 'Pick it up here'), 'when it ends, it offers to pick it up right there');
+	check(/Pick it up here/.test(await box(`document.getElementById('hint').textContent`)), 'instead of sending you to a terminal');
 	console.log(failed ? `\n${failed} failed` : '\nall passed');
 	return failed ? 1 : 0;
 };

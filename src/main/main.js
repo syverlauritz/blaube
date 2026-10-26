@@ -536,8 +536,9 @@ async function pickUp(p) {
   }
   const id = startSession(p.cwd, [], p.id);
   if (!id) return;
-  for (const m of history.recentMessages(p.file, 4)) inbox.add(id, m);
-  inbox.add(id, { who: 'note', text: `Picked up from ${history.ago(p.at)}` });
+  // (Ended while you watched: the conversation is still here.)
+  if (p.file && !inbox.log(id).length) for (const m of history.recentMessages(p.file, 4)) inbox.add(id, m);
+  inbox.add(id, { who: 'note', text: p.at ? `Picked up from ${history.ago(p.at)}` : 'Picked up here' });
 }
 
 // Past sessions you could pick up (not the ones running now).
@@ -1529,9 +1530,15 @@ app.whenReady().then(async () => {
     hideTalk();
     startSession(folder);
   });
+  // A session that ended while its box was open, picked up right there.
+  ipcMain.on('talk-continue', (_e, id) => {
+    const last = talkLast && talkLast.id === id ? talkLast : null;
+    if (!last || id !== talkId || tracker.sessions.has(id) || owned.has(id) || !last.cwd || last.demo) return;
+    hideTalk();
+    pickUp({ id, cwd: last.cwd, at: 0, title: last.project, file: null });
+  });
   ipcMain.on('talk-pickup', (_e, id) => { const p = hubPast.find((x) => x.id === id); if (p) { hubCache = null; hideTalk(); pickUp(p); } });
   ipcMain.on('talk-copy', (_e, text) => { if (typeof text === 'string' && text.length < 1e6) clipboard.writeText(text); });
-  // A file a turn changed, shown in Finder (never opened: it could be a program).
   ipcMain.handle('talk-save', (_e, id) => (id && id === talkId ? saveConversation(id) : ''));
   ipcMain.on('talk-copy-all', (_e, id) => { if (id && id === talkId) clipboard.writeText(conversationMarkdown(id)); });
   ipcMain.on('talk-show-file', (_e, file) => { if (typeof file === 'string' && path.dirname(file) === app.getPath('downloads') && /\.md$/.test(file)) shell.showItemInFolder(file); });
@@ -1543,6 +1550,7 @@ app.whenReady().then(async () => {
     try { if (!fs.statSync(file).isFile()) return; } catch { return; }
     e.sender.startDrag({ file, icon: nativeImage.createFromPath(path.join(ASSETS, 'icon.png')).resize({ width: 32, height: 32 }) });
   });
+  // A file a turn changed, shown in Finder (never opened: it could be a program).
   ipcMain.on('talk-reveal', (_e, id, file) => {
     if (!id || id !== talkId || typeof file !== 'string' || !path.isAbsolute(file)) return;
     if (!inbox.log(id).some((e) => e.who === 'step' && e.file === file)) return; // only files its steps named
