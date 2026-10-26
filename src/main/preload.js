@@ -29,4 +29,8 @@ contextBridge.exposeInMainWorld('blaube', {
   onNod: (cb) => ipcRenderer.on('nod', (_e, id, how) => cb(id, how)),
   onSystem: (cb) => ipcRenderer.on('system', (_e, m) => cb(m)),
   onTyping: (cb) => ipcRenderer.on('typing', (_e, id) => cb(id)),
+  // The snack jar: your usage limits, and where it was left on this screen.
+  onLimits: (cb) => ipcRenderer.on('limits', (_e, m) => cb(m)),
+  onJarSpot: (cb) => ipcRenderer.on('jar-spot', (_e, spot) => cb(spot)),
+  setJarSpot: (spot) => ipcRenderer.send('jar-spot', spot),
 });

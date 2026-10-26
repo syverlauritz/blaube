@@ -23,6 +23,9 @@ contextBridge.exposeInMainWorld('blaube', {
 	onNod: on('nod'),
 	onTalking: on('talking'),
 	onTalkRect: on('talk-rect'),
+	onLimits: on('limits'),
+	onJarSpot: on('jar-spot'),
+	setJarSpot: () => {},
 });
 
 ipcRenderer.on('fire', (_e, name, value) => { if (handlers[name]) handlers[name](value); });

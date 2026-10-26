@@ -380,6 +380,8 @@
       const now = match(p.ledge);
       if (now && Math.hypot(now.vx, now.vy) <= YANK) { p.x += now.wx - p.ledge.wx; p.y += Math.min(0, now.y - p.ledge.y); }
     }
+		const jl = !jar.held && match(jar.ledge);
+		if (jl && Math.hypot(jl.vx, jl.vy) <= YANK) { jar.x += jl.wx - jar.ledge.wx; jar.y += Math.min(0, jl.y - jar.ledge.y); }
     ledges = next;
   }
   // Slimes are curious about windows: one that appears gets looked at (a
@@ -537,6 +539,7 @@
     const dpr = window.devicePixelRatio || 1;
     W = window.innerWidth;
     H = window.innerHeight;
+		if (jar.placed) keepJarOn();
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -685,7 +688,7 @@
 
   // The shots script (scripts/shots) opens the window with ?debug to look
   // inside while it plays a scene.
-  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, hearts: () => hearts, now: () => time, sys, spoken, input: { down: (e) => onDown(e), move: (e) => onMove(e), up: (e) => onUp(e) }, ownMouse: false, ghost: (b, o) => ghostNow(b, o), ledges: () => ledges, roomFor: (b) => roomFor(b), mover: () => mover };
+  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, hearts: () => hearts, now: () => time, sys, spoken, input: { down: (e) => onDown(e), move: (e) => onMove(e), up: (e) => onUp(e) }, ownMouse: false, ghost: (b, o) => ghostNow(b, o), ledges: () => ledges, roomFor: (b) => roomFor(b), mover: () => mover, jar: () => jar, cookies: () => cookies, throwCookie: (key) => throwCookie(key ? buddies.get(key) : undefined), jarLines: () => Snack.lines(jar.lim, Date.now(), jar.noPlan), jarOn: () => jarOn(), mouthAt: (b) => mouthAt(b) };
   const petSize = () => 34 * CFG.size;
 
   function syncPets(sessions) {
@@ -918,6 +921,273 @@
       }, floorAt(p.x), CFG.shadow);
     }
   }
+
+	// --- Snack jar: your usage limits ----------------------------------------
+	// A glass cookie jar on the floor: as full as what's left of your usage
+	// limit (shared/snack.js; drawn by jar.js). Now and then its lid pops and
+	// a cookie arcs into a nearby slime's mouth: nom. Hover it for the
+	// numbers. Pick it up like a pet; it stays where you put it (the app
+	// keeps the spot, per screen). Nearly empty, slimes near it glance at it,
+	// worried; empty (the limit hit), they look hungry or nap until it
+	// resets, and it fills up again with cookies tumbling in.
+	const Snack = globalThis.BlaubeSnack, Jar = globalThis.BlaubeJar;
+	const jar = { x: 0, y: 0, vx: 0, vy: 0, angle: 0, va: 0, held: null, placed: false, spot: null, lim: null, noPlan: false, level: null, shown: 1, lid: 0, lidV: 0, lidOpenUntil: 0, rattle: 0, nextCookie: 0, lastCookie: -1e9, checkAt: 0, refillUntil: 0, ledge: null, still: 0, saved: null, hoverSeen: -9, body: null };
+	const cookies = [], crumbs = [], tumbles = [];
+	const jarOn = () => CFG.snackJar !== 'Off';
+	const jarH = () => 92 * CFG.size, jarW = () => jarH() * 0.78;
+	// For its hover bubble, which hangs off something body-shaped.
+	jar.body = { centroid: () => ({ x: jar.x, y: jar.y - jarH() / 2 }), bbox: () => ({ minX: jar.x - jarW() / 2, maxX: jar.x + jarW() / 2, minY: jar.y - jarH() * 1.04, maxY: jar.y }), lookTop: null };
+
+	function jarAt(x, y) {
+		if (!jarOn() || !jar.placed) return false;
+		const w = jarW(), h = jarH();
+		return Math.abs(x - jar.x) < w * 0.6 && y > jar.y - h * 1.1 && y < jar.y + 4;
+	}
+
+	// The app says what it last heard of your limits (and where the jar was
+	// left on this screen).
+	function onLimits(m) {
+		const before = jar.lim;
+		jar.lim = (m && m.lim) || null;
+		jar.noPlan = !!(m && m.noPlan);
+		jar.checkAt = 0;
+		// Tokens being spent: a cookie's due soon (at most one every 45 s).
+		if (Snack.rose(before, jar.lim) && time - jar.lastCookie > 45) jar.nextCookie = Math.min(jar.nextCookie, time + 3 + Math.random() * 10);
+	}
+	function onJarSpot(spot) {
+		if (!spot || !Number.isFinite(spot.x) || !Number.isFinite(spot.y)) { jar.spot = jar.saved = null; jar.placed = false; return; } // (none kept for this screen)
+		jar.spot = spot;
+		jar.saved = { x: spot.x, y: spot.y };
+		if (!W) return;
+		// (Left up on a window: it waits there a moment for the windows to be
+		// reported, rather than dropping straight to the floor.)
+		Object.assign(jar, { x: spot.x, y: spot.y, vx: 0, vy: 0, placed: true, holdUntil: time + 4 });
+		keepJarOn();
+	}
+	function keepJarOn() {
+		const w = jarW(), h = jarH();
+		jar.x = Math.max(w / 2, Math.min(W - w / 2, jar.x));
+		jar.y = Math.max(h * 1.1, Math.min(floorAt(jar.x), jar.y));
+	}
+
+	function stepJar() {
+		if (!jarOn() || !W) { cookies.length = 0; tumbles.length = 0; return; }
+		const w = jarW(), h = jarH();
+		if (!jar.placed) {
+			// Its first time out: on the floor, over toward the right.
+			jar.x = jar.spot ? jar.spot.x : W - w * 3;
+			jar.y = jar.spot ? jar.spot.y : floorAt(jar.x);
+			jar.placed = true;
+			jar.holdUntil = time + 4;
+			keepJarOn();
+			jar.nextCookie = time + 20 + Math.random() * 40;
+		}
+		// How full it is, looked at twice a second (a reset passes by the
+		// clock alone, before anyone says so).
+		if (time >= jar.checkAt) {
+			jar.checkAt = time + 0.5;
+			const lv = Snack.level(jar.lim, Date.now());
+			const what = Snack.change(jar.level, lv);
+			jar.level = lv;
+			if (what) jarNews(what);
+		}
+		const want = jar.level == null ? 1 : jar.level;
+		jar.shown += (want - jar.shown) * (1 - Math.exp(-DT * (time < jar.refillUntil ? 0.9 : 1.6)));
+		// Its lid: a spring, held up while cookies tumble in.
+		const lidTo = time < jar.lidOpenUntil ? 0.55 : 0;
+		jar.lidV += (-160 * (jar.lid - lidTo) - 9 * jar.lidV) * DT;
+		jar.lid += jar.lidV * DT;
+		if (jar.lid < 0) { jar.lid = 0; jar.lidV = Math.abs(jar.lidV) * 0.35; }
+		jar.rattle *= Math.exp(-DT * 3.5);
+		// Moving: like a pet, held on a stiff spring or falling, landing on
+		// the floor, a window top or a talk box.
+		const floor = floorAt(jar.x, jar.held ? undefined : jar.y);
+		jar.ledge = floor < floorAt(jar.x) ? ledges.find((l) => l.y === floor && jar.x >= l.x0 && jar.x <= l.x1) || null : null;
+		if (jar.held) {
+			jar.vx = (mouse.x - jar.held.dx - jar.x) * 20;
+			jar.vy = (mouse.y - jar.held.dy - jar.y) * 20;
+			jar.rattle = Math.max(jar.rattle, Math.min(1, Math.hypot(jar.vx, jar.vy) / 1600));
+		} else if (time < (jar.holdUntil || 0) && jar.y < floor - 0.5) jar.vx = jar.vy = 0;
+		else jar.vy += CFG.gravity * DT;
+		jar.x += jar.vx * DT;
+		jar.y += jar.vy * DT;
+		if (jar.x < w / 2) { jar.x = w / 2; jar.vx = Math.abs(jar.vx) * 0.4; }
+		if (jar.x > W - w / 2) { jar.x = W - w / 2; jar.vx = -Math.abs(jar.vx) * 0.4; }
+		if (jar.y < h * 1.1) { jar.y = h * 1.1; jar.vy = Math.max(0, jar.vy); }
+		const grounded = !jar.held && jar.y >= floor - 0.5;
+		if (!jar.held && jar.y >= floor) {
+			// A landing: a wobble (more for a sideways one) and the cookies rattle.
+			if (jar.vy > 160) {
+				jar.va += (Math.random() < 0.5 ? -1 : 1) * Math.min(3, jar.vy / 400) + jar.vx * 0.004;
+				jar.rattle = Math.max(jar.rattle, Math.min(1, jar.vy / 900));
+				jar.lidV += Math.min(4, jar.vy / 300);
+			}
+			jar.y = floor;
+			jar.vy = jar.vy > 300 ? -jar.vy * 0.18 : 0;
+			jar.vx *= 0.7;
+		}
+		// The wobble: tilted while carried, rocking back upright on the ground.
+		const tilt = jar.held ? Math.max(-0.5, Math.min(0.5, jar.vx / 1500)) : 0;
+		jar.va += (-(grounded ? 140 : 40) * (jar.angle - tilt) - (grounded ? 7 : 5) * jar.va) * DT;
+		jar.angle += jar.va * DT;
+		// Settled somewhere new for a moment: the app keeps the spot.
+		jar.still = grounded && Math.abs(jar.vx) < 5 && Math.abs(jar.va) < 0.2 ? jar.still + DT : 0;
+		if (jar.still > 0.8 && (!jar.saved || Math.hypot(jar.saved.x - jar.x, jar.saved.y - jar.y) > 3)) {
+			jar.saved = { x: Math.round(jar.x), y: Math.round(jar.y) };
+			if (api.setJarSpot) api.setJarSpot(jar.saved);
+		}
+		stepCookies();
+		stepJarLife();
+	}
+
+	// A refill, the limit hit, or nearly empty.
+	function jarNews(what) {
+		if (what === 'refill') {
+			// Cookies tumble in, the lid held up; everyone perks up.
+			jar.refillUntil = time + 2.4;
+			jar.lidOpenUntil = time + 2;
+			jar.lidV += 6;
+			for (let i = 0; i < 7; i++) tumbles.push({ x: jar.x + (Math.random() - 0.5) * jarW() * 0.4, y: jar.y - jarH() * 2.2 - i * 26, vy: 0, a: Math.random() * 6, va: (Math.random() - 0.5) * 10, at: time + i * 0.22 });
+			let said = false;
+			for (const b of bigs()) {
+				b.jarWorryUntil = b.hungryUntil = b.napUntil = 0;
+				b.happyUntil = time + 2.5;
+				if (b.body.onFloor() && !b.body.grab) setTimeout(() => { if (!b.dying) b.hop(0, -320); }, 200 + Math.random() * 600);
+				if (!said && near(b, 8)) { said = true; quip(b, 'cookies!', 1.6); }
+			}
+		} else if (what === 'empty') {
+			jar.rattle = 0.4;
+			for (const b of bigs()) if (near(b, 6) && b.state !== 'working') { b.hungryUntil = time + 3.5; b.nextHungry = time + 12 + Math.random() * 10; }
+		}
+	}
+	// Within so many of its radii of the jar.
+	const near = (b, k) => Math.abs(b.body.centroid().x - jar.x) < b.body.o.radius * k + jarW();
+
+	// Low and empty: slimes nearby glance over, worried; empty, the calm
+	// ones look hungry now and then, or nap until it fills again.
+	function stepJarLife() {
+		if (jar.level == null || jar.level >= Snack.LOW || jar.held) return;
+		for (const b of bigs()) {
+			if (b.body.grab || !near(b, 6) || b.state === 'waiting') continue;
+			if (jar.level <= 0) {
+				if (b.state === 'working' || time < (b.nextHungry ?? (b.nextHungry = time + 4 + Math.random() * 8))) continue;
+				b.nextHungry = time + 25 + Math.random() * 30;
+				if (Math.random() < 0.5) { b.hungryUntil = time + 3; if (Math.random() < 0.5) quip(b, 'hungry…', 1.6); } else b.napUntil = time + 18 + Math.random() * 10;
+			} else if (time > (b.nextJarLook ?? (b.nextJarLook = time + 2 + Math.random() * 8))) {
+				b.nextJarLook = time + 20 + Math.random() * 25;
+				b.jarWorryUntil = time + 1.6;
+			}
+		}
+	}
+
+	// Where a slime's mouth is (about: the face slides round as it turns).
+	function mouthAt(b) {
+		const c = b.body.centroid(), r = b.body.o.radius, t = b.faceTurn || { x: 0, y: 0 };
+		return { x: c.x + t.x, y: c.y + t.y + r * CFG.faceScale * (0.12 + CFG.mouthHeight) };
+	}
+
+	// Who gets the next cookie: the nearest calm-enough big slime (a busy
+	// one first: it's the one eating your tokens).
+	function cookieFor() {
+		const ok = bigs().filter((b) => !b.body.grab && !b.snack && !b.splitting && (b.sleep || 0) < 0.5 && time > (b.napUntil || 0) && !b.balloon && !b.tower && !b.pile && !b.rope && !b.singing && !b.ghost && !b.roll && !b.tumble);
+		const busy = ok.filter((b) => b.state === 'working');
+		const from = busy.length ? busy : ok;
+		return from.sort((a, b) => Math.abs(a.body.centroid().x - jar.x) - Math.abs(b.body.centroid().x - jar.x))[0] || null;
+	}
+
+	// The lid pops and a cookie arcs out toward its mouth.
+	function throwCookie(to = cookieFor()) {
+		if (!to || jar.held || !jarOn() || (jar.level != null && jar.level <= 0)) return false;
+		const from = Jar.mouthOf({ x: jar.x, y: jar.y, w: jarW(), h: jarH() }), m = mouthAt(to);
+		const T = 0.85 + Math.min(0.5, Math.hypot(m.x - from.x, m.y - from.y) / 1600);
+		const G = 1500; // (a lower gravity than the slimes': a nice high arc)
+		const k = { x: from.x, y: from.y, x0: from.x, y0: from.y, m0: m, vx: (m.x - from.x) / T, vy: (m.y - from.y - 0.5 * G * T * T) / T, G, a: 0, va: (m.x > from.x ? 1 : -1) * 9, born: time, T, to, r: jarW() * 0.19 };
+		cookies.push(k);
+		to.snack = { stage: 'catch', cookie: k, at: time };
+		jar.lidV += 7;
+		jar.rattle = Math.max(jar.rattle, 0.4);
+		jar.lastCookie = time;
+		return true;
+	}
+
+	function stepCookies() {
+		if (time > jar.nextCookie) {
+			const working = bigs().filter((b) => b.state === 'working').length;
+			jar.nextCookie = time + Snack.nextCookie(working);
+			throwCookie();
+		}
+		for (let i = cookies.length - 1; i >= 0; i--) {
+			const k = cookies[i], t = time - k.born, b = k.to;
+			const lost = !b || b.dying || b.body.grab || !b.snack || b.snack.cookie !== k;
+			if (lost) {
+				// Its slime went off: it just falls, and crumbles.
+				if (b && b.snack && b.snack.cookie === k) b.snack = null;
+				k.vy += CFG.gravity * DT; k.x += k.vx * DT; k.y += k.vy * DT; k.a += k.va * DT;
+				if (k.y >= floorAt(k.x, k.y)) { crumble(k.x, floorAt(k.x, k.y) - 3, 6); cookies.splice(i, 1); }
+				continue;
+			}
+			// A throw at where its mouth was, steered onto where it is now.
+			const e = Math.min(1, t / k.T), m = mouthAt(b), ease = e * e * (3 - 2 * e);
+			k.x = k.x0 + k.vx * t + (m.x - k.m0.x) * ease;
+			k.y = k.y0 + k.vy * t + 0.5 * k.G * t * t + (m.y - k.m0.y) * ease;
+			k.a += k.va * DT;
+			if (k.T - t < 0.45) b.snack.open = true; // (its mouth opens for it)
+			if (t >= k.T) {
+				// Caught: nom, then chewing, crumbs, happy.
+				cookies.splice(i, 1);
+				b.snack = { stage: 'chew', at: time };
+				b.happyUntil = Math.max(b.happyUntil, time + 2.4);
+				if (b.body.onFloor()) b.body.squashTop(-b.body.o.radius * 2, DT);
+				crumble(m.x, m.y, 4);
+				quip(b, 'nom', 1.1);
+			}
+		}
+		// Chewing (and its bits falling).
+		for (const b of bigs()) {
+			if (!b.snack) continue;
+			if (b.body.grab || b.dying) { b.snack = null; continue; }
+			if (b.snack.stage !== 'chew') continue;
+			const t = time - b.snack.at;
+			if (t > 1.5) { b.snack = null; continue; }
+			if (b.body.onFloor() && Math.round(t / 0.16) % 2 === 0) b.body.squashTop(b.body.o.radius * 0.45 * 60 * DT, DT);
+			if (Math.random() < DT * 5) { const m = mouthAt(b); crumble(m.x, m.y, 1); }
+		}
+		for (let i = crumbs.length - 1; i >= 0; i--) {
+			const c = crumbs[i];
+			if (time - c.born > 2.6) { crumbs.splice(i, 1); continue; }
+			if (c.landed) continue;
+			c.vy += CFG.gravity * 0.7 * DT; c.x += c.vx * DT; c.y += c.vy * DT;
+			const f = floorAt(c.x, c.y);
+			if (c.y >= f - c.r) { c.y = f - c.r; c.landed = true; }
+		}
+		// Refill: cookies tumbling in over the top.
+		for (let i = tumbles.length - 1; i >= 0; i--) {
+			const c = tumbles[i];
+			if (time < c.at) continue;
+			c.vy += CFG.gravity * 0.6 * DT; c.y += c.vy * DT; c.a += c.va * DT;
+			c.x += (jar.x - c.x) * Math.min(1, DT * 3);
+			if (c.y > jar.y - jarH() * (0.15 + 0.6 * jar.shown)) { tumbles.splice(i, 1); jar.rattle = Math.max(jar.rattle, 0.5); }
+		}
+	}
+	function crumble(x, y, n) {
+		for (let i = 0; i < n && crumbs.length < 60; i++) crumbs.push({ x, y, vx: (Math.random() - 0.5) * 160, vy: -60 - Math.random() * 120, r: 1.4 + Math.random() * 1.6, born: time, landed: false });
+	}
+
+	function drawJar() {
+		if (!jarOn() || !jar.placed) return;
+		Jar.drawJar(ctx, { x: jar.x, y: jar.y, w: jarW(), h: jarH(), angle: jar.angle, level: jar.shown, lid: jar.lid, rattle: jar.rattle, t: time });
+	}
+	// In front of the slimes: what's flying.
+	function drawSnacks() {
+		if (!jarOn()) return;
+		for (const c of tumbles) if (time >= c.at) Jar.drawCookie(ctx, c.x, c.y, jarW() * 0.15, c.a);
+		for (const k of cookies) {
+			// (shrinking into its mouth at the very end)
+			const t = time - k.born, s = k.to && k.to.snack && k.to.snack.cookie === k ? Math.min(1, Math.max(0.35, (k.T - t) / 0.15)) : 1;
+			Jar.drawCookie(ctx, k.x, k.y, k.r * s, k.a);
+		}
+		for (const c of crumbs) Jar.drawCrumb(ctx, c.x, c.y, c.r, Math.min(1, (2.6 - (time - c.born)) / 0.6));
+	}
 
   // A new session's slime pops out of the middle of the screen, small, and
   // grows into its full self as it flies out. Blaube on its own (no
@@ -1237,6 +1507,7 @@
   function step() {
     glideLedges();
     stepPets();
+		stepJar();
     stepBattery();
     stepChoir();
     for (const b of [...buddies.values()]) {
@@ -5555,6 +5826,10 @@
     else if (b.sneeze) { expression = 'pained'; mouth = 'o'; } // (about to sneeze)
     else if (b.blow && time > b.blow.at) { expression = 'normal'; mouth = 'o'; } // (blowing a bubble)
     else if (b.nibbling) { expression = 'happy'; mouth = time - b.nibbling.at < 0.5 ? 'o' : Math.round((time - b.nibbling.at) / 0.18) % 2 ? 'grin' : 'flat'; } // (chomp chomp)
+		else if (b.snack && b.snack.stage === 'chew') { expression = 'happy'; mouth = Math.round((time - b.snack.at) / 0.16) % 2 ? 'grin' : 'flat'; } // (a cookie from the jar: nom nom)
+		else if (b.snack && b.snack.open) { expression = 'normal'; mouth = 'o'; } // (here it comes: mouth open)
+		else if (time < (b.hungryUntil || 0) && !body.grab) { expression = 'sad'; mouth = 'worried'; } // (the jar's empty)
+		else if (time < (b.jarWorryUntil || 0) && !body.grab) { expression = 'worried'; mouth = 'wobble'; } // (the jar's nearly empty)
     else if (b.patted) { expression = 'happy'; mouth = 'smile'; }
     else if (time < (b.petWorryUntil || 0)) { expression = 'worried'; mouth = 'o'; }
     else if (b.teeter && !body.grab) { expression = 'worried'; mouth = 'o'; } // (on the brink)
@@ -5702,6 +5977,15 @@
       wantLook = Math.max(wantLook, 1);
       if (expression === 'concentrate' || expression === 'sleepy') { expression = 'normal'; mouth = 'o'; }
     }
+		// Eyes on a cookie coming its way, or on the jar running low.
+		if (!glaring && b.snack && b.snack.cookie) {
+			b.gazeTarget = { x: b.snack.cookie.x, y: b.snack.cookie.y };
+			wantLook = 1;
+			if (expression === 'concentrate' || expression === 'sleepy') { expression = 'normal'; mouth = 'smile'; }
+		} else if (!glaring && !body.grab && (time < (b.jarWorryUntil || 0) || time < (b.hungryUntil || 0))) {
+			b.gazeTarget = jar.body.centroid();
+			wantLook = 1;
+		}
     // Keepy-uppy: eyes on the pet.
     if (b.keepy && !glaring) {
       b.gazeTarget = { x: b.keepy.pet.x, y: b.keepy.pet.y };
@@ -5921,6 +6205,7 @@
   function draw() {
     D.setCrowd(); // a fresh frame: no balloons placed yet
     const under = drag || petAt(mouse.x, mouse.y) || glassesAt(mouse.x, mouse.y) ? null : buddyAt(mouse.x, mouse.y);
+		if (!drag && !under && jarAt(mouse.x, mouse.y)) jar.hoverSeen = time; // (its numbers: see below)
     if (under) {
       // Coming back to a slime after a while: it perks up to say hi.
       if (under !== hovered && time - (under.lastHover || -99) > 6 && CFG.eyeLife > 0) {
@@ -5938,6 +6223,7 @@
     drawTalkTail();
     drawRope(true);
     drawSeason(true);
+		if (!jar.held) drawJar(); // (on the floor, behind the slimes)
     for (const b of list) {
       Looks.drawLook(ctx, b, 'back', b.color);
       D.drawBody(ctx, b.body, b.color);
@@ -5972,6 +6258,8 @@
     drawRockets();
     drawSnowballs();
     drawPets();
+		if (jar.held) drawJar(); // (carried: in front)
+		drawSnacks();
     drawBubbles();
     drawHearts();
     for (const b of list) if (b.glasses) D.drawGlasses(ctx, b.glasses.x, b.glasses.y, b.glasses.r, b.glasses.a, CFG);
@@ -5990,6 +6278,8 @@
         if (thought) D.drawThought(ctx, b.body, thought, W, headsBut(b, list));
       }
     }
+		// Hovering the snack jar: your usage, in a status bubble.
+		if (jarOn() && jar.placed && time - jar.hoverSeen < 0.35 && !hovered) D.drawBubble(ctx, jar.body, Snack.lines(jar.lim, Date.now(), jar.noPlan), 1, W, false);
     if (CFG.debugOverlay) drawDebug(list);
   }
 
@@ -6317,7 +6607,7 @@
   // slime, most of its skin, not the odd quick bit of it).
   let skin = new Float64Array(64);
   function stageSpeed() {
-    if (drag || pet.target || rockets.length || sparks.length || snowballs.length) return Infinity;
+    if (drag || pet.target || rockets.length || sparks.length || snowballs.length || cookies.length || tumbles.length || (crumbs.length && crumbs.some((c) => !c.landed))) return Infinity;
     const near = Math.hypot(mouse.vx, mouse.vy) > 60; // (the cursor moving: near a slime, see below)
     let speed = 0;
     const dt = Math.max(1 / 240, vsync);
@@ -6326,6 +6616,7 @@
       p.calmX = p.x; p.calmY = p.y;
     }
     for (const u of flutters) speed = Math.max(speed, Math.hypot(u.vx, u.vy));
+		speed = Math.max(speed, Math.hypot(jar.vx, jar.vy), Math.abs(jar.va) * 60, Math.abs(jar.lidV) * 40, jar.rattle > 0.05 ? Infinity : 0);
     for (const b of buddies.values()) {
       const s = b.body;
       if (s.grab || b.splitting || b.dying) return Infinity;
@@ -6371,6 +6662,9 @@
       }
     }
     for (const p of pets.values()) fn(p, TW_PET);
+		fn(jar, TW_PET);
+		for (const k of cookies) fn(k, TW_XYA);
+		for (const c of tumbles) fn(c, TW_XYA);
     for (const u of bubbles) fn(u, TW_BUBBLE);
     for (const f of flakes) fn(f, TW_XYA);
     for (const u of flutters) fn(u, TW_FLUTTER);
@@ -6522,6 +6816,7 @@
     }
     const h = petSize() * 0.7;
     for (const p of pets.values()) if (!p.dying) rects.push([p.x - h, p.y - h, p.x + h, p.y + h]);
+		if (jarOn() && jar.placed) rects.push([jar.x - jarW() * 0.6, jar.y - jarH() * 1.1, jar.x + jarW() * 0.6, jar.y + 4]);
     for (const b of buddies.values()) {
       const g = b.glasses;
       if (!g || b.dying) continue;
@@ -6561,6 +6856,13 @@
       return;
     }
     const b = buddyAt(e.clientX, e.clientY);
+		if (!b && jarAt(e.clientX, e.clientY)) {
+			// Pick up the snack jar.
+			jar.held = { dx: e.clientX - jar.x, dy: e.clientY - jar.y };
+			jar.holdUntil = 0;
+			drag = { jar: true, x0: e.clientX, y0: e.clientY, t0: time, moved: false };
+			return;
+		}
     if (!b) return;
     drag = { buddy: b, x0: e.clientX, y0: e.clientY, t0: time, moved: false };
     b.pressedHead = landedHead(b); // (before the press squishes it: where its talk box goes, for a click)
@@ -6594,6 +6896,12 @@
       g.since = time;
       g.va = (Math.random() - 0.5) * 10;
       if (owner.glasses === g && owner.body.contains(g.x, g.y)) wearGlasses(owner);
+    } else if (drag.jar) {
+			// Let go: it drops (or flies, thrown) and lands where it lands.
+			jar.held = null;
+			jar.vx = Math.max(-1500, Math.min(1500, jar.vx));
+			jar.vy = Math.max(-1500, Math.min(1500, jar.vy));
+			if (tap) { jar.lidV += 5; jar.rattle = 0.6; }
     } else if (drag.pet) {
       // Let go: it flies off with the speed it had (a throw).
       const p = drag.pet;
@@ -6835,6 +7143,8 @@
     bat.addEventListener('chargingchange', read);
   }).catch(() => {});
   if (api.onLedges) api.onLedges(setLedges);
+	if (api.onLimits) api.onLimits(onLimits);
+	if (api.onJarSpot) api.onJarSpot(onJarSpot);
 
   api.onCommand((cmd) => {
     if (cmd.startsWith('choir:')) startChoir(cmd.slice(6));

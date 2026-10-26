@@ -216,6 +216,7 @@
     ['statusBubbles', 'On hover', ['On hover', 'Always'], 0, 0, 'Status bubbles'],
     ['looks', 'On', ['On', 'Off'], 0, 0, 'Fun looks (bows, ears, antennas...)'],
     ['windowLedges', 'On', ['On', 'Off'], 0, 0, 'Land on top of other windows'],
+    ['snackJar', 'On', ['On', 'Off'], 0, 0, 'Snack jar (your usage limits)'],
     ['onTop', 'On', ['On', 'Off'], 0, 0, 'Stay in front of other windows'],
     ['notify', 'Behind windows', ['Behind windows', 'Always', 'Off'], 0, 0, 'Notifications when a session needs you or finishes'],
     // (Ctrl+Alt is AltGr on many Windows keyboards: Ctrl+Alt+B can be a letter there.)
