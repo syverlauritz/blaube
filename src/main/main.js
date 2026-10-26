@@ -502,6 +502,25 @@ function glanceNow(o) {
   });
 }
 
+// A file a session's reply names (relative to its folder, or to the top of
+// its repository), as a full path: only a file inside one of those, else ''.
+function sessionFile(id, rel) {
+  const s = tracker.sessions.get(id);
+  if (!s || !s.cwd || typeof rel !== 'string' || !rel || rel.length > 500 || rel.includes('\0')) return '';
+  const st = gitStates.get(id);
+  const bases = [s.cwd, st && st.root].filter(Boolean);
+  const want = rel.startsWith('~/') ? path.join(app.getPath('home'), rel.slice(2)) : rel;
+  const real = (p) => { try { return fs.realpathSync(p); } catch { return ''; } };
+  const roots = bases.map(real).filter(Boolean);
+  const inside = (p) => roots.some((b) => { const r = path.relative(b, p); return r && !r.startsWith('..') && !path.isAbsolute(r); });
+  for (const base of bases) {
+    const abs = path.resolve(base, want);
+    const r = real(abs); // (a link out of the folder doesn't count)
+    try { if (r && inside(r) && fs.statSync(r).isFile()) return abs; } catch { /* not here */ }
+  }
+  return '';
+}
+
 // The files git says a session's folder has changed, as full paths.
 function gitFiles(id) {
   const st = gitStates.get(id);
@@ -1643,6 +1662,26 @@ app.whenReady().then(async () => {
     git.diff(st.root, f.path, f.how, done);
   }));
   // ⌘F in the overview: what every session said.
+  // Files named in its replies: which are real (they become tappable), and
+  // one's start, to read right in the box.
+  ipcMain.handle('talk-files-exist', (_e, id, paths) => {
+    if (!id || id !== talkId || !Array.isArray(paths)) return [];
+    return paths.slice(0, 40).filter((p) => sessionFile(id, p));
+  });
+  const PEEK = 64 << 10;
+  ipcMain.handle('talk-peek', (_e, id, rel) => {
+    const file = id === talkId ? sessionFile(id, rel) : '';
+    if (!file) return null;
+    let fd;
+    try {
+      fd = fs.openSync(file, 'r');
+      const size = fs.fstatSync(fd).size;
+      const buf = Buffer.alloc(Math.min(size, PEEK));
+      fs.readSync(fd, buf, 0, buf.length, 0);
+      if (buf.subarray(0, 8000).includes(0)) return { path: file, name: rel, text: '(not text)', cut: false };
+      return { path: file, name: rel, text: buf.toString('utf8').replace(/\n$/, ''), cut: size > PEEK };
+    } catch { return null; } finally { if (fd != null) fs.closeSync(fd); }
+  });
   // How a session Blaube started asks before it acts (⇧⇥ in its box).
   const MODES = new Set(['default', 'acceptEdits', 'plan']);
   ipcMain.on('talk-mode', (_e, id, mode) => {
@@ -1691,8 +1730,8 @@ app.whenReady().then(async () => {
   // A file a turn changed, shown in Finder (never opened: it could be a program).
   ipcMain.on('talk-reveal', (_e, id, file) => {
     if (!id || id !== talkId || typeof file !== 'string' || !path.isAbsolute(file)) return;
-    // (Only files its steps named, or git says are changed.)
-    if (!inbox.log(id).some((e) => e.who === 'step' && e.file === file) && !gitFiles(id).some((f) => f.path === file)) return;
+    // (Only files its steps named, git says are changed, or in its folder.)
+    if (!inbox.log(id).some((e) => e.who === 'step' && e.file === file) && !gitFiles(id).some((f) => f.path === file) && sessionFile(id, file) !== file) return;
     try { if (fs.statSync(file).isFile()) shell.showItemInFolder(file); } catch { /* gone */ }
   });
   // Another slime picked in the box (its dot, or a shortcut).

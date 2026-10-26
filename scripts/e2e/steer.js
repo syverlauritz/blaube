@@ -249,6 +249,23 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await sleep(800);
 	await shot('gitfiles');
 	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Commit')`)), 'with Commit a tap away');
+	// Files named in a reply open right in the box; a long reply's rest is a tap away.
+	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'what did you change?' });
+	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'Stop', last_assistant_message: 'I changed `src/tax.js:1` and [the notes](notes.md#L1), not `nope.js` or `console.log`.\n\n' + 'All of it. '.repeat(500) + 'THE END' });
+	check(await until(() => box(`(() => { const l = [...document.querySelectorAll('#inner .msg.claude .filelink')].map((e) => e.textContent).join(); return l === 'src/tax.js:1,the notes'; })()`)), 'files named in a reply become tappable (only real ones)');
+	await box(`[...document.querySelectorAll('#inner .filelink')].find((e) => e.textContent === 'src/tax.js:1').click()`);
+	check(await until(() => box(`(() => { const p = document.querySelector('#inner .peek'); return !!p && /src\\/tax\\.js, line 1/.test(p.textContent) && p.querySelector('mark') && p.querySelector('mark').textContent === 'x'; })()`)), 'a tap shows the file in the box, its line marked');
+	await sleep(500);
+	await shot('peek');
+	await box(`[...document.querySelectorAll('#inner .filelink')].find((e) => e.textContent === 'src/tax.js:1').click()`);
+	check(await until(() => box(`!document.querySelector('#inner .peek')`)), 'and another tap puts it away');
+	fs.symlinkSync(require('node:os').tmpdir(), path.join(repo, 'out'));
+	const outside = await box(`window.blaubeTalk.filesExist(${JSON.stringify(ID3)}, ['../x.jsonl', ${JSON.stringify(path.basename(repo) + '/../' + path.basename(tx))}, '/etc/hosts', 'out/${path.basename(tx)}', 'notes.md'])`);
+	check(JSON.stringify(outside) === '["notes.md"]', 'nothing outside its folder can be opened (not by .., a full path or a link)');
+	fs.unlinkSync(path.join(repo, 'out'));
+	check(await box(`(() => { const b = [...document.querySelectorAll('#inner .more')].pop(); return !!b && /the rest/.test(b.textContent) && !/terminal/.test(b.textContent); })()`), 'a long reply is cut, with the rest right here');
+	await box(`[...document.querySelectorAll('#inner .more')].pop().click()`);
+	check(await until(() => box(`/THE END/.test(document.getElementById('inner').textContent)`)), 'a tap shows the rest, no terminal needed');
 	// "@" suggests its files, "/" its commands; your own command goes as a message.
 	const typeIn = (v) => box(`(() => { const t = document.getElementById('text'); t.focus(); t.value = ${JSON.stringify(v)}; t.setSelectionRange(t.value.length, t.value.length); t.dispatchEvent(new Event('input')); })()`);
 	await typeIn('look at @tax');

@@ -191,6 +191,16 @@
   .msg.claude.new { transform-origin: 0 100%; }
   .msg.you.new { transform-origin: 100% 100%; }
   .msg code { font: 500 14px ui-monospace, Menlo, Consolas, monospace; background: var(--soft); border-radius: 5px; padding: 1px 4px; }
+  .msg .filelink { cursor: pointer; box-shadow: inset 0 -1.5px 0 var(--faint); }
+  .msg .filelink:hover { box-shadow: inset 0 -1.5px 0 var(--color); }
+  /* A file from a reply, opened in the box. */
+  .peek { margin: 4px 0; white-space: normal; background: var(--soft); border-radius: 16px; overflow: hidden; animation: squish .25s cubic-bezier(.3, 1.6, .5, 1); transform-origin: 0 0; }
+  .peekhead { display: flex; align-items: center; gap: 4px; padding: 6px 8px 0 12px; font: 600 13px var(--ui); color: var(--dim); }
+  .peekhead span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .peekhead button { border: 0; background: none; width: 24px; height: 24px; border-radius: 50%; padding: 0; font: 700 13px var(--ui); color: var(--faint); cursor: pointer; }
+  .peekhead button:hover { color: var(--ink); background: #e6e8ee; }
+  .peek pre { margin: 0; padding: 6px 12px 10px; max-height: 240px; overflow: auto; font: 500 13px/1.45 ui-monospace, Menlo, Consolas, monospace; white-space: pre; user-select: text; }
+  .peek mark { background: color-mix(in srgb, var(--color) 28%, transparent); color: inherit; border-radius: 3px; }
   .msg pre { margin: 4px 0; padding: 9px 12px; background: var(--soft); border-radius: 16px; font: 500 14px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: pre; overflow-x: auto; }
   .msg .head { font-weight: 700; }
   /* Code blocks and replies copy in a tap; the button shows on hover. */

@@ -85,13 +85,76 @@
         if (head) span.className = 'head';
         for (const bit of l.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/)) {
           if (!bit) continue;
-          if (bit[0] === '`') { const c = document.createElement('code'); c.textContent = bit.slice(1, -1); span.append(c); }
+          if (bit[0] === '`') { const c = document.createElement('code'); c.textContent = bit.slice(1, -1); if (PATHLIKE.test(c.textContent)) c.dataset.path = c.textContent; span.append(c); }
           else if (bit.startsWith('**')) { const b = document.createElement('b'); b.textContent = bit.slice(2, -2); span.append(b); }
           else links(span, bit);
         }
         el.append(span);
         if (j < lines.length - 1) el.append('\n');
       });
+    });
+  }
+
+  // A file named in a reply (`src/tax.js:42`) opens right there in the box
+  // with a tap: its start, or round the line it names. Only once the app
+  // has checked it's a file in the session's folder does it look tappable.
+  const PATHLIKE = /^(?:~?\/|\.{1,2}\/)?(?:[\w@.-]+\/)*[\w@.-]*\.[A-Za-z][\w]{0,9}(?::\d+(?:[-:]\d+)?)?$|^(?:[\w@.-]+\/)+[\w@.-]+(?::\d+(?:[-:]\d+)?)?$/;
+  const known = new Map(); // `${session id}\n${path}` -> true / false
+  function markPaths(el) {
+    if (!current || current.demo || !api.filesExist) return;
+    const id = current.id;
+    const codes = [...el.querySelectorAll('[data-path]')];
+    const ask = [...new Set(codes.map((c) => c.dataset.path.replace(/:\d+(?:[-:]\d+)?$/, '')).filter((p) => !known.has(id + '\n' + p)))].slice(0, 40);
+    const mark = () => {
+      for (const c of codes) {
+        const p = c.dataset.path.replace(/:\d+(?:[-:]\d+)?$/, '');
+        if (!known.get(id + '\n' + p) || c.classList.contains('filelink')) continue;
+        c.classList.add('filelink');
+        c.tabIndex = 0;
+        c.title = 'Show it here';
+        c.onclick = () => peek(c, id, p, Number((/:(\d+)/.exec(c.dataset.path.slice(p.length)) || [])[1]) || 0);
+        c.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); c.click(); } };
+      }
+    };
+    if (!ask.length) return mark();
+    api.filesExist(id, ask).then((found) => { for (const p of ask) known.set(id + '\n' + p, (found || []).includes(p)); mark(); });
+  }
+  function peek(code, id, rel, line) {
+    const at = code.closest('.msg > span') || code.closest('.msg'); // (right under the line that names it)
+    const open = at.nextElementSibling && at.nextElementSibling.classList.contains('peek') && at.nextElementSibling.dataset.path === rel ? at.nextElementSibling : null;
+    if (open) { open.remove(); fitWindow(); return; }
+    api.peekFile(id, rel).then((f) => {
+      if (!f) { known.set(id + '\n' + rel, false); code.classList.remove('filelink'); code.onclick = null; return; }
+      for (const old of [...inner.querySelectorAll('.peek')]) if (old.dataset.path === rel) old.remove();
+      const box = document.createElement('div');
+      box.className = 'peek';
+      box.dataset.path = rel;
+      const head = document.createElement('div');
+      head.className = 'peekhead';
+      const name = document.createElement('span');
+      name.textContent = f.name + (line ? `, line ${line}` : '');
+      const reveal = document.createElement('button');
+      reveal.type = 'button'; reveal.textContent = '↗'; reveal.title = 'Show it in ' + (navigator.platform.startsWith('Mac') ? 'Finder' : 'its folder');
+      reveal.onclick = () => api.reveal(id, f.path);
+      const close = document.createElement('button');
+      close.type = 'button'; close.textContent = '✕'; close.title = 'Close';
+      close.onclick = () => { box.remove(); fitWindow(); };
+      head.append(name, reveal, close);
+      const pre = document.createElement('pre');
+      const lines = f.text.split('\n');
+      if (line && line <= lines.length) {
+        pre.append(lines.slice(0, line - 1).join('\n') + (line > 1 ? '\n' : ''));
+        const mk = document.createElement('mark');
+        mk.textContent = lines[line - 1];
+        pre.append(mk, (line < lines.length ? '\n' : '') + lines.slice(line).join('\n'));
+      } else pre.textContent = f.text;
+      if (f.cut) pre.append('\n…');
+      box.append(head, pre);
+      at.after(box);
+      const mk = pre.querySelector('mark');
+      if (mk) pre.scrollTop = Math.max(0, mk.offsetTop - pre.offsetTop - 60);
+      fitWindow();
+      requestAnimationFrame(() => box.scrollIntoView({ block: 'nearest' }));
     });
   }
 
@@ -132,9 +195,22 @@
   // Web links in a reply ([text](url) or a bare https://…) open in your
   // browser: a PR it opened is a tap away.
   function links(span, text) {
-    const re = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|https?:\/\/[^\s<>"'`]+/g;
+    const re = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|https?:\/\/[^\s<>"'`]+|\[([^\]\n]+)\]\(((?!\w+:)[^\s)]+)\)/g;
     let at = 0, m;
     while ((m = re.exec(text))) {
+      if (m[3]) { // [tax.js:42](src/tax.js#L42): a file in the session's folder
+        span.append(text.slice(at, m.index));
+        const f = document.createElement('span');
+        f.className = 'fileref';
+        f.textContent = m[3];
+        let target = m[4];
+        try { target = decodeURI(target); } catch { /* as it is */ }
+        target = target.replace(/#L(\d+)(?:-L?\d+)?$/, ':$1');
+        if (PATHLIKE.test(target)) f.dataset.path = target;
+        span.append(f);
+        at = m.index + m[0].length;
+        continue;
+      }
       let url = m[2] || m[0], label = m[1] || '';
       let tail = '';
       if (!m[2]) { const t = /[.,;:!?)\]]+$/.exec(url); if (t) { tail = t[0]; url = url.slice(0, -tail.length); } label = url; }
@@ -226,14 +302,16 @@
     e.className = 'msg ' + m.who + (m.status === 'queued' || m.status === 'unsent' ? ' ' + m.status : '') + (fresh ? ' new' : '');
     e.dataset.at = m.at;
     e.dataset.text = m.text; // (what find looks in: not its buttons)
-    const cut = m.text.length > MAX && !current.owned; // a session Blaube started has nowhere else to read it
+    const cut = m.text.length > MAX;
     rich(e, cut ? m.text.slice(0, MAX) : m.text);
+    markPaths(e);
     const out = [e];
     if (cut) {
+      // (Right here: no need for the terminal.)
       const more = document.createElement('button');
       more.className = 'more';
-      more.textContent = '…the rest is in the terminal ↗';
-      more.onclick = () => api.terminal();
+      more.textContent = `…the rest (${Math.ceil((m.text.length - MAX) / 1000)}k more characters)`;
+      more.onclick = () => { const keep = log.scrollTop; e.textContent = ''; rich(e, m.text); markPaths(e); more.remove(); log.scrollTop = keep; pinned = false; };
       out.push(more);
     }
     if (m.status === 'unsent') {

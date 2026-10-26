@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   searchAll: (q) => ipcRenderer.invoke('talk-search', q),
   complete: (id, kind, q) => ipcRenderer.invoke('talk-complete', id, kind, q),
   mode: (id, mode) => ipcRenderer.send('talk-mode', id, mode),
+  filesExist: (id, paths) => ipcRenderer.invoke('talk-files-exist', id, paths),
+  peekFile: (id, rel) => ipcRenderer.invoke('talk-peek', id, rel),
   diff: (id, file) => ipcRenderer.invoke('talk-diff', id, file),
   earlier: (id) => ipcRenderer.invoke('talk-earlier', id),
   newIn: (folder, opts) => ipcRenderer.send('talk-new', folder, opts),
