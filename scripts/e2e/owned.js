@@ -146,6 +146,8 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(() => inbox.log(id).some((e) => /^Its MCP servers: .*linear \(turned off\)/.test(e.text || ''))), 'and /mcp says so');
 	await type('/mcp enable linear');
 	check(await until(() => inbox.log(id).some((e) => e.text === 'Turned linear on')), 'and /mcp enable turns it back on');
+	await type('/rewind');
+	check(await until(() => inbox.log(id).some((e) => /^To go back, tap edit under something you said/.test(e.text || ''))), '/rewind says how to go back, here');
 	await type('/memory');
 	check(await until(() => inbox.log(id).some((e) => e.text === 'It reads ~/.claude/CLAUDE.md. It remembers: pnpm (This repo uses pnpm, not npm)')), '/memory lists what it reads and what it has remembered (get_memory_dialog)');
 	// Claude's servers busy: the box says it's trying again, not just dots.

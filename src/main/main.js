@@ -2263,7 +2263,13 @@ app.whenReady().then(async () => {
     }
     // "/help": what works here, in words.
     if (/^\/help\s*$/i.test(String(text).trim())) {
-      inbox.add(id, { who: 'note', text: `Talk to it as you would in its terminal. Start with ! to run a command here, # to remember something in CLAUDE.md, @ for its files, / for commands (each says what it does)${owned.has(id) ? '' : '; the ones only its terminal can take go there, or bring it here and they go straight in'}. ${process.platform === 'darwin' ? '⌘0 shows every session, ⌘F finds things, ⌘S saves the conversation, ⌘. stops it' : 'Ctrl+0 shows every session, Ctrl+F finds things, Ctrl+S saves the conversation, Ctrl+. stops it'}.` });
+      inbox.add(id, { who: 'note', text: `Talk to it as you would in its terminal. Start with ! to run a command here, # to remember something in CLAUDE.md, @ for its files, / for commands (each says what it does)${owned.has(id) ? '' : '; the ones only its terminal can take go there, or bring it here and they go straight in'}. ${process.platform === 'darwin' ? '⌘0 shows every session, ⌘F finds things, ⌘S saves the conversation, ⌘. stops it' : 'Ctrl+0 shows every session, Ctrl+F finds things, Ctrl+S saves the conversation, Ctrl+. stops it'}.${owned.has(id) ? ' To go back, tap edit under something you said; undo all under a reply puts its files back.' : ''}` });
+      return;
+    }
+    // "/rewind" (Esc Esc in the terminal), in a session Blaube started: it's
+    // under each thing you said.
+    if (/^\/rewind\s*$/i.test(String(text).trim()) && owned.has(id)) {
+      inbox.add(id, { who: 'note', text: 'To go back, tap edit under something you said: its files are put back and the conversation goes back to before it. Undo all under a reply puts just its files back.' });
       return;
     }
     // "/todos": its to-do list, in full.

@@ -91,6 +91,7 @@ const ABOUT = {
   'release-notes': 'What’s new in Claude Code',
   plugin: 'Your Claude Code plugins',
   rename: 'Names this session',
+  rewind: 'Go back to before something you said',
   resume: 'Pick up a past session',
   skills: 'The skills it can use',
   status: 'What it’s running on',
