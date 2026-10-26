@@ -1135,6 +1135,7 @@
     }
     collidePets();
     stepDrops();
+    stepStrands();
     stepBubbles();
     stepSeason();
     stepFlutters();
@@ -2259,11 +2260,62 @@
       hearts.push({ x: mum.body.centroid().x, y: top - 8, vx: 0, born: time, size: 13 });
       return;
     }
+    if (CFG.gooStrands > 0 && rel > 500) stick(a, b);
     if (rel >= CFG.dizzySpeed * 0.8) { hit.dizzyUntil = time + 1; return; }
     if (hit.kind === 'home' || hit.body.grab || time < (hit.annoyCooldown || 0)) return;
     hit.annoyedUntil = time + 1.1 + Math.random() * 0.6;
     hit.annoyedAt = by;
     hit.annoyCooldown = time + 7 + Math.random() * 5;
+  }
+
+  // Two slimes that hit hard stick for a moment where they touched: a goo
+  // strand stretches between them as they come apart, tugging both, thins
+  // out and snaps, flinging a drop back to each.
+  const strands = [];
+  function stick(a, b) {
+    if (strands.length > 6 || strands.some((t) => (t.a === a && t.b === b) || (t.a === b && t.b === a))) return;
+    const near = (x, o) => { const c = o.body.centroid(); let best = 0, bd = Infinity; for (let i = 0; i < x.body.n; i++) { const d = Math.hypot(x.body.px[i] - c.x, x.body.py[i] - c.y); if (d < bd) { bd = d; best = i; } } return best; };
+    strands.push({ a, b, ia: near(a, b), ib: near(b, a), born: time });
+  }
+  function stepStrands() {
+    for (let i = strands.length - 1; i >= 0; i--) {
+      const t = strands[i], A = t.a.body, B = t.b.body;
+      if (t.a.dying || t.b.dying || t.a.removed || t.b.removed) { strands.splice(i, 1); continue; }
+      const ax = A.px[t.ia], ay = A.py[t.ia], bx = B.px[t.ib], by = B.py[t.ib];
+      const dx = bx - ax, dy = by - ay, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d;
+      const max = (A.o.radius + B.o.radius) * 1.3 * CFG.gooStrands, age = time - t.born;
+      t.d = d; t.max = max;
+      if (d > max || age > 3) {
+        // Snap: what's left of it flies back to each side.
+        strands.splice(i, 1);
+        if (d > 12) for (const [o, x, y, sx, sy] of [[t.a, ax, ay, ux, uy], [t.b, bx, by, -ux, -uy]]) drops.push({ owner: o, x: x + sx * 6, y: y + sy * 6, vx: -sx * 260, vy: -sy * 260 - 80, r: o.body.o.radius * 0.07, born: time, landed: 0 });
+        continue;
+      }
+      // Stretched, it pulls: hardest at the spot it's stuck to.
+      const pull = Math.max(0, d - 6) * 26 * CFG.gooStrands * DT;
+      A.pushAt(ax, ay, ux * pull, uy * pull, A.o.radius * 0.45, DT);
+      B.pushAt(bx, by, -ux * pull, -uy * pull, B.o.radius * 0.45, DT);
+    }
+  }
+  function drawStrands() {
+    for (const t of strands) {
+      if (!t.d || t.d < 4) continue;
+      const A = t.a.body, B = t.b.body, ax = A.px[t.ia], ay = A.py[t.ia], bx = B.px[t.ib], by = B.py[t.ib];
+      const thin = Math.max(0.15, 1 - t.d / t.max), w = Math.min(A.o.radius, B.o.radius) * 0.22 * thin;
+      // Sagging a little in the middle, thinnest there.
+      const mx = (ax + bx) / 2, my = (ay + by) / 2 + t.d * 0.12;
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = t.a.color;
+      ctx.lineWidth = w * 1.6;
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo(mx, my, (ax + mx) / 2, (ay + my) / 2 + t.d * 0.03); ctx.stroke();
+      ctx.strokeStyle = t.b.color;
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.quadraticCurveTo(mx, my, (bx + mx) / 2, (by + my) / 2 + t.d * 0.03); ctx.stroke();
+      ctx.lineWidth = w;
+      ctx.strokeStyle = t.a.color;
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo(mx, my, bx, by); ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // While splitting, a goo strand ties the new slime to the one it came
@@ -3020,6 +3072,7 @@
     if (CFG.shadow) for (const b of list) D.drawShadow(ctx, b.body, floorAt(b.body.centroid().x, b.body.bbox().maxY));
     drawTalkTail();
     drawDrops();
+    drawStrands();
     drawSeason(true);
 
     // Goo bridge while a slime is splitting off.
@@ -3631,6 +3684,7 @@
       flutters: () => flutters,
       flutter: () => addFlutter(),
       goo: () => bubbles,
+      strands: () => strands,
       now: () => time,
       idleFor: (seconds) => { mouse.lastMove = performance.now() / 1000 - seconds; },
       buddies: () => buddies,
