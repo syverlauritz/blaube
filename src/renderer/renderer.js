@@ -3211,6 +3211,74 @@
     const o = [...buddies.values()].find((o) => o !== b && o.kind === 'mother' && !o.tower && free(o) && !o.stackedBy && o.body.onFloor() && Math.abs(o.body.centroid().y - c.y) < r && Math.abs(o.body.centroid().x - c.x) < r * 4);
     if (o) towerNow(b, o);
   }
+  // "Who's taller?": two bored slimes side by side stand back to back and
+  // stretch up as tall as they can. The taller one grins ("me!"), and now
+  // and then the shorter one cheats with a little hop ("ha!").
+  function measure(b) {
+    if (CFG.measure <= 0 || b.kind !== 'mother') return;
+    const free = (o) => (o.state === 'idle' || o.state === 'done') && !o.body.grab && !o.merging && !o.dying && !o.prank && !o.trick && !o.tag && !o.snow && !o.parade && !o.copy && !o.five && !o.frog && !o.tower && !o.keepy && !o.roll && !o.stackedBy && (o.sleep || 0) < 0.1 && o !== buddies.get(talkingTo);
+    const g = b.measure;
+    if (g) {
+      if (g.p !== b) return;
+      const both = [g.p, g.q], end = () => { g.p.measure = g.q.measure = null; };
+      if (both.some((o) => !free(o)) || drag || time - g.start > 10) { end(); return; }
+      for (const o of both) { o.nextHop = time + 1; }
+      const t = time - g.start, k = Math.min(1.5, CFG.measure);
+      // Back to back: each leans away from the other a touch and grips.
+      const pc = g.p.body.centroid(), qc = g.q.body.centroid(), side = Math.sign(qc.x - pc.x) || 1;
+      if (t < 0.6) return;
+      // Up they stretch, hold it, and ease back down (let go all at once
+      // and the stretch would spring them off the floor).
+      const up = Math.min(1, (t - 0.6) / 0.8) * Math.max(0, Math.min(1, (3.9 - t) / 0.7));
+      if (up > 0 && !g.cheated) for (const o of both) {
+        const r = o.body.o.radius, s = o === g.p ? -side : side;
+        if (o.body.onFloor()) {
+          o.body.squashTop(-k * r * up * (o.reach || 1) * 2.2 * 60 * DT, DT);
+          o.body.impulse(-o.body.velocity(DT).x * 0.2, 0, DT);
+        } else o.body.impulse(0, Math.max(0, -o.body.velocity(DT).y) * 0.3, DT); // (feet stay down: no hopping to look taller)
+        if (t < 3.2) { o.glanceAt = { spot: { x: o.body.centroid().x + s * r, y: o.body.bbox().minY - r } }; o.glanceUntil = time + 0.2; }
+      }
+      if (t < 3.2) {
+        if (!g.said) { g.said = true; quip(g.p, "who's taller?", 1.6); }
+        return;
+      }
+      if (!g.judged) {
+        g.judged = true;
+        const top = (o) => o.body.bbox().minY; // (whose head is higher)
+        const [tall, short] = top(g.p) <= top(g.q) ? [g.p, g.q] : [g.q, g.p];
+        g.tall = tall; g.short = short;
+        tall.cheerUntil = time + 1.4; quip(tall, 'me!', 1.2);
+        short.sheepishUntil = time + 1.4;
+        g.cheat = Math.random() < 0.4;
+        return;
+      }
+      if (g.cheat && t > 4 && !g.cheated) {
+        g.cheated = true;
+        g.short.hop(0, -360);
+        quip(g.short, 'ha!', 1);
+        g.short.cheerUntil = time + 1.2; g.tall.annoyedAt = g.short; g.tall.annoyedUntil = time + 1.2; g.tall.cheerUntil = 0;
+        return;
+      }
+      if (t > (g.cheat ? 5.5 : 4.5)) end();
+      return;
+    }
+    if (!free(b) || !b.body.onFloor() || idleFor() > 60 || time < (b.nextMeasure ?? (b.nextMeasure = time + (250 + Math.random() * 500) / CFG.measure))) return;
+    b.nextMeasure = time + (500 + Math.random() * 800) / CFG.measure;
+    const c = b.body.centroid(), r = b.body.o.radius;
+    const o = [...buddies.values()].find((o) => o !== b && o.kind === 'mother' && !o.measure && free(o) && o.body.onFloor() && Math.abs(o.body.centroid().y - c.y) < r && Math.abs(o.body.centroid().x - c.x) < (r + o.body.o.radius) * 1.6);
+    if (o) measureNow(b, o);
+  }
+  function measureNow(b, o) {
+    const g = { p: b, q: o, start: time };
+    b.measure = o.measure = g;
+    // Each stretches a bit differently (its own character).
+    b.reach = 0.8 + Math.random() * 0.4; o.reach = 0.8 + Math.random() * 0.4;
+    // Sidle up so they're touching, back to back.
+    const bc = b.body.centroid(), oc = o.body.centroid(), gap = Math.abs(oc.x - bc.x) - (b.body.o.radius + o.body.o.radius) * 0.95;
+    if (gap > 8) { const v = launch(Math.sign(oc.x - bc.x) * gap, b.body.o.radius * 0.3); b.body.impulse(-b.body.velocity(DT).x, 0, DT); b.hop(v.vx, v.vy); }
+    o.glanceAt = b; o.glanceUntil = time + 0.6;
+  }
+
   function towerNow(b, o) {
     const g = { line: [b, o], stage: 'climb', start: time, next: time + 0.7, jumped: 0 };
     b.tower = o.tower = g;
@@ -4160,6 +4228,7 @@
     tag(b);
     leapfrog(b);
     tower(b);
+    measure(b);
     snowFight(b);
     parade(b);
     blow(b);
