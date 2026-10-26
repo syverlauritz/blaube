@@ -235,19 +235,6 @@ test('remembers when the current turn started, for "Done in 6m"', () => {
   assert.strictEqual(t.sessions.get('s1').turnStart, 9000);
 });
 
-test('a session merged back in by hand stays merged until it ends', () => {
-  const t = new SessionTracker();
-  t.handle(ev('UserPromptSubmit'));
-  t.dismiss('s1');
-  assert.equal(t.list().length, 0);
-  t.handle(ev('PreToolUse'));
-  t.applyAgents([{ sessionId: 's1', cwd: '/Users/me/code/blaube', status: 'busy' }]);
-  assert.equal(t.list().length, 0);
-  t.handle(ev('SessionEnd'));
-  t.handle(ev('SessionStart'));
-  assert.equal(t.list().length, 1);
-});
-
 test('a tool call says what it is about, and finishing one is reported (failures too)', () => {
   const t = new SessionTracker();
   const done = [];

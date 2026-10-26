@@ -67,6 +67,7 @@ const { runningTasks } = require('./tasks');
 const dock = require('./dock');
 const { watchWindows, ledges } = require('./windows');
 const BlaubeConfig = require('../shared/config');
+const { visibility, blocked } = require('./visibility');
 
 const PORT = Number(process.env.BLAUBE_PORT) || DEFAULT_PORT;
 
@@ -121,13 +122,21 @@ function markFrontSeen() {
 // --- Preferences (config + chosen display), kept in the app's data folder ---
 
 const prefsFile = () => path.join(app.getPath('userData'), 'prefs.json');
-let prefs = { config: {}, displayId: null, colors: {} };
+let prefs = { config: {}, displayId: null, colors: {}, hiddenBlobs: {}, wantedBlobs: {} };
 
 function loadPrefs() {
   try { prefs = Object.assign(prefs, JSON.parse(fs.readFileSync(prefsFile(), 'utf8'))); } catch { /* first run */ }
   if (prefs.notify === false && prefs.config && !prefs.config.notify) prefs.config.notify = 'Off'; // (from before it was a setting)
   prefs.config = BlaubeConfig.sanitize(prefs.config);
   if (!prefs.colors || typeof prefs.colors !== 'object') prefs.colors = {};
+  // Blobs hidden by hand (and shown by hand over the max), per session id:
+  // kept while it runs, so a restart doesn't bring them back. (Ones that
+  // ended while Blaube was off are forgotten after a week.)
+  for (const k of ['hiddenBlobs', 'wantedBlobs']) {
+    const kept = prefs[k] && typeof prefs[k] === 'object' ? prefs[k] : {};
+    prefs[k] = {};
+    for (const [id, at] of Object.entries(kept)) if (typeof at === 'number' && Date.now() - at < 7 * 864e5) prefs[k][id] = at;
+  }
 }
 
 // A colour picked for a session sticks to its project folder, so the same
@@ -215,6 +224,7 @@ function setConfig(next) {
   // (An open Settings window shows a change made from a menu.)
   if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('config', prefs.config);
   updateWorld();
+  pushState(); // (Max blobs may have changed what's on the stage)
 }
 
 // --- Display and Dock --------------------------------------------------------
@@ -690,6 +700,7 @@ function pushTalk(id, focusField = false) {
     quick: quickFor(id, s),
     // Every slime, to switch between them from the box.
     today: attention.today([...inbox.logs.values()]),
+    blobsHidden: (() => { const vis = blobVis(); return tracker.list().filter(isReady).filter((o) => !vis.get(o.id).shown).length; })(), // (for Blobs… in All sessions)
     others: tracker.list().filter(isReady).map((o) => Object.assign({ id: o.id, project: o.project, shownName: shownOf(o).full, shownSub: shownOf(o).sub, color: colorOf(o) || prefs.config.color || '#D97757', state: o.state, ask: askOf(o.id), urls: (o.tasks || []).map((t) => ({ label: t.description || t.command, url: taskUrls.get(`${o.id}/${t.id}`) || '' })).concat(runs.list(o.id)).filter((t) => t.url).slice(0, 2).map((t) => ({ label: t.label, url: t.url })) }, glanceAt(o))),
   }, inbox.view(id), owned.has(id) ? { stoppable: true } : {})); // (one Blaube started can always be stopped)
   if (s.cwd && !id.startsWith('demo-')) {
@@ -906,7 +917,7 @@ function startSession(cwd, extra = [], resume = '', fork = '') {
     if (++tries > 40 || !owned.has(id)) return clearInterval(open);
     if (!isReady(tracker.sessions.get(id) || {})) return;
     clearInterval(open);
-    setTimeout(() => { if (win) win.webContents.send('open-talk', id); }, 900); // after it lands
+    setTimeout(() => { if (win) askTalk(id); }, 900); // after it lands
   }, 150);
   return id;
 }
@@ -914,7 +925,7 @@ function startSession(cwd, extra = [], resume = '', fork = '') {
 // Picks up a past session in Blaube, no terminal: its slime pops out with
 // how the conversation ended, ready for what's next.
 async function pickUp(p) {
-  if (tracker.sessions.has(p.id)) { if (win) win.webContents.send('open-talk', p.id); return; }
+  if (tracker.sessions.has(p.id)) { if (win) askTalk(p.id); return; }
   // Written to a moment ago: it may still be open in a terminal Blaube
   // can't see, and two copies of one session would trip over each other.
   if (Date.now() - p.at < 2 * 60 * 1000) {
@@ -1153,10 +1164,14 @@ function checkSeededTasks(s) {
 function pushState() {
   if (!win) return;
   const all = tracker.list();
+  const vis = blobVis();
+  const shownNow = (s) => isReady(s) && (!vis.get(s.id) || vis.get(s.id).shown);
   const send = (state) => { if (TEST) global.__blaubeState = state; win.webContents.send('state', state); };
   send({
     pending: all.filter((s) => !isReady(s)).length,
-    sessions: all.filter(isReady).map((s) => Object.assign({}, s, {
+    // Hidden ones (see Blobs) leave the stage quietly: not a goodbye.
+    hidden: all.filter((s) => isReady(s) && !shownNow(s)).map((s) => s.id),
+    sessions: all.filter(shownNow).map((s) => Object.assign({}, s, {
       shownName: shownOf(s).full,
       color: colorOf(s),
       tokens: tokens.get(s.id) || null,
@@ -1173,7 +1188,140 @@ function pushState() {
     })),
     settings: { hooksInstalled: claudeHooks.isInstalled(undefined, PORT), talked: !!prefs.talked, noClaude: !claudeFound() },
   });
+  pushBlobs();
 }
+
+// --- Blobs: which sessions have their blob on the stage ----------------------
+// Hide one and its blob (and its helpers) leave the stage; its session
+// carries on, still tracked, its talk box and notifications as ever, and it
+// can be shown again any time (Blobs…, or its menu). With Max blobs set,
+// the least relevant ones over it are put away by themselves; one that
+// needs you always shows. See visibility.js.
+function blobVis() {
+  return visibility(tracker.list().filter(isReady), { hidden: prefs.hiddenBlobs, wanted: prefs.wantedBlobs, max: prefs.config.maxBlobs || 0 });
+}
+const onStage = (id) => { const v = blobVis().get(id); return !v || v.shown; };
+let blobsNote = null; // { id, text }: why one you just showed can't come out
+function setBlobHidden(id, hide) {
+  if (!tracker.sessions.has(id)) return;
+  blobsNote = null;
+  if (hide) { prefs.hiddenBlobs[id] = Date.now(); delete prefs.wantedBlobs[id]; }
+  else {
+    delete prefs.hiddenBlobs[id];
+    // Over the max: it takes the spot of a less relevant one.
+    const v = blobVis().get(id);
+    if (v && v.why === 'max') prefs.wantedBlobs[id] = Date.now();
+    const why = blocked(blobVis(), id, prefs.config.maxBlobs || 0);
+    if (why) blobsNote = { id, text: why };
+  }
+  savePrefs();
+  pushState();
+}
+function showAllBlobs() {
+  blobsNote = null;
+  prefs.hiddenBlobs = {};
+  savePrefs();
+  pushState();
+}
+// Idle and done ones (finished, waiting for your next prompt) off the stage.
+function hideIdleBlobs() {
+  blobsNote = null;
+  for (const s of tracker.list().filter(isReady)) if (s.state === 'idle' || s.state === 'done') { prefs.hiddenBlobs[s.id] = Date.now(); delete prefs.wantedBlobs[s.id]; }
+  savePrefs();
+  pushState();
+}
+function forgetBlob(id) {
+  if (!(id in prefs.hiddenBlobs) && !(id in prefs.wantedBlobs)) return;
+  delete prefs.hiddenBlobs[id];
+  delete prefs.wantedBlobs[id];
+  if (blobsNote && blobsNote.id === id) blobsNote = null;
+  savePrefs();
+}
+
+// A session's talk box: over its blob, or, its blob hidden, beside the
+// Blobs overview (or below the box that's open, or low in the middle).
+function askTalk(id) {
+  if (!win) return;
+  if (onStage(id)) { win.webContents.send('open-talk', id); return; }
+  const wb = win.getBounds();
+  let p;
+  if (blobsWin && !blobsWin.isDestroyed() && blobsWin.isVisible()) { const b = blobsWin.getBounds(); p = { x: b.x - 8, y: b.y + 70 }; }
+  else if (talkWin && talkWin.isVisible() && talkBox) p = { x: talkBox.x + talkBox.w / 2, y: talkBox.y + talkBox.h + 24 };
+  else { const a = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea; p = { x: a.x + a.width / 2, y: a.y + a.height - 40 }; }
+  openTalk(id, { x: p.x - wb.x, y: p.y - wb.y, r: 30 });
+}
+
+// The Blobs overview: a small flat box, every live session in it with its
+// colour, name, how it is, its helpers, and an eye to show or hide its blob.
+let blobsWin = null;
+const BLOBS_W = 360;
+function openBlobs(near) {
+  if (blobsWin && !blobsWin.isDestroyed()) {
+    if (TEST) blobsWin.showInactive(); else { blobsWin.show(); blobsWin.focus(); }
+    pushBlobs();
+    return;
+  }
+  const at = near || screen.getCursorScreenPoint();
+  const area = screen.getDisplayNearestPoint(at).workArea;
+  const h = 300;
+  const x = Math.round(Math.min(Math.max(area.x + 8, at.x - BLOBS_W / 2), area.x + area.width - BLOBS_W - 8));
+  const y = Math.round(Math.min(Math.max(area.y + 8, at.y - 20), area.y + area.height - h - 8));
+  blobsWin = new BrowserWindow({
+    x, y, width: BLOBS_W, height: h,
+    title: 'Blobs',
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    hasShadow: false,
+    webPreferences: { preload: path.join(__dirname, 'blobsPreload.js'), contextIsolation: true, sandbox: true },
+  });
+  blobsWin.loadFile(path.join(__dirname, '..', 'blobs', 'blobs.html'));
+  blobsWin.webContents.on('will-navigate', (e) => e.preventDefault());
+  if (TEST) { blobsWin.setOpacity(0); blobsWin.webContents.on('console-message', (e) => { if (e.level === 'error') console.log('[blobs error]', e.message); }); }
+  blobsWin.webContents.on('did-finish-load', () => {
+    pushBlobs();
+    if (!blobsWin) return;
+    if (TEST) blobsWin.showInactive(); else { blobsWin.show(); blobsWin.focus(); }
+  });
+  blobsWin.on('closed', () => { blobsWin = null; blobsNote = null; });
+}
+const blobWord = { working: 'Working', waiting: 'Needs you', done: 'Done', idle: 'Idle' };
+function pushBlobs() {
+  if (!blobsWin || blobsWin.isDestroyed()) return;
+  const vis = blobVis();
+  const max = prefs.config.maxBlobs || 0;
+  const live = tracker.list().filter(isReady);
+  const names = new Map(live.map((s) => [s.id, shownOf(s).full]));
+  // (In a steady order, by name, so rows don't jump about under the cursor.)
+  live.sort((a, b) => names.get(a.id).localeCompare(names.get(b.id)) || a.id.localeCompare(b.id));
+  const shownCount = live.filter((s) => vis.get(s.id).shown).length;
+  blobsWin.webContents.send('blobs-state', {
+    dark: !!prefs.talkDark,
+    max,
+    shown: shownCount,
+    over: !!max && shownCount > max, // (the ones that need you, past the max)
+    note: blobsNote && tracker.sessions.has(blobsNote.id) && vis.get(blobsNote.id) && !vis.get(blobsNote.id).shown ? blobsNote : null,
+    rows: live.map((s) => ({
+      id: s.id,
+      name: names.get(s.id),
+      color: colorOf(s) || prefs.config.color || '#D97757',
+      state: s.state,
+      word: blobWord[s.state] || s.state,
+      helpers: (s.agents || []).length,
+      shown: vis.get(s.id).shown,
+      why: vis.get(s.id).why,
+      talk: !s.id.startsWith('demo-'),
+    })),
+  });
+}
+if (TEST) global.__blaubeBlobs = () => blobsWin;
+if (TEST) global.__blaubeOpenBlobs = (near) => openBlobs(near);
 
 // Token usage per session id: { total, context, limit }. Re-read from the
 // transcripts every few seconds; demo sessions get made-up numbers.
@@ -1342,7 +1490,7 @@ function notify(s, event, text, secs = 0) {
   if (TEST || !Notification.isSupported() || s.id.startsWith('demo-')) return;
   if (muted.has(s.id)) return;
   const mode = prefs.config.notify || 'Behind windows';
-  const seen = isOpen(s.id) || (mode !== 'Always' && prefs.config.onTop !== 'Off' && win && win.isVisible());
+  const seen = isOpen(s.id) || (mode !== 'Always' && prefs.config.onTop !== 'Off' && win && win.isVisible() && onStage(s.id)); // (a hidden blob isn't seen)
   // (Asking permission: Allow and Deny right in it, on macOS.)
   const ask = event === 'waiting' ? (inbox.asks.get(s.id) || []).slice(-1)[0] : null;
   // (Finished: what its turn came to, whether or not its reply is in yet.)
@@ -1362,18 +1510,18 @@ function notify(s, event, text, secs = 0) {
   const answer = (label) => inbox.decide(s.id, ask.key, 'allow', { [n.question]: label });
   const note = new Notification(Object.assign({ title: n.title, body: n.body }, event === 'done' ? { hasReply: true, replyPlaceholder: `Reply to ${s.project}` } : askReply ? { hasReply: true, replyPlaceholder: 'Or say what to do instead' } : n.question ? { hasReply: true, replyPlaceholder: 'Or answer in your words' } : {},
     buttons ? { actions: buttons.map((text) => ({ type: 'button', text })) } : {}));
-  note.on('action', (_e, i) => { shown.delete(note); if (quick[i] && tracker.sessions.has(s.id)) return doQuick(s.id, quick[i]); if (ask && n.actions && !(n.question ? answer(n.actions[i]) : inbox.decide(s.id, ask.key, i === 0 ? 'allow' : 'deny')) && win) win.webContents.send('open-talk', s.id); });
+  note.on('action', (_e, i) => { shown.delete(note); if (quick[i] && tracker.sessions.has(s.id)) return doQuick(s.id, quick[i]); if (ask && n.actions && !(n.question ? answer(n.actions[i]) : inbox.decide(s.id, ask.key, i === 0 ? 'allow' : 'deny')) && win) askTalk(s.id); });
   note.on('reply', (_e, text) => {
     shown.delete(note);
     const said = String(text || '').trim();
     if (!said || !tracker.sessions.has(s.id)) return;
-    if (askReply) { if (!inbox.decide(s.id, ask.key, 'deny', { message: said }) && win) win.webContents.send('open-talk', s.id); return; }
-    if (n.question && ask) { if (!answer(said) && win) win.webContents.send('open-talk', s.id); return; }
+    if (askReply) { if (!inbox.decide(s.id, ask.key, 'deny', { message: said }) && win) askTalk(s.id); return; }
+    if (n.question && ask) { if (!answer(said) && win) askTalk(s.id); return; }
     if (replyTo) replyTo(s.id, said);
   });
   // (Held on to until it's gone, or a click may never arrive.)
   shown.add(note);
-  note.on('click', () => { shown.delete(note); if (win && tracker.sessions.has(s.id)) win.webContents.send('open-talk', s.id); });
+  note.on('click', () => { shown.delete(note); if (win && tracker.sessions.has(s.id)) askTalk(s.id); });
   note.on('close', () => shown.delete(note));
   note.show();
 }
@@ -1419,7 +1567,7 @@ function talkShortcut() {
   if (!win) return;
   if (!s) { newSession(); return; } // nobody to talk to: start someone
   if (process.platform === 'darwin') app.focus({ steal: true }); // a shortcut from another app: the box takes the keyboard
-  win.webContents.send('open-talk', s.id);
+  askTalk(s.id);
 }
 
 // A helper's own description ("Ring Globe: Manta logo mode") instead of its
@@ -1573,12 +1721,13 @@ function soundItems({ voice = true, choir = true } = {}) {
 // a slime's menu, which has the voice settings already. colour: it's the
 // menu of Blaube itself, with no sessions, so its own colour (the main
 // one) is in it; elsewhere colour is each slime's, in its own menu.
-function appMenuTemplate({ nested = false, colour = false } = {}) {
+function appMenuTemplate({ nested = false, colour = false, blobs = true } = {}) {
   const installed = claudeHooks.isInstalled(undefined, PORT);
   const noClaude = !claudeFound();
   return [
     { label: `Blaube ${app.getVersion()}`, enabled: false },
     { type: 'separator' },
+    ...(blobs ? [blobsItem()] : []),
     ...(noClaude ? [{ label: installing ? 'Installing Claude Code…' : 'Install Claude Code…', enabled: !installing, click: installClaude }]
       : installed ? [] : [{ label: claudeHooks.hasAnyBlaubeHooks() ? 'Update Claude Code connection…' : 'Connect Claude Code…', click: installHooks }]),
     ...newSessionMenu(),
@@ -1630,7 +1779,7 @@ function sessionMenuTemplate(id, { tray = false, quick = [] } = {}) {
   const effort = { low: 'Low effort', medium: 'Medium effort', high: 'High effort', xhigh: 'Extra high effort', max: 'Max effort' }[efforts.get(id) || defaultEffort()];
   const isDemo = id.startsWith('demo-');
   const mine = owned.has(id);
-  const talk = () => { if (!win) return; if (tray && process.platform === 'darwin') app.focus({ steal: true }); win.webContents.send('open-talk', id); };
+  const talk = () => { if (!win) return; if (tray && process.platform === 'darwin') app.focus({ steal: true }); askTalk(id); };
   return [
     ...(quick.length ? [...quick, { type: 'separator' }] : []),
     ...(tray ? [] : [
@@ -1662,7 +1811,9 @@ function sessionMenuTemplate(id, { tray = false, quick = [] } = {}) {
     { label: 'Colour', submenu: colorMenu(colorOf(s) || prefs.config.color, (hex) => { prefs.colors[colorKey(s)] = hex; savePrefs(); pushState(); }) },
     ...(tray ? [] : [{ label: 'Blaube', submenu: appMenuTemplate({ nested: true }) }]),
     { type: 'separator' },
-    { label: 'Hide this blob', toolTip: 'Until its session ends', click: () => tracker.dismiss(id) },
+    // (Its session carries on, still tracked; Blobs… shows it again.)
+    onStage(id) ? { label: 'Hide', toolTip: 'Takes its blob off the screen; its session carries on, and Blobs… shows it again', click: () => setBlobHidden(id, true) }
+      : { label: 'Show', toolTip: 'Puts its blob back on the screen', click: () => setBlobHidden(id, false) },
     ...(mine ? [{ label: 'End session', click: () => endOwned(s) }] : []),
   ];
 }
@@ -1835,14 +1986,22 @@ function trayIcon() {
   return img;
 }
 
+// Blobs…: every session and its eye, to show or hide its blob.
+function blobsItem() {
+  const vis = blobVis();
+  const off = tracker.list().filter(isReady).filter((s) => !vis.get(s.id).shown).length;
+  return { label: 'Blobs…', sublabel: off ? `${off} hidden` : '', toolTip: 'Every session, to show or hide its blob', click: () => openBlobs() };
+}
+
 function trayMenu() {
   const live = tracker.list().filter(isReady).filter((o) => !o.id.startsWith('demo-'));
+  const vis = blobVis();
   const mark = { waiting: '❓', working: '⏳', done: '✅', idle: '💤' };
   const rows = live.map((o) => {
     const g = glanceAt(o);
     // Its name and how it is, once; its own menu (as right-clicking it) under it.
     const status = g.status || stateWord[o.state] || o.state;
-    const label = `${mark[o.state] || '•'}  ${shownOf(o).full} — ${status.length > 40 ? status.slice(0, 39) + '…' : status}`;
+    const label = `${mark[o.state] || '•'}  ${shownOf(o).full} — ${status.length > 40 ? status.slice(0, 39) + '…' : status}${vis.get(o.id) && !vis.get(o.id).shown ? ' (hidden)' : ''}`;
     // Answered or stopped right from the menu bar, without opening anything.
     const ask = o.state === 'waiting' ? (inbox.asks.get(o.id) || [])[0] : null;
     const acts = [];
@@ -1873,7 +2032,7 @@ function trayMenu() {
   // (And your usage limits, as /usage says them, once Blaube has heard.)
   const used = limits.line(usageLimits).replace(/^Usage: /, '');
   const usage = used ? [{ label: `Usage: ${used}`, enabled: false }, { type: 'separator' }] : [];
-  return Menu.buildFromTemplate([...(rows.length ? [...rows, { type: 'separator' }] : []), ...usage, ...appMenuTemplate()]);
+  return Menu.buildFromTemplate([blobsItem(), { type: 'separator' }, ...(rows.length ? [...rows, { type: 'separator' }] : []), ...usage, ...appMenuTemplate({ blobs: false })]);
 }
 
 function refreshTray() {
@@ -1919,6 +2078,7 @@ app.whenReady().then(async () => {
   refreshTray();
 
   focus = startFocusWatcher(() => { if (markFrontSeen()) pushState(); });
+  tracker.on('change', (c) => { if (c && c.to === 'gone' && c.session) forgetBlob(c.session.id); });
   tracker.on('change', () => {
     markFrontSeen();
     if (tracker.list().some((s) => !isReady(s))) refreshUsage();
@@ -2023,6 +2183,7 @@ app.whenReady().then(async () => {
     if (talkId === id) talkId = to;
     if (pinnedTalks.has(id)) { const r = pinnedTalks.get(id); pinnedTalks.delete(id); r.id = to; pinnedTalks.set(to, r); }
     if (talkLasts.has(id)) { talkLasts.set(to, talkLasts.get(id)); talkLasts.delete(id); }
+    for (const k of ['hiddenBlobs', 'wantedBlobs']) if (id in prefs[k]) { prefs[k][to] = prefs[k][id]; delete prefs[k][id]; savePrefs(); }
     pushState();
   });
   owned.on('mode', (id, mode) => tracker.setMode(id, mode));
@@ -2534,6 +2695,21 @@ app.whenReady().then(async () => {
   if (TEST) global.__blaubeSessionMenu = sessionMenu;
   if (TEST) global.__blaubeMoveAll = moveAllToTerminals;
   if (TEST) global.__blaubeTrayMenu = trayMenu;
+  // Blobs (see openBlobs): its eyes, its buttons, its size.
+  ipcMain.on('talk-blobs', () => { const b = talkBox; openBlobs(b ? { x: b.x + b.w + BLOBS_W / 2 + 8, y: b.y + 20 } : undefined); });
+  ipcMain.on('blobs-toggle', (_e, id) => setBlobHidden(id, onStage(id)));
+  ipcMain.on('blobs-show-all', () => showAllBlobs());
+  ipcMain.on('blobs-hide-idle', () => hideIdleBlobs());
+  ipcMain.on('blobs-max', (_e, n) => setConfig(Object.assign({}, prefs.config, { maxBlobs: Number(n) || 0 })));
+  ipcMain.on('blobs-talk', (_e, id) => { if (tracker.sessions.has(id)) askTalk(id); });
+  ipcMain.on('blobs-close', () => { if (blobsWin) blobsWin.close(); });
+  ipcMain.on('blobs-height', (_e, h) => {
+    if (!blobsWin || blobsWin.isDestroyed()) return;
+    const b = blobsWin.getBounds(), area = screen.getDisplayMatching(b).workArea;
+    const height = Math.round(Math.min(Math.max(120, Number(h) || 0), area.height - 16));
+    if (height === b.height) return;
+    blobsWin.setBounds({ x: b.x, y: Math.min(b.y, area.y + area.height - height - 8), width: b.width, height });
+  });
   // A reply passed on to another session, as if pasted into its terminal.
   ipcMain.on('talk-forward', (_e, from, to, text) => {
     const a = isOpen(from) && tracker.sessions.get(from);
@@ -3605,7 +3781,7 @@ app.whenReady().then(async () => {
     try { if (fs.statSync(file).isFile()) shell.showItemInFolder(file); } catch { /* gone */ }
   });
   // Another slime picked in the box (its dot, or a shortcut).
-  ipcMain.on('talk-switch', (_e, id) => { if (id && id !== talkId && tracker.sessions.has(id) && win) win.webContents.send('open-talk', id); });
+  ipcMain.on('talk-switch', (_e, id) => { if (id && id !== talkId && tracker.sessions.has(id) && win) askTalk(id); });
   ipcMain.on('talk-unsend', (_e, id, n) => { if (id && isOpen(id)) inbox.unsend(id, n); });
   ipcMain.on('talk-typing', (_e, id) => { if (win && isOpen(id)) win.webContents.send('typing', id); });
   // ✕ (or Esc, unpinned): a pinned box closes for good, the other one hides.
@@ -3629,6 +3805,7 @@ app.whenReady().then(async () => {
     prefs.talkDark = !!on;
     savePrefs();
     pushTalks();
+    pushBlobs(); // (Blobs follows the talk box's dark mode)
     sendTalkRect(); // (dark boxes have no tail)
   });
   // Where the tail leaves the box now (its slime moved): the box stays put,
