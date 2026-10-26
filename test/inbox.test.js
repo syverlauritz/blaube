@@ -591,3 +591,16 @@ test('a turn that ended on an API error is offered a retry, until something else
   assert.equal(erredLast([{ who: 'note', text: 'Claude Code: overloaded', error: true }, { who: 'claude', text: 'Done.' }]), '');
   assert.equal(erredLast([{ who: 'note', text: 'Picked up here' }]), '');
 });
+
+test('a turn started from a message Blaube sent with an id can be put back to it', () => {
+  const inbox = new Inbox();
+  inbox.say('s1', 'change two files', 'uuid-1');
+  inbox.add('s1', { who: 'step', text: 'Edited a.js', kind: 'edit', file: '/x/a.js' });
+  inbox.replied('s1', 'Done.');
+  const r = inbox.log('s1').at(-1);
+  assert.equal(r.turn.rewind, 'uuid-1');
+  assert.deepEqual(r.turn.files, ['/x/a.js']);
+  inbox.say('s1', 'and again');
+  inbox.replied('s1', 'Done again.');
+  assert.equal(inbox.log('s1').at(-1).turn.rewind, undefined, 'none without an id');
+});

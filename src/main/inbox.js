@@ -237,9 +237,9 @@ class Inbox extends EventEmitter {
   }
 
   // Something you said to a session Blaube started (it went straight in).
-  say(id, text) {
+  say(id, text, uuid) {
     text = String(text || '').trim();
-    if (text) this.add(id, { who: 'you', text, via: 'blaube', status: 'sent' });
+    if (text) this.add(id, Object.assign({ who: 'you', text, via: 'blaube', status: 'sent' }, uuid ? { uuid } : {}));
   }
 
   // A reply from a session Blaube started (from its own output).
@@ -419,7 +419,7 @@ function turnOf(log, now) {
   if (start < 0) return null;
   const steps = log.slice(start + 1).filter((e) => e.who === 'step');
   const files = [...new Set(steps.filter((e) => e.file && e.kind === 'edit').map((e) => e.file))];
-  return { took: Math.max(0, now - (log[start].sentAt || log[start].at)), steps: steps.length, files }; // (from when it went in, not when it was typed)
+  return Object.assign({ took: Math.max(0, now - (log[start].sentAt || log[start].at)), steps: steps.length, files }, log[start].uuid ? { rewind: log[start].uuid } : {}); // (from when it went in, not when it was typed; rewind: the message to put its changes back to)
 }
 
 // The test command its last turn ran and that failed (its last run of

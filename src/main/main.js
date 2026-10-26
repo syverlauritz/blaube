@@ -487,6 +487,7 @@ function pushTalk(id, focusField = false) {
 }
 let usageLimits = null; // (see limits.js)
 const mcpStates = new Map(); // id -> its MCP servers, for a session Blaube started
+const rewound = new Map(); // id -> what Claude should hear about files you put back
 // Sessions that hit a usage limit and carry on by themselves once it lifts.
 const carryLater = new Map(); // id -> when
 function carryFor(id, now = Date.now()) {
@@ -583,7 +584,7 @@ function sweepSoon() { if (!sweepTimer) sweepTimer = setTimeout(() => { sweepTim
 function sweep() {
   const live = (id) => tracker.sessions.has(id) || owned.has(id) || (id === talkId && !!talkWin && !talkWin.isDestroyed() && talkWin.isVisible());
   for (const id of [...inbox.logs.keys(), ...inbox.todos.keys(), ...inbox.steerable, ...inbox.typed.keys()]) if (!live(id)) inbox.forget(id);
-  const maps = { gitStates, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan, carryLater, mcpStates };
+  const maps = { gitStates, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan, carryLater, mcpStates, rewound };
   for (const id of [...muted]) if (!live(id)) muted.delete(id);
   for (const m of Object.values(maps)) for (const id of [...m.keys()]) if (!live(id)) m.delete(id);
   for (const [k, at] of [...lastBubble]) if (Date.now() - at > 60e3) lastBubble.delete(k);
@@ -1544,6 +1545,23 @@ app.whenReady().then(async () => {
   });
   owned.on('start', (id) => setTimeout(() => { if (owned.has(id)) askMcp(id); }, 5000));
   owned.on('result', (id) => askMcp(id));
+  // "undo all" under a reply, in a session Blaube started: its files put
+  // back as they were before that turn by Claude Code itself (rewind_files),
+  // no asking Claude. false: the box asks Claude instead.
+  ipcMain.handle('talk-rewind', (_e, id, uuid) => new Promise((done) => {
+    if (!id || id !== talkId || !owned.has(id) || typeof uuid !== 'string' || !inbox.log(id).some((e) => e.uuid === uuid)) return done(false);
+    owned.control(id, { subtype: 'rewind_files', user_message_id: uuid, dry_run: true }, (ok, r) => {
+      if (!ok || !r || !r.canRewind) { log(`rewind ${id}: ${ok ? (r && r.error) || 'no' : r}`); return done(false); }
+      owned.control(id, { subtype: 'rewind_files', user_message_id: uuid }, (ok2, r2) => {
+        if (!ok2 || (r2 && r2.canRewind === false)) return done(false);
+        const files = (r.filesChanged || []).map((f) => path.basename(f));
+        const what = files.length ? files.join(', ') : 'its files';
+        inbox.add(id, { who: 'note', text: `Put back ${what} as they were before that turn` });
+        rewound.set(id, `I put ${files.length ? (r.filesChanged || []).join(', ') : 'the files you changed'} back as they were before your last turn: those changes are gone now.`);
+        done(true);
+      });
+    });
+  }));
   ipcMain.handle('talk-mcp-reconnect', (_e, id, name) => new Promise((done) => {
     if (!id || id !== talkId || !owned.has(id) || !(mcpStates.get(id) || []).some((m) => m.name === name)) return done(false);
     owned.control(id, { subtype: 'mcp_reconnect', serverName: name }, (ok, r) => {
@@ -1771,8 +1789,9 @@ app.whenReady().then(async () => {
         return;
       }
       if (!slashCommand(text, (tracker.sessions.get(id) || {}).cwd)) text = withWhatYouRan(id, text);
-      if (!owned.send(id, text)) { inbox.add(id, { who: 'you', text: String(text), via: 'blaube', status: 'unsent' }); return; }
-      inbox.say(id, text);
+      const uuid = require('node:crypto').randomUUID();
+      if (!owned.send(id, text, uuid)) { inbox.add(id, { who: 'you', text: String(text), via: 'blaube', status: 'unsent' }); return; }
+      inbox.say(id, text, uuid);
       tracker.handle({ session_id: id, hook_event_name: 'UserPromptSubmit' }, 'blaube');
       return;
     }
@@ -1801,6 +1820,9 @@ app.whenReady().then(async () => {
   // A message, with what you ran with ! since the last one ahead of it
   // (as the terminal's bash mode adds it to the conversation).
   function withWhatYouRan(id, text) {
+    const put = rewound.get(id);
+    rewound.delete(id);
+    if (put) text = `(${put})\n\n${text}`;
     const ran = shellRan.get(id);
     if (!ran || !ran.length) return text;
     shellRan.delete(id);

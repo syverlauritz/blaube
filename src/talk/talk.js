@@ -401,15 +401,24 @@
         t.append(undo);
       });
       if (files.length > 4) t.append(` +${files.length - 4}`);
-      // More than one file: undo the whole turn in one go.
-      if (files.length > 1) {
+      // More than one file: undo the whole turn in one go. (In a session
+      // Blaube started, the last turn's are put back by Claude Code itself.)
+      const rewind = m.turn && m.turn.rewind && current.owned && isLastTurn(m) ? m.turn.rewind : '';
+      if (files.length > 1 || (rewind && files.length)) {
         const all = document.createElement('button');
         all.className = 'undo all';
         all.type = 'button';
         all.dataset.label = 'undo all';
         all.title = `Ask Claude to undo everything it changed in that turn (${files.length} files)`;
         all.setAttribute('aria-label', all.title);
-        all.onclick = () => { if (current && !all.disabled) { all.disabled = true; api.send(current.id, `Undo all the changes you made in that last turn (${files.join(', ')}), and tell me what you put back.`); } };
+        if (rewind) all.title = `Put back everything it changed in that turn (${files.length === 1 ? files[0] : files.length + ' files'})`;
+        all.onclick = async () => {
+          if (!current || all.disabled) return;
+          all.disabled = true;
+          const id = current.id;
+          if (rewind && api.rewind && await api.rewind(id, rewind)) return;
+          api.send(id, `Undo all the changes you made in that last turn (${files.join(', ')}), and tell me what you put back.`);
+        };
         t.append(all);
       }
       if (bits.length || files.length) out.push(t);
@@ -420,6 +429,13 @@
     return out;
   }
 
+  // Is this the reply that ended its latest turn? (Only that turn's changes
+  // can be put back by themselves.)
+  const isLastTurn = (m) => {
+    const l = (current && current.log) || [];
+    for (let i = l.length - 1; i >= 0; i--) if (l[i].who === 'claude' && l[i].turn) return l[i].turn.rewind === m.turn.rewind;
+    return false;
+  };
   const took = (ms) => { const m = Math.round(ms / 60e3); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
 
   // "Copy", then "Copied" for a moment.

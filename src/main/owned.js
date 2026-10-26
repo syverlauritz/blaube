@@ -67,6 +67,7 @@ class Owned extends EventEmitter {
     }
     const env = Object.assign({}, process.env);
     for (const k of Object.keys(env)) if (k === 'CLAUDECODE' || /^CLAUDE_CODE_(CHILD_SESSION|SESSION_|ENTRYPOINT)/.test(k)) delete env[k];
+    env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING = '1'; // (so a turn's changes can be put back: rewind_files)
     const opts = { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true };
     const viaCmd = process.platform === 'win32' && (!path.isAbsolute(bin) || /\.(cmd|bat)$/i.test(bin));
     const proc = viaCmd
@@ -145,10 +146,11 @@ class Owned extends EventEmitter {
   }
 
   // Says something to it. Returns false if it isn't running.
-  send(id, text) {
+  // `uuid`: the message's id, to put its turn's changes back by later.
+  send(id, text, uuid) {
     const s = this.sessions.get(id);
     if (!s || !s.proc.stdin.writable) return false;
-    s.proc.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: String(text) } }) + '\n');
+    s.proc.stdin.write(JSON.stringify(Object.assign({ type: 'user', message: { role: 'user', content: String(text) } }, uuid ? { uuid } : {})) + '\n');
     return true;
   }
 

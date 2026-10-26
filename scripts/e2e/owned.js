@@ -13,7 +13,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Claude Code's stream-json mode, as far as this needs: control requests
 // answered, a message answered (or not yet, if it's "slow").
 const FAKE = `#!/usr/bin/env node
-let model = 'claude-opus', turn = null, used = [12, 40], mcpUp = false;
+let model = 'claude-opus', turn = null, used = [12, 40], mcpUp = false; const seen = new Set();
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
 out({ type: 'system', subtype: 'init', permissionMode: 'default' });
 require('node:readline').createInterface({ input: process.stdin }).on('line', (l) => {
@@ -23,17 +23,19 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
     if (r.subtype === 'set_model') { model = r.model.startsWith('claude-') ? r.model : 'claude-' + r.model; return ok({ model }); }
     if (r.subtype === 'set_permission_mode') { ok({ mode: r.mode }); return out({ type: 'system', subtype: 'status', permissionMode: r.mode }); }
     if (r.subtype === 'stop_task') return ok({});
+    if (r.subtype === 'rewind_files') return ok(seen.has(r.user_message_id) ? (r.dry_run ? { canRewind: true, filesChanged: ['/x/a.js', '/x/b.js'], insertions: 3, deletions: 1 } : { canRewind: true }) : { canRewind: false, error: 'No file checkpoint found for this message.' });
     if (r.subtype === 'mcp_status') return ok({ mcpServers: [{ name: 'github', status: mcpUp ? 'connected' : 'failed', error: 'ENOENT: no such file' }, { name: 'linear', status: 'connected' }] });
     if (r.subtype === 'mcp_reconnect') { mcpUp = r.serverName === 'github'; return ok({}); }
     if (r.subtype === 'get_usage') return ok({ session: {}, rate_limits_available: true, rate_limits: { five_hour: { utilization: used[0], resets_at: new Date(Date.now() + 7200e3).toISOString() }, seven_day: { utilization: used[1], resets_at: new Date(Date.now() + 4 * 86400e3).toISOString() } } });
     if (r.subtype === 'interrupt') { clearTimeout(turn); ok({}); return out({ type: 'result', subtype: 'error_during_execution', is_error: true }); }
     return;
   }
+  if (m.type === 'user' && m.uuid && process.env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING === '1') seen.add(m.uuid);
   if (m.type === 'user' && m.message.content === '/compact') { out({ type: 'system', subtype: 'compact_boundary' }); return out({ type: 'result', subtype: 'success', result: '' }); }
   if (m.type === 'user' && m.message.content === '/cost') { out({ type: 'assistant', message: { model: '<synthetic>', content: [{ type: 'text', text: 'Error: Nothing to show yet' }] } }); return out({ type: 'result', subtype: 'success', result: '' }); }
   if (m.type === 'user' && m.message.content === 'busy week') used = [30, 82];
   if (m.type === 'user' && m.message.content === 'busy week') out({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', rateLimitType: 'seven_day', utilization: 0.82, resetsAt: Math.round(Date.now() / 1000) + 3 * 86400, unifiedWindows: { five_hour: { utilization: 0.3, resetsAt: Math.round(Date.now() / 1000) + 3600, status: 'allowed' }, seven_day: { utilization: 0.82, resetsAt: Math.round(Date.now() / 1000) + 3 * 86400, status: 'allowed' } } } });
-  if (m.type === 'user') turn = setTimeout(() => out({ type: 'result', subtype: 'success', result: model + ' here.' }), m.message.content === 'slow' ? 20000 : 50);
+  if (m.type === 'user') turn = setTimeout(() => out({ type: 'result', subtype: 'success', result: model + ' here.' }), m.message.content === 'slow' ? 20000 : m.message.content === 'edit two' ? 1500 : 50);
 });
 `;
 
@@ -96,6 +98,22 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(() => box(`/^Usage: 12% of 5 hours \\(resets .+\\) · 40% of the week/.test((document.querySelector('#overview .usage') || {}).textContent || '')`)), 'the overview has your usage limits, asked of Claude Code after a turn');
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
 	await until(() => box(`!document.body.classList.contains('overview')`));
+	// "undo all": the turn's files put back by Claude Code itself (rewind_files).
+	const post = (payload) => new Promise((done) => {
+		const req = require('node:http').request({ host: '127.0.0.1', port: PORT, path: '/blaube/hook', method: 'POST', headers: { 'content-type': 'application/json', 'x-blaube-entry': 'cli' } }, (res) => { res.resume(); res.on('end', done); });
+		req.end(JSON.stringify(Object.assign({ session_id: id, cwd: dir }, payload)));
+	});
+	await until(() => tracker.sessions.get(id).state === 'done');
+	await type('edit two');
+	await sleep(300);
+	for (const f of ['a.js', 'b.js']) await post({ hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: path.join(dir, f), old_string: 'a', new_string: 'b' }, tool_response: {} });
+	check(await until(() => box(`[...document.querySelectorAll('#inner .undo.all')].length > 0`)), 'a turn that changed files has undo all');
+	await box(`[...document.querySelectorAll('#inner .undo.all')].pop().click()`);
+	check(await until(() => inbox.log(id).some((e) => e.who === 'note' && e.text === 'Put back a.js, b.js as they were before that turn')), 'which puts them back, asked of Claude Code itself (no asking Claude)');
+	check(!inbox.log(id).some((e) => e.who === 'you' && /^Undo all/.test(e.text)), 'without a message to Claude');
+	await type('now what?');
+	check(await until(() => inbox.log(id).some((e) => e.who === 'you' && /^\(I put \/x\/a\.js, \/x\/b\.js back as they were before your last turn/.test(e.text) && /now what\?$/.test(e.text))), 'and Claude hears about it with your next message');
+	await until(() => tracker.sessions.get(id).state === 'done');
 	// A background task it started stops at once, asked of Claude Code itself.
 	await new Promise((done) => {
 		const req = require('node:http').request({ host: '127.0.0.1', port: PORT, path: '/blaube/hook', method: 'POST', headers: { 'content-type': 'application/json', 'x-blaube-entry': 'cli' } }, (res) => { res.resume(); res.on('end', done); });
