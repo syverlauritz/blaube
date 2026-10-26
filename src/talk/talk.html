@@ -154,6 +154,16 @@
   .bg button:hover { color: var(--ink); }
   .bg button:disabled { opacity: .5; cursor: default; }
   .bg li { flex-wrap: wrap; }
+  .note.context { align-self: stretch; white-space: normal; text-align: left; }
+  .ctxbar { display: flex; height: 10px; margin: 6px 0 4px; border-radius: 5px; overflow: hidden; background: var(--soft); }
+  .ctxbar .seg { display: block; height: 100%; min-width: 2px; }
+  .ctxbar .seg.used, .ctxkeys .key.used::before { background: color-mix(in srgb, var(--color, #D97757) calc(100% - var(--i, 0) * 14%), var(--soft)); }
+  .ctxbar .seg.buffer, .ctxkeys .key.buffer::before { background: repeating-linear-gradient(45deg, var(--faint) 0 2px, transparent 2px 5px); }
+  .ctxbar .seg.free { background: none; }
+  .ctxkeys { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 13px; }
+  .ctxkeys .key::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 2px; vertical-align: 0; background: var(--soft); }
+  .mode .model.ctx { cursor: pointer; }
+  .mode .model.ctx:hover { text-decoration: underline; }
   .bg .bgout { flex: 1 0 100%; margin: 4px 0 6px; padding: 8px 12px; background: var(--soft); border-radius: 14px; font: 500 13px/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow-y: auto; user-select: text; }
   .bg .bgout[hidden] { display: none; }
   .bg .bgout.failed { box-shadow: inset 3px 0 0 #d33; }

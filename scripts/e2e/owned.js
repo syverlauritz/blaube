@@ -23,6 +23,7 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
     if (r.subtype === 'set_model') { model = r.model.startsWith('claude-') ? r.model : 'claude-' + r.model; return ok({ model }); }
     if (r.subtype === 'set_permission_mode') { ok({ mode: r.mode }); return out({ type: 'system', subtype: 'status', permissionMode: r.mode }); }
     if (r.subtype === 'stop_task') return ok({});
+    if (r.subtype === 'get_context_usage') return ok({ categories: [{ name: 'System tools', tokens: 29000, kind: 'used' }, { name: 'Messages', tokens: 61000, kind: 'used' }, { name: 'Free space', tokens: 410000, kind: 'free' }], totalTokens: 90000, maxTokens: 500000, percentage: 18 });
     if (r.subtype === 'rewind_files') return ok(seen.has(r.user_message_id) ? (r.dry_run ? { canRewind: true, filesChanged: ['/x/a.js', '/x/b.js'], insertions: 3, deletions: 1 } : { canRewind: true }) : { canRewind: false, error: 'No file checkpoint found for this message.' });
     if (r.subtype === 'mcp_status') return ok({ mcpServers: [{ name: 'github', status: mcpUp ? 'connected' : 'failed', error: 'ENOENT: no such file' }, { name: 'linear', status: 'connected' }] });
     if (r.subtype === 'mcp_reconnect') { mcpUp = r.serverName === 'github'; return ok({}); }
@@ -114,6 +115,9 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await type('now what?');
 	check(await until(() => inbox.log(id).some((e) => e.who === 'you' && /^\(I put \/x\/a\.js, \/x\/b\.js back as they were before your last turn/.test(e.text) && /now what\?$/.test(e.text))), 'and Claude hears about it with your next message');
 	await until(() => tracker.sessions.get(id).state === 'done');
+	// /context: what fills it, asked of Claude Code and drawn in the box.
+	await type('/context');
+	check(await until(() => box(`(() => { const n = [...document.querySelectorAll('#inner .note.context')].pop(); return !!n && n.textContent.startsWith('Context: 18% full (90k of 500k)') && n.querySelectorAll('.ctxbar .seg').length === 3 && /Messages 61k/.test(n.querySelector('.ctxkeys').textContent); })()`)), '/context shows what fills its context, as a bar');
 	// A background task it started stops at once, asked of Claude Code itself.
 	await new Promise((done) => {
 		const req = require('node:http').request({ host: '127.0.0.1', port: PORT, path: '/blaube/hook', method: 'POST', headers: { 'content-type': 'application/json', 'x-blaube-entry': 'cli' } }, (res) => { res.resume(); res.on('end', done); });

@@ -81,11 +81,24 @@ function expand(text, cwd = '', home = os.homedir()) {
 // /model sonnet switches its model, /plan makes it plan first. Returns {
 // request } for Claude Code, { help } when something's missing, or null.
 function control(text) {
-  const m = /^\/(model|plan)(?:\s+(\S+))?\s*$/i.exec(String(text || '').trim());
+  const m = /^\/(model|plan|context)(?:\s+(\S+))?\s*$/i.exec(String(text || '').trim());
   if (!m) return null;
+  if (m[1].toLowerCase() === 'context') return { request: { subtype: 'get_context_usage', detail: 'summary' } }; // (local estimates: no API calls)
   if (m[1].toLowerCase() === 'plan') return { request: { subtype: 'set_permission_mode', mode: 'plan' } };
   if (!m[2]) return { help: 'Say which: /model opus, /model sonnet or /model haiku (or a full model name).' };
   return { request: { subtype: 'set_model', model: m[2].toLowerCase() === 'default' ? 'default' : m[2] } };
 }
 
-module.exports = { slashCommand, commandNames, expand, control };
+// Claude Code's answer to get_context_usage, as the box shows it: "Context:
+// 8% full (39.8k of 500k)" over a bar of what fills it, biggest first.
+const kTokens = (n) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 100e3 ? 0 : 1).replace(/\.0$/, '')}k` : String(n));
+function contextNote(r) {
+  if (!r || !Array.isArray(r.categories) || !r.maxTokens) return null;
+  const parts = r.categories.filter((c) => c && c.tokens > 0 && c.kind !== 'deferred').map((c) => ({ name: String(c.name || c.id), tokens: c.tokens, kind: c.kind === 'free' || c.kind === 'buffer' ? c.kind : 'used' }));
+  parts.sort((a, b) => (a.kind === 'used' ? 0 : a.kind === 'buffer' ? 1 : 2) - (b.kind === 'used' ? 0 : b.kind === 'buffer' ? 1 : 2) || b.tokens - a.tokens);
+  const used = r.totalTokens != null ? r.totalTokens : parts.filter((p) => p.kind === 'used').reduce((n, p) => n + p.tokens, 0);
+  const pct = r.percentage != null ? Math.round(r.percentage) : Math.round(100 * used / r.maxTokens);
+  return { text: `Context: ${pct}% full (${kTokens(used)} of ${kTokens(r.maxTokens)})`, context: { max: r.maxTokens, parts: parts.map((p) => Object.assign(p, { label: `${p.name} ${kTokens(p.tokens)}` })) } };
+}
+
+module.exports = { slashCommand, commandNames, expand, control, contextNote };

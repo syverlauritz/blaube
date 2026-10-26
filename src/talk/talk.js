@@ -330,6 +330,28 @@
       const e = document.createElement('div');
       e.className = 'note' + (m.error ? ' error' : '');
       e.textContent = m.text;
+      // (/context: a bar of what fills it, as the terminal draws it.)
+      if (m.context && m.context.max) {
+        e.classList.add('context');
+        const bar = document.createElement('div');
+        bar.className = 'ctxbar';
+        const keys = document.createElement('div');
+        keys.className = 'ctxkeys';
+        m.context.parts.forEach((p, i) => {
+          const seg = document.createElement('span');
+          seg.className = 'seg ' + p.kind;
+          if (p.kind === 'used') seg.style.setProperty('--i', i);
+          seg.style.width = (100 * p.tokens / m.context.max).toFixed(2) + '%';
+          seg.title = p.label;
+          bar.append(seg);
+          const k = document.createElement('span');
+          k.className = 'key ' + p.kind;
+          if (p.kind === 'used') k.style.setProperty('--i', i);
+          k.textContent = p.label;
+          keys.append(k);
+        });
+        e.append(bar, keys);
+      }
       return [e];
     }
     const e = document.createElement('div');
@@ -1420,7 +1442,12 @@
     m.className = 'mode ' + mode + (s.canMode ? ' can' : '');
     m.textContent = '';
     // (Which model it is, first: Opus 5.5 · Accepting edits.)
-    if (about) { const n = document.createElement('span'); n.className = 'model' + (s.context >= 80 || /reached/.test(s.limit || '') ? ' full' : ''); n.textContent = about + (shown ? ' · ' : ''); m.append(n); }
+    if (about) {
+      const n = document.createElement('span'); n.className = 'model' + (s.context >= 80 || /reached/.test(s.limit || '') ? ' full' : ''); n.textContent = about + (shown ? ' · ' : '');
+      // (In a session Blaube started, a tap shows what fills its context, as /context does.)
+      if (s.canMode) { n.classList.add('ctx'); n.title = 'What fills its context (/context)'; n.addEventListener('click', (e) => { e.stopPropagation(); if (current) api.send(current.id, '/context'); }); }
+      m.append(n);
+    }
     if (shown) m.append(MODES[mode] || mode);
     if (s.canMode) { const k = document.createElement('kbd'); k.textContent = '⇧⇥'; m.append(k); }
     m.title = s.canMode ? 'Change how it asks (Shift+Tab)' : 'Change it in its terminal (Shift+Tab there)';

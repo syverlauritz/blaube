@@ -49,3 +49,23 @@ test('your own commands go as the prompt they stand for; "/" lists them first', 
   assert.ok(names.some((c) => c.name === 'compact' && !c.mine));
   assert.deepEqual(commandNames('co', proj, home).map((c) => c.name), ['compact', 'config', 'context', 'cost']);
 });
+
+test('/context is asked of Claude Code, and its answer drawn as what fills it', () => {
+  const { control, contextNote } = require('../src/main/commands');
+  assert.deepEqual(control('/context'), { request: { subtype: 'get_context_usage', detail: 'summary' } });
+  const n = contextNote({
+    categories: [
+      { id: 'system_prompt', name: 'System prompt', tokens: 3803, kind: 'used' },
+      { id: 'system_tools', name: 'System tools', tokens: 29244, kind: 'used' },
+      { id: 'system_tools_deferred', name: 'System tools (deferred)', tokens: 34354, kind: 'deferred' },
+      { id: 'messages', name: 'Messages', tokens: 61000, kind: 'used' },
+      { id: 'autocompact_buffer', name: 'Autocompact buffer', tokens: 33000, kind: 'buffer' },
+      { id: 'free_space', name: 'Free space', tokens: 372953, kind: 'free' },
+    ],
+    totalTokens: 94047, maxTokens: 500000, percentage: 19, gridRows: [[]],
+  });
+  assert.equal(n.text, 'Context: 19% full (94k of 500k)');
+  assert.deepEqual(n.context.parts.map((p) => p.label), ['Messages 61k', 'System tools 29.2k', 'System prompt 3.8k', 'Autocompact buffer 33k', 'Free space 373k']);
+  assert.equal(n.context.max, 500000);
+  assert.equal(contextNote(null), null);
+});

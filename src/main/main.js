@@ -16,7 +16,7 @@ const projectFiles = require('./files');
 const shellRun = require('./shellRun');
 const { failedTests, stoppedLast, erredLast } = require('./inbox');
 const { Notification } = require('electron');
-const { slashCommand, commandNames, expand: expandCommand, control: controlFor } = require('./commands');
+const { slashCommand, commandNames, expand: expandCommand, control: controlFor, contextNote } = require('./commands');
 const limits = require('./limits');
 const taskOutput = require('./taskOutput');
 const permRules = require('./permRules');
@@ -1773,12 +1773,17 @@ app.whenReady().then(async () => {
     if (prompt) { inbox.add(id, { who: 'note', text: `${String(text).trim().split(/\s/)[0]}: sent what it says` }); text = prompt; }
     // A session Blaube started: straight in, and its turn starts.
     if (owned.has(id)) {
-      // (/model and /plan are for Claude Code: it's asked directly.)
+      // (/model, /plan and /context are for Claude Code: it's asked directly.)
       const c = controlFor(text);
       if (c && c.help) { inbox.add(id, { who: 'note', text: c.help }); return; }
       if (c) {
         inbox.add(id, { who: 'you', text: String(text).trim(), via: 'blaube', status: 'sent' });
         owned.control(id, c.request, (ok, r) => {
+          if (c.request.subtype === 'get_context_usage') {
+            const n = ok && contextNote(r);
+            inbox.add(id, n ? Object.assign({ who: 'note' }, n) : { who: 'note', text: `Couldn’t see its context: ${ok ? 'no answer' : r}`, error: true });
+            return pushTalk(id);
+          }
           const what = c.request.subtype === 'set_model' ? (ok ? `Now using ${modelName(r.model) || r.model || c.request.model}` : `Couldn’t switch to ${c.request.model}: ${r}`)
             : ok ? 'Plan mode: it shows you a plan before it changes anything' : `Couldn’t switch to plan mode: ${r}`;
           if (ok && c.request.mode) tracker.setMode(id, r.mode || c.request.mode);
