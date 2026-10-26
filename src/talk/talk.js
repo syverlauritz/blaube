@@ -287,6 +287,17 @@
         t.append(undo);
       });
       if (files.length > 4) t.append(` +${files.length - 4}`);
+      // More than one file: undo the whole turn in one go.
+      if (files.length > 1) {
+        const all = document.createElement('button');
+        all.className = 'undo all';
+        all.type = 'button';
+        all.dataset.label = 'undo all';
+        all.title = `Ask Claude to undo everything it changed in that turn (${files.length} files)`;
+        all.setAttribute('aria-label', all.title);
+        all.onclick = () => { if (current && !all.disabled) { all.disabled = true; api.send(current.id, `Undo all the changes you made in that last turn (${files.join(', ')}), and tell me what you put back.`); } };
+        t.append(all);
+      }
       if (bits.length || files.length) out.push(t);
       const c = copyButton(() => m.text, 'Copy reply');
       c.classList.add('copyreply');
