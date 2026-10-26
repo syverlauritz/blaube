@@ -157,6 +157,7 @@
   .bg .bgout { flex: 1 0 100%; margin: 4px 0 6px; padding: 8px 12px; background: var(--soft); border-radius: 14px; font: 500 13px/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow-y: auto; user-select: text; }
   .bg .bgout[hidden] { display: none; }
   .bg .bgout.failed { box-shadow: inset 3px 0 0 #d33; }
+  .mcp li span::before { background: #d33; border-radius: 50%; }
   /* What you might ask for next, one tap each. */
   .quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 8px; }
   .quick[hidden] { display: none; }
@@ -398,6 +399,7 @@
     <button class="git" id="git" type="button" hidden aria-expanded="false"></button>
     <ul class="gitfiles" id="gitFiles" hidden></ul>
     <ul class="bg" id="bg" hidden aria-label="Running in the background"></ul>
+    <ul class="bg mcp" id="mcp" hidden aria-label="Tools that aren’t connected"></ul>
     <div class="findbar" id="findBar" hidden><input id="find" type="search" placeholder="Find in this conversation…" aria-label="Find in this conversation"><span id="findCount"></span></div>
     <button class="toast" id="toast" type="button" hidden aria-live="polite"></button>
     <div class="todo" id="todo" hidden>

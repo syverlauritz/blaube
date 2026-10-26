@@ -13,7 +13,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Claude Code's stream-json mode, as far as this needs: control requests
 // answered, a message answered (or not yet, if it's "slow").
 const FAKE = `#!/usr/bin/env node
-let model = 'claude-opus', turn = null, used = [12, 40];
+let model = 'claude-opus', turn = null, used = [12, 40], mcpUp = false;
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
 out({ type: 'system', subtype: 'init', permissionMode: 'default' });
 require('node:readline').createInterface({ input: process.stdin }).on('line', (l) => {
@@ -23,6 +23,8 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
     if (r.subtype === 'set_model') { model = r.model.startsWith('claude-') ? r.model : 'claude-' + r.model; return ok({ model }); }
     if (r.subtype === 'set_permission_mode') { ok({ mode: r.mode }); return out({ type: 'system', subtype: 'status', permissionMode: r.mode }); }
     if (r.subtype === 'stop_task') return ok({});
+    if (r.subtype === 'mcp_status') return ok({ mcpServers: [{ name: 'github', status: mcpUp ? 'connected' : 'failed', error: 'ENOENT: no such file' }, { name: 'linear', status: 'connected' }] });
+    if (r.subtype === 'mcp_reconnect') { mcpUp = r.serverName === 'github'; return ok({}); }
     if (r.subtype === 'get_usage') return ok({ session: {}, rate_limits_available: true, rate_limits: { five_hour: { utilization: used[0], resets_at: new Date(Date.now() + 7200e3).toISOString() }, seven_day: { utilization: used[1], resets_at: new Date(Date.now() + 4 * 86400e3).toISOString() } } });
     if (r.subtype === 'interrupt') { clearTimeout(turn); ok({}); return out({ type: 'result', subtype: 'error_during_execution', is_error: true }); }
     return;
@@ -85,6 +87,10 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await type('thoughts?');
 	check(await until(() => inbox.log(id).some((e) => e.who === 'you' && /^\(I ran `echo hi there` myself\. It printed:\n```\nhi there\n```\)\n\nthoughts\?$/.test(e.text))), 'which then carries it');
 	await until(() => tracker.sessions.get(id).state === 'done');
+	// An MCP server that couldn't connect, as /mcp shows it, with Reconnect.
+	check(await until(() => box(`!document.getElementById('mcp').hidden && document.getElementById('mcp').textContent.startsWith('github couldn’t connect')`)), 'an MCP server that couldn’t connect shows in its box');
+	await box(`document.querySelector('#mcp button').click()`);
+	check(await until(() => box(`document.getElementById('mcp').hidden`)) && inbox.log(id).some((e) => e.text === 'Reconnected github'), 'and Reconnect connects it, asked of Claude Code itself');
 	// Its usage limits, asked of Claude Code after each turn (get_usage).
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
 	check(await until(() => box(`/^Usage: 12% of 5 hours \\(resets .+\\) · 40% of the week/.test((document.querySelector('#overview .usage') || {}).textContent || '')`)), 'the overview has your usage limits, asked of Claude Code after a turn');

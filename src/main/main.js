@@ -455,6 +455,7 @@ function pushTalk(id, focusField = false) {
     canBring: canBringIn(s), // (it could carry on in Blaube instead)
     context: contextOf(id), // (how full its context is, %)
     limit: limits.warn(usageLimits), // (your usage limits, once they're close)
+    mcp: (mcpStates.get(id) || []).filter((m) => m.status === 'failed' || m.status === 'needs-auth'), // (MCP servers that aren't there)
     usage: limits.line(usageLimits),
     canMode: owned.has(id), // (one Blaube started can be asked to change it)
     tasks: (s.tasks || []).filter((t) => !t.demo).slice(0, 4).map((t) => ({ id: t.id, label: t.description || t.command, command: t.command })),
@@ -485,6 +486,7 @@ function pushTalk(id, focusField = false) {
   }
 }
 let usageLimits = null; // (see limits.js)
+const mcpStates = new Map(); // id -> its MCP servers, for a session Blaube started
 // Sessions that hit a usage limit and carry on by themselves once it lifts.
 const carryLater = new Map(); // id -> when
 function carryFor(id, now = Date.now()) {
@@ -581,7 +583,7 @@ function sweepSoon() { if (!sweepTimer) sweepTimer = setTimeout(() => { sweepTim
 function sweep() {
   const live = (id) => tracker.sessions.has(id) || owned.has(id) || (id === talkId && !!talkWin && !talkWin.isDestroyed() && talkWin.isVisible());
   for (const id of [...inbox.logs.keys(), ...inbox.todos.keys(), ...inbox.steerable, ...inbox.typed.keys()]) if (!live(id)) inbox.forget(id);
-  const maps = { gitStates, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan, carryLater };
+  const maps = { gitStates, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan, carryLater, mcpStates };
   for (const id of [...muted]) if (!live(id)) muted.delete(id);
   for (const m of Object.values(maps)) for (const id of [...m.keys()]) if (!live(id)) m.delete(id);
   for (const [k, at] of [...lastBubble]) if (Date.now() - at > 60e3) lastBubble.delete(k);
@@ -1531,6 +1533,25 @@ app.whenReady().then(async () => {
     if (id) owned.control(id, { subtype: 'get_usage', skip_behaviors: true }, (ok, r) => { if (ok && r) setLimits(limits.fromUsage(r.rate_limits)); });
   };
   owned.on('result', askUsage);
+  // Its MCP servers, as /mcp shows them: one that couldn't connect shows
+  // in its box with Reconnect.
+  const askMcp = (id) => owned.control(id, { subtype: 'mcp_status' }, (ok, r) => {
+    if (!ok || !r || !Array.isArray(r.mcpServers)) return;
+    const list = r.mcpServers.map((m) => ({ name: String(m.name || ''), status: String(m.status || ''), error: String(m.error || '').slice(0, 200) })).filter((m) => m.name);
+    const before = JSON.stringify(mcpStates.get(id) || []);
+    mcpStates.set(id, list);
+    if (JSON.stringify(list) !== before) pushTalk(id);
+  });
+  owned.on('start', (id) => setTimeout(() => { if (owned.has(id)) askMcp(id); }, 5000));
+  owned.on('result', (id) => askMcp(id));
+  ipcMain.handle('talk-mcp-reconnect', (_e, id, name) => new Promise((done) => {
+    if (!id || id !== talkId || !owned.has(id) || !(mcpStates.get(id) || []).some((m) => m.name === name)) return done(false);
+    owned.control(id, { subtype: 'mcp_reconnect', serverName: name }, (ok, r) => {
+      inbox.add(id, { who: 'note', text: ok ? `Reconnected ${name}` : `Couldn’t reconnect ${name}: ${r}`, error: !ok });
+      askMcp(id);
+      done(ok);
+    });
+  }));
   setInterval(askUsage, 5 * 60e3).unref();
   owned.on('compacted', (id) => inbox.add(id, { who: 'note', text: 'Compacted: it carries on from a summary of the conversation so far' }));
   owned.on('result', (id, r) => {

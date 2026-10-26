@@ -477,6 +477,7 @@
     $('git').hidden = !s.git || !!s.ended;
     renderGitFiles(s);
     renderTasks(s);
+    renderMcp(s);
     renderQuick(s);
     renderAsk(s.ask, s.asks);
     $('hint').textContent = hint(s);
@@ -1020,6 +1021,32 @@
         requestAnimationFrame(fitWindow);
       };
       li.append(name, peek, stop, out);
+      box.append(li);
+    }
+    requestAnimationFrame(fitWindow);
+  }
+
+  // Its MCP servers that couldn't connect (or need you to sign in), as /mcp
+  // would show them, with Reconnect.
+  function renderMcp(s) {
+    const box = $('mcp');
+    const list = s.ended || s.demo ? [] : (s.mcp || []);
+    const key = JSON.stringify(list) + s.id;
+    box.hidden = !list.length;
+    if (box.dataset.key === key) return;
+    box.dataset.key = key;
+    box.textContent = '';
+    for (const m of list) {
+      const li = document.createElement('li');
+      const name = document.createElement('span');
+      name.textContent = m.status === 'needs-auth' ? `${m.name} needs you to sign in` : `${m.name} couldn’t connect`;
+      name.title = m.error || (m.status === 'needs-auth' ? 'Sign in with /mcp in its terminal' : '');
+      const again = document.createElement('button');
+      again.type = 'button';
+      again.textContent = 'Reconnect';
+      again.title = `Try connecting to ${m.name} again`;
+      again.onclick = async () => { if (!current) return; again.disabled = true; again.textContent = 'Connecting…'; if (!(await api.mcpReconnect(current.id, m.name))) { again.disabled = false; again.textContent = 'Reconnect'; } };
+      li.append(name, again);
       box.append(li);
     }
     requestAnimationFrame(fitWindow);
