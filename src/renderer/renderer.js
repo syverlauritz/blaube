@@ -1222,7 +1222,7 @@
         body.impulse(-dir * 40, 0, DT);
         b.sneeze = null;
         b.sneezedAt = time;
-        b.say([{ text: 'achoo!' }], 1, false, false);
+        quip(b, 'achoo!', 1);
         for (const f of flakes) if (f.on && f.on.b === b) { f.on = null; f.vx = dir * (150 + Math.random() * 120); f.vy = -120 - Math.random() * 80; f.loose = time + 1.5; }
       }
     }
@@ -1773,7 +1773,7 @@
       setTimeout(() => { b.chargeUntil = time + 0.6; }, i++ * 90);
     }
     const by = buddies.get(HOME) || bigs()[0];
-    if (by) by.say([{ text: '⚡', size: 30 }], 1.4, false, false);
+    if (by) quip(by, '⚡', 1.4, 30);
   }
 
   // While charging up: a fizzy tingle, then a little hop when it's done.
@@ -2003,7 +2003,7 @@
         p.stage = 'boo'; p.at = time;
         b.body.squashTop(-r * 22 * Math.min(1.5, CFG.pranks), DT);
         b.booUntil = time + 0.7;
-        b.say([{ text: 'boo!' }], 1, false, false);
+        quip(b, 'boo!', 1);
         const o = p.o, away = Math.sign(oc.x - c.x) || 1;
         o.startleUntil = time + 0.6; o.surpriseUntil = time + 0.6;
         o.body.lean(away * o.body.o.radius * 4, DT);
@@ -2058,12 +2058,19 @@
       b.body.squashTop(-b.body.o.radius * 7, DT);
       b.body.impulse(0, -90, DT);
       b.startleUntil = time + 0.25;
-      if (Math.random() < 0.5) b.say([{ text: 'hic!' }], 0.8, false, false);
+      if (Math.random() < 0.5) quip(b, 'hic!', 0.8);
       return;
     }
     if (time < (b.nextHics ?? (b.nextHics = time + (600 + Math.random() * 1800) / CFG.quirks))) return;
     b.nextHics = time + (900 + Math.random() * 2400) / CFG.quirks;
     if (b.state === 'idle' || b.state === 'done') b.hics = { n: 4 + Math.floor(Math.random() * 4), next: time };
+  }
+
+  // A little exclamation ("boo!", "hic!") in a balloon, unless it's
+  // already showing something that matters more.
+  function quip(b, text, seconds, size) {
+    if (b.bubble && b.bubble.until - time > 0.3) return;
+    b.say([size ? { text, size } : { text }], seconds, false, false);
   }
 
   function pounce(b) {
@@ -2882,7 +2889,7 @@
     b.body.squashTop(d * CFG.scrollSquish * r * 4, DT);
     b.squished = Math.min(3, (time - (b.squishedAt || -9) < 0.6 ? b.squished || 0 : 0) + Math.abs(d) * 0.15);
     b.squishedAt = time;
-    if (b.squished > 1.2) { b.happyUntil = time + 1; b.squished = 0; if (Math.random() < 0.3) b.say([{ text: 'hehe' }], 1.2, false, false); }
+    if (b.squished > 1.2) { b.happyUntil = time + 1; b.squished = 0; if (Math.random() < 0.3) quip(b, 'hehe', 1.2); }
   }, { passive: true });
   window.addEventListener('contextmenu', (e) => {
     e.preventDefault();
