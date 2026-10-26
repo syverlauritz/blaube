@@ -48,8 +48,8 @@ test('a private GitHub one: the GitHub CLI’s sign-in, or what to do', (t, done
     clone('https://github.com/acme/secret.git', '/tmp/x/secret', (err2) => {
       assert.match(err2, /^acme\/secret needs you signed in to GitHub/);
       done();
-    }, { run, gh: 'acme/secret' });
-  }, { run, gh: 'acme/secret' });
+    }, { run, gh: 'acme/secret', ghBin: 'gh' });
+  }, { run, gh: 'acme/secret', ghBin: 'gh' });
 });
 
 test('a new project: a folder of its own, a git repository', (t, done) => {

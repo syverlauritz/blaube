@@ -69,6 +69,7 @@ function quickActions(st, state, more = {}) {
   if (st && !n && (st.ahead || unpushed)) out.push(Object.assign({ label: 'Push', prompt: unpushed ? 'Push this branch and set its upstream.' : 'Push this branch.' }, direct('push')));
   // (Its pull request, if it has one (see pr.js): failing checks first.)
   const pr = more.pr && more.pr.state === 'OPEN' ? more.pr : null;
+  if (pr && pr.review === 'CHANGES_REQUESTED') out.unshift({ label: 'Answer the review', prompt: `A reviewer asked for changes on pull request #${pr.number}. Read the review and its comments (\`gh pr view ${pr.number} --comments\`, and the inline ones with \`gh api repos/{owner}/{repo}/pulls/${pr.number}/comments\`), make the changes that are right, push, and tell me what you changed and anything you disagreed with.` });
   if (pr && pr.checks.fail) out.unshift({ label: 'Fix the checks', prompt: `The checks on pull request #${pr.number} are failing. Find out why (\`gh pr checks ${pr.number}\` and the failing run's log), fix it, push, and tell me what was wrong.` });
   if (st && st.branch && !MAIN.test(st.branch) && !pr) out.push({ label: 'Open a PR', prompt: 'Open a pull request for this branch (commit and push first if needed) and give me the link.' });
   if (!more.failedTests) out.push({ label: 'Run tests', prompt: 'Run the tests and tell me what fails, if anything.' });

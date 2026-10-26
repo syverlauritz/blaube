@@ -201,3 +201,12 @@ test('with a pull request: no Open a PR, and failing checks come first', () => {
   assert.match(failing[0].prompt, /pull request #7 are failing.*gh pr checks 7/);
   assert.deepEqual(quickActions(st, 'done', { pr: pr({ state: 'MERGED' }) }).map((a) => a.label), ['Open a PR', 'Run tests'], 'merged: a new one can be opened');
 });
+
+test('changes requested on its pull request: Answer the review', () => {
+  const { parse } = require('../src/main/pr');
+  const st = parseStatus('# branch.head feature/x\n# branch.upstream origin/feature/x\n# branch.ab +0 -0\n');
+  const pr = parse(JSON.stringify({ number: 9, url: 'https://github.com/o/r/pull/9', state: 'OPEN', reviewDecision: 'CHANGES_REQUESTED', statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'FAILURE' }] }));
+  const q = quickActions(st, 'done', { pr });
+  assert.deepEqual(q.map((a) => a.label), ['Fix the checks', 'Answer the review', 'Run tests']);
+  assert.match(q[1].prompt, /changes on pull request #9.*gh pr view 9 --comments/);
+});

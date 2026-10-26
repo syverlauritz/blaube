@@ -31,11 +31,12 @@ function destFor(parent, name) {
 // cb(error message or '', dest). `gh`: owner/repo on GitHub, cloned with
 // the GitHub CLI's sign-in when git has none for it (a private one).
 const NEEDS_SIGN_IN = /could not read Username|Authentication failed|terminal prompts disabled|Repository not found/i;
-function clone(url, dest, cb, { run = execFile, timeout = 10 * 60e3, gh = '' } = {}) {
+// (`ghBin`: where gh is; an app opened from Finder doesn't get your PATH.)
+function clone(url, dest, cb, { run = execFile, timeout = 10 * 60e3, gh = '', ghBin = require('./pr').findGh() } = {}) {
   run('git', ['clone', '--', url, dest], { timeout, windowsHide: true, env: Object.assign({}, process.env, { GIT_TERMINAL_PROMPT: '0' }) }, (err, _out, errOut) => {
     if (!err) return cb('', dest);
     if (gh && NEEDS_SIGN_IN.test(String(errOut || ''))) {
-      return run('gh', ['repo', 'clone', gh, dest], { timeout, windowsHide: true }, (err2) => {
+      return run(ghBin, ['repo', 'clone', gh, dest], { timeout, windowsHide: true }, (err2) => {
         if (!err2) return cb('', dest);
         cb(`${gh} needs you signed in to GitHub (it may be private): sign in with the GitHub CLI, or paste its SSH address (git@github.com:${gh}.git)`, dest);
       });
