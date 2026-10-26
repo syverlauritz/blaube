@@ -1275,8 +1275,8 @@ app.whenReady().then(async () => {
     log(`message for ${tracker.sessions.get(id).project}: ${how} (inbox ${inbox.view(id).inbox})`);
     setTimeout(() => typeQueued(id), 1500); // a moment for its inbox hook to ask first
   });
-  ipcMain.on('talk-typing', (_e, id) => { if (win && id === talkId) win.webContents.send('typing', id); });
   ipcMain.on('talk-unsend', (_e, id, n) => { if (id && id === talkId) inbox.unsend(id, n); });
+  ipcMain.on('talk-typing', (_e, id) => { if (win && id === talkId) win.webContents.send('typing', id); });
   ipcMain.on('talk-close', () => hideTalk());
   // It's shrinking shut: the tail goes first.
   ipcMain.on('talk-closing', () => { if (win) win.webContents.send('talk-rect', null); });
