@@ -94,6 +94,7 @@
       // From the ground, a jump starts with a crouch: the top is pushed
       // down for a moment, and the hop goes off when it springs back (see
       // crouch). A hop asked for mid-crouch just changes where it goes.
+		this.hoppedAt = time; // (a hop of its own: nothing for busy ones to watch, see spectate)
       if (this.pendingHop) { this.pendingHop.vx = vx; this.pendingHop.vy = vy; return; }
       const len = CFG.hopCrouch * Math.max(0.5, Math.min(1.3, -vy / 600));
       if (vy < -150 && len > 0.01 && this.body.onFloor()) {
@@ -1465,6 +1466,10 @@
       if (o === b || o.dying || !o.vel) continue;
       // (Flying fast, or being carried about by you: worth watching.)
       if (!o.body.grab && (o.body.onFloor() || Math.hypot(o.vel.x, o.vel.y) < 700)) continue;
+		// (One just hopping about, a done or needs-you bounce, a trick: a
+		// slime at work doesn't look up for that, or its eyes would flick
+		// open and shut with every hop. Thrown or carried, it still does.)
+		if (b.state === 'working' && !o.body.grab && time - (o.hoppedAt ?? -9) < 2) continue;
       const oc = o.body.centroid(), d = Math.hypot(oc.x - c.x, oc.y - c.y) - o.body.o.radius;
       if (d < r * 9 && (!best || d < best.d)) best = { o, c: oc, d };
     }
@@ -2780,6 +2785,7 @@
     }
     if (rel >= CFG.dizzySpeed * 0.8) { hit.dizzyUntil = time + 1; return; }
     if (hit.kind === 'home' || hit.body.grab || time < (hit.annoyCooldown || 0)) return;
+	if (hit.state === 'working' && time - (by.hoppedAt ?? -9) < 2) return; // (a neighbour hopping about bumps into it: it keeps its head down)
     hit.annoyedUntil = time + 1.1 + Math.random() * 0.6;
     hit.annoyedAt = by;
     hit.annoyCooldown = time + 7 + Math.random() * 5;
@@ -5218,7 +5224,17 @@
     // wide (and its brows calm) and following the cursor, then goes back to
     // work when you move on. Eased both ways (see drawFace's peek). Only its
     // everyday working face does: dizzy, struggling, talking and so on win.
-    const peeking = calmWork && !body.grab && (b === hovered || Math.hypot(mouse.x - body.centroid().x, mouse.y - body.centroid().y) < body.o.radius * 2.2);
+	// (With some give: it comes within 2.2 radii to look up, but has to
+	// go past 2.8 to send it back, and either way it stays a moment, so a
+	// cursor resting near the edge doesn't flick its eyes open and shut.)
+	const near = b === hovered || Math.hypot(mouse.x - body.centroid().x, mouse.y - body.centroid().y) < body.o.radius * (b.peeking ? 2.8 : 2.2);
+	if (near !== !!b.peeking && time - (b.peekedAt ?? -9) > 0.8) { b.peeking = near; b.peekedAt = time; }
+	const peeking = calmWork && !body.grab && !!b.peeking;
+	// Heads down at work, its eyes shut: what opens them by itself (a look
+	// around, something flying past) keeps them open a moment and then
+	// lets it get back to work a good while, never flick, flick, flick.
+	const focused = expression === 'concentrate' && !peeking;
+	const eyesFree = !focused || b.eyesUp || time - (b.eyesAt ?? -9) > 2.5;
     b.peek = (b.peek || 0) + ((peeking ? 1 : 0) - (b.peek || 0)) * ease(0.05);
     if (!peeking && b.peek < 0.01) b.peek = 0;
     const moving = expression === 'concentrate' && time < b.furrowUntil && !peeking;
@@ -5270,7 +5286,7 @@
       b.glanceUntil = time + 0.1;
       if (expression === 'concentrate' || expression === 'sleepy' || expression === 'peek') { expression = 'normal'; mouth = 'smile'; }
     }
-    if (!peeking && b.glanceAt && time < (b.glanceUntil || 0) && !b.glanceAt.dying && !body.grab && (expression === 'concentrate' || expression === 'normal' || expression === 'sleepy')) {
+    if (!peeking && eyesFree && b.glanceAt && time < (b.glanceUntil || 0) && !b.glanceAt.dying && !body.grab && (expression === 'concentrate' || expression === 'normal' || expression === 'sleepy')) {
       checkIn = true;
       if (expression !== 'normal') { expression = 'normal'; mouth = 'flat'; }
     }
@@ -5291,7 +5307,7 @@
       if (expression === 'concentrate' || expression === 'sleepy' || expression === 'normal') { expression = 'normal'; mouth = 'o'; }
     }
     // Another slime flying past: it watches it go, eyes wide if it's close.
-    const seen = !over && !glaring && !body.grab && body.onFloor() && spectate(b);
+    const seen = !over && !glaring && !body.grab && body.onFloor() && eyesFree && spectate(b);
     let wideSeen = 0;
     if (seen) {
       b.gazeTarget = seen.c;
@@ -5371,6 +5387,12 @@
         if (Math.hypot(mouse.x - c.x, mouse.y - c.y) < body.o.radius * 3) { wideBy = 0.5; b.lookAmount += (1 - b.lookAmount) * ease(0.1); b.gazeTarget = null; }
       }
     }
+	// (Opened by itself from its work: open at least a second; see focused.)
+	if (focused) {
+		if (expression === 'concentrate' && b.eyesUp && time - b.eyesAt < 1.2) { expression = 'normal'; mouth = 'flat'; }
+		const up = expression !== 'concentrate';
+		if (up !== !!b.eyesUp) { b.eyesUp = up; b.eyesAt = time; }
+	} else if (!b.eyesUp) { b.eyesUp = true; b.eyesAt = time; }
     // Startled (poked, flinching): eyes go wide for a moment.
     const wide = CFG.eyeLife * Math.max(wideBy, wideSeen, over ? 0.5 : 0, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
     return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.35 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: b.blush > 0 ? { ...CFG, cheeks: Math.min(0.95, CFG.cheeks + b.blush * 0.55) } : CFG, bodyColor: b.color,
