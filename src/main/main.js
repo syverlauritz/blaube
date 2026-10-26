@@ -2115,7 +2115,8 @@ app.whenReady().then(async () => {
     inbox.observe({ session_id: id, hook_event_name: 'SessionEnd' });
     inbox.owned.delete(id);
   });
-  setInterval(() => { if (tracker.prune()) { pushState(); refreshTray(); } }, 30 * 1000);
+  // (Sessions forgotten here never said SessionEnd: tidy up after them too.)
+  setInterval(() => { if (tracker.prune()) { pushState(); refreshTray(); sweepSoon(); } }, 30 * 1000);
   setInterval(refreshUsage, 3000);
   setInterval(() => {
     const live = tracker.allTasks().filter((t) => !t.demo);
