@@ -20,6 +20,7 @@ const { slashCommand, commandNames, expand: expandCommand, control: controlFor, 
 const limits = require('./limits');
 const taskOutput = require('./taskOutput');
 const permRules = require('./permRules');
+const taskKill = require('./taskKill');
 const { openResumeTerminal, resumeCommand, focusSessionApp, typeIntoSession } = require('./terminal');
 const { startAgentsPoller, listAgents, findClaude } = require('./agents');
 const { Owned } = require('./owned');
@@ -489,6 +490,7 @@ function pushTalk(id, focusField = false) {
 let usageLimits = null; // (see limits.js)
 const mcpStates = new Map(); // id -> its MCP servers, for a session Blaube started
 const rewound = new Map(); // id -> what Claude should hear about files you put back
+const endedTasks = new Set(); // `${session}/${task}` whose ending was seen (or caused)
 const foreground = new Map(); // id -> { tool, at, what }: a command it's waiting on, in a session Blaube started
 // Sessions that hit a usage limit and carry on by themselves once it lifts.
 const carryLater = new Map(); // id -> when
@@ -1768,7 +1770,6 @@ app.whenReady().then(async () => {
   // A background task that ended (its output file says how) leaves the
   // list, and one that failed says so, with its last line, in its box and
   // from its slime: the dev server that crashed while you looked away.
-  const endedTasks = new Set();
   const checkTasks = () => {
     for (const s of tracker.sessions.values()) {
       for (const t of [...(s.tasks || [])]) {
@@ -1924,12 +1925,26 @@ app.whenReady().then(async () => {
     });
   }
   replyTo = sendMessage;
-  // Stops a background task of a session Blaube started, asked of Claude
-  // Code itself (stop_task); false: the box asks Claude instead.
+  // Stops a background task: in a session Blaube started, asked of Claude
+  // Code itself (stop_task); in a terminal's, the processes writing its
+  // output (its own, under its claude process). false: the box asks Claude.
   ipcMain.handle('talk-stop-task', (_e, id, taskId) => new Promise((done) => {
     const s = id === talkId && tracker.sessions.get(id);
     const t = s && (s.tasks || []).find((x) => x.id === taskId);
-    if (!t || !owned.has(id)) return done(false);
+    if (!t) return done(false);
+    if (!owned.has(id)) {
+      const file = taskOutput.find(id, taskId);
+      if (!file || !s.pid) return done(false);
+      return taskKill.stop(file, s.pid, (n) => {
+        log(`stop task ${taskId} directly: ${n} processes`);
+        if (!n) return done(false);
+        endedTasks.add(`${id}/${taskId}`); // (its ending is no news)
+        tracker.handleTask(s, { hook_event_name: 'PreToolUse', tool_name: 'KillShell', tool_input: { shell_id: taskId } });
+        inbox.add(id, { who: 'note', text: `Stopped ${t.description || t.command}` });
+        pushState();
+        done(true);
+      });
+    }
     owned.control(id, { subtype: 'stop_task', task_id: taskId }, (ok, r) => {
       log(`stop task ${taskId}: ${ok ? 'ok' : r}`);
       if (!ok) return done(false);

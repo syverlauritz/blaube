@@ -19,7 +19,7 @@ const { toolHookCommand, permissionCommand } = require('../../src/main/claudeHoo
 const OUT = path.join(__dirname, '..', '..', 'shots');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
+module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker }) {
 	let failed = 0;
 	const check = (ok, what) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) failed++; };
 	const until = async (fn, ms = 4000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return true; await sleep(50); } return false; };
@@ -107,6 +107,20 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	global.__blaubeCheckTasks();
 	check(await until(() => box(`!/Watcher/.test(document.getElementById('bg').textContent) && /Dev server/.test(document.getElementById('bg').textContent)`)), 'a background task that crashed leaves the list');
 	check(await until(() => box(`[...document.querySelectorAll('#inner .note.error')].some((e) => e.textContent === "Watcher stopped with an error (code 1): Error: Cannot find module 'chokidar'")`)), 'and its box says so, with its last line');
+	// In a terminal's session, Stop ends the task itself: what writes to its
+	// output, as long as it runs under that session's claude process.
+	await hook({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_use_id: 'tu3', tool_input: { command: 'npm run serve', description: 'Server', run_in_background: true }, tool_response: { backgroundTaskId: 'bash_9' } });
+	await until(() => box(`/Server/.test(document.getElementById('bg').textContent)`));
+	const out9 = fs.openSync(path.join(outDir, 'bash_9.output'), 'w');
+	const server = spawn('sh', ['-c', 'echo listening; sleep 60'], { stdio: ['ignore', out9, 'ignore'] });
+	fs.closeSync(out9);
+	tracker.sessions.get(ID).pid = process.pid; // (its claude process: here, the app)
+	await sleep(300);
+	const queued9 = (inbox.queue.get(ID) || []).length;
+	await box(`[...document.querySelectorAll('#bg li')].find((li) => /Server/.test(li.textContent)).querySelector('button:last-of-type').click()`);
+	check(await until(() => server.exitCode !== null || server.signalCode !== null), 'in a terminal’s session, Stop ends a background task itself');
+	check(await until(() => box(`!/Server/.test(document.getElementById('bg').textContent)`)) && inbox.log(ID).some((e) => e.text === 'Stopped Server') && (inbox.queue.get(ID) || []).length === queued9, 'without asking Claude, and says so');
+	tracker.sessions.get(ID).pid = 0;
 	delete process.env.CLAUDE_CODE_TMPDIR;
 	fs.rmSync(tmpRoot, { recursive: true, force: true });
 	await box(`[...document.querySelectorAll('#bg button')].find((b) => b.textContent === 'Stop').click()`);
