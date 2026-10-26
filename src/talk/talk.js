@@ -8,7 +8,7 @@
   // The same words and colours as the slime's hover bubble (renderer.js, face.js).
   const WORDS = { working: 'Working', waiting: 'Needs you', done: 'Done', idle: 'Idle', ended: 'Ended' };
   const DOTS = { working: '#f5a623', waiting: '#ff4d6d', done: '#2ecc71', idle: '#a0aec0', ended: '#c3c8d2' };
-  const MAX = 4000; // longer replies are cut, with a way to the rest
+  const MAX = 4000; // longer replies are cut until unfolded
   let current = null, askKey = 0, seen = 0;
   let drawn = { entries: [], thinking: -1, open: '' }, ends = []; // what the log shows, and each entry's last element
   const dots = document.createElement('div'); // the slime thinking
@@ -302,18 +302,11 @@
     e.className = 'msg ' + m.who + (m.status === 'queued' || m.status === 'unsent' ? ' ' + m.status : '') + (fresh ? ' new' : '');
     e.dataset.at = m.at;
     e.dataset.text = m.text; // (what find looks in: not its buttons)
-    const cut = m.text.length > MAX;
-    rich(e, cut ? m.text.slice(0, MAX) : m.text);
+    // (A very long one is cut until you unfold it with Show more.)
+    const cut = m.text.length > MAX && !open.has(m.at);
+    rich(e, cut ? m.text.slice(0, MAX) + '…' : m.text);
     markPaths(e);
     const out = [e];
-    if (cut) {
-      // (Right here: no need for the terminal.)
-      const more = document.createElement('button');
-      more.className = 'more';
-      more.textContent = `…the rest (${Math.ceil((m.text.length - MAX) / 1000)}k more characters)`;
-      more.onclick = () => { const keep = log.scrollTop; e.textContent = ''; rich(e, m.text); markPaths(e); more.remove(); log.scrollTop = keep; pinned = false; };
-      out.push(more);
-    }
     if (m.status === 'unsent') {
       const t = document.createElement('div');
       t.className = 'meta';

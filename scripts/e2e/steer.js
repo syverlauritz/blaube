@@ -263,7 +263,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	const outside = await box(`window.blaubeTalk.filesExist(${JSON.stringify(ID3)}, ['../x.jsonl', ${JSON.stringify(path.basename(repo) + '/../' + path.basename(tx))}, '/etc/hosts', 'out/${path.basename(tx)}', 'notes.md'])`);
 	check(JSON.stringify(outside) === '["notes.md"]', 'nothing outside its folder can be opened (not by .., a full path or a link)');
 	fs.unlinkSync(path.join(repo, 'out'));
-	check(await box(`(() => { const b = [...document.querySelectorAll('#inner .more')].pop(); return !!b && /the rest/.test(b.textContent) && !/terminal/.test(b.textContent); })()`), 'a long reply is cut, with the rest right here');
+	check(await box(`(() => { const b = [...document.querySelectorAll('#inner .more')].pop(); return !!b && b.textContent === 'Show more' && !/THE END/.test(document.getElementById('inner').textContent); })()`), 'a long reply is folded, with the rest right here');
 	await box(`[...document.querySelectorAll('#inner .more')].pop().click()`);
 	check(await until(() => box(`/THE END/.test(document.getElementById('inner').textContent)`)), 'a tap shows the rest, no terminal needed');
 	// "@" suggests its files, "/" its commands; your own command goes as a message.
