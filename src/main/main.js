@@ -1811,6 +1811,22 @@ app.whenReady().then(async () => {
     try { if (!fs.statSync(file).isFile()) return; } catch { return; }
     e.sender.startDrag({ file, icon: nativeImage.createFromPath(path.join(ASSETS, 'icon.png')).resize({ width: 32, height: 32 }) });
   });
+  // An image a step looked at, shown in its box (only images its steps named).
+  ipcMain.handle('talk-image', (_e, id, file) => {
+    if (!id || id !== talkId || typeof file !== 'string' || !path.isAbsolute(file) || !/\.(png|jpe?g|gif|webp)$/i.test(file)) return null;
+    if (!inbox.log(id).some((x) => x.who === 'step' && x.file === file)) return null;
+    let size = 0;
+    try { size = fs.statSync(file).size; } catch { return null; }
+    // (Small ones as they are, so a GIF still moves; big ones made smaller.)
+    const mime = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' }[path.extname(file).slice(1).toLowerCase()];
+    if (size <= 4e6) { try { return { url: `data:${mime};base64,${fs.readFileSync(file).toString('base64')}` }; } catch { return null; } }
+    if (size > 30e6) return null;
+    let img = nativeImage.createFromPath(file);
+    if (img.isEmpty()) return null;
+    const { width } = img.getSize();
+    if (width > 800) img = img.resize({ width: 800, quality: 'good' });
+    return { url: img.toDataURL() };
+  });
   // A file a turn changed, shown in Finder (never opened: it could be a program).
   ipcMain.on('talk-reveal', (_e, id, file) => {
     if (!id || id !== talkId || typeof file !== 'string' || !path.isAbsolute(file)) return;

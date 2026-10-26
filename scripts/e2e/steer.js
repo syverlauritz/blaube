@@ -280,6 +280,16 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	check(await box(`(() => { const b = [...document.querySelectorAll('#inner .more')].pop(); return !!b && b.textContent === 'Show more' && !/THE END/.test(document.getElementById('inner').textContent); })()`), 'a long reply is folded, with the rest right here');
 	await box(`[...document.querySelectorAll('#inner .more')].pop().click()`);
 	check(await until(() => box(`/THE END/.test(document.getElementById('inner').textContent)`)), 'a tap shows the rest, no terminal needed');
+	// An image it looked at shows in the box, which a terminal can't do.
+	const png = path.join(repo, 'shot.png');
+	fs.copyFileSync(path.join(__dirname, '..', '..', 'build', 'icon.png'), png);
+	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'look at it' });
+	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'PostToolUse', tool_name: 'Read', tool_input: { file_path: png }, tool_response: {} });
+	await until(() => box(`[...document.querySelectorAll('#inner .step')].some((e) => /shot\.png/.test(e.textContent))`));
+	await box(`[...document.querySelectorAll('#inner .step')].find((e) => /shot\.png/.test(e.textContent)).click()`);
+	check(await until(() => box(`(() => { const i = document.querySelector('#inner .stepimg img'); return !!i && i.complete && i.naturalWidth > 0; })()`)), 'an image it looked at shows in the box with a tap');
+	check(await box(`window.blaubeTalk.image(${JSON.stringify(ID3)}, ${JSON.stringify(path.join(repo, 'other.png'))})`) === null, 'only images its steps named');
+	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'Stop', last_assistant_message: 'It is a tiny red square.' });
 	// "!ls" runs right here, as the terminal's bash mode does, and goes along with the next message.
 	await type('!ls src');
 	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'You ran ls src' && e.ok && !e.running && /tax\.js/.test(e.detail))), '!ls runs in its folder and shows what it printed');

@@ -230,6 +230,7 @@
   // A step goes into the run of steps it follows (or starts one). A run
   // shows its last SHOWN; the earlier ones fold behind "N more".
   const SHOWN = 3;
+  const IMAGE = /\.(png|jpe?g|gif|webp)$/i;
   const openRuns = new Set(); // runs you unfolded (by their first step's n)
   const openSteps = new Set(); // steps you opened (by n)
   function addStep(m, fresh) {
@@ -256,9 +257,11 @@
       run.append(more);
       inner.append(run);
     }
-    // A step with more to it opens on a tap: the change, the output.
-    const e = document.createElement(m.detail ? 'button' : 'div');
-    e.className = 'step' + (m.ok === false ? ' failed' : '') + (fresh ? ' new' : '') + (m.detail ? ' opens' : '');
+    // A step with more to it opens on a tap: the change, the output (an
+    // image it looked at: the image, which a terminal can't show).
+    const image = !m.detail && m.file && IMAGE.test(m.file) && api.image;
+    const e = document.createElement(m.detail || image ? 'button' : 'div');
+    e.className = 'step' + (m.ok === false ? ' failed' : '') + (fresh ? ' new' : '') + (m.detail || image ? ' opens' : '');
     e.textContent = m.text + (m.ok === false ? ' (failed)' : '');
     e.title = m.text;
     run.append(e);
@@ -284,6 +287,36 @@
         if (shown() && e.classList.contains('early')) { run.classList.add('open'); openRuns.add(Number(run.dataset.first)); run.relabel(); }
       };
       e.after(pre);
+    }
+    if (image) {
+      const box = document.createElement('div');
+      box.className = 'stepout stepimg';
+      const shown = () => openSteps.has(m.n);
+      const load = () => {
+        if (box.firstChild || !current) return;
+        api.image(current.id, m.file).then((r) => {
+          if (!r) { box.textContent = 'It’s not there any more.'; return; }
+          const img = document.createElement('img');
+          img.src = r.url; img.alt = m.file.split(/[\\/]/).pop();
+          img.draggable = false;
+          img.onload = () => fitWindow();
+          box.append(img);
+        });
+      };
+      box.hidden = !shown();
+      if (shown()) load();
+      e.classList.toggle('open', shown());
+      e.setAttribute('aria-expanded', String(shown()));
+      e.onclick = () => {
+        if (shown()) openSteps.delete(m.n); else openSteps.add(m.n);
+        box.hidden = !shown();
+        e.classList.toggle('open', shown());
+        e.setAttribute('aria-expanded', String(shown()));
+        if (shown()) load();
+        if (shown() && e.classList.contains('early')) { run.classList.add('open'); openRuns.add(Number(run.dataset.first)); run.relabel(); }
+        fitWindow();
+      };
+      e.after(box);
     }
     const rows = run.querySelectorAll('.step');
     if (rows.length > SHOWN) rows[rows.length - SHOWN - 1].classList.add('early');
