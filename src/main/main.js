@@ -448,6 +448,7 @@ function pushTalk(id, focusField = false) {
     mode: s.mode || '', // (its permission mode)
     model: modelName(pickedModel.get(id) || (id.startsWith('demo-') ? '' : usage.sessionInfo(transcriptPath(s)).model)),
     canBring: canBringIn(s), // (it could carry on in Blaube instead)
+    context: contextOf(id), // (how full its context is, %)
     canMode: owned.has(id), // (one Blaube started can be asked to change it)
     tasks: (s.tasks || []).filter((t) => !t.demo).slice(0, 4).map((t) => ({ id: t.id, label: t.description || t.command, command: t.command })),
     helpers: s.state === 'working' || s.state === 'waiting' ? (s.agents || []).slice(0, 5).map((a) => ({ name: helperName(s, a), doing: helperDoing.get(`${id}/${a.id}`) || '', waiting: a.state === 'waiting' })) : [],
@@ -460,7 +461,7 @@ function pushTalk(id, focusField = false) {
     quick: id.startsWith('demo-') ? [] : git.quickActions(gitStates.get(id) || null, s.state, {
       stopped: stoppedLast(inbox.log(id)),
       failedTests: failedTests(inbox.log(id)),
-      context: (() => { const tk = tokens.get(id); return tk && tk.limit && tk.context ? Math.round((tk.context / tk.limit) * 100) : 0; })(),
+      context: contextOf(id),
     }),
     // Every slime, to switch between them from the box.
     today: attention.today([...inbox.logs.values()]),
@@ -503,6 +504,12 @@ function glanceNow(o) {
     // Replies since its talk box was last open (never opened: since Blaube started).
     unread: o.id === talkId ? 0 : inbox.log(o.id).filter((e) => e.who === 'claude' && e.at > (looked.get(o.id) || 0)).length,
   });
+}
+
+// How full a session's context window is (%), 0 when unknown.
+function contextOf(id) {
+  const tk = tokens.get(id);
+  return tk && tk.limit && tk.context ? Math.round((tk.context / tk.limit) * 100) : 0;
 }
 
 // "claude-opus-5-5" -> "Opus 5.5" (what to call a model in the box).

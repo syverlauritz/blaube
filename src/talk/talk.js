@@ -1308,11 +1308,14 @@
   function renderMode(s) {
     const m = $('mode'), mode = s.mode || 'default';
     const shown = s.canMode || mode !== 'default';
-    m.hidden = !!s.ended || !!s.demo || (!shown && !s.model);
+    // (How full its context is, once that's worth knowing.)
+    const full = s.context >= 50 ? `${s.context}% context` : '';
+    const about = [s.model, full].filter(Boolean).join(' · ');
+    m.hidden = !!s.ended || !!s.demo || (!shown && !about);
     m.className = 'mode ' + mode + (s.canMode ? ' can' : '');
     m.textContent = '';
     // (Which model it is, first: Opus 5.5 · Accepting edits.)
-    if (s.model) { const n = document.createElement('span'); n.className = 'model'; n.textContent = s.model + (shown ? ' · ' : ''); m.append(n); }
+    if (about) { const n = document.createElement('span'); n.className = 'model' + (s.context >= 80 ? ' full' : ''); n.textContent = about + (shown ? ' · ' : ''); m.append(n); }
     if (shown) m.append(MODES[mode] || mode);
     if (s.canMode) { const k = document.createElement('kbd'); k.textContent = '⇧⇥'; m.append(k); }
     m.title = s.canMode ? 'Change how it asks (Shift+Tab)' : 'Change it in its terminal (Shift+Tab there)';
