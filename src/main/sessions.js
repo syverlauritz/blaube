@@ -247,11 +247,16 @@ class SessionTracker extends EventEmitter {
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 function turnAfter(turn, p) {
   const t = turn || { files: [], cmds: 0 };
-  if (p.hook_event_name !== 'PreToolUse') return t;
   const input = p.tool_input || {};
+  if (p.hook_event_name === 'PostToolUseFailure') {
+    // What failed last, in a few words: the command, the file, or the tool.
+    const what = String(input.command || input.file_path || input.url || input.pattern || p.tool_name || '').split('\n')[0];
+    return Object.assign({}, t, { fails: (t.fails || 0) + 1, lastFail: what.length > 60 ? what.slice(0, 59) + '\u2026' : what });
+  }
+  if (p.hook_event_name !== 'PreToolUse') return t;
   const file = input.file_path || input.notebook_path;
-  if (EDIT_TOOLS.has(p.tool_name) && file && !t.files.includes(String(file))) return { files: [...t.files, String(file)].slice(-200), cmds: t.cmds };
-  if (p.tool_name === 'Bash') return { files: t.files, cmds: t.cmds + 1 };
+  if (EDIT_TOOLS.has(p.tool_name) && file && !t.files.includes(String(file))) return Object.assign({}, t, { files: [...t.files, String(file)].slice(-200) });
+  if (p.tool_name === 'Bash') return Object.assign({}, t, { cmds: t.cmds + 1 });
   return t;
 }
 

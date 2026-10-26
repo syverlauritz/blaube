@@ -50,8 +50,9 @@ test('a turn counts the files it edits and the commands it runs', () => {
   ev('PreToolUse', { tool_name: 'Edit', tool_input: { file_path: '/a.js' } });
   ev('PreToolUse', { tool_name: 'Write', tool_input: { file_path: '/b.js' } });
   ev('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'npm test' } });
+  ev('PostToolUseFailure', { tool_name: 'Bash', tool_input: { command: 'npm test\necho done' } });
   ev('Stop');
-  assert.deepEqual(t.sessions.get('s').turn, { files: ['/a.js', '/b.js'], cmds: 1 });
+  assert.deepEqual(t.sessions.get('s').turn, { files: ['/a.js', '/b.js'], cmds: 1, fails: 1, lastFail: 'npm test' });
   ev('UserPromptSubmit');
   assert.deepEqual(t.sessions.get('s').turn, { files: [], cmds: 0 });
 });
