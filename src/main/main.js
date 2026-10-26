@@ -20,6 +20,7 @@ const { slashCommand, commandNames, expand: expandCommand, control: controlFor, 
 const limits = require('./limits');
 const usageProbe = require('./usageProbe');
 const auth = require('./auth');
+const renamer = require('./rename');
 const taskOutput = require('./taskOutput');
 const permRules = require('./permRules');
 const taskKill = require('./taskKill');
@@ -1926,6 +1927,15 @@ app.whenReady().then(async () => {
       try { if (!fs.existsSync(file)) fs.writeFileSync(file, `# ${path.basename(path.dirname(file))}\n\n`); } catch (e) { inbox.add(id, { who: 'note', text: `Couldn’t make CLAUDE.md: ${e.message}`, error: true }); return; }
       if (!TEST) shell.openPath(file);
       inbox.add(id, { who: 'note', text: `Opened ${path.basename(path.dirname(file))}/CLAUDE.md, what every session there reads first` });
+      return;
+    }
+    // "/rename tax rewrite": its name, written where Claude Code keeps it.
+    const newName = renamer.command(text);
+    if (newName !== null && sess && !id.startsWith('demo-')) {
+      if (!newName) { inbox.add(id, { who: 'note', text: 'Give it a name: /rename tax rewrite' }); return; }
+      try { inbox.add(id, { who: 'note', text: `Named it “${renamer.rename(transcriptPath(sess), id, newName)}”` }); } catch (e) { inbox.add(id, { who: 'note', text: `Couldn’t name it: ${e.message}`, error: true }); }
+      hubCache = null;
+      refreshTray();
       return;
     }
     // "/login": Claude Code signed in through your browser (see auth.js).

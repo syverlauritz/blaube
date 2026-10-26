@@ -328,6 +328,10 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => box(`(() => { const m = document.getElementById('mode'); return !m.hidden && m.textContent === 'Opus 5.5 · 60% context · ⏵⏵ Accepting edits' && !m.classList.contains('can'); })()`)), 'under the field: its model, how full it is, and that it’s accepting edits');
 	await box(`document.querySelector('#inner .earlierbtn').click()`);
 	check(await until(() => box(`(() => { const e = document.querySelector('#inner .earlier'); return !!e && /set up the repo/.test(e.textContent) && /src folder/.test(e.textContent); })()`)), 'tapping it shows what was said before');
+	// /rename: its name, in its transcript where Claude Code keeps it.
+	await type('/rename Tax rewrite');
+	check(await until(() => /"type":"custom-title","customTitle":"Tax rewrite","sessionId":"[^"]+-c"/.test(fs.readFileSync(tx, 'utf8'))), '/rename names it in its transcript, as Claude Code does');
+	check(await until(() => box(`[...document.querySelectorAll('#inner .note')].some((n) => n.textContent === 'Named it “Tax rewrite”')`)), 'and says so');
 	await box(`document.getElementById('git').click()`);
 	check(await until(() => box(`[...document.querySelectorAll('#gitFiles li > button:first-child')].map((b) => b.textContent).sort().join()`).then((t) => t === 'notes.mdnew,src/tax.jsnew')), 'tapping it lists the files');
 	await box(`[...document.querySelectorAll('#gitFiles li > button:first-child')].find((b) => /tax\\.js/.test(b.textContent)).click()`);
