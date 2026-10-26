@@ -553,7 +553,7 @@
       let m = buddies.get(s.id);
       if (!m || m.dying) m = addMother(s);
       m.merging = null;
-      if (s.activity === 'tool' && m.lastActivity !== 'tool') { m.pulse = true; m.toolSince = time; }
+      if (s.activity === 'tool' && m.lastActivity !== 'tool') { m.pulse = true; m.toolSince = time; (m.tools || (m.tools = [])).push(time); }
       m.lastActivity = s.activity;
       const context = s.tokens ? s.tokens.context : 0;
       if (m.lastContext > 40000 && context < m.lastContext * 0.6) {
@@ -573,7 +573,7 @@
         if (!c || c.dying) c = split(m, key, 'child');
         c.merging = null;
         c.mother = m;
-        if (a.activity === 'tool' && c.lastActivity !== 'tool') { c.pulse = true; c.toolSince = time; }
+        if (a.activity === 'tool' && c.lastActivity !== 'tool') { c.pulse = true; c.toolSince = time; (c.tools || (c.tools = [])).push(time); }
         c.lastActivity = a.activity;
         c.agent = a;
         c.color = colorFor(c);
@@ -2958,6 +2958,15 @@
     }
     if (b.body.onFloor() && !b.body.grab) b.body.squashTop(35, DT); // (a glum slump)
   }
+  // Working flat out (ten tools a minute by default), it breaks a sweat
+  // too, as if its context were filling up: busier, more beads.
+  function busySweat(b) {
+    const t = b.tools;
+    if (!t) return 0;
+    while (t.length && time - t[0] > 60) t.shift();
+    if (CFG.busySweat <= 0 || b.state !== 'working') return 0;
+    return ramp(t.length, CFG.busySweat * 0.75, CFG.busySweat * 2) * 0.7;
+  }
   function drawClouds() {
     for (const b of buddies.values()) {
       const cl = b.cloud;
@@ -3673,7 +3682,7 @@
       b.faceTurn = { x: face.turnX || 0, y: face.turnY || 0 };
       if (face.expression === 'sleepy' && face.mouth !== 'yawn') D.drawZzz(ctx, b.body, time);
       nightcap(b);
-      const sweat = ramp(b.fill || 0, CFG.sweatAt, 1);
+      const sweat = Math.max(ramp(b.fill || 0, CFG.sweatAt, 1), busySweat(b));
       if (sweat > 0) D.drawSweat(ctx, b.body, time, sweat);
       if (b.merging && b.kind === 'child' && !b.dying) {
         const box = b.body.bbox();

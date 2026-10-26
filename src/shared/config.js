@@ -124,6 +124,7 @@
       ['tricks', 1, 0, 5, 0.05, 'Bored but awake, it amuses itself now and then (three hops, each higher)'],
       ['nightcap', 1, 0, 1, 1, 'Asleep at night (10 pm to 7 am), it wears a floppy nightcap'],
       ['snoreBubble', 1, 0, 2, 0.05, 'Fast asleep, it blows a bubble that swells and shrinks with each breath, and pops when it wakes'],
+      ['busySweat', 10, 0, 60, 1, 'Working through this many tools a minute, it breaks a sweat (0 = never)'],
       ['sleepTalk', 1, 0, 3, 0.05, 'Fast asleep, it mumbles now and then, often about what it was last doing'],
       ['bubbles', 1, 0, 2, 0.05, 'A bored slime now and then blows a goo bubble; touch it with the cursor to pop it'],
       ['quirks', 1, 0, 10, 0.1, 'Rare little quirks, like a fit of hiccups (how often)'],
