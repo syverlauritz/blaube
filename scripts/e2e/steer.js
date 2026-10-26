@@ -420,6 +420,12 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Push' && /git push/.test(b.title))`), 10000), 'with nothing to commit and nothing pushed, Push runs git itself');
 	await box(`[...document.querySelectorAll('#quick button')].find((b) => b.textContent === 'Push').click()`);
 	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'Pushed feature/tax' && e.ok && !e.running) && execFileSync('git', ['rev-parse', 'feature/tax'], { cwd: bare }).toString() === execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo }).toString(), 15000), 'Push pushes it, a step in the box, no model call');
+	check(await until(() => box(`[...document.querySelectorAll('#branches .commits li > button')].map((b) => b.firstChild.textContent).join() === 'tax,start'`), 10000), 'its latest commits show under its branches');
+	await sleep(1500); // (it reads them again once the push has settled)
+	await until(() => box(`(() => { const b = [...document.querySelectorAll('#branches .commits li > button')].find((x) => x.firstChild.textContent === 'tax'); if (b && b.getAttribute('aria-expanded') === 'false') b.click(); return !!b; })()`));
+	check(await until(() => box(`(() => { const p = document.querySelector('#branches .commits .diff'); return !!p && !p.hidden && /^tax\\n\\n── /.test(p.textContent) && /── notes\\.md/.test(p.textContent) && /── src\\/tax\\.js/.test(p.textContent) && p.querySelector('.add'); })()`)), 'and a tap shows what one changed, file by file');
+	await sleep(500);
+	await shot('commits');
 	execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'more'], { cwd: repo });
 	execFileSync('git', ['remote', 'set-url', 'origin', bare + '-gone'], { cwd: repo });
 	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Push' && /git push/.test(b.title))`), 10000), 'one more commit: Push again');

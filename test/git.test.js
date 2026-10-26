@@ -165,3 +165,28 @@ test('the Push command really pushes a never-pushed branch, with no prompt', asy
     assert.equal(g(work, 'rev-parse', '--abbrev-ref', '@{u}'), 'origin/topic');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('a commit reads as its message, then each file under its name', () => {
+  const { commitText } = require('../src/main/git');
+  const out = 'Fix the tax\n\nRounding was off.\n\ndiff --git a/src/tax.js b/src/tax.js\nindex 1..2 100644\n--- a/src/tax.js\n+++ b/src/tax.js\n@@ -1 +1 @@\n-a\n+b\ndiff --git a/new.md b/new.md\nnew file mode 100644\n--- /dev/null\n+++ b/new.md\n@@ -0,0 +1 @@\n+hi\n';
+  assert.equal(commitText(out), 'Fix the tax\n\nRounding was off.\n\n── src/tax.js\n@@ -1 +1 @@\n-a\n+b\n\n── new.md\n@@ -0,0 +1 @@\n+hi');
+});
+
+test('commits are read from a real repository, and shown by hash only', async () => {
+  const { commits, show } = require('../src/main/git');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-log-'));
+  const env = Object.assign({}, process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
+  const g = (...a) => execFileSync('git', a, { cwd: dir, env }).toString().trim();
+  try {
+    g('init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'one\n'); g('add', '.'); g('commit', '-qm', 'First');
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'two\n'); g('commit', '-qam', 'Second: two');
+    const list = await new Promise((r) => commits(dir, r));
+    assert.deepEqual(list.map((c) => c.subject), ['Second: two', 'First']);
+    assert.ok(list[0].at > Date.now() - 60e3 && /^[0-9a-f]{40}$/.test(list[0].hash) && list[0].hash.startsWith(list[0].short));
+    assert.equal(await new Promise((r) => show(dir, list[0].hash, r)), 'Second: two\n\n── a.txt\n@@ -1 +1 @@\n-one\n+two');
+    assert.equal(await new Promise((r) => show(dir, '--output=/tmp/x', r)), '');
+    assert.equal(await new Promise((r) => show(dir, 'HEAD', r)), '');
+    assert.deepEqual(await new Promise((r) => commits(path.join(dir, 'nope'), r)), []);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

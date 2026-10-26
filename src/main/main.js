@@ -2570,6 +2570,7 @@ app.whenReady().then(async () => {
     if (!cmd) return;
     const as = run === 'push' ? `Pushed ${st.branch || 'it'}` : `Pulled into ${st.branch || 'it'}`;
     const entry = runForSession(id, cmd, as, (code) => {
+      if (code === 0 && win) win.webContents.send('nod', id);
       if (code !== 0) entry.text = run === 'push' ? 'git couldn’t push (tap for why); Push again asks Claude to' : 'git couldn’t pull without a merge (tap for why); Pull again asks Claude to';
       git.forget(s.cwd);
       git.status(s.cwd, (now) => { gitStates.set(id, now); pushTalk(id); });
@@ -2719,6 +2720,18 @@ app.whenReady().then(async () => {
     if (!s || !s.cwd || id.startsWith('demo-')) return done([]);
     git.branches(s.cwd, done);
   }));
+  // Its latest commits (which aren't pushed yet), and what one changed.
+  ipcMain.handle('talk-commits', (_e, id) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    if (!s || !s.cwd || id.startsWith('demo-')) return done([]);
+    const st = gitStates.get(id);
+    git.commits(s.cwd, (list) => done(list.map((c, i) => Object.assign(c, { when: history.ago(c.at), unpushed: !!(st && st.upstream && i < st.ahead) }))));
+  }));
+  ipcMain.handle('talk-commit', (_e, id, hash) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    if (!s || !s.cwd) return done('');
+    git.show(s.cwd, hash, done);
+  }));
   ipcMain.handle('talk-switch-branch', (_e, id, name, create) => new Promise((done) => {
     const s = id === talkId && tracker.sessions.get(id);
     const st = gitStates.get(id);
@@ -2727,6 +2740,7 @@ app.whenReady().then(async () => {
     if (st.changed) return done('It has changes that aren’t committed: commit them first');
     git.switchTo(s.cwd, name, !!create, (err) => {
       if (err) return done(err);
+      if (win) win.webContents.send('nod', id);
       inbox.add(id, { who: 'note', text: create ? `Made a new branch, ${git.branchName(name)}, and switched to it` : `Switched to ${git.branchName(name)}` });
       git.status(s.cwd, (now) => { gitStates.set(id, now); pushTalk(id); });
       done('');

@@ -1240,6 +1240,37 @@
       };
       box.append(add, said);
       requestAnimationFrame(fitWindow);
+      // Then its latest commits: tap one for what it changed.
+      return api.commits ? api.commits(s.id) : [];
+    }).then((list) => {
+      if (box.dataset.key !== key || !list || !list.length) return;
+      const ul = document.createElement('ul');
+      ul.className = 'gitfiles commits';
+      for (const c of list) {
+        const li = document.createElement('li');
+        const b = document.createElement('button');
+        b.type = 'button';
+        const name = document.createElement('span');
+        name.textContent = c.subject || c.short;
+        const when = document.createElement('small');
+        when.textContent = c.unpushed ? 'not pushed' : c.when;
+        b.append(name, when);
+        b.title = `${c.short} · ${c.when}\nTap to see what it changed`;
+        b.setAttribute('aria-expanded', 'false');
+        const pre = document.createElement('pre');
+        pre.className = 'stepout diff';
+        pre.hidden = true;
+        b.onclick = () => {
+          pre.hidden = !pre.hidden;
+          b.setAttribute('aria-expanded', String(!pre.hidden));
+          if (!pre.hidden && !pre.textContent) api.commit(s.id, c.hash).then((t) => { colorDiff(pre, t || '(can’t show it)'); requestAnimationFrame(fitWindow); });
+          requestAnimationFrame(fitWindow);
+        };
+        li.append(b, pre);
+        ul.append(li);
+      }
+      box.append(ul);
+      requestAnimationFrame(fitWindow);
     });
   }
 

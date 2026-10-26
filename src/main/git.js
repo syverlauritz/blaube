@@ -132,6 +132,31 @@ function command(run, st) {
   if (run === 'pull') return 'git pull --ff-only';
   return '';
 }
+// Its latest commits, newest first: [{ hash, short, at, subject }].
+function commits(cwd, cb, n = 6) {
+  execFile('git', ['log', `-n${n}`, '--no-color', '--format=%H%x1f%h%x1f%ct%x1f%s'], { cwd, timeout: 3000, windowsHide: true }, (err, out) => {
+    if (err) return cb([]);
+    cb(String(out).split('\n').filter(Boolean).map((l) => { const [hash, short, at, subject] = l.split('\x1f'); return { hash, short, at: Number(at) * 1000, subject: subject || '' }; }));
+  });
+}
+// What a commit changed, for the git line: its message, then each file's
+// diff under its name (`── src/a.js`), without the rest of the headers.
+function commitText(out) {
+  const lines = [];
+  for (const l of String(out || '').split('\n')) {
+    const m = /^diff --git a\/.* b\/(.*)$/.exec(l);
+    if (m) { lines.push('', `── ${m[1]}`); continue; }
+    if (/^(index |--- |\+\+\+ |new file mode|deleted file mode|similarity index|rename (from|to) |old mode|new mode)/.test(l)) continue;
+    lines.push(l);
+  }
+  const t = lines.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\s+|\s+$/g, '');
+  return t.length > DIFF * 2 ? t.slice(0, DIFF * 2) + '\n…' : t;
+}
+function show(cwd, hash, cb) {
+  if (!/^[0-9a-f]{7,40}$/.test(String(hash))) return cb('');
+  execFile('git', ['show', '--no-color', '--no-ext-diff', '--format=%B', hash], { cwd, timeout: 4000, maxBuffer: 8e6, windowsHide: true }, (err, out) => cb(err ? '' : commitText(out)));
+}
+
 // Forgets what it read (something just changed it).
 function forget(cwd) { cache.delete(cwd); }
 
@@ -165,4 +190,4 @@ function switchTo(cwd, name, create, cb) {
   });
 }
 
-module.exports = { parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget };
+module.exports = { parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show };
