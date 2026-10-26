@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('blaubeTuning', {
   set: (partial) => ipcRenderer.send('config-set', partial),
   replace: (full) => ipcRenderer.invoke('config-replace', full),
   copy: () => ipcRenderer.invoke('config-copy'),
+  onChange: (f) => ipcRenderer.on('config', (_e, cfg) => f(cfg)),
   demo: () => ipcRenderer.send('demo'),
   lifeDemo: () => ipcRenderer.send('life-demo'),
 });

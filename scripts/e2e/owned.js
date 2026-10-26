@@ -497,7 +497,7 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 
 	// Claude Code's own defaults for new sessions, from Blaube's menu.
 	global.__blaubeCcHome = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-cchome-'));
-	const ccMenu = () => global.__blaubeTrayMenu().items.find((i) => i.label === 'Claude Code defaults');
+	const ccMenu = () => global.__blaubeTrayMenu().items.find((i) => i.label === 'Claude Code');
 	check(!!ccMenu() && ccMenu().submenu.items.find((i) => i.label === 'Default').checked && ccMenu().submenu.items.find((i) => i.label === 'Ask before acting').checked, 'the menu has Claude Code’s defaults for new sessions');
 	ccMenu().submenu.items.find((i) => i.label === 'Haiku').click();
 	ccMenu().submenu.items.find((i) => i.label === 'Accept edits').click();
