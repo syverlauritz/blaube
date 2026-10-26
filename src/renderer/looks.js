@@ -65,19 +65,22 @@
 		return parts;
 	}
 
-	// The bit of skin on top of the head. The face leans with the body only
-	// up to LEAN; while the body turns no more than that, a look stays
-	// glued to the same bit of skin, and past that it slides round the skin
-	// to stay on top of the face instead of ending up on its side.
+	// Where on the skin a look sits: a spot `off` radians round from the
+	// crown, given as a place along the skin (in the angle each bit of skin
+	// had when the body was made, straight up being -90°). The face leans
+	// with the body only up to LEAN; while the body turns no more than that,
+	// a look stays glued to the same bit of skin, and past that it slides
+	// round the skin to stay on top of the face instead of ending up on its
+	// side. Mid-somersault it goes all the way round with the body.
 	const LEAN = 0.18; // the same lean as the face
-	function topOfHead(body) {
-		const lean = Math.max(-LEAN, Math.min(LEAN, body.angle));
-		return -Math.PI / 2 + lean - skinTurn(body);
-	}
+	const REACH = 0.4; // how far squashing may carry it off the crown
+	const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+	const leanOf = (body) => body.fullTurn ? body.angle : Math.max(-LEAN, Math.min(LEAN, body.angle));
 
 	// How far the skin itself has turned since the body was made: the best
-	// fit rotation of the points onto their rest shape. (body.angle is not
-	// this: it eases back to upright on its own.)
+	// fit rotation of all the points onto their rest shape (smooth: every
+	// point counts). (body.angle is not quite this: it's worked out partway
+	// through a step.)
 	function skinTurn(body) {
 		const c = body.centroid();
 		let s = 0, k = 0;
@@ -89,95 +92,143 @@
 		return Math.atan2(s, k);
 	}
 
-	// A spot on the skin itself: the skin point that sat at angle a when the
-	// body was made (straight up is -90°), blended between its neighbours.
-	// It's the same bit of skin every frame, so a look glued there moves,
-	// squishes and turns with the body. Also says which way the skin faces.
+	// A spot on the outline exactly as it is drawn (face.js bodyPath: a
+	// smooth curve through the midpoints between skin points, each point
+	// pulling it), at place a along the skin, and which way the outline
+	// faces there. Both slide smoothly as a moves: the old way (the nearest
+	// two points, and the line between their neighbours) snapped 22° every
+	// time the spot crossed a skin point.
 	function skinAt(body, a) {
-		const n = body.n;
-		const f = ((((a / (Math.PI * 2)) * n) % n) + n) % n;
-		const i = Math.floor(f) % n, j = (i + 1) % n, s = f - Math.floor(f);
-		const x = body.px[i] + (body.px[j] - body.px[i]) * s;
-		const y = body.py[i] + (body.py[j] - body.py[i]) * s;
-		// The skin's direction here, from the points either side.
-		const h = (i - 1 + n) % n, k = (j + 1) % n;
-		const tx = body.px[k] - body.px[h], ty = body.py[k] - body.py[h];
+		const n = body.n, px = body.px, py = body.py;
+		const g = ((((a / (Math.PI * 2)) * n) % n) + n) % n + 0.5;
+		const i = Math.floor(g) % n, s = g - Math.floor(g);
+		const h = (i - 1 + n) % n, j = (i + 1) % n;
+		const w0 = (1 - s) * (1 - s) / 2, w1 = 0.5 + s - s * s, w2 = s * s / 2;
+		const x = w0 * px[h] + w1 * px[i] + w2 * px[j];
+		const y = w0 * py[h] + w1 * py[i] + w2 * py[j];
+		const tx = (s - 1) * px[h] + (1 - 2 * s) * px[i] + s * px[j];
+		const ty = (s - 1) * py[h] + (1 - 2 * s) * py[i] + s * py[j];
 		const len = Math.hypot(tx, ty) || 1;
-		let nx = ty / len, ny = -tx / len;
-		const c = body.centroid();
-		if (nx * (x - c.x) + ny * (y - c.y) < 0) { nx = -nx; ny = -ny; }
-		return { x, y, nx, ny };
+		return { x, y, nx: ty / len, ny: -tx / len };
 	}
 
-	// Where the skin is hit by a ray from the middle at angle a.
-	function rayAt(body, a) {
+	// The place along the skin for a look `off` round from the crown: its own
+	// bit of skin, eased back toward the crown when squashing has carried it
+	// more than REACH away (smoothly: the further off, the more it slides).
+	function placeFor(body, off) {
+		const turn = skinTurn(body), lean = leanOf(body);
+		const want = -Math.PI / 2 + lean + off;
+		let a = want - turn;
+		if (body.fullTurn) return a;
 		const c = body.centroid();
-		const dx = Math.cos(a), dy = Math.sin(a);
-		let best = -1, hit = { x: c.x, y: c.y, nx: dx, ny: dy };
-		for (let i = 0; i < body.n; i++) {
-			const j = (i + 1) % body.n;
-			const ex = body.px[j] - body.px[i], ey = body.py[j] - body.py[i];
-			const den = dx * ey - dy * ex;
-			if (Math.abs(den) < 1e-9) continue;
-			const qx = body.px[i] - c.x, qy = body.py[i] - c.y;
-			const d = (qx * ey - qy * ex) / den, s = (qx * dy - qy * dx) / den;
-			if (d > best && s >= 0 && s <= 1) {
-				best = d;
-				const len = Math.hypot(ex, ey) || 1;
-				let nx = ey / len, ny = -ex / len;
-				if (nx * dx + ny * dy < 0) { nx = -nx; ny = -ny; }
-				hit = { x: c.x + dx * d, y: c.y + dy * d, nx, ny };
-			}
+		for (let k = 0; k < 2; k++) {
+			const p = skinAt(body, a);
+			const d = wrap(Math.atan2(p.y - c.y, p.x - c.x) - want);
+			if (Math.abs(d) <= REACH) break;
+			a -= d - Math.sign(d) * REACH;
 		}
-		return hit;
+		return a;
 	}
 
-	// The spot for a look `off` radians round from the crown: its own bit of
-	// skin, unless squashing has carried that more than 0.4 rad away from
-	// where the crown should be; then the nearest spot that isn't.
-	const REACH = 0.4;
-	function spotFor(body, off) {
-		// Mid-somersault it goes all the way round with the body.
-		if (body.fullTurn) return rayAt(body, -Math.PI / 2 + body.angle + off);
-		const p = skinAt(body, topOfHead(body) + off);
-		const c = body.centroid();
-		const want = -Math.PI / 2 + Math.max(-LEAN, Math.min(LEAN, body.angle)) + off;
-		const d = Math.atan2(p.y - c.y, p.x - c.x) - want;
-		const diff = Math.atan2(Math.sin(d), Math.cos(d));
-		return Math.abs(diff) <= REACH ? p : rayAt(body, want + Math.sign(diff) * REACH);
+	// Each part of a look has an anchor: its place along the skin and the
+	// way it faces (relative to the skin's turn), both following the head
+	// through a critically damped spring in the fixed physics step. So the
+	// skin's tiny wobbles (breathing, typing dips, the odd point nudged by a
+	// neighbour) never shake it, while squashes, leans and tumbles still
+	// carry it along. Drawing reads it off the skin as it is now, so it stays
+	// glued to the outline.
+	const ANCHOR_W = 30; // rad/s: follows anything slower than about 5 Hz
+	function anchorsOf(b) {
+		const L = b.lookState || (b.lookState = newState());
+		if (!L.anchors || L.anchorsFor !== b.key + '/' + b.look) { L.anchors = new Map(); L.anchorsFor = b.key + '/' + b.look; }
+		return L.anchors;
 	}
+	function anchorAt(b, off) {
+		const anchors = anchorsOf(b), id = off.toFixed(4);
+		let A = anchors.get(id);
+		const body = b.body, turn = skinTurn(body);
+		if (!A) {
+			const a = placeFor(body, off), p = skinAt(body, a);
+			A = { off, a, av: 0, q: wrap(Math.atan2(p.ny, p.nx) - turn), qv: 0 };
+			anchors.set(id, A);
+		}
+		const p = skinAt(body, A.a), q = A.q + turn;
+		return { x: p.x, y: p.y, nx: Math.cos(q), ny: Math.sin(q) };
+	}
+	function stepAnchors(b, dt) {
+		const body = b.body, turn = skinTurn(body), w = ANCHOR_W;
+		for (const A of anchorsOf(b).values()) {
+			const da = wrap(placeFor(body, A.off) - A.a);
+			A.av += (w * w * da - 2 * w * A.av) * dt;
+			A.a += A.av * dt;
+			const p = skinAt(body, A.a);
+			const dq = wrap(Math.atan2(p.ny, p.nx) - turn - A.q);
+			A.qv += (w * w * dq - 2 * w * A.qv) * dt;
+			A.q = wrap(A.q + A.qv * dt);
+		}
+	}
+
+	// The head's movement, as the springs feel it: its middle's velocity and
+	// acceleration (and its spin), each smoothed over a few hundredths of a
+	// second, and then a dead zone, so breathing, typing dips and the skin's
+	// jitters do nothing at all while hops, landings, throws and drags give
+	// a real shove.
+	const ease = (dt, tau) => 1 - Math.exp(-dt / tau);
+	const deadzone = (v, d) => Math.sign(v) * Math.max(0, Math.abs(v) - d);
+	const DEAD_ACC = 150, DEAD_SPIN = 3; // px/s², rad/s²
+	function stepHead(L, body, dt) {
+		const c = body.centroid(), turn = skinTurn(body);
+		// (Put somewhere new in one go, it hasn't moved: no shove.)
+		if (L.cx === undefined || Math.hypot(c.x - L.cx, c.y - L.cy) > body.o.radius) { L.cx = c.x; L.cy = c.y; L.turn = turn; }
+		const kv = ease(dt, 0.03), ka = ease(dt, 0.03);
+		const vx = L.vx + ((c.x - L.cx) / dt - L.vx) * kv, vy = L.vy + ((c.y - L.cy) / dt - L.vy) * kv;
+		L.rax += ((vx - L.vx) / dt - L.rax) * ka;
+		L.ray += ((vy - L.vy) / dt - L.ray) * ka;
+		L.vx = vx; L.vy = vy; L.cx = c.x; L.cy = c.y;
+		const m = Math.hypot(L.rax, L.ray), keep = m > DEAD_ACC ? (m - DEAD_ACC) / m : 0;
+		L.ax = L.rax * keep; L.ay = L.ray * keep;
+		const spin = L.spin + (wrap(turn - L.turn) / dt - L.spin) * kv;
+		L.rspinAcc += ((spin - L.spin) / dt - L.rspinAcc) * ka;
+		L.spin = spin; L.turn = turn;
+		L.spinAcc = deadzone(L.rspinAcc, DEAD_SPIN);
+	}
+
+	// A twitch plays as a smooth bump in where the spring wants to rest
+	// (out and back in about a third of a second), never as a kick.
+	const TWITCH_TIME = 0.36;
+	const twitchNow = (L) => {
+		const t = L.clock - (L.twitch ? L.twitch.at : -1e9);
+		if (!L.twitch || t > TWITCH_TIME) return 0;
+		const s = Math.sin(Math.PI * t / TWITCH_TIME);
+		return L.twitch.amp * s * s;
+	};
+
+	const newState = () => ({ a: 0, w: 0, t: 0, tw: 0, vx: 0, vy: 0, rax: 0, ray: 0, ax: 0, ay: 0, spin: 0, rspinAcc: 0, spinAcc: 0, clock: 0 });
 
 	// Each look hangs on two springs, like a pendulum on a pendulum: the
 	// base swings when the head is shoved, and the tip (leaves, antenna
-	// ball, ear tips) trails behind the base. The head's movement is
-	// smoothed first, so the skin's tiny jitters don't shake it.
+	// ball, ear tips) trails behind the base. It all runs in the fixed
+	// physics step (b.look's springs never see the frame rate).
 	const LOOSE = { antenna: 1.8, sprout: 2.2, bunny: 1.7 };
 	function stepLook(b, dt) {
-		const L = b.lookState || (b.lookState = { a: 0, w: 0, t: 0, tw: 0, vx: 0, vy: 0, ax: 0, ay: 0 });
-		const p = spotFor(b.body, 0);
-		if (L.px === undefined) { L.px = p.x; L.py = p.y; L.turn = skinTurn(b.body); L.spin = 0; }
-		const vx = (p.x - L.px) / dt, vy = (p.y - L.py) / dt;
-		L.px = p.x; L.py = p.y;
-		const svx = L.vx + (vx - L.vx) * 0.25, svy = L.vy + (vy - L.vy) * 0.25;
-		L.ax += ((svx - L.vx) / dt - L.ax) * 0.3;
-		L.ay += ((svy - L.vy) / dt - L.ay) * 0.3;
-		L.vx = svx; L.vy = svy;
+		const L = b.lookState || (b.lookState = newState());
+		L.clock += dt;
+		stepAnchors(b, dt);
+		stepHead(L, b.body, dt);
 		// Only shoves along the skin swing it (a pendulum feels its pivot's
-		// acceleration, the other way).
-		const along = L.ax * -p.ny + L.ay * p.nx;
-		// The head spinning (a tumble, a shove) swings it the other way.
-		const turn = skinTurn(b.body);
-		const spin = Math.atan2(Math.sin(turn - L.turn), Math.cos(turn - L.turn)) / dt;
-		L.turn = turn;
-		const spinAcc = (spin - L.spin) / dt;
-		L.spin += (spin - L.spin) * 0.3;
+		// acceleration, the other way): the middle's, and the head's spin
+		// carrying the top of it round.
+		const up = -Math.PI / 2 + leanOf(b.body);
+		const along = L.ax * -Math.sin(up) + L.ay * Math.cos(up) + L.spinAcc * b.body.o.radius;
 		const loose = LOOSE[b.look] || 1.3;
 		const k = 55 / loose, damp = 5.5 / Math.sqrt(loose);
-		L.w += (-k * L.a - damp * L.w - along * 0.0012 * loose - spinAcc * 0.004) * dt;
+		const rest = b.look === 'bunny' ? 0 : twitchNow(L);
+		// The head spinning (a tumble, a shove) swings it the other way.
+		L.w += (-k * (L.a - rest) - damp * L.w - along * 0.0018 * loose - L.spinAcc * 0.004) * dt;
 		L.w = Math.max(-2.5, Math.min(2.5, L.w));
 		L.a += L.w * dt;
 		// The tip follows the base, a little late and a little further.
-		L.tw += (-40 / loose * (L.t - L.a) - 4 * L.tw - along * 0.0006 * loose) * dt;
+		L.tw += (-40 / loose * (L.t - L.a) - 4 * L.tw - along * 0.0009 * loose) * dt;
 		L.tw = Math.max(-6, Math.min(6, L.tw));
 		L.t += L.tw * dt;
 		const ft = b.faceTurn || { x: 0, y: 0 };
@@ -203,16 +254,18 @@
 		if (!L.ears) L.ears = [-1, 1].map(() => ({ a: new Array(EAR_JOINTS).fill(0), w: new Array(EAR_JOINTS).fill(0), base: null, bw: 0, ba: 0 }));
 		[-1, 1].forEach((s, e) => {
 			const E = L.ears[e];
-			const p = spotFor(body, s * 0.3 * parts[0].spread + parts[0].shift);
+			const p = anchorAt(b, s * 0.3 * parts[0].spread + parts[0].shift);
 			// Ears follow only half the skin's slope, so they stand up from the
 			// head instead of sticking out of its side.
 			const base = earSlope(p) * 0.5 + soft(L.a, 0.45);
 			if (E.base === null) E.base = base;
-			const bw = Math.atan2(Math.sin(base - E.base), Math.cos(base - E.base)) / dt;
-			E.base = base;
-			const bwSmooth = E.bw + (bw - E.bw) * 0.3;
-			E.ba += ((bwSmooth - E.bw) / dt - E.ba) * 0.3;
-			E.bw = bwSmooth;
+			// The root turning (the head tipping) swings the ear the other way:
+			// smoothed, with a dead zone, like the head's shoves.
+			const bw = E.bw + (wrap(base - E.base) / dt - E.bw) * ease(dt, 0.03);
+			E.rba = (E.rba || 0) + ((bw - E.bw) / dt - (E.rba || 0)) * ease(dt, 0.03);
+			E.ba = deadzone(E.rba, DEAD_SPIN);
+			E.base = base; E.bw = bw;
+			const twitch = L.twitch && (!L.twitch.side || L.twitch.side === s) ? twitchNow(L) : 0;
 			let phi = base;
 			// The whole ear bends at most about 1.6 rad (it never folds flat).
 			const total = E.a.reduce((sum, x) => sum + x, 0);
@@ -222,7 +275,7 @@
 				// Weight and the head's shove, as a twist about this joint: about
 				// 20 rad/s² per g, so standing still they only droop a little.
 				const pull = ((g - L.ay) * Math.sin(phi) - L.ax * Math.cos(phi)) / g * 20;
-				const rest = s * (i === 0 ? -0.05 : 0.02);
+				const rest = s * ((i === 0 ? -0.05 : 0.02) + twitch * (i === 0 ? 1 : i === 1 ? 0.6 : 0));
 				const k = EAR_K[i], damp = 2.4 + 0.25 * Math.sqrt(k);
 				E.w[i] += (pull - k * (E.a[i] - rest) - damp * E.w[i] - (i === 0 ? E.ba : 0)) * dt;
 				E.w[i] = Math.max(-14, Math.min(14, E.w[i]));
@@ -232,23 +285,18 @@
 		});
 	}
 
-	// A twitch: a kick to the springs a look hangs on, so it flicks and
-	// settles (an ear twitch, an antenna perking up). For bunny ears, side
-	// picks one ear (-1 left, 1 right, 0 both), and w > 0 flicks it out,
-	// w < 0 pricks it up.
+	// A twitch (an ear twitch, an antenna perking up): the spring's resting
+	// place bumps over and back, smoothly, and the look follows it. Rare on
+	// purpose: one at a time, and not again for a few seconds. For bunny
+	// ears, side picks one ear (-1 left, 1 right, 0 both), and w > 0 flicks
+	// it out, w < 0 pricks it up. A plant doesn't twitch.
+	const TWITCH_REST = 4; // seconds between twitches, at least
 	function flick(b, w, side = 0) {
 		const L = b.lookState;
-		if (!L) return;
-		if (L.ears) {
-			L.ears.forEach((E, e) => {
-				const s = e ? 1 : -1;
-				if (side && side !== s) return;
-				E.w[0] += s * w;
-				E.w[1] += s * w * 0.6;
-			});
-			return;
-		}
-		L.w = Math.max(-2.5, Math.min(2.5, L.w + w * 0.3 * (side || 1)));
+		if (!L || b.look === 'sprout') return;
+		if (L.twitch && L.clock - L.twitch.at < TWITCH_REST) return;
+		const amp = L.ears ? w * 0.04 : w * 0.025 * (side || 1);
+		L.twitch = { at: L.clock, amp: Math.max(-0.35, Math.min(0.35, amp)), side };
 	}
 
 	// Swings ease into their limit instead of stopping dead at it.
@@ -274,7 +322,7 @@
 		let part = b.lookParts[0];
 		const at = (off, fn, sink = 0.6) => {
 			const round = off * part.spread + part.shift; // how far round from the crown
-			const p = spotFor(body, round);
+			const p = anchorAt(b, round);
 			ctx.save();
 			ctx.translate(p.x - p.nx * u * sink + turn.x * 0.35, p.y - p.ny * u * sink + turn.y * 0.15);
 			ctx.rotate(Math.atan2(p.ny, p.nx) + Math.PI / 2 + swing + (turn.x / r) * 0.5);
@@ -406,7 +454,7 @@
 					// bending along the joints stepEars swings.
 					if (back) [-1, 1].forEach((s, e) => at(s * 0.3, () => {
 						const E = L.ears && L.ears[e];
-						ctx.rotate(-earSlope(spotFor(body, s * 0.3 * part.spread + part.shift)) * 0.5);
+						ctx.rotate(-earSlope(anchorAt(b, s * 0.3 * part.spread + part.shift)) * 0.5);
 						const len = u * 5, w = u * 0.85, steps = 24;
 						// The spine: the bend eases from joint to joint.
 						const spine = [];
@@ -443,11 +491,8 @@
 	// How far (radians) round from the crown a look sits: for
 	// the shots script's checks.
 	function offTop(b) {
-		const p = spotFor(b.body, 0);
-		const up = -Math.PI / 2 + Math.max(-LEAN, Math.min(LEAN, b.body.angle));
-		const c = b.body.centroid();
-		const d = Math.atan2(p.y - c.y, p.x - c.x) - up;
-		return Math.abs(Math.atan2(Math.sin(d), Math.cos(d)));
+		const p = anchorAt(b, 0), c = b.body.centroid();
+		return Math.abs(wrap(Math.atan2(p.y - c.y, p.x - c.x) - (-Math.PI / 2 + leanOf(b.body))));
 	}
 
 	root.BlaubeLooks = { LOOKS, pickLook, lookOrder, stepLook, drawLook, offTop, flick };
