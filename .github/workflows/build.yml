@@ -89,6 +89,11 @@ jobs:
     needs: package
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    # One at a time: two pushes close together would otherwise delete the
+    # release under each other's uploads.
+    concurrency:
+      group: latest-release
+      cancel-in-progress: false
     permissions:
       contents: write
     env:
