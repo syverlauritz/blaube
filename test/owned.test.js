@@ -144,3 +144,29 @@ process.stdin.on('end', () => setTimeout(() => process.exit(0), 150)); process.s
   owned.end(id);
   assert.equal(await new Promise((done) => owned.reopen('nope', [], '', done)), false);
 });
+
+test('going back: a copy cut at an entry takes its place, the cut not kept for later restarts', async (t) => {
+  if (process.platform === 'win32') return t.skip('a script as the binary');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-owned-'));
+  const bin = path.join(dir, 'claude');
+  fs.writeFileSync(bin, `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({ type: 'args', args: process.argv.slice(2) }) + '\\n');
+process.stdin.on('end', () => process.exit(0)); process.stdin.resume();
+`, { mode: 0o755 });
+  const owned = new Owned(() => bin);
+  const seen = [];
+  const orig = owned.read.bind(owned);
+  owned.read = (id, m) => { seen.push(Object.assign({ id }, m)); return orig(id, m); };
+  const id = owned.start(dir, ['--model', 'opus']);
+  const until = async (fn) => { for (let i = 0; i < 100 && !fn(); i++) await new Promise((r) => setTimeout(r, 20)); return fn(); };
+  assert.ok(await until(() => seen.length === 1));
+  const to = owned.clear(id, '', 'a1');
+  assert.ok(await until(() => seen.some((m) => m.id === to)));
+  const args = seen.find((m) => m.id === to).args;
+  assert.deepEqual(args.slice(args.indexOf('--resume'), args.indexOf('--resume') + 4), ['--resume', id, '--fork-session', '--session-id']);
+  assert.deepEqual(args.slice(-2), ['--resume-session-at', 'a1']);
+  await new Promise((done) => owned.reopen(to, ['--add-dir', '/tmp'], '', done));
+  assert.ok(await until(() => seen.filter((m) => m.id === to).length === 2));
+  assert.ok(!seen.filter((m) => m.id === to)[1].args.includes('--resume-session-at'), 'a later restart keeps the whole (new) conversation');
+  owned.end(to);
+});

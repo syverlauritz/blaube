@@ -300,6 +300,32 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await type('/exit');
 	check(await until(() => !owned.has(NID) && inbox.log(NID).some((e) => /^Ended\. Its conversation is kept/.test(e.text || ''))), '/exit ends a session Blaube started');
 
+	// Editing something you said (Esc Esc in the terminal): back to before it,
+	// its files put back, then the new words go instead.
+	const EID = startSession(dir);
+	check(await until(() => talkId() === EID, 8000), 'another session starts');
+	await type('first');
+	await until(() => inbox.log(EID).some((e) => e.who === 'claude'));
+	await type('second');
+	await until(() => inbox.log(EID).filter((e) => e.who === 'claude').length === 2);
+	const [u1, u2] = inbox.log(EID).filter((e) => e.who === 'you').map((e) => e.uuid);
+	const file = require('../../src/main/focus').transcriptPath(tracker.sessions.get(EID));
+	fs.mkdirSync(path.dirname(file), { recursive: true });
+	fs.writeFileSync(file, [{ type: 'user', uuid: u1, parentUuid: null }, { type: 'assistant', uuid: 'a1', parentUuid: u1 }, { type: 'user', uuid: u2, parentUuid: 'a1' }].map((e) => JSON.stringify(Object.assign({ sessionId: EID }, e))).join('\n') + '\n');
+	check(await until(() => box(`document.querySelectorAll('#inner .meta.edit button').length === 2`)), 'your own messages can be edited');
+	await box(`[...document.querySelectorAll('#inner .meta.edit button')].pop().click()`);
+	check(await until(() => box(`document.getElementById('text').value === 'second' && !document.getElementById('editing').hidden`)), 'edit puts it back in the field, saying what sending does');
+	await type('second, better');
+	check(await until(() => talkId() && talkId() !== EID && owned.has(talkId()) && !owned.has(EID)), 'sending it goes back: a copy cut before it takes its place');
+	const FID = talkId();
+	check(await until(() => fs.readdirSync(dir).filter((f) => f.startsWith('args-')).some((f) => { const a = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); return a[a.indexOf('--resume') + 1] === EID && a.includes('--fork-session') && a[a.indexOf('--session-id') + 1] === FID && a[a.indexOf('--resume-session-at') + 1] === 'a1'; })), 'cut at the reply before it (--resume-session-at)');
+	const said2 = inbox.log(FID).filter((e) => e.who === 'you').map((e) => e.text);
+	check(said2.length === 2 && said2[0] === 'first' && /second, better$/.test(said2[1]) && inbox.log(FID).some((e) => e.text === 'Went back to before that message, and put its files back. The conversation as it was is under Pick up where you left off.'), 'the box keeps what came before, and the new words go instead');
+	check(await until(() => inbox.log(FID).filter((e) => e.who === 'claude').length === 2), 'and it answers them');
+	check(await until(() => box(`document.getElementById('editing').hidden && document.getElementById('text').value === ''`)), 'and the field is free again');
+	owned.end(FID);
+	fs.rmSync(file, { force: true });
+
 	// Install Claude Code from the menu: its official installer (a stand-in here).
 	let ran = null;
 	global.__blaubeInstallRun = (bin, args) => {

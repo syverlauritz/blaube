@@ -56,11 +56,12 @@ class Owned extends EventEmitter {
   // `resume`: a past session's id, to pick it up where it left off (it
   // keeps its id). `fork`: a session's id to start a copy of (its
   // conversation so far, under a new id; the original carries on).
-  start(cwd, extra = [], settings = null, resume = '', fork = '') {
+  // `once`: arguments for this start only (not kept for a restart).
+  start(cwd, extra = [], settings = null, resume = '', fork = '', once = []) {
     const id = (!fork && resume) || crypto.randomUUID();
     const bin = this.findClaude() || shellClaude || 'claude';
     const from = fork ? ['--resume', fork, '--fork-session', '--session-id', id] : resume ? ['--resume', id] : ['--session-id', id];
-    const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', ...from, ...extra];
+    const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', ...from, ...extra, ...once];
     let settingsFile = '';
     if (settings) {
       settingsFile = path.join(os.tmpdir(), `blaube-session-${id}.json`);
@@ -178,15 +179,18 @@ class Owned extends EventEmitter {
   // conversation is saved, to pick up later). Returns the new id.
   // `cwd`: where it's working now (its own worktree, say: then it starts
   // there rather than making another).
-  clear(id, cwd = '') {
+  // `at`: keep its conversation up to that entry instead (going back to
+  // before something you said: a copy of it, cut there, takes its place).
+  clear(id, cwd = '', at = '') {
     const s = this.sessions.get(id);
     if (!s) return null;
     const here = cwd && cwd !== s.cwd;
     s.replaced = s.cleared = true;
     this.sessions.delete(id);
     try { s.proc.stdin.end(); } catch { /* gone */ }
-    setTimeout(() => stop(s.proc), 5000);
-    const to = this.start(here ? cwd : s.cwd, here ? s.extra.filter((a) => a !== '--worktree') : s.extra, s.settings);
+    setTimeout(() => stop(s.proc), 5000).unref();
+    const extra = here ? s.extra.filter((a) => a !== '--worktree') : s.extra;
+    const to = at ? this.start(here ? cwd : s.cwd, extra, s.settings, '', id, ['--resume-session-at', at]) : this.start(here ? cwd : s.cwd, extra, s.settings);
     this.emit('renamed', id, to);
     return to;
   }
@@ -206,7 +210,7 @@ class Owned extends EventEmitter {
       cb(true);
     });
     try { s.proc.stdin.end(); } catch { /* gone */ }
-    setTimeout(() => { if (s.proc.exitCode == null && s.proc.signalCode == null) stop(s.proc); }, 60e3);
+    setTimeout(() => { if (s.proc.exitCode == null && s.proc.signalCode == null) stop(s.proc); }, 60e3).unref();
   }
 
   // Lets it finish and stop (it ends when its input does); stops it for

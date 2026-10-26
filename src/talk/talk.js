@@ -10,6 +10,7 @@
   const DOTS = { working: '#f5a623', waiting: '#ff4d6d', done: '#2ecc71', idle: '#a0aec0', ended: '#c3c8d2' };
   const MAX = 4000; // longer replies are cut until unfolded
   let current = null, askKey = 0, seen = 0;
+  let editing = null; // (one of yours you're changing: { id, uuid })
   let drawn = { entries: [], thinking: -1, open: '' }, ends = []; // what the log shows, and each entry's last element
   const dots = document.createElement('div'); // the slime thinking
   dots.className = 'dots';
@@ -392,6 +393,20 @@
       t.append(undo);
       out.push(t);
     }
+    // Your own, in a session Blaube started: change it (Esc Esc in the
+    // terminal), going back to before it.
+    if (m.who === 'you' && m.uuid && m.status === 'sent' && current.owned && api.editFrom) {
+      const t = document.createElement('div');
+      t.className = 'meta edit';
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'unsend';
+      b.textContent = 'edit';
+      b.title = 'Change this: it goes back to before it (its files too), then what you write goes instead';
+      b.onclick = () => startEdit(m);
+      t.append(b);
+      out.push(t);
+    }
     if (m.via === 'terminal') e.title = 'Typed in the terminal';
     // Under a reply: what its turn came to (the files show in Finder); on
     // it, a copy button.
@@ -516,6 +531,7 @@
   function render(s) {
     const switched = !current || current.id !== s.id;
     current = s;
+    if (switched && editing && editing.id !== s.id) stopEdit(true);
     $('name').textContent = s.project;
     $('name').title = s.project;
     $('state').textContent = WORDS[s.state] || s.state;
@@ -1649,8 +1665,38 @@
       e.preventDefault(); $('form').requestSubmit();
     }
   });
+  // Editing one of yours: the field holds it, and sending goes back first.
+  function startEdit(m) {
+    editing = { id: current.id, uuid: m.uuid };
+    $('editing').hidden = false;
+    text.value = m.text;
+    text.dispatchEvent(new Event('input'));
+    text.focus();
+    text.setSelectionRange(text.value.length, text.value.length);
+    requestAnimationFrame(fitWindow);
+  }
+  function stopEdit(clear) {
+    if (!editing) return;
+    editing = null;
+    $('editing').hidden = true;
+    if (clear) { text.value = ''; text.dispatchEvent(new Event('input')); }
+    requestAnimationFrame(fitWindow);
+  }
+  $('editCancel').addEventListener('click', () => { stopEdit(true); text.focus(); });
+  text.addEventListener('keydown', (e) => { if (e.key === 'Escape' && editing && !e.isComposing) { e.preventDefault(); e.stopPropagation(); stopEdit(true); } });
   $('form').addEventListener('submit', (e) => {
     e.preventDefault();
+    if (editing) {
+      const typed = text.value.trim();
+      if (!typed || !current || editing.id !== current.id) return stopEdit(true);
+      const { id, uuid } = editing;
+      stopEdit(true);
+      drafts.delete(id);
+      fit();
+      pinned = true;
+      api.editFrom(id, uuid, typed);
+      return;
+    }
     suggAsked++; drawSuggest([]); // (one still on its way stays away too)
     const typed = text.value.trim();
     if ((!typed && !files.length) || !current || current.demo) return;

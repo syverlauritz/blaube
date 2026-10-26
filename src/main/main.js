@@ -25,6 +25,7 @@ const limits = require('./limits');
 const usageProbe = require('./usageProbe');
 const auth = require('./auth');
 const renamer = require('./rename');
+const branch = require('./branch');
 const installer = require('./installer');
 const away = require('./away');
 const taskOutput = require('./taskOutput');
@@ -1990,6 +1991,32 @@ app.whenReady().then(async () => {
     if (!id || id !== talkId || !tracker.sessions.has(id) || id.startsWith('demo-')) return;
     sendMessage(id, text);
   });
+  // Editing something you said, in a session Blaube started (Esc Esc in the
+  // terminal): its files put back as they were before it, the conversation
+  // cut there (a copy of it, cut, takes its slime), then the new words go.
+  ipcMain.handle('talk-edit', (_e, id, uuid, text) => new Promise((done) => {
+    const sess = tracker.sessions.get(id);
+    const log = inbox.log(id);
+    const idx = typeof uuid === 'string' ? log.findIndex((e) => e.who === 'you' && e.uuid === uuid) : -1;
+    if (!sess || id !== talkId || !owned.has(id) || idx < 0 || typeof text !== 'string' || !text.trim()) return done(false);
+    const at = branch.before(transcriptPath(sess), uuid);
+    if (at === undefined) { inbox.add(id, { who: 'note', text: 'Couldn’t go back there: Claude Code hasn’t saved that message yet', error: true }); return done(false); }
+    owned.control(id, { subtype: 'rewind_files', user_message_id: uuid }, (ok, r) => {
+      const put = ok && !(r && r.canRewind === false);
+      const to = owned.clear(id, sess.cwd, at || '');
+      const now = to && tracker.sessions.get(to);
+      if (!now) return done(false);
+      Object.assign(now, { transcript: '', tasks: [], agents: [] });
+      inbox.logs.set(to, log.slice(0, idx));
+      inbox.todos.delete(to);
+      for (const m of [mcpStates, foreground, shellRan, rewound]) m.delete(to);
+      inbox.add(to, { who: 'note', text: `Went back to before that message${put ? ', and put its files back' : ''}. The conversation as it was is under Pick up where you left off.` });
+      hubCache = null;
+      sendMessage(to, text);
+      pushState();
+      done(to);
+    });
+  }));
   // What you say to a session (from its box, or a notification's reply).
   function sendMessage(id, text) {
     if (!prefs.talked) { prefs.talked = true; savePrefs(); pushState(); } // no more "click to talk" hints

@@ -262,6 +262,9 @@
   .meta { font: 600 14px var(--ui); color: var(--dim); margin: -6px 2px 0; align-self: flex-end; }
   .unsend { border: 0; background: none; padding: 0; font: inherit; color: var(--dim); cursor: pointer; }
   .unsend:hover { color: var(--ink); }
+  .msg.you + .meta.edit { opacity: 0; transition: opacity .15s; }
+  .msg.you:hover + .meta.edit, .meta.edit:hover, .meta.edit:focus-within { opacity: 1; }
+  .editing { display: flex; gap: 8px; justify-content: space-between; font: 600 13px var(--ui); color: var(--dim); padding: 0 16px 6px; }
   .note { align-self: center; font: 600 14px var(--ui); color: var(--dim); text-align: center; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .note.error { color: #c0392b; white-space: normal; }
   .note.long { white-space: normal; max-width: 92%; line-height: 1.35; }
@@ -450,6 +453,7 @@
     <div class="hint" id="hint"></div>
     <div class="quick" id="quick" hidden></div>
     <div class="files" id="files" hidden></div>
+    <div class="editing" id="editing" hidden><span>Editing: it goes back to before this message, then this goes instead</span><button type="button" id="editCancel" class="unsend">cancel</button></div>
     <button class="mode" id="mode" type="button" hidden></button>
     <ul class="suggest" id="suggest" hidden role="listbox" aria-label="Suggestions"></ul>
     <form id="form">
