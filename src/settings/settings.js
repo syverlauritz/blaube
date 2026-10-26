@@ -16,11 +16,11 @@
 			row.className = 'row';
 			if (Array.isArray(min)) {
 				// Pick one, with a preview in that font.
-				const preview = key === 'font' ? '<div class="preview">kalkis</div>' : '';
+				const preview = key === 'font' ? '<div class="preview">hehe, coffee?</div>' : '';
 				row.innerHTML = `<label><span>${label}</span></label><select></select>${preview}`;
 				const select = row.querySelector('select'), shown = row.querySelector('.preview');
 				for (const name of min) select.add(new Option(name, name));
-				const show = (name) => { if (shown) shown.style.fontFamily = name === 'System' ? '' : `"${name}", system-ui`; };
+				const show = (name) => { if (shown) shown.style.font = name === 'System' ? '700 17px "Nunito", system-ui' : `400 17px "${name}", "Nunito", system-ui`; };
 				select.value = cfg[key];
 				show(cfg[key]);
 				select.addEventListener('change', () => { show(select.value); api.set({ [key]: select.value }); });

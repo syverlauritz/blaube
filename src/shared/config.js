@@ -208,7 +208,7 @@
   const FONTS = ['System', 'Coiny', 'Concert One', 'DynaPuff', 'Rubik Spray Paint'];
   const SETTINGS = [
     ['size', 0.7, 0.5, 2, 0.05, 'Size'],
-    ['font', 'Coiny', FONTS, 0, 0, 'Name font'],
+    ['font', 'Coiny', FONTS, 0, 0, 'Speech bubble font'],
     ['statusBubbles', 'On hover', ['On hover', 'Always'], 0, 0, 'Status bubbles'],
     ['looks', 'On', ['On', 'Off'], 0, 0, 'Fun looks (bows, ears, antennas...)'],
     ['windowLedges', 'On', ['On', 'Off'], 0, 0, 'Land on top of other windows'],

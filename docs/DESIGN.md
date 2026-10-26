@@ -58,9 +58,12 @@ ships that breaks a "must".
   corners on the box, pill-shaped buttons, softly rounded rows and code
   boxes, a pointed wedge tail (the talk box's; the little bubbles' tails stay chubby and round-tipped).
   All of Blaube's words are in one rounded font, Nunito (chosen over
-  Fredoka, Baloo 2 and Quicksand; not up for review), except the name line
-  of a bubble or talk box, which uses the display font picked in Settings
-  (Coiny by default; very long names fall back to Nunito to stay readable). Wanted ("more rounded", "more
+  Fredoka, Baloo 2 and Quicksand; not up for review): names, hover status,
+  labels, the talk box. The one exception is what a slime says in its
+  little speech bubbles ("hehe", "coffee?"), which is in the display font
+  picked in Settings (Speech bubble font, Coiny by default).
+- A speech bubble is the same size as a sign balloon: one line is exactly
+  a sign balloon's height, never narrower; longer lines wrap (at most three). Wanted ("more rounded", "more
   childlike in general").
 - Blobs talk out loud in a made-up babble through a talkbox: a buzzy
   synth note shaped by a sweeping vowel filter, with a wah on the attack of

@@ -254,10 +254,7 @@
 
   function applyConfig(cfg) {
     CFG = BlaubeConfig.sanitize(cfg);
-    D.setFont(CFG.font);
-    // Canvas text doesn't load a font by itself; ask for it.
-    if (CFG.font !== 'System' && document.fonts) document.fonts.load(`13px "${CFG.font}"`).catch(() => {});
-    if (document.fonts) for (const w of [600, 700]) document.fonts.load(`${w} 15px "Nunito"`).catch(() => {}); // the bubbles' rounded letters
+    D.setFont(CFG.font); // (and loads it, and the plain one, before any text is drawn)
     // The Size setting scales every slime (and pet) at once.
     for (const k of ['mainRadius', 'childRadius']) CFG[k] *= CFG.size;
     for (const b of buddies.values()) {
@@ -5308,7 +5305,10 @@
       const showHover = b === hovered && !(time < (b.pettedUntil || 0)); // not while you're petting it
       const lines = showHover ? hoverLines(b) : b.bubble ? b.bubble.lines : null;
       const alpha = showHover ? 1 : b.bubble ? Math.min(1, (b.bubble.until - time) * 3) : 0;
-      if (lines && b !== buddies.get(talkingTo)) D.drawBubble(ctx, b.body, lines, alpha, W);
+      // What it says is speech, in the fun font; anything with a state dot
+      // or grey detail lines is a status list, in the plain one.
+      const speech = !showHover && !!lines && lines.every((l) => !l.color && !l.dim && (!l.size || l.size >= 20));
+      if (lines && b !== buddies.get(talkingTo)) D.drawBubble(ctx, b.body, lines, alpha, W, speech);
     }
     if (CFG.debugOverlay) drawDebug(list);
   }

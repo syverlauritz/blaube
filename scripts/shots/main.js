@@ -610,12 +610,44 @@ const SCENES = {
 		],
 		wait: 4000,
 	},
+	// Speech bubbles next to sign bubbles: they should read as one set. A
+	// short quip, a longer line that wraps, beside a gear, a prompt and a "!".
+	speech: {
+		sessions: [
+			session('sa', 'blaube', 'working'),
+			session('sb', 'kalkis', 'idle', { color: '#5B8DEF' }),
+			session('sc', 'website', 'working', { color: '#5FB57A', activity: 'tool' }),
+			session('sd', 'notes', 'idle', { color: '#9B7BD8' }),
+			session('se', 'shop', 'done', { color: '#E07BA8' }),
+			session('sf', 'docs', 'idle', { color: '#E8B04A' }),
+		],
+		config: { size: 0.7 },
+		wait: 4000,
+		size: [1400, 520],
+		say: [{ id: 'sb', text: 'hehe', seconds: 8 }, { id: 'sd', text: 'Okay! I fixed the bug, and all the tests pass now. Want me to push it?', seconds: 8 }, { id: 'sf', text: 'coffee?', seconds: 8 }],
+	},
+	// The same, with the mouse on one: its hover lines in the plain font.
+	speechHover: {
+		sessions: [
+			session('sa', 'blaube', 'working'),
+			session('sb', 'kalkis', 'idle', { color: '#5B8DEF', info: { title: 'Fix the login bug', branch: 'main', model: 'claude-opus-5-5' } }),
+			session('sc', 'website', 'working', { color: '#5FB57A', activity: 'tool' }),
+			session('sd', 'notes', 'idle', { color: '#9B7BD8' }),
+		],
+		config: { size: 0.7 },
+		wait: 4000,
+		size: [1100, 520],
+		hover: 'sb',
+		say: [{ id: 'sd', text: 'All done! Want me to push it?', seconds: 8 }],
+	},
 };
 // The overview: the talk box with every session at a glance.
 // Find (⌘F) in a conversation with steps.
 SCENES.talkFind = Object.assign({}, SCENES.talkSteps, { talkJs: `setTimeout(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', metaKey: true })); const f = document.getElementById('find'); f.value = 'test'; f.dispatchEvent(new Event('input')); }, 400)` });
 SCENES.talkHarnessTop = Object.assign({}, SCENES.talkHarness, { talkJs: `setTimeout(() => { const b = [...document.querySelectorAll('button.step')].find((x) => /tests/.test(x.textContent)); if (b) b.click(); setTimeout(() => { document.getElementById('log').scrollTop = 0; }, 300); }, 400)` });
 SCENES.talkHarnessOverview = Object.assign({}, SCENES.talkHarness, { talkJs: `setTimeout(() => document.getElementById('allSessions').click(), 400)`, talk: Object.assign({}, SCENES.talkHarness.talk, { today: 'Today: 14 replies · 2h 10m of work · 23 files changed', others: [{ id: 'hh', project: 'blaube', color: '#D97757', state: 'done', status: 'Done: Committed as f3a91c2.', meta: 'feature/ledges · 3 changed' }, { id: 'hh2', project: 'kalkis', color: '#5B8DEF', state: 'waiting', status: 'Needs you: Claude needs your permission to use Bash', meta: '62% of context used · main', ask: { key: 3, tool: 'Bash', detail: 'npm run deploy' } }, { id: 'hh3', project: 'website', color: '#E07BA8', state: 'working', status: 'Editing Hero.tsx · 4m', meta: '2 of 5 on its list · main · 7 changed' }] }) });
+// The speech bubbles in each of the other fonts Settings offers.
+for (const font of ['Concert One', 'DynaPuff', 'Rubik Spray Paint', 'System']) SCENES['speech' + font.replace(/ /g, '')] = Object.assign({}, SCENES.speech, { config: { size: 0.7, font } });
 SCENES.talkOverview = Object.assign({}, SCENES.talkChat, { talkJs: `setTimeout(() => document.getElementById('allSessions').click(), 400)` });
 
 async function shoot(win, name, scene) {
@@ -649,6 +681,10 @@ async function shoot(win, name, scene) {
 	if (scene.command) {
 		fire('command', scene.command);
 		await sleep(scene.thenWait || 500);
+	}
+	if (scene.say) {
+		for (const say of scene.say) fire('say', say);
+		await sleep(700);
 	}
 	if (scene.mouse) {
 		win.webContents.sendInputEvent({ type: 'mouseMove', x: scene.mouse[0], y: scene.mouse[1] });

@@ -923,6 +923,7 @@
     const r = b.o.radius;
     const top = b.bbox().minY;
     const k = Math.max(0.6, Math.min(1.4, r / 100));
+    if (!fontsReady) return;
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -931,7 +932,7 @@
       const p = (t * 0.4 + i / 3) % 1;
       const a = Math.min(1, p * 5) * (1 - p);
       ctx.globalAlpha = a;
-      ctx.font = `800 ${Math.round((11 + p * 13) * k)}px ${family}`;
+      ctx.font = `800 ${Math.round((11 + p * 13) * k)}px ${TEXT_FONT}`;
       ctx.fillStyle = '#fff';
       ctx.fillText('Z', c.x + r * 0.45 + p * 34 * k + Math.sin(t * 2 + i * 2) * 4, top - p * 60 * k);
     }
@@ -952,25 +953,44 @@
         ctx.stroke();
         return;
       }
-      ctx.font = `900 ${Math.round(s * 1.4)}px ${family}`;
+      if (!fontsReady) return;
+      ctx.font = `900 ${Math.round(s * 1.4)}px ${TEXT_FONT}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(glyph, x, y + s * 0.06);
     });
   }
 
-  // The font for all text: names, bubbles, Z's. Set from the Font setting.
-  const SYSTEM_FONT = '"Nunito", -apple-system, "Segoe UI", system-ui, sans-serif'; // rounded letters (bundled)
-  let family = SYSTEM_FONT;
+  // Two fonts. Everything is in the readable rounded one (Nunito, bundled),
+  // except what a slime says in its little speech bubbles, which is in the
+  // fun one picked in Settings (Speech bubble font). The display fonts come
+  // in one weight only (DynaPuff aside), so they're drawn at 400: asking
+  // for bold would get a smeared fake bold.
+  const TEXT_FONT = '"Nunito", -apple-system, "Segoe UI", system-ui, sans-serif';
+  let fun = `700 16px ${TEXT_FONT}`;
+  // Canvas text doesn't load a font by itself, and drawn before it's in it
+  // falls back to another (and is measured in that one). So text waits
+  // until both fonts are loaded; that's a moment, once.
+  let fontsReady = !(root.document && root.document.fonts);
+  let fontAsked = 0;
   function setFont(name) {
-    family = !name || name === 'System' ? SYSTEM_FONT : `"${name}", ${SYSTEM_FONT}`;
+    const want = !name || name === 'System' ? `700 16px ${TEXT_FONT}` : `400 ${name === 'Concert One' ? 18 : 16}px "${name}", ${TEXT_FONT}`; // (Concert One's letters run small)
+    if (want === fun && fontAsked) return;
+    fun = want;
+    if (!root.document || !root.document.fonts) return;
+    const mine = ++fontAsked, fonts = root.document.fonts;
+    const ready = () => { if (mine === fontAsked) fontsReady = true; };
+    fontsReady = fonts.check(fun) && fonts.check(`600 15px ${TEXT_FONT}`);
+    if (fontsReady) return;
+    Promise.all([fun, ...[600, 700, 800, 900].map((w) => `${w} 15px "Nunito"`)].map((f) => fonts.load(f))).then(ready, ready);
   }
 
   function drawLabel(ctx, b, text) {
     const c = b.centroid();
     const top = b.bbox().minY;
+    if (!fontsReady) return;
     ctx.save();
-    ctx.font = `600 11px ${family}`;
+    ctx.font = `600 11px ${TEXT_FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     const w = ctx.measureText(text).width + 12;
@@ -983,29 +1003,78 @@
     ctx.restore();
   }
 
-  // A balloon with lines of text: [{ text, color?, size? }]. The first line
-  // (a name) is bold in the chosen font; the rest are in the plain UI font
-  // so they stay readable whatever the font. A line with a size is a lone
-  // emoji.
-  function drawBubble(ctx, b, lines, alpha, W) {
-    if (!lines.length || alpha <= 0) return;
+  // A balloon with lines of text: [{ text, color?, dim?, size? }]. Two
+  // kinds, drawn alike (the same pill, tail and padding as a sign balloon):
+  // - speech (what a slime says: "hehe", "coffee?", a short line), in the
+  //   fun font. One line is exactly a sign balloon's size; a longer one
+  //   wraps, up to three lines. A line with a size of 20 or more is a lone
+  //   emoji.
+  // - a status list (the hover bubble, a summary), in the readable font:
+  //   the first line (a name) bold, a coloured dot before a state, dim
+  //   lines in grey. A line with a small size is a dim one.
+  const PAD_X = 16, PAD_Y = 12, ICON_W = 58, ICON_H = 44;
+  const SPEECH_LINE = 20, SPEECH_MAX = 220, SPEECH_LINES = 3;
+  const EMOJI = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+  const emoji = (l) => l.size >= 20;
+  function drawBubble(ctx, b, lines, alpha, W, speech) {
+    if (!lines.length || alpha <= 0 || !fontsReady) return;
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.textBaseline = 'middle';
-    const padX = 18, padY = 11;
-    const named = lines.length > 1;
-    const font = (l, i) => (l.size ? `${l.size}px "Segoe UI Emoji", "Apple Color Emoji", system-ui, sans-serif`
-      : named && i === 0 ? `700 17px ${l.text.length > 16 ? SYSTEM_FONT : family}` : l.dim ? `600 14px ${SYSTEM_FONT}` : `600 15px ${SYSTEM_FONT}`);
-    const lineH = (l, i) => (l.size ? l.size + 8 : named && i === 0 ? 24 : 22);
-    const w = Math.min(360, Math.max(...lines.map((l, i) => { ctx.font = font(l, i); return ctx.measureText(l.text).width + (l.color ? 16 : 0); })) + padX * 2);
-    const h = lines.reduce((sum, l, i) => sum + lineH(l, i), 0) + padY * 2 - 2;
+    if (speech) drawSpeech(ctx, b, lines, W);
+    else drawStatus(ctx, b, lines, W);
+    ctx.restore();
+  }
+
+  function drawSpeech(ctx, b, lines, W) {
+    // Each line wrapped to the most it can be, then all of it cut to three.
+    let rows = [];
+    for (const l of lines) {
+      if (emoji(l)) { rows.push({ text: l.text, font: `${Math.min(22, l.size)}px ${EMOJI}` }); continue; }
+      ctx.font = fun;
+      for (const text of balanced(ctx, l.text, SPEECH_MAX)) rows.push({ text, font: fun });
+    }
+    if (rows.length > SPEECH_LINES) {
+      rows = rows.slice(0, SPEECH_LINES);
+      const last = rows[SPEECH_LINES - 1];
+      ctx.font = last.font;
+      last.text = ellipsize(ctx, last.text + '…', SPEECH_MAX);
+    }
+    const tw = Math.max(...rows.map((r) => { ctx.font = r.font; return ctx.measureText(r.text).width; }));
+    const w = Math.max(ICON_W, Math.ceil(tw) + PAD_X * 2), h = rows.length * SPEECH_LINE + PAD_Y * 2;
     const p = settle(b, placeBalloon(b, w, h, W), w, h);
     drawBalloon(ctx, p, w, h, false);
-    let ly = p.y + padY - 1;
+    ctx.fillStyle = INK;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    rows.forEach((r, i) => {
+      ctx.font = r.font;
+      ctx.fillText(r.text, p.x + w / 2, baseline(ctx, p.y + PAD_Y + (i + 0.5) * SPEECH_LINE));
+    });
+  }
+
+  // The baseline that puts a line's capitals centred on y (display fonts
+  // have lopsided boxes, so 'middle' sits them too high or too low).
+  function baseline(ctx, y) {
+    const m = ctx.measureText('H');
+    return m.actualBoundingBoxAscent ? y + m.actualBoundingBoxAscent / 2 : y + 5;
+  }
+
+  function drawStatus(ctx, b, lines, W) {
+    const named = lines.length > 1;
+    const dim = (l) => l.dim || (l.size && !emoji(l));
+    const font = (l, i) => (emoji(l) ? `${l.size}px ${EMOJI}`
+      : named && i === 0 ? `700 17px ${TEXT_FONT}` : dim(l) ? `600 14px ${TEXT_FONT}` : `600 15px ${TEXT_FONT}`);
+    const lineH = (l, i) => (emoji(l) ? l.size + 8 : named && i === 0 ? 24 : 22);
+    const w = Math.min(360, Math.max(ICON_W, Math.max(...lines.map((l, i) => { ctx.font = font(l, i); return ctx.measureText(l.text).width + (l.color ? 16 : 0); })) + PAD_X * 2));
+    const h = Math.max(ICON_H, lines.reduce((sum, l, i) => sum + lineH(l, i), 0) + PAD_Y * 2 - 2);
+    const p = settle(b, placeBalloon(b, w, h, W), w, h);
+    drawBalloon(ctx, p, w, h, false);
+    let ly = p.y + PAD_Y - 1;
     lines.forEach((l, i) => {
       ctx.font = font(l, i);
       ly += lineH(l, i) / 2;
-      let lx = p.x + padX;
+      let lx = p.x + PAD_X;
       if (l.color) {
         ctx.fillStyle = l.color;
         ctx.beginPath();
@@ -1013,11 +1082,45 @@
         ctx.fill();
         lx += 16;
       }
-      ctx.fillStyle = l.dim ? '#6b7280' : INK;
-      ctx.fillText(ellipsize(ctx, l.text, w - (lx - p.x) - padX), lx, ly);
+      ctx.fillStyle = dim(l) ? '#6b7280' : INK;
+      ctx.fillText(ellipsize(ctx, l.text, w - (lx - p.x) - PAD_X), lx, ly);
       ly += lineH(l, i) / 2;
     });
-    ctx.restore();
+  }
+
+  // Wrapped, then evened out: as narrow as it goes without taking another
+  // line, so two lines come out about the same length, not a long one and
+  // a word. (Kept, as a bubble is measured every frame.)
+  const wrapped = new Map();
+  function balanced(ctx, text, max) {
+    const key = ctx.font + '|' + text;
+    let out = wrapped.get(key);
+    if (out) return out;
+    out = wrap(ctx, text, max);
+    const whole = out.join(' ');
+    for (let m = max - 6; out.length > 1 && m > 40; m -= 6) {
+      const t = wrap(ctx, text, m);
+      if (t.length !== out.length || t.join(' ') !== whole) break;
+      out = t;
+    }
+    if (wrapped.size > 200) wrapped.clear();
+    wrapped.set(key, out);
+    return out;
+  }
+
+  // Splits text into lines no wider than max, at spaces (a word longer
+  // than that is cut).
+  function wrap(ctx, text, max) {
+    const out = [];
+    let line = '';
+    for (const word of String(text).split(/\s+/).filter(Boolean)) {
+      const next = line ? line + ' ' + word : word;
+      if (ctx.measureText(next).width <= max || !line) line = next;
+      else { out.push(line); line = word; }
+      if (ctx.measureText(line).width > max) { out.push(ellipsize(ctx, line, max)); line = ''; }
+    }
+    if (line || !out.length) out.push(line);
+    return out;
   }
 
   function ellipsize(ctx, text, max) {
