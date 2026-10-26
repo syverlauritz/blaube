@@ -85,6 +85,11 @@
 		text(r.word, o.word);
 		cls(r.status, `cell status${o.state === 'waiting' ? ' wants' : ''}`);
 		const bits = [];
+		// Its time and tokens as the terminal has them (a helper's), or all
+		// it has used, its helpers' too (a session's).
+		const S = window.BlaubeHelperStats;
+		const stats = !S ? '' : kid ? S.helperStats(o.since || 0, o.tokens || 0) : o.tokens ? `${S.tokenCount(o.tokens)} tokens` : '';
+		if (stats) bits.push(stats);
 		if (!kid && o.helpers) bits.push(`${o.helpers} helper${o.helpers === 1 ? '' : 's'}`);
 		if (kid && o.byParent) bits.push('hidden with it');
 		else if (kid && !o.shown) bits.push('hidden');
@@ -189,12 +194,16 @@
 	}
 
 	// The window is as tall as what's in it (up to the height you gave it).
+	let sentH = 0;
 	function fit() {
 		requestAnimationFrame(() => {
 			const card = $('card');
 			const list = $('rows');
-			api.setHeight(card.offsetHeight - list.clientHeight + list.scrollHeight + 16);
+			const h = card.offsetHeight - list.clientHeight + list.scrollHeight + 16;
+			if (h !== sentH) { sentH = h; api.setHeight(h); }
 		});
 	}
 	api.onState(draw);
+	// (Helpers' times count up between updates.)
+	setInterval(() => { if (last && (last.rows || []).some((r) => (r.kids || []).length)) draw(last); }, 1000);
 })();

@@ -390,8 +390,13 @@
   .dots .bgit:hover { background: var(--hover); }
   .dots .helpers { flex-basis: 100%; margin: 6px 0 0; padding: 6px 10px; list-style: none; border-radius: 14px; background: var(--softer); }
   .dots .helpers:empty { display: none; }
-  .dots .helpers li { font: 600 14px/1.6 var(--ui); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 16px; position: relative; }
-  .dots .helpers li::before { content: ''; position: absolute; left: 2px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%; background: var(--color); opacity: .6; }
+  /* A helper: its task (bold) · what it's on (dim), wrapping to two lines
+     at most, and its time and tokens on the right, as the terminal has them. */
+  .dots .helpers li { display: flex; align-items: baseline; gap: 12px; font: 600 14px/1.45 var(--ui); color: var(--dim); padding: 2px 0 2px 16px; position: relative; }
+  .dots .helpers li::before { content: ''; position: absolute; left: 2px; top: calc(2px + .725em - 3.5px); width: 7px; height: 7px; border-radius: 50%; background: var(--color); opacity: .6; }
+  .dots .helpers .htext { flex: 1 1 auto; min-width: 0; overflow-wrap: break-word; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .dots .helpers .hstats { flex: none; font: 600 13px/1.45 var(--ui); color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .dots .helpers .hstats:empty { display: none; }
   .dots .helpers li b { font-weight: 800; color: var(--ink); }
   .dots .helpers li.wants b { color: var(--red); }
 
@@ -617,6 +622,7 @@
   </div>
 </div>
 <script src="../shared/talkHistory.js"></script>
+<script src="../shared/helperStats.js"></script>
 <script src="talk.js"></script>
 </body>
 </html>

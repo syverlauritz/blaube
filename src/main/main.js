@@ -686,7 +686,7 @@ function pushTalk(id, focusField = false) {
     signedOut: signedOutNow, signingIn: signingInNow(), // (Claude Code isn't signed in: see auth.js)
     canMode: owned.has(id), // (one Blaube started can be asked to change it)
     tasks: (s.tasks || []).filter((t) => !t.demo).slice(0, 4).map((t) => ({ id: t.id, label: t.description || t.command, command: t.command, url: taskUrls.get(`${id}/${t.id}`) || '' })).concat(runs.list(id)), // (and its scripts Blaube runs: runs.js)
-    helpers: s.state === 'working' || s.state === 'waiting' ? (s.agents || []).slice(0, 5).map((a) => ({ name: helperName(s, a), doing: helperDoing.get(`${id}/${a.id}`) || '', waiting: a.state === 'waiting' })) : [],
+    helpers: s.state === 'working' || s.state === 'waiting' ? (s.agents || []).slice(0, 5).map((a) => Object.assign({ name: helperName(s, a), doing: helperDoing.get(`${id}/${a.id}`) || '', waiting: a.state === 'waiting' }, helperNumbers(s, a))) : [], // (with its time and tokens: { since, tokens })
     focus: focusField,
     // Its git status and what you might ask for next (see git.js).
     git: gitLine(id),
@@ -1185,6 +1185,7 @@ function pushState() {
         effort: efforts.get(`${s.id}/${a.id}`) || efforts.get(s.id) || defaultEffort(),
         // Its own tokens, so its slime grows with them too.
         tokens: demoTokens.has(s.id) ? Math.round(demoTokens.get(s.id).total / 8) : usage.helperTokens(transcriptPath(s), a.id),
+        stats: helperNumbers(s, a), // (its time and tokens as the terminal has them, for its hover bubble)
       })),
     })),
     settings: { hooksInstalled: claudeHooks.isInstalled(undefined, PORT), talked: !!prefs.talked, noClaude: !claudeFound() },
@@ -1357,6 +1358,7 @@ function pushBlobs() {
       state: s.state,
       word: blobWord[s.state] || s.state,
       helpers: (s.agents || []).length,
+      tokens: (tokens.get(s.id) || {}).total || 0, // (all it has used, its helpers' too)
       shown: vis.get(s.id).shown,
       why: vis.get(s.id).why,
       talk: !s.id.startsWith('demo-'),
@@ -1370,6 +1372,7 @@ function pushBlobs() {
           state: a.state,
           word: blobWord[a.state] || a.state,
           doing: a.state === 'waiting' ? 'Asking you something' : helperDoing.get(key) || 'Thinking',
+          ...helperNumbers(s, a), // (since, tokens)
           shown: !prefs.hiddenHelpers[key], // (its own choice)
           byParent: !vis.get(s.id).shown, // (off the stage with its mother)
         };
@@ -1391,6 +1394,7 @@ const demoTokens = new Map();
 // the newest call in their transcripts.
 const efforts = new Map();
 const demoEfforts = new Map();
+const helpersUsed = new Set(); // (sessions whose helpers used more just now)
 function refreshUsage() {
   let changed = false;
   const files = new Set();
@@ -1438,8 +1442,11 @@ function refreshUsage() {
     if (u && (!old || old.total !== u.total || old.context !== u.context || old.limit !== u.limit)) {
       tokens.set(s.id, u);
       changed = true;
+      if (s.agents.length) helpersUsed.add(s.id); // (its helpers' tokens in its box move on too)
     }
   }
+  for (const id of openTalks()) if (helpersUsed.has(id)) pushTalk(id);
+  helpersUsed.clear();
   for (const id of tokens.keys()) if (!tracker.sessions.has(id)) tokens.delete(id);
   for (const k of efforts.keys()) if (!live.has(k)) efforts.delete(k);
   for (const set of [readySessions, checkedTasks]) for (const id of set) if (!tracker.sessions.has(id)) set.delete(id);
@@ -1463,7 +1470,13 @@ function defaultEffort() {
 // Short speech bubbles for what a session (or one of its helpers) is up to.
 
 const base = (p) => path.basename(String(p || '')) || 'a file';
-const shorten = (s, n = 70) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+// (Cut at a word, so it never ends in half of one.)
+const shorten = (s, n = 70) => {
+  s = String(s || '').replace(/\s+/g, ' ').trim();
+  if (s.length <= n) return s;
+  const cut = s.slice(0, n - 1), sp = cut.lastIndexOf(' ');
+  return (sp > n * 0.6 ? cut.slice(0, sp) : cut).replace(/[\s,;:.–—-]+$/, '') + '…';
+};
 
 function describeTool(name, input = {}) {
   switch (name) {
@@ -1481,6 +1494,15 @@ function describeTool(name, input = {}) {
     case 'AskUserQuestion': return 'I have a question for you';
     default: return String(name || '').startsWith('mcp__') ? 'Using ' + String(name).split('__')[1] : name ? 'Using ' + name : '';
   }
+}
+
+// A helper's time and tokens, as the terminal shows them under its task:
+// { since, tokens } (since: when it began, from its transcript, else from
+// when Blaube first heard of it). Demo helpers get made-up tokens.
+function helperNumbers(s, a) {
+  if (demoTokens.has(s.id)) return { since: a.startedAt || 0, tokens: Math.round(demoTokens.get(s.id).total / 8) };
+  const h = usage.helperStats(transcriptPath(s), a.id);
+  return { since: h.since || a.startedAt || 0, tokens: h.tokens };
 }
 
 const lastBubble = new Map(); // slime key -> time of its last tool bubble

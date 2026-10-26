@@ -1174,7 +1174,8 @@
 		task: `700 16px ${TEXT_FONT}`, taskLine: 22,
 		state: `600 15px ${TEXT_FONT}`, stateLine: 21,
 		dim: `600 14px ${TEXT_FONT}`, dimLine: 20,
-		afterTask: 6, afterState: 2,
+		stats: `600 12.5px ${TEXT_FONT}`, statsLine: 18,
+		afterTask: 6, afterState: 2, beforeStats: 3,
 	};
 	const PUFF_GAP = 36, PUFFS = [5.5, 3.5]; // (bubble bottom to head, and the two puffs in it)
 	const THOUGHT_W = 250, THOUGHT_LINE = THINK.dimLine, THOUGHT_LINES = 3;
@@ -1268,7 +1269,8 @@
 		}
 		const widest = (rows, font, extra = 0) => { ctx.font = font; return Math.max(0, ...rows.map((r) => ctx.measureText(r).width + extra)); };
 		const status = card.status && card.status.text ? card.status : null;
-		const tw = Math.max(widest(task, taskFont), status ? widest([status.text], stateFont, status.color ? 16 : 0) : 0, widest(action, actionFont));
+		const stats = card.stats ? [card.stats] : []; // (its time and tokens, small and grey)
+		const tw = Math.max(widest(task, taskFont), status ? widest([status.text], stateFont, status.color ? 16 : 0) : 0, widest(action, actionFont), widest(stats.map((t) => t.replace(/\d/g, '0')), THINK.stats)); // (measured as zeros, so it doesn't twitch as the seconds tick)
 		const w = Math.max(ICON_W, Math.ceil(tw) + THINK.padX * 2);
 		// The rows, top to bottom, each with the space it takes and the gap
 		// before it: the task's lines, a gap, its state, a smaller one, the action.
@@ -1276,6 +1278,7 @@
 			...task.map((text, i) => ({ text, font: taskFont, lh: THINK.taskLine, gap: 0 })),
 			...(status ? [{ text: status.text, font: stateFont, lh: THINK.stateLine, gap: THINK.afterTask, dot: status.color }] : []),
 			...action.map((text, i) => ({ text, font: actionFont, lh: THINK.dimLine, gap: i ? 0 : status ? THINK.afterState : THINK.afterTask, dim: true })),
+			...stats.map((text) => ({ text, font: THINK.stats, lh: THINK.statsLine, gap: THINK.beforeStats, dim: true, faint: true })),
 		];
 		const h = rows.reduce((sum, r) => sum + r.gap + r.lh, 0) + THINK.padY * 2;
 		// Right over its head, its puffs between: shifted aside past a bubble
@@ -1335,7 +1338,7 @@
 				ctx.fill();
 				lx += 16;
 			}
-			ctx.fillStyle = r.dim ? '#6b7280' : INK;
+			ctx.fillStyle = r.faint ? '#8d94a1' : r.dim ? '#6b7280' : INK;
 			ctx.fillText(r.dot ? ellipsize(ctx, r.text, w - (lx - p.x) - THINK.padX) : r.text, lx, baseline(ctx, mid));
 			ly += r.lh;
 		}

@@ -80,31 +80,7 @@ async function thinkingOf(file, own = true) {
 // A helper's own transcript: <session>/subagents/agent-<id>.jsonl.
 const helperFile = (file, agentId) => path.join(String(file).replace(/\.jsonl$/, ''), 'subagents', `agent-${agentId}.jsonl`);
 
-// A shell command in plain words, for what a slime is doing: the program
-// and a short hint, never the raw line. "cd x && npm test" -> "Running npm
-// test", "node C:/Users/me/AppData/Local/Temp/probe.js" -> "Running node
-// probe.js", 'git commit -m "..."' -> "Running git commit". Paths come
-// down to their file name; flags, quoted text and setup (cd, VAR=1) go.
-const SETUP = new Set(['cd', 'pushd', 'popd', 'set', 'export', 'source', '.', 'sudo', 'env', 'time']);
-function plainCommand(cmd) {
-	const unquote = (t) => t.replace(/^(["'])(.*)\1$/, '$2');
-	const file = (t) => unquote(t).split(/[\\/]/).filter(Boolean).pop() || '';
-	for (const part of String(cmd || '').split(/&&|\|\||[;|\n]/)) {
-		const words = (part.match(/"[^"]*"|'[^']*'|\S+/g) || []).filter((t) => !/^\w+=/.test(t));
-		if (!words.length || SETUP.has(words[0])) continue;
-		const prog = file(words[0]).replace(/\.(exe|cmd|bat|ps1)$/i, '');
-		if (!prog) continue;
-		let hint = '';
-		for (const t of words.slice(1)) {
-			if (/^["']/.test(t) || t.startsWith('-')) continue;
-			if (/[\\/]|\.\w{1,5}$/.test(t)) hint = file(t);
-			else if (/^[a-z][\w:.-]*$/i.test(t)) hint = t;
-			break;
-		}
-		const out = 'Running ' + prog + (hint && hint.length <= 28 ? ' ' + hint : '');
-		return out.length > 44 ? out.slice(0, 43) + '…' : out;
-	}
-	return 'Running a command';
-}
+// A shell command in plain words (see plainCommand.js).
+const { plainCommand } = require('./plainCommand');
 
 module.exports = { latestThinking, tailOf, thinkingOf, helperFile, plainCommand };

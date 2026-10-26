@@ -68,7 +68,8 @@ module.exports = async function run({ win, tracker, talk, talkId }) {
 	tracker.handle({ session_id: ids[0], cwd: path.join(root, names[0]), hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'npm test' } });
 	check(await until(async () => { const r = await all(); const i = r.findIndex((x) => x.id === ids[0]); return r[i + 1] && r[i + 1].kid && r[i + 2] && r[i + 2].kid && r[i + 2].id.startsWith(ids[0]); }), 'its two helpers are rows right under it');
 	check(await until(async () => /face\.js/.test((await row(h1)).doing)), `a helper says what it's on (${(await row(h1)).doing})`);
-	check(await until(async () => /npm test/.test((await row(ids[0])).doing)), `and so does its session (${(await row(ids[0])).doing})`);
+	check(await until(async () => /the tests/.test((await row(ids[0])).doing)), `and so does its session (${(await row(ids[0])).doing})`);
+	check(await until(async () => /^Working · \d+s\b/.test((await row(h1)).how)), `and how long a helper has been at it, as the terminal says (${(await row(h1)).how})`);
 	await box(`document.querySelector('#rows li[data-id="${ids[0]}"] .fold').click()`);
 	check(await until(async () => !(await row(h1))), 'folded: its helpers tucked away');
 	await box(`document.querySelector('#rows li[data-id="${ids[0]}"] .fold').click()`);

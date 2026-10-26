@@ -43,6 +43,7 @@ function readNew(file) {
 }
 
 function addLine(u, line) {
+	if (!u.since) { const t = /"timestamp":"([^"]+)"/.exec(line); if (t) u.since = Date.parse(t[1]) || 0; } // (when it began)
 	if (!u.big && (line.includes('context-1m') || line.includes('[1m]'))) u.big = true;
 	addInfo(u, line);
 	const hasTask = line.includes('run_in_background') || line.includes('backgroundTaskId') || /"name":"(KillShell|KillBash|TaskStop)"/.test(line);
@@ -68,6 +69,8 @@ function addLine(u, line) {
 		u.context = n('input_tokens') + n('cache_creation_input_tokens') + n('cache_read_input_tokens');
 		if (u.context > 200000) u.big = true;
 	}
+	// The terminal's count for a helper: all its newest call read and wrote.
+	u.last = n('input_tokens') + n('cache_creation_input_tokens') + n('cache_read_input_tokens') + n('output_tokens');
 	// One API call can be written as several lines with the same usage.
 	if (m.id && u.ids.has(m.id)) return;
 	if (m.id) u.ids.add(m.id);
@@ -153,6 +156,15 @@ function helperTokens(file, agentId) {
 	return h ? h.total : 0;
 }
 
+// A helper's numbers as the terminal shows them: { since, tokens } (when
+// it began, from its transcript's first line, in ms; and the tokens its
+// newest call read and wrote, cache and all, as Claude Code counts a
+// helper's), or zeros.
+function helperStats(file, agentId) {
+	const h = file && agentId ? readNew(path.join(file.replace(/\.jsonl$/, ''), 'subagents', `agent-${agentId}.jsonl`)) : null;
+	return { since: (h && h.since) || 0, tokens: (h && h.last) || 0 };
+}
+
 // The last thing Claude wrote in a transcript (its own words, not tools).
 function lastText(file) {
 	const u = file && readNew(file);
@@ -216,4 +228,4 @@ function forget(keep) {
 	for (const f of files.keys()) if (!keep.has(f) && !dirs.some((d) => f.startsWith(d))) files.delete(f);
 }
 
-module.exports = { helperTokens, sessionUsage, sessionTasks, sessionEffort, sessionInfo, sessionErrors, sessionApiErrors, lastText, catchUp, forget };
+module.exports = { helperTokens, helperStats, sessionUsage, sessionTasks, sessionEffort, sessionInfo, sessionErrors, sessionApiErrors, lastText, catchUp, forget };

@@ -799,10 +799,44 @@ SCENES.talkPinnedTwo = {
 		also: [{ key: 'pb', stand: [900, 700], box: { x: 640, y: 250, w: 520, h: 400 }, inbox: 'ready', log: [{ who: 'claude', text: 'Deployed to production.' }] }] },
 };
 
+// Helpers at work, with long tasks and real-world commands (a loop, sed,
+// grep) in plain words, and their time and tokens as the terminal has them:
+// in the talk box, in a hovered helper's thought bubble, and in Blobs.
+const { plainCommand } = require(path.join(ROOT, 'src', 'main', 'plainCommand.js'));
+const WORKERS = [
+	{ id: 'w1', name: 'Blobs dislike crowding, use window tops when the floor is full of other slimes', doing: plainCommand('for p in src/renderer/*.js; do node --check "$p"; done'), since: Date.now() - 134e3, tokens: 117040 },
+	{ id: 'w2', name: 'Children give up reaching mom', doing: plainCommand("sed -n '1240,1330p' src/renderer/face.js"), since: Date.now() - 48e3, tokens: 31512 },
+	{ id: 'w3', name: 'Find every place the thought bubble is measured and drawn', doing: plainCommand('grep -rn "drawHelperThought" src | head -20'), since: Date.now() - 9e3, tokens: 4200 },
+];
+SCENES.talkHelpers = {
+	sessions: [session('hw', 'blaube', 'working', { look: 'sprout' })],
+	bg: '#f2f0ec',
+	wait: 3000,
+	size: [1280, 900],
+	talk: { key: 'hw', inbox: 'busy', stoppable: true, doing: 'Sending a helper: Find every place the thought bubble is…', turnStart: Date.now() - 140e3, model: 'Opus 5.5', context: 41, git: 'main · 4 changed',
+		helpers: WORKERS.map(({ name, doing, since, tokens }) => ({ name, doing, since, tokens })),
+		log: [{ who: 'you', text: 'the child text has a weird cutoff, and show me their tokens like the terminal does', via: 'blaube', status: 'sent', n: 1 }] },
+};
+SCENES.thoughtHelperStats = {
+	sessions: [
+		session('tm', 'blaube', 'working', { activity: 'tool', agents: WORKERS.slice(0, 2).map((x) => ({ id: x.id, type: 'general-purpose', description: x.name, state: 'working', activity: 'tool', tokens: x.tokens, stats: { since: x.since, tokens: x.tokens } })) }),
+		session('tn', 'kalkis', 'working', { color: '#5B8DEF', activity: 'tool' }),
+	],
+	config: { size: 0.8 },
+	hover: 'tm/w2', thinking: { text: '', doing: WORKERS[1].doing }, wait: 4500, size: [1200, 600],
+};
+const blobsState = (dark) => ({ dark, max: 0, shown: 2, over: false, note: null, rows: [
+	{ id: 'b1', name: 'blaube', color: '#D97757', state: 'working', word: 'Working', helpers: 3, tokens: 1438200, shown: true, why: '', talk: true, doing: 'Sending a helper: Find every place the thought bubble is…',
+		kids: WORKERS.map((x) => ({ key: 'b1/' + x.id, name: x.name, state: 'working', word: 'Working', doing: x.doing, since: x.since, tokens: x.tokens, shown: true, byParent: false })) },
+	{ id: 'b2', name: 'kalkis', color: '#5B8DEF', state: 'idle', word: 'Idle', helpers: 0, tokens: 86400, shown: true, why: '', talk: true, doing: '', kids: [] },
+] });
+SCENES.blobsHelpers = { blobs: blobsState(false), size: [760, 420] };
+SCENES.blobsHelpersDark = { blobs: blobsState(true), size: [760, 420] };
+
 // Dark mode: a long chat, a permission card, a question, a plan, and a
 // busy session with its project panel open (no tails in dark mode).
 const darkOf = (name) => Object.assign({}, SCENES[name], { talk: Object.assign({}, SCENES[name].talk, { dark: true }) });
-for (const name of ['talkLong', 'talkAsk', 'talkQuestion', 'talkPlan', 'talkHarness', 'talkSteps', 'talkContext']) SCENES[name + 'Dark'] = darkOf(name);
+for (const name of ['talkLong', 'talkAsk', 'talkQuestion', 'talkPlan', 'talkHarness', 'talkSteps', 'talkContext', 'talkHelpers']) SCENES[name + 'Dark'] = darkOf(name);
 
 // The overview: the talk box with every session at a glance.
 // Find (⌘F) in a conversation with steps.
@@ -813,7 +847,24 @@ SCENES.talkHarnessOverview = Object.assign({}, SCENES.talkHarness, { talkJs: `se
 for (const font of ['Concert One', 'DynaPuff', 'Rubik Spray Paint', 'System']) SCENES['speech' + font.replace(/ /g, '')] = Object.assign({}, SCENES.speech, { config: { size: 0.7, font } });
 SCENES.talkOverview = Object.assign({}, SCENES.talkChat, { talkJs: `setTimeout(() => document.getElementById('allSessions').click(), 400)` });
 
+// The Blobs overview by itself, with a made-up state (scene.blobs).
+async function shootBlobs(name, scene) {
+	const [w, h] = scene.size;
+	const bw = new BrowserWindow({ width: w, height: h, show: false, frame: false, transparent: true, webPreferences: { preload: path.join(ROOT, 'src', 'main', 'blobsPreload.js'), contextIsolation: true, sandbox: true } });
+	const onHeight = (e, v) => { if (e.sender === bw.webContents) bw.setContentSize(w, Math.round(v)); };
+	ipcMain.on('blobs-height', onHeight);
+	bw.webContents.on('console-message', (e) => { if (e.level === 'error') console.log('blobs error:', e.message); });
+	await bw.loadFile(path.join(ROOT, 'src', 'blobs', 'blobs.html'));
+	bw.webContents.send('blobs-state', scene.blobs);
+	await sleep(1200);
+	fs.writeFileSync(path.join(OUT, `${name}.png`), (await bw.webContents.capturePage()).toPNG());
+	ipcMain.removeListener('blobs-height', onHeight);
+	bw.destroy();
+	console.log('saved', path.join('shots', `${name}.png`));
+}
+
 async function shoot(win, name, scene) {
+	if (scene.blobs) return shootBlobs(name, scene);
 	const fire = (event, value) => win.webContents.send('fire', event, value);
 	const ready = new Promise((r) => ipcMain.once('ready', r));
 	const [w, h] = scene.size || [W, H];
@@ -1165,6 +1216,7 @@ app.whenReady().then(async () => {
 	let scene = null;
 	ipcMain.handle('thinking', async (_e, key) => {
 		if (!scene || !scene.thinking) return { text: '', doing: '' };
+		if (typeof scene.thinking === 'object') return scene.thinking;
 		if (scene.thinking === 'doing') return { text: '', doing: 'Reading pancakes.md' };
 		if (scene.thinking === 'raw') return { text: '', doing: thinking.plainCommand('node C:/Users/syver/AppData/Local/Temp/claude/C--Git-blaube/probe-motion.js --check') };
 		const helper = String(key).includes('/');

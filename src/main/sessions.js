@@ -121,7 +121,7 @@ class SessionTracker extends EventEmitter {
       if (event === 'SubagentStop') {
         if (had) session.agents = session.agents.filter((a) => a.id !== agentId);
       } else if (!had) {
-        session.agents = [...session.agents, { id: agentId, type: String(p.agent_type || 'agent'), state: 'working', updatedAt: this.now() }];
+        session.agents = [...session.agents, { id: agentId, type: String(p.agent_type || 'agent'), state: 'working', updatedAt: this.now(), startedAt: this.now() }];
       }
       session.updatedAt = this.now();
       if (had !== (event === 'SubagentStart')) this.emit('change', { session, from: session.state, to: session.state });
@@ -133,7 +133,7 @@ class SessionTracker extends EventEmitter {
     let agent = session.agents.find((a) => a.id === agentId);
     const changed = !agent || agent.state !== agentState;
     if (!agent) {
-      agent = { id: agentId, type: String(p.agent_type || 'agent'), state: agentState, updatedAt: 0 };
+      agent = { id: agentId, type: String(p.agent_type || 'agent'), state: agentState, updatedAt: 0, startedAt: this.now() }; // (begun before we heard: timed from now)
       session.agents = [...session.agents, agent];
     }
     agent.state = agentState;

@@ -21,7 +21,14 @@
     const took = t >= 10 ? (t < 60 ? `${t}s` : `${Math.floor(t / 60)}m ${t % 60}s`) : '';
     el.textContent = [el.dataset.doing || 'Thinking…', took].filter(Boolean).join(' · ');
   };
-  setInterval(() => { if (current && current.state === 'working') tickDoing(); }, 1000);
+  // Each helper's time and tokens ("2m 14s · ↓ 117.0k tokens"), counting up.
+  const tickHelpers = () => {
+    for (const el of dots.querySelectorAll('.helpers .hstats')) {
+      const t = BlaubeHelperStats.helperStats(Number(el.dataset.since), Number(el.dataset.tokens));
+      if (el.textContent !== t) el.textContent = t;
+    }
+  };
+  setInterval(() => { if (current && current.state === 'working') tickDoing(); if (current && current.helpers && current.helpers.length) tickHelpers(); }, 1000);
   dots.innerHTML = '<i></i><i></i><i></i><span class="doing"></span><button class="bgit" type="button" hidden title="Let it carry on in the background (Ctrl+B in the terminal)">Run in background</button><ul class="helpers"></ul>'; // and what it's doing ("Editing face.js"), and its helpers
   dots.querySelector('.bgit').onclick = (e) => { e.currentTarget.hidden = true; if (current) api.background(current.id); };
   const drafts = new Map(); // what you'd typed, per session
@@ -745,11 +752,23 @@
       for (const h of s.helpers || []) {
         const li = document.createElement('li');
         if (h.waiting) li.className = 'wants';
+        // Its task · what it's on (wrapping at words, two lines at most;
+        // all of it on hover), and its time and tokens on the right.
+        const text = document.createElement('span');
+        text.className = 'htext';
         const b = document.createElement('b');
         b.textContent = h.name;
-        li.append(b, h.waiting ? ' needs you' : h.doing ? `: ${h.doing}` : '');
+        const on = h.waiting ? 'needs you' : h.doing || '';
+        text.append(b, on ? ` · ${on}` : '');
+        text.title = on ? `${h.name} · ${on}` : h.name;
+        const stats = document.createElement('span');
+        stats.className = 'hstats';
+        stats.dataset.since = h.since || 0;
+        stats.dataset.tokens = h.tokens || 0;
+        li.append(text, stats);
         hl.append(li);
       }
+      tickHelpers();
     }
     // Only rebuild the log when it changed, so scrolling isn't reset; and not
     // while you're selecting text in it (it catches up after).

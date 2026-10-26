@@ -5569,7 +5569,10 @@
 		const fresh = b.state === 'working' && b.thought && time - (b.thoughtAt || -99) <= 3;
 		const doing = fresh ? String(b.thought.doing || '').trim() : '';
 		const text = fresh && !doing ? b.thought.text || '' : '';
-		return { task: a.description || a.type || 'agent', status: lines[1], action: doing || text, fromEnd: !doing && !!text };
+		// (And its time and tokens, as the terminal has them.)
+		const st = a.stats || {};
+		const stats = typeof BlaubeHelperStats !== 'undefined' ? BlaubeHelperStats.helperStats(st.since || 0, st.tokens || 0) : '';
+		return { task: a.description || a.type || 'agent', status: lines[1], action: doing || text, fromEnd: !doing && !!text, stats };
 	}
 	// The other slimes' heads (faces and whatever they wear), for a bubble
 	// to keep off.

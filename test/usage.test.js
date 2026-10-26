@@ -76,6 +76,20 @@ test("a helper's own tokens, from its transcript (subagents/agent-<id>.jsonl)", 
 	assert.strictEqual(helperTokens('', 'a1b2c3'), 0);
 });
 
+test("a helper's numbers as the terminal shows them: when it began, and its newest call's tokens", () => {
+	const { helperStats } = require('../src/main/usage.js');
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-'));
+	const file = path.join(dir, 's1.jsonl');
+	const sub = path.join(dir, 's1', 'subagents');
+	fs.mkdirSync(sub, { recursive: true });
+	const at = '2026-10-26T10:00:00.000Z';
+	fs.writeFileSync(path.join(sub, 'agent-k1.jsonl'), JSON.stringify({ type: 'user', isSidechain: true, timestamp: at, message: { content: 'go' } }) + '\n' + line('c1', { input_tokens: 5, cache_read_input_tokens: 20000, output_tokens: 300 }, { isSidechain: true, timestamp: '2026-10-26T10:00:05.000Z' }));
+	assert.deepStrictEqual(helperStats(file, 'k1'), { since: Date.parse(at), tokens: 20305 });
+	fs.appendFileSync(path.join(sub, 'agent-k1.jsonl'), line('c2', { input_tokens: 2, cache_creation_input_tokens: 1000, cache_read_input_tokens: 116000, output_tokens: 0 }, { isSidechain: true }));
+	assert.deepStrictEqual(helperStats(file, 'k1'), { since: Date.parse(at), tokens: 117002 });
+	assert.deepStrictEqual(helperStats(file, 'nobody'), { since: 0, tokens: 0 });
+});
+
 test('reads the effort of the newest call, for the session and each helper', () => {
 	const { sessionEffort } = require('../src/main/usage.js');
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-'));
