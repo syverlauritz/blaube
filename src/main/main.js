@@ -1765,6 +1765,35 @@ app.whenReady().then(async () => {
   ipcMain.on('talk', (_e, id, at) => openTalk(id, at || { x: 0, y: 0 }));
   // What a background task has printed, from Claude Code's own file for it
   // (null: not found, so the box asks Claude instead).
+  // A background task that ended (its output file says how) leaves the
+  // list, and one that failed says so, with its last line, in its box and
+  // from its slime: the dev server that crashed while you looked away.
+  const endedTasks = new Set();
+  const checkTasks = () => {
+    for (const s of tracker.sessions.values()) {
+      for (const t of [...(s.tasks || [])]) {
+        const key = `${s.id}/${t.id}`;
+        if (endedTasks.has(key) || t.demo) continue;
+        const file = taskOutput.find(s.id, t.id);
+        const r = file && taskOutput.tail(file, 4096);
+        if (!r || r.exited == null) continue;
+        endedTasks.add(key);
+        if (endedTasks.size > 500) endedTasks.delete(endedTasks.values().next().value);
+        tracker.handleTask(s, { hook_event_name: 'PreToolUse', tool_name: 'KillShell', tool_input: { shell_id: t.id } });
+        const name = t.description || t.command;
+        const last = r.text.split('\n').filter((l) => l.trim()).pop() || '';
+        if (r.exited === 0) inbox.add(s.id, { who: 'note', text: `${name} finished` });
+        else {
+          inbox.add(s.id, { who: 'note', text: `${name} stopped with an error (code ${r.exited})${last ? ': ' + shorten(last.trim(), 120) : ''}`, error: true });
+          if (win && readySessions.has(s.id)) win.webContents.send('say', { id: s.id, text: shorten(`${name} stopped`, 60), seconds: 5, status: true });
+        }
+        pushState();
+        if (talkId === s.id) pushTalk(s.id);
+      }
+    }
+  };
+  setInterval(checkTasks, 4000).unref();
+  if (TEST) global.__blaubeCheckTasks = checkTasks;
   ipcMain.handle('talk-task-output', (_e, id, taskId) => {
     const s = id === talkId && tracker.sessions.get(id);
     if (!s || !(s.tasks || []).some((t) => t.id === taskId)) return null;

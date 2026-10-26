@@ -96,10 +96,17 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await box(`[...document.querySelectorAll('#bg button')].find((b) => b.textContent === 'Output').click()`);
 	check(await until(() => box(`(() => { const o = document.querySelector('#bg .bgout'); return !!o && !o.hidden && /VITE ready on http:\\/\\/localhost:5173/.test(o.textContent) && !/\\x1b/.test(o.textContent); })()`)), 'Output shows what a background task printed, read from its file');
 	check((inbox.queue.get(ID) || []).length === queuedBefore, 'without asking Claude');
-	fs.appendFileSync(path.join(outDir, 'bash_7.output'), 'GET / 500\n\n[exited with code 1]\n');
-	check(await until(() => box(`(() => { const o = document.querySelector('#bg .bgout'); return /GET \\/ 500\\n\\[ended, code 1\\]$/.test(o.textContent) && o.classList.contains('failed'); })()`)), 'and keeps up with it while open, saying how it ended');
+	fs.appendFileSync(path.join(outDir, 'bash_7.output'), 'GET / 500\n');
+	check(await until(() => box(`(() => { const o = document.querySelector('#bg .bgout'); return /GET \\/ 500$/.test(o.textContent); })()`)), 'and keeps up with it while open');
 	await box(`[...document.querySelectorAll('#bg button')].find((b) => b.textContent === 'Output').click()`);
 	check(await until(() => box(`document.querySelector('#bg .bgout').hidden`)), 'a second tap hides it');
+	// One that crashes leaves the list, and says so with its last line.
+	await hook({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_use_id: 'tu2', tool_input: { command: 'npm run watch', description: 'Watcher', run_in_background: true }, tool_response: { backgroundTaskId: 'bash_8' } });
+	await until(() => box(`/Watcher/.test(document.getElementById('bg').textContent)`));
+	fs.writeFileSync(path.join(outDir, 'bash_8.output'), 'watching…\nError: Cannot find module \'chokidar\'\n\n[exited with code 1]\n');
+	global.__blaubeCheckTasks();
+	check(await until(() => box(`!/Watcher/.test(document.getElementById('bg').textContent) && /Dev server/.test(document.getElementById('bg').textContent)`)), 'a background task that crashed leaves the list');
+	check(await until(() => box(`[...document.querySelectorAll('#inner .note.error')].some((e) => e.textContent === "Watcher stopped with an error (code 1): Error: Cannot find module 'chokidar'")`)), 'and its box says so, with its last line');
 	delete process.env.CLAUDE_CODE_TMPDIR;
 	fs.rmSync(tmpRoot, { recursive: true, force: true });
 	await box(`[...document.querySelectorAll('#bg button')].find((b) => b.textContent === 'Stop').click()`);
