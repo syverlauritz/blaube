@@ -100,6 +100,7 @@
       ['droop', 0.2, 0, 0.5, 0.01, 'Deflates on a failed tool or test'],
       ['tapAfter', 60, 0, 600, 5, 'One tool running this many seconds: it waits, tapping a foot (0 = never)'],
       ['planBeads', 1, 0, 1.5, 0.05, 'Wears its todo list as a row of beads that fill in as it goes, with a little hop for each one done (size; 0 = off)'],
+      ['teeter', 1, 0, 1.5, 0.05, 'Standing at the very edge of a window, it teeters, looks down worried, and shuffles back'],
       ['workLife', 1, 0, 1.5, 0.05, 'At work its head follows what it does: scanning lines as it reads, typing as it edits, looking up on the web'],
       ['strain', 1, 0, 3, 0.05, 'Strained shiver while a tool runs'],
       ['voiceBob', 1, 0, 3, 0.05, 'Body bobs along while it talks or sings'],

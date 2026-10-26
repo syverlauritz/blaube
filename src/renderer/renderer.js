@@ -3102,6 +3102,32 @@
   // Left waiting on you a long while (8 minutes by default), a little rain
   // cloud gathers over its head and it slumps, glum: the one you've kept
   // waiting longest is easy to spot. Point at it and the cloud puffs away.
+  // Standing at the very edge of a window, it teeters: a worried look down
+  // at the drop, a wobble back and forth over it, then a shuffle back to
+  // safety. Too far over and it just slides off.
+  function teeter(b) {
+    const l = b.body.onLedge;
+    if (CFG.teeter <= 0 || !l || b.body.grab || b.dying || b.merging || b.kind === 'home') { b.teeter = null; return; }
+    const c = b.body.centroid(), r = b.body.o.radius;
+    const side = c.x - l.x0 < l.x1 - c.x ? -1 : 1, edge = side < 0 ? l.x0 : l.x1;
+    const over = (c.x - edge) * side;
+    if (over < -r * (b.teeter ? 0.9 : 0.45) || l.x1 - l.x0 < r * 2.5 || (b.teeter && b.teeter.hopped && b.body.onFloor() && time - b.teeter.hopped > 0.5)) { if (b.teeter) b.nextTeeter = time + 6; b.teeter = null; return; }
+    if (!b.teeter && time < (b.nextTeeter || 0)) return;
+    if (!b.teeter) {
+      b.teeter = { side, edge, since: time };
+      if (time > (b.nextWhoa || 0)) { quip(b, 'whoa', 1); b.nextWhoa = time + 12; }
+    }
+    const t = b.teeter, k = Math.min(1.5, CFG.teeter), age = time - t.since;
+    t.side = side; t.edge = edge; t.over = over;
+    // Arms out, as it were: a sway back and forth over the drop.
+    if (age > 0.25) b.body.lean(Math.sin((age - 0.25) * 9) * k * r * 14 * DT, DT);
+    // Then a careful little hop back from the edge.
+    if (age > 1.4 && !t.hopped && b.body.onFloor() && !b.pendingHop && talkingTo !== b.key) {
+      t.hopped = time;
+      b.hop(-side * (120 + r * 1.2), -240);
+    }
+  }
+
   function sulk(b) {
     const cl = b.cloud;
     if (CFG.sulkAfter <= 0 || b.kind !== 'mother' || b.state !== 'waiting' || sys.away || b.dying) {
@@ -3499,6 +3525,7 @@
       b.say([{ text: `Still waiting on you (${mins} min)` }, ...(what ? [{ text: what, size: 12 }] : [])], 6, false, false);
     }
     sulk(b);
+    teeter(b);
     twitch(b);
     stepFive(b);
     if (b.kind !== 'home' && b.state === 'idle' && idleFor() > dozeAfter() && time > (b.nextIdleYawn || 0)) {
@@ -3530,7 +3557,7 @@
     sleepTalk(b);
     // Hanging over the edge of a window: it clings and shuffles back on.
     const l = b.body.onLedge;
-    if (l && !b.body.grab) {
+    if (l && !b.body.grab && !(b.teeter && !b.teeter.hopped && b.teeter.over < -b.body.o.radius * 0.2)) { // (teetering, it wobbles first: see teeter)
       const c = b.body.centroid(), r = b.body.o.radius;
       if (c.x < l.x0 + r * 0.5) b.body.impulse(8, 0, DT);
       else if (c.x > l.x1 - r * 0.5) b.body.impulse(-8, 0, DT);
@@ -3643,6 +3670,7 @@
     else if (b.nibbling) { expression = 'happy'; mouth = time - b.nibbling.at < 0.5 ? 'o' : Math.round((time - b.nibbling.at) / 0.18) % 2 ? 'grin' : 'flat'; } // (chomp chomp)
     else if (b.patted) { expression = 'happy'; mouth = 'smile'; }
     else if (time < (b.petWorryUntil || 0)) { expression = 'worried'; mouth = 'o'; }
+    else if (b.teeter && !body.grab) { expression = 'worried'; mouth = 'o'; } // (on the brink)
     else if (time < (b.sheepishUntil || 0)) { expression = 'worried'; mouth = 'wobble'; } // (told off)
     else if (time < (b.squirmUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
     else if ((b.shy || 0) > 0.3) { expression = 'normal'; mouth = 'smile'; }
@@ -3761,6 +3789,12 @@
       wantLook = Math.max(wantLook, CFG.spectate);
       wideSeen = Math.max(0, 1 - seen.d / (body.o.radius * 4)) * 0.6 * Math.min(1, CFG.spectate);
       if (expression === 'concentrate' || expression === 'sleepy') { expression = 'normal'; mouth = 'o'; }
+    }
+    // On the brink of a window: eyes down over the drop.
+    if (b.teeter && !body.grab && !glaring) {
+      const c = body.centroid(), r = body.o.radius;
+      b.gazeTarget = { x: b.teeter.edge + b.teeter.side * r * 1.5, y: c.y + r * 4 };
+      wantLook = Math.max(wantLook, 1);
     }
     // Heads down at work, its face follows what it's doing: reading, it
     // scans along line after line; editing, it looks down at its work; on
