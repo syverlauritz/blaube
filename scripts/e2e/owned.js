@@ -431,6 +431,18 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await box(`(() => { [...document.querySelectorAll('#overview .chips button')].find((x) => x.textContent === 'New project…').click(); const f = document.querySelector('#overview .cloneform'); f.querySelector('input').value = 'side quest'; f.requestSubmit(); })()`);
 	const madeIn = path.join(global.__blaubeCloneParent, 'side quest');
 	check(await until(() => fs.existsSync(madeIn) && owned.list().some((x) => (tracker.sessions.get(x) || {}).cwd === madeIn), 10000), 'New project… makes a folder next to your projects, and a session starts in it');
+	// Work on an issue: a session in your clone of its repository, asked to read the issue and fix it.
+	require('node:child_process').execFileSync('git', ['-C', madeIn, 'remote', 'add', 'origin', 'https://github.com/acme/tax.git']);
+	const MADE = owned.list().find((x) => (tracker.sessions.get(x) || {}).cwd === madeIn);
+	await until(() => talk() && talk().isVisible() && talkId() === MADE, 8000);
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
+	await until(() => box(`[...document.querySelectorAll('#overview .chips button')].some((b) => b.textContent === 'Work on an issue…')`));
+	const issueIt = (what) => box(`(() => { const b = [...document.querySelectorAll('#overview .chips button')].find((x) => x.textContent === 'Work on an issue…'); if (b) b.click(); const f = document.querySelector('#overview .cloneform'); f.querySelector('input').value = ${JSON.stringify('x')}.replace('x', ${JSON.stringify(what)}); f.requestSubmit(); })()`);
+	await issueIt('the login bug');
+	check(await until(() => box(`(document.querySelector('#overview .clonesaid') || {}).textContent === 'Paste the issue’s link, or owner/repo#42'`)), 'Work on an issue… asks for an issue');
+	const beforeIssue = new Set(owned.list());
+	await issueIt('https://github.com/acme/tax/issues/42');
+	check(await until(() => owned.list().some((x) => !beforeIssue.has(x) && (tracker.sessions.get(x) || {}).cwd === madeIn && inbox.log(x).some((e) => e.who === 'you' && /^Work on GitHub issue acme\/tax#42\. Read it first, with its comments \(`gh issue view 42 --repo acme\/tax --comments`\)/.test(e.text))), 10000), 'an issue’s link starts a session in your clone of it, asked to read the issue and fix it');
 	for (const x of owned.list()) if ([madeIn, clonedTo].includes((tracker.sessions.get(x) || {}).cwd)) owned.end(x);
 	owned.end(CLID);
 

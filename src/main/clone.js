@@ -58,4 +58,29 @@ function newProject(parent, name, cb, { run = execFile } = {}) {
   run('git', ['init', '-q', dest], { windowsHide: true, timeout: 30e3 }, () => cb('', dest)); // (no git: still a folder to work in)
 }
 
-module.exports = { parse, destFor, clone, newProject };
+// A GitHub issue, by its link or as owner/repo#42: { gh, number, url, name }
+// (url: the repository's, to clone), or null.
+function issue(text) {
+  const t = String(text || '').trim();
+  const m = /^https:\/\/github\.com\/(\w[\w.-]*)\/([\w.][\w.-]*)\/issues\/(\d{1,7})(?:[/?#][^\s]*)?$/i.exec(t) || /^(\w[\w.-]*)\/([\w.][\w.-]*)#(\d{1,7})$/.exec(t);
+  if (!m || /^\.+$/.test(m[2])) return null;
+  const repo = m[2].replace(/\.git$/i, '');
+  return { gh: `${m[1]}/${repo}`, number: Number(m[3]), url: `https://github.com/${m[1]}/${repo}.git`, name: repo };
+}
+// Which of `folders` is a clone of GitHub's `gh` (owner/repo), by its
+// origin: cb(folder or '').
+function findRepo(folders, gh, cb, { run = execFile } = {}) {
+  const want = String(gh).toLowerCase();
+  const list = [...new Set(folders)].filter(Boolean).slice(0, 20);
+  const next = (i) => {
+    if (i >= list.length) return cb('');
+    run('git', ['remote', 'get-url', 'origin'], { cwd: list[i], timeout: 3000, windowsHide: true }, (err, out) => {
+      const m = !err && /github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?\/?\s*$/i.exec(String(out));
+      if (m && m[1].toLowerCase() === want) return cb(list[i]);
+      next(i + 1);
+    });
+  };
+  next(0);
+}
+
+module.exports = { issue, findRepo, parse, destFor, clone, newProject };

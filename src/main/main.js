@@ -2735,8 +2735,27 @@ app.whenReady().then(async () => {
     const model = opts && typeof opts.model === 'string' && /^[\w.\-[\]]{1,60}$/.test(opts.model) && opts.model !== 'default' ? opts.model : '';
     hubCache = null;
     hideTalk();
-    startSession(dest, [...(opts && opts.plan === true ? ['--permission-mode', 'plan'] : []), ...(model ? ['--model', model] : [])]);
+    return startSession(dest, [...(opts && opts.plan === true ? ['--permission-mode', 'plan'] : []), ...(model ? ['--model', model] : [])]);
   };
+  // "Work on an issue…": a GitHub issue's link (or owner/repo#42). A
+  // session starts in your clone of its repository (cloned first if you
+  // have none) and is asked to read the issue and fix it.
+  ipcMain.handle('talk-issue', (_e, text, opts) => new Promise((done) => {
+    const r = cloner.issue(text);
+    if (!r) return done('Paste the issue’s link, or owner/repo#42');
+    const go = (dest) => {
+      const id = startNew(dest, opts);
+      if (id) sendMessage(id, `Work on GitHub issue ${r.gh}#${r.number}. Read it first, with its comments (\`gh issue view ${r.number} --repo ${r.gh} --comments\`). Then make a branch for it, fix it, and tell me what you changed. If it's unclear or big, tell me your plan before changing anything.`);
+      done('');
+    };
+    const places = [...(prefs.recentFolders || []), ...tracker.list().map((o) => o.cwd), ...hubFolders];
+    cloner.findRepo(places, r.gh, (found) => {
+      if (found) return go(found);
+      const dest = cloner.destFor(projectsDir(), r.name);
+      if (!dest) return done(`There’s no free folder name for ${r.name} in ${projectsDir()}`);
+      cloner.clone(r.url, dest, (err) => (err ? done(`Couldn’t clone ${r.gh}: ${err}`) : go(dest)), { gh: r.gh });
+    });
+  }));
   // "New project…": a folder of its own next to your others, then a session in it.
   ipcMain.handle('talk-new-project', (_e, name, opts) => new Promise((done) => {
     cloner.newProject(projectsDir(), name, (err, dest) => { if (err) return done(err); startNew(dest, opts); done(''); });

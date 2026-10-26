@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   mcpSignIn: (id, name) => ipcRenderer.invoke('talk-mcp-sign-in', id, name),
   clone: (text, opts) => ipcRenderer.invoke('talk-clone', text, opts),
   newProject: (name, opts) => ipcRenderer.invoke('talk-new-project', name, opts),
+  issue: (text, opts) => ipcRenderer.invoke('talk-issue', text, opts),
   rewind: (id, uuid) => ipcRenderer.invoke('talk-rewind', id, uuid),
   editFrom: (id, uuid, text) => ipcRenderer.invoke('talk-edit', id, uuid, text),
   background: (id) => ipcRenderer.send('talk-background', id),

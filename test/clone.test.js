@@ -64,3 +64,21 @@ test('a new project: a folder of its own, a git repository', (t, done) => {
     });
   });
 });
+
+test('a GitHub issue, by its link or owner/repo#42', () => {
+  const { issue } = require('../src/main/clone');
+  assert.deepEqual(issue('https://github.com/acme/tax/issues/42'), { gh: 'acme/tax', number: 42, url: 'https://github.com/acme/tax.git', name: 'tax' });
+  assert.deepEqual(issue(' https://github.com/acme/tax.js/issues/7#issuecomment-1 '), { gh: 'acme/tax.js', number: 7, url: 'https://github.com/acme/tax.js.git', name: 'tax.js' });
+  assert.equal(issue('acme/tax#42').number, 42);
+  for (const bad of ['', 'fix the bug', '#42', 'acme/tax', 'https://github.com/acme/tax/pull/42', 'https://evil.com/acme/tax/issues/1', 'acme/tax#42; rm -rf', '-x/tax#1', 'acme/../x#1']) assert.equal(issue(bad), null, bad);
+});
+
+test('finds the folder that is a clone of it, by its origin', (t, done) => {
+  const { findRepo } = require('../src/main/clone');
+  const origins = { '/a': 'git@github.com:other/thing.git\n', '/b': 'https://github.com/Acme/Tax.git\n', '/c': 'https://github.com/acme/tax\n' };
+  const run = (bin, args, o, cb) => (origins[o.cwd] ? cb(null, origins[o.cwd]) : cb(new Error('not a repo')));
+  findRepo(['/x', '/a', '/b', '/c'], 'acme/tax', (f) => {
+    assert.equal(f, '/b');
+    findRepo(['/a', '/x'], 'acme/tax', (g) => { assert.equal(g, ''); done(); }, { run });
+  }, { run });
+});
