@@ -1325,8 +1325,8 @@
           const close = Math.hypot(dx, dy) < m.body.o.radius + r * 0.4;
           // (Given up on getting to her: after its sad moment it fades back
           // into her from where it is.)
-          // (Still jumping for her up on a window, it keeps at it longer.)
-          if (close || (b.gaveUp ? time > b.gaveUp.until : time - b.merging.since > (b.tries || stillTrying(b) ? 25 : 8))) {
+          // (Still trying to get to her, it keeps at it longer.)
+          if (close || (b.gaveUp ? time > b.gaveUp.until : time - b.merging.since > ((b.tries && b.tries.n) || stillTrying(b) ? 25 : 8))) {
             b.dying = time;
             b.targetR = 2;
             m.happyUntil = time + 1.2;
@@ -4883,18 +4883,32 @@
     return pair(a, b) || pair(b, a) || a.dying || b.dying;
   }
 
-  // A helper that truly can't get to its mum gives up for a while: she's up
-  // on a window it keeps jumping for and falling short of. Only those jumps
-  // count, each judged once it has landed and stood still a moment: five
-  // in a row and it gives up (a heart breaking above it, a slow sigh out,
-  // a slump). A chase that's just taking a while, or a hop it didn't make
-  // because it was busy, held or bumped, never counts. Then it rests for
-  // minutes (4 to 8, twice that each time it has to give up again, 20 at
-  // most) and doesn't go after her at all, unless she comes to it by
-  // herself (standing right by it, on the same floor or window): then it's
-  // glad and goes to her. A finished one fades back into her after its sad
-  // moment.
+  // A helper that can't get to its mum gives up for a while, whatever's in
+  // the way: she's up higher than it can jump (a window, a talk box), or it
+  // keeps hopping toward her and getting nowhere (something in the way, or
+  // stuck), or she's held up out of its reach for a good while. Each hop
+  // toward her is judged once it has landed and stood still a moment (a
+  // jump that gets close in the air and falls back is a miss): one that
+  // didn't get up to her window, or didn't get it any nearer to where she
+  // was, is a miss. Five misses in a row and it gives up (a heart breaking
+  // above it, a slow sigh out, a slump). A chase that's just taking a while
+  // (it gains on where she was, even if she's moved on) never counts, nor
+  // does a hop it didn't make because it was busy, held or bumped. Then it
+  // rests for minutes (4 to 8, twice that each time it has to give up
+  // again, 20 at most) and doesn't go after her at all, unless she comes to
+  // it by herself (standing right by it, on the same floor or window): then
+  // it's glad and goes to her. A finished one fades back into her after its
+  // sad moment.
   const mumOf = (b) => (b.merging && b.mergeInto) || b.mother;
+  // A helper's legs: the fastest it can take off (px/s), and so how high it
+  // can get, the air slowing it (lower when it's tired: a low battery).
+  const LEAP = 1800;
+  function leapHeight() {
+    const d = CFG.damping, g = CFG.gravity;
+    let y = 0, v = -LEAP * (1 - 0.3 * sys.low), peak = 0;
+    for (let n = 0; n < 2000 && v < 0; n++) { v = (v + g * DT) * d; y += v * DT; peak = Math.min(peak, y); }
+    return -peak;
+  }
   function mumOutOfReach(b) {
     const m = mumOf(b), c = b.body.centroid(), mc = m.body.centroid(), r = b.body.o.radius;
     if (b.merging) return Math.hypot(mc.x - c.x, mc.y - c.y) >= m.body.o.radius + r * 0.4;
@@ -4909,27 +4923,24 @@
     const same = l || ml ? !!(l && ml && l.id === ml.id) : Math.abs(b.body.bbox().maxY - m.body.bbox().maxY) < r;
     return same && Math.abs(m.body.centroid().x - b.body.centroid().x) < m.body.o.radius * 2 + r * 6;
   }
-  // A hop toward her that has to get up onto her window (above it): a try.
-  // Anything else is just a hop along.
-  function tryKind(b) {
-    const m = mumOf(b), ml = m.body.onLedge, l = b.body.onLedge;
-    return ml && !(l && l.id === ml.id) && b.body.bbox().maxY - m.body.bbox().maxY > b.body.o.radius ? { up: ml.id } : null;
-  }
   // Every hop toward her goes through here (see behave, and the trip home
-  // in step). Heading for her, it may hop down off a window (it otherwise
-  // never wanders off one), and other slimes' bumps don't bother it.
+  // in step), noting what it's trying for: up onto her window, or just
+  // nearer where she is. Heading for her, it may hop down off a window (it
+  // otherwise never wanders off one), and other slimes' bumps don't bother
+  // it.
   function hopToMum(b, vx, vy) {
-    const k = tryKind(b);
-    b.trying = k && Object.assign(k, { at: time });
+    const m = mumOf(b), ml = m.body.onLedge, l = b.body.onLedge;
+    const up = ml && !(l && l.id === ml.id) && b.body.bbox().maxY - m.body.bbox().maxY > b.body.o.radius;
+    const c = b.body.centroid(), mc = m.body.centroid();
+    b.trying = { at: time, up: up ? ml.id : null, from: Math.hypot(mc.x - c.x, mc.y - c.y), mx: mc.x, my: mc.y };
     b.seekUntil = time + 3;
-    const l = b.body.onLedge, ml = mumOf(b).body.onLedge;
     b.toMum = !(l && ml && l.id === ml.id); // (on her window with her, it minds the edge as ever)
     b.hop(vx, vy);
     b.toMum = false;
   }
   // She's up on a window: an aimed jump, high enough to clear its edge,
   // landing near her (the near side of her, or the far side if that has no
-  // room). False if she isn't.
+  // room), as hard as its legs allow. False if she isn't.
   function jumpUpTo(b, m) {
     const rise = b.body.bbox().maxY - m.body.bbox().maxY, l = m.body.onLedge;
     if (!(rise > b.body.o.radius && l)) return false;
@@ -4939,7 +4950,7 @@
     if (tx < l.x0 + cr * 1.2 || tx > l.x1 - cr * 1.2) tx = mc.x + Math.sign(dx) * gap;
     tx = Math.max(l.x0 + cr * 1.2, Math.min(l.x1 - cr * 1.2, tx));
     const v = launch(tx - c.x, rise + cr * 2, rise); // (with the air slowing it: see launch)
-    hopToMum(b, Math.max(-600, Math.min(600, v.vx)), v.vy);
+    hopToMum(b, Math.max(-600, Math.min(600, v.vx)), Math.max(-LEAP, v.vy));
     return true;
   }
   // A try that hasn't been judged yet (it's still in the air, or hasn't
@@ -4950,7 +4961,7 @@
     if (b.kind !== 'child' || b.dying) return;
     const m = b.mother;
     if (!m || m.dying || m.removed) { b.trying = b.tries = b.gaveUp = null; return; }
-    if (b.body.grab) { b.trying = b.tries = null; b.stillSince = 0; } // (carried off: it starts over wherever it's put)
+    if (b.body.grab) { b.trying = b.tries = null; b.stillSince = b.heldOut = 0; } // (carried off: it starts over wherever it's put)
     // Standing still on something for a moment (not a landing's bounce,
     // not crouched for a hop).
     const still = b.body.onFloor() && !b.pendingHop && !b.body.grab && Math.abs(b.body.velocity(DT).y) < 60;
@@ -4982,21 +4993,35 @@
       return;
     }
     if (!settled) return;
-    const mm = mumOf(b);
-    if (!mm.body.onFloor() && !mm.body.grab) return; // (she's mid-hop or falling: wait and see where she lands)
-    if (!mumOutOfReach(b)) { b.trying = b.tries = null; return; }
-    // A try just made: did it get up there?
-    const k = b.trying;
-    if (k) {
-      b.trying = null;
-      const ml = mm.body.onLedge, l = b.body.onLedge;
-      const failed = !!ml && ml.id === k.up && !(l && l.id === k.up);
-      b.tries = !failed ? null : b.tries && b.tries.up === k.up ? { up: k.up, n: b.tries.n + 1 } : { up: k.up, n: 1 };
+    const mm = mumOf(b), r = b.body.o.radius, c = b.body.centroid(), mc = mm.body.centroid();
+    // Held up out of its reach (over its head, higher than it can jump):
+    // it can only wait, and after a good while it gives up.
+    const heldOut = mm.body.grab && b.body.bbox().maxY - mm.body.bbox().maxY > leapHeight() + r;
+    b.heldOut = heldOut ? b.heldOut || time : 0;
+    let no = heldOut && time - b.heldOut > 10;
+    if (!no) {
+      if (!mm.body.onFloor() && !mm.body.grab) return; // (she's mid-hop or falling: wait and see where she lands)
+      if (!heldOut && !mumOutOfReach(b)) { b.trying = b.tries = null; return; }
+      // A hop just made: did it get anywhere?
+      const k = b.trying;
+      if (k) {
+        b.trying = null;
+        const ml = mm.body.onLedge, l = b.body.onLedge;
+        // (She moved off meanwhile: a chase, not a miss. Else it has to get
+        // nearer than it's been yet this time, not just bounce back and forth.)
+        const d = Math.hypot(mc.x - c.x, mc.y - c.y), best = Math.min(k.from, b.tries ? b.tries.best : Infinity);
+        if (k.up === null && Math.hypot(mc.x - k.mx, mc.y - k.my) > r) b.tries = null;
+        else {
+          const failed = k.up !== null ? !!ml && ml.id === k.up && !(l && l.id === k.up) : d > best - r * 0.5;
+          b.tries = failed ? { n: (b.tries ? b.tries.n : 0) + 1, best: Math.min(best, d) } : { n: 0, best: d };
+        }
+      }
+      no = !!b.tries && b.tries.n >= 5;
     }
-    if (!b.tries || b.tries.n < 5) return;
+    if (!no) return;
     // No use.
-    const c = b.body.centroid(), r = b.body.o.radius;
     b.tries = null;
+    b.heldOut = 0;
     b.gaveUps = (b.gaveUps || 0) + 1;
     const rest = b.merging ? 3 : Math.min(20 * 60, (240 + Math.random() * 240) * 2 ** (b.gaveUps - 1));
     b.gaveUp = { at: time, until: time + rest, merging: !!b.merging };
