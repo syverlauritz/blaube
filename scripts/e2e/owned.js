@@ -105,13 +105,13 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(async () => /Say which: \/model opus/.test(await said())), '/model alone says how');
 	check(await box(`document.getElementById('suggest').hidden`), 'and sending leaves no suggestions behind');
 	const mode = () => box(`(() => { const m = document.getElementById('mode'); return m.hidden ? '' : m.className + ' | ' + m.textContent; })()`);
-	check(/default can \| Asks before edits⇧⇥/.test(await mode()), 'how it asks shows under the field, as in the terminal');
+	check(/default can \| Asks before editsShift\+Tab/.test(await mode()), 'how it asks shows under the field, as in the terminal');
 	const shiftTab = () => box(`document.getElementById('text').dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }))`);
 	await shiftTab();
-	check(await until(async () => /acceptEdits can \| ⏵⏵ Accepting edits/.test(await mode())), '⇧⇥ switches it to accepting edits');
+	check(await until(async () => /acceptEdits can \| Accepting edits/.test(await mode())), '⇧⇥ switches it to accepting edits');
 	if (process.env.BLAUBE_SHOTS) { await sleep(600); const img = await talk().webContents.capturePage(); fs.mkdirSync(path.join(__dirname, '..', '..', 'shots'), { recursive: true }); fs.writeFileSync(path.join(__dirname, '..', '..', 'shots', 'owned-mode.png'), img.toPNG()); }
 	await box(`document.getElementById('mode').click()`);
-	check(await until(async () => /plan can \| ⏸ Plan first/.test(await mode())), 'a tap, to planning first');
+	check(await until(async () => /plan can \| Plan first/.test(await mode())), 'a tap, to planning first');
 	await shiftTab();
 	check(await until(async () => /^mode default/.test(await mode())), 'and round again');
 	await type('/plan');

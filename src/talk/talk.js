@@ -19,7 +19,7 @@
     const el = dots.querySelector('.doing');
     const t = current && current.state === 'working' && current.turnStart ? Math.floor((Date.now() - current.turnStart) / 1000) : 0;
     const took = t >= 10 ? (t < 60 ? `${t}s` : `${Math.floor(t / 60)}m ${t % 60}s`) : '';
-    el.textContent = [el.dataset.doing || (took ? 'Working' : ''), took].filter(Boolean).join(' · ');
+    el.textContent = [el.dataset.doing || 'Thinking…', took].filter(Boolean).join(' · ');
   };
   setInterval(() => { if (current && current.state === 'working') tickDoing(); }, 1000);
   dots.innerHTML = '<i></i><i></i><i></i><span class="doing"></span><button class="bgit" type="button" hidden title="Let it carry on in the background (Ctrl+B in the terminal)">Run in background</button><ul class="helpers"></ul>'; // and what it's doing ("Editing face.js"), and its helpers
@@ -56,7 +56,7 @@
 
   function hint(s) {
     if (s.demo) return 'Demo blobs can’t talk back. Try a real session!';
-    if (s.ended) return (s.log.some((m) => m.status === 'unsent') ? `${s.project} has ended, so what you sent last didn’t go in.` : `${s.project} has ended.`) + (s.cwd ? ' Pick it up here to keep going.' : ' Right-click its slime next time to resume it in a new terminal.');
+    if (s.ended) return (s.log.some((m) => m.status === 'unsent') ? `${s.project} has ended, so what you sent last didn’t go in.` : `${s.project} has ended.`) + (s.cwd ? ' Pick it up here to keep going.' : ' Right-click its blob next time to resume it in a new terminal.');
     if (s.owned) return s.log.length ? '' : 'Started by Blaube. Right-click me to end it or move it to a terminal.';
     if (s.ask) return '';
     if (!s.connected && !s.typeable) return s.canBring ? 'This session can’t hear Blaube. Bring it here to talk to it, or connect Claude Code from Blaube’s menu and restart it.' : 'Connect Claude Code from Blaube’s menu, then restart this session to talk to it.';
@@ -71,38 +71,106 @@
     return '';
   }
 
-  // A little Markdown, built as elements (never as HTML): code blocks,
-  // `code`, **bold**, headings and bullets.
+  // Markdown, built as elements (never as HTML): paragraphs, headings,
+  // lists (nested too), quotes, tables, rules and code blocks; in a line,
+  // `code`, **bold**, *italic* and links. Line breaks inside a paragraph
+  // are kept, as the terminal keeps them.
   function rich(el, src) {
-    const parts = src.split(/^```[^\n]*\n?/m);
-    parts.forEach((part, i) => {
-      if (i % 2) {
-        const pre = document.createElement('pre');
-        pre.textContent = part.replace(/\n$/, '');
+    const lines = String(src).replace(/\r\n?/g, '\n').split('\n');
+    let para = null, quote = null, stack = []; // the paragraph or quote being added to, and the lists open
+    const end = () => { para = null; quote = null; stack = []; };
+    const cells = (l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      let m = /^\s*(```|~~~)/.exec(line);
+      if (m) {
         // A code block copies in one tap.
+        const body = [];
+        for (i++; i < lines.length && !lines[i].trim().startsWith(m[1]); i++) body.push(lines[i]);
+        end();
+        const pre = document.createElement('pre');
+        pre.textContent = body.join('\n');
         const box = document.createElement('div');
         box.className = 'code';
         box.append(pre, copyButton(() => pre.textContent));
         el.append(box);
-        return;
+        continue;
       }
-      const lines = part.replace(/^\n+|\n+$/g, '').split('\n');
-      lines.forEach((line, j) => {
-        let l = line, head = false;
-        if (/^#{1,6}\s/.test(l)) { l = l.replace(/^#+\s*/, ''); head = true; }
-        l = l.replace(/^(\s*)[-*+]\s+/, '$1• ');
-        const span = document.createElement('span');
-        if (head) span.className = 'head';
-        for (const bit of l.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/)) {
-          if (!bit) continue;
-          if (bit[0] === '`') { const c = document.createElement('code'); c.textContent = bit.slice(1, -1); if (PATHLIKE.test(c.textContent)) c.dataset.path = c.textContent; span.append(c); }
-          else if (bit.startsWith('**')) { const b = document.createElement('b'); b.textContent = bit.slice(2, -2); span.append(b); }
-          else links(span, bit);
+      if (!line.trim()) { end(); continue; }
+      if ((m = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line))) {
+        end();
+        const h = document.createElement(m[1].length <= 2 ? 'h3' : m[1].length === 3 ? 'h4' : 'h5');
+        h.className = 'head';
+        inline(h, m[2]);
+        el.append(h);
+        continue;
+      }
+      if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(line)) { end(); el.append(document.createElement('hr')); continue; }
+      // A table: a row of cells, then a row of dashes under it.
+      if (/^\s*\|.*\|\s*$/.test(line) && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1] || '')) {
+        end();
+        const box = document.createElement('div');
+        box.className = 'tablebox';
+        const table = document.createElement('table');
+        const row = (list, tag) => { const tr = document.createElement('tr'); for (const c of list) { const td = document.createElement(tag); inline(td, c); tr.append(td); } return tr; };
+        const head = document.createElement('thead');
+        head.append(row(cells(line), 'th'));
+        const body = document.createElement('tbody');
+        for (i += 2; i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i]); i++) body.append(row(cells(lines[i]), 'td'));
+        i--;
+        table.append(head, body);
+        box.append(table);
+        el.append(box);
+        continue;
+      }
+      if ((m = /^(\s*)([-*+•]|\d{1,3}[.)])\s+(.*)$/.exec(line))) {
+        para = null; quote = null;
+        const indent = m[1].replace(/\t/g, '  ').length, kind = /\d/.test(m[2]) ? 'OL' : 'UL';
+        while (stack.length && indent < stack[stack.length - 1].indent) stack.pop();
+        let top = stack[stack.length - 1];
+        if (!top || indent > top.indent || top.list.tagName !== kind) {
+          const list = document.createElement(kind.toLowerCase());
+          if (kind === 'OL' && parseInt(m[2], 10) !== 1) list.start = parseInt(m[2], 10);
+          if (top && indent > top.indent && top.list.lastElementChild) top.list.lastElementChild.append(list);
+          else { if (top) stack.pop(); el.append(list); }
+          top = { indent, list };
+          stack.push(top);
         }
-        el.append(span);
-        if (j < lines.length - 1) el.append('\n');
-      });
-    });
+        const li = document.createElement('li');
+        inline(li, m[3]);
+        top.list.append(li);
+        continue;
+      }
+      // An indented line under a list item goes on with it.
+      if (stack.length && /^\s+\S/.test(line)) {
+        const li = stack[stack.length - 1].list.lastElementChild;
+        li.append('\n');
+        inline(li, line.trim());
+        continue;
+      }
+      if ((m = /^\s*>\s?(.*)$/.exec(line))) {
+        para = null; stack = [];
+        if (quote) quote.append('\n');
+        else { quote = document.createElement('blockquote'); el.append(quote); }
+        inline(quote, m[1]);
+        continue;
+      }
+      quote = null; stack = [];
+      if (para) para.append('\n');
+      else { para = document.createElement('p'); el.append(para); }
+      inline(para, line);
+    }
+  }
+
+  // A line's own formatting: `code`, **bold**, *italic*, and links.
+  function inline(el, text) {
+    for (const bit of String(text).split(/(`[^`\n]+`|\*\*[^*\n]+\*\*|(?<![\w*])\*(?![\s*])[^*\n]*?[^\s*]\*(?![\w*]))/)) {
+      if (!bit) continue;
+      if (bit[0] === '`') { const c = document.createElement('code'); c.textContent = bit.slice(1, -1); if (PATHLIKE.test(c.textContent)) c.dataset.path = c.textContent; el.append(c); }
+      else if (bit.startsWith('**')) { const b = document.createElement('b'); b.textContent = bit.slice(2, -2); el.append(b); }
+      else if (bit[0] === '*' && bit.length > 2 && bit.endsWith('*')) { const e = document.createElement('em'); e.textContent = bit.slice(1, -1); el.append(e); }
+      else links(el, bit);
+    }
   }
 
   // A file named in a reply (`src/tax.js:42`) opens right there in the box
@@ -131,7 +199,7 @@
     api.filesExist(id, ask).then((found) => { for (const p of ask) known.set(id + '\n' + p, (found || []).includes(p)); mark(); });
   }
   function peek(code, id, rel, line) {
-    const at = code.closest('.msg > span') || code.closest('.msg'); // (right under the line that names it)
+    const at = code.closest('.msg > *, .asidea > *') || code.closest('.msg'); // (right under the block that names it)
     const open = at.nextElementSibling && at.nextElementSibling.classList.contains('peek') && at.nextElementSibling.dataset.path === rel ? at.nextElementSibling : null;
     if (open) { open.remove(); fitWindow(); return; }
     api.peekFile(id, rel).then((f) => {
@@ -145,10 +213,10 @@
       const name = document.createElement('span');
       name.textContent = f.name + (line ? `, line ${line}` : '');
       const reveal = document.createElement('button');
-      reveal.type = 'button'; reveal.textContent = '↗'; reveal.title = 'Show it in ' + (navigator.platform.startsWith('Mac') ? 'Finder' : 'its folder');
+      reveal.type = 'button'; reveal.textContent = 'Show in ' + (navigator.platform.startsWith('Mac') ? 'Finder' : 'folder'); reveal.title = 'Show it in ' + (navigator.platform.startsWith('Mac') ? 'Finder' : 'its folder');
       reveal.onclick = () => api.reveal(id, f.path);
       const close = document.createElement('button');
-      close.type = 'button'; close.textContent = '✕'; close.title = 'Close';
+      close.type = 'button'; close.textContent = 'Close'; close.title = 'Close it';
       close.onclick = () => { box.remove(); fitWindow(); };
       // (And your code editor, at that line.)
       const edit = document.createElement('button');
@@ -186,7 +254,7 @@
       const b = document.createElement('button');
       b.className = 'earlierbtn';
       b.type = 'button';
-      b.textContent = 'Earlier messages';
+      b.textContent = 'Show earlier messages';
       b.onclick = () => {
         b.disabled = true;
         const id = s.id;
@@ -204,7 +272,7 @@
     for (const m of got) box.append(...message(m, false));
     const line = document.createElement('div');
     line.className = 'since old';
-    line.textContent = 'Before Blaube was watching';
+    line.textContent = 'Above: from before Blaube was watching';
     box.append(line);
     inner.append(box);
   }
@@ -268,7 +336,7 @@
       const label = () => {
         const early = run.querySelectorAll('.step.early').length;
         more.hidden = !early;
-        more.textContent = run.classList.contains('open') ? 'fewer steps' : `${early} more step${early === 1 ? '' : 's'}`;
+        more.textContent = run.classList.contains('open') ? 'Hide earlier steps' : `Show ${early} earlier step${early === 1 ? '' : 's'}`;
       };
       run.relabel = label;
       run.append(more);
@@ -279,7 +347,11 @@
     const image = !m.detail && m.file && IMAGE.test(m.file) && api.image;
     const e = document.createElement(m.detail || image ? 'button' : 'div');
     e.className = 'step' + (m.ok === false ? ' failed' : '') + (fresh ? ' new' : '') + (m.detail || image ? ' opens' : '');
-    e.textContent = m.text + (m.ok === false ? ' (failed)' : '');
+    const what = document.createElement('span');
+    what.className = 'what';
+    what.textContent = m.text;
+    e.append(what);
+    if (m.ok === false) { const f = document.createElement('span'); f.className = 'fail'; f.textContent = 'Failed'; e.append(f); }
     e.title = m.text;
     run.append(e);
     if (m.detail) {
@@ -366,7 +438,7 @@
         const more = document.createElement('details');
         more.className = 'statusmore';
         const sum = document.createElement('summary');
-        sum.textContent = 'All of it';
+        sum.textContent = 'Show all of it';
         more.append(sum);
         for (const x of m.sections) {
           const h = document.createElement('div');
@@ -430,17 +502,17 @@
     if (m.status === 'unsent') {
       const t = document.createElement('div');
       t.className = 'meta';
-      t.textContent = 'not sent';
+      t.textContent = 'Not sent';
       out.push(t);
     }
     if (m.status === 'queued') {
       const t = document.createElement('div');
       t.className = 'meta';
-      t.textContent = current.inbox === 'unknown' ? (current.typeable ? 'goes in when it’s free · ' : `waiting for ${current.project} to pick this up · `)
-        : current.stoppable && current.state === 'working' && !current.stopping ? 'at its next step · ' : 'after its turn · ';
+      t.textContent = current.inbox === 'unknown' ? (current.typeable ? 'Waiting: goes in when it’s free · ' : `Waiting for ${current.project} to pick this up · `)
+        : current.stoppable && current.state === 'working' && !current.stopping ? 'Waiting: goes in at its next step · ' : 'Waiting: goes in after this turn · ';
       const undo = document.createElement('button');
       undo.className = 'unsend';
-      undo.textContent = 'unsend';
+      undo.textContent = 'Unsend';
       undo.onclick = () => api.unsend(current.id, m.n);
       t.append(undo);
       out.push(t);
@@ -453,7 +525,7 @@
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'unsend';
-      b.textContent = 'edit';
+      b.textContent = 'Edit';
       b.title = 'Change this: it goes back to before it (its files too), then what you write goes instead';
       b.onclick = () => startEdit(m);
       t.append(b);
@@ -466,12 +538,12 @@
       const t = document.createElement('div');
       t.className = 'turnmeta';
       const bits = [];
-      if (m.turn && m.turn.took >= 60e3) bits.push(took(m.turn.took));
+      if (m.turn && m.turn.took >= 60e3) bits.push('Took ' + took(m.turn.took));
       if (m.turn && m.turn.steps) bits.push(`${m.turn.steps} step${m.turn.steps === 1 ? '' : 's'}`);
       t.append(bits.join(' · '));
       const files = (m.turn && m.turn.files) || [];
       files.slice(0, 4).forEach((f, i) => {
-        t.append(i || bits.length ? (i ? ', ' : ' · ') : '');
+        t.append(i ? ', ' : (bits.length ? ' · ' : '') + 'Changed ');
         const b = document.createElement('button');
         b.className = 'filelink';
         b.textContent = f.split(/[\\/]/).pop();
@@ -485,13 +557,13 @@
         const undo = document.createElement('button');
         undo.className = 'undo';
         undo.type = 'button';
-        undo.dataset.label = 'undo';
+        undo.dataset.label = 'Undo';
         undo.title = `Ask Claude to undo what it changed in ${b.textContent}`;
         undo.setAttribute('aria-label', undo.title);
         undo.onclick = () => { if (current && !undo.disabled) { undo.disabled = true; api.send(current.id, `Undo the changes you made to ${f} in that last turn, and tell me what you put back.`); } };
         t.append(undo);
       });
-      if (files.length > 4) t.append(` +${files.length - 4}`);
+      if (files.length > 4) t.append(` and ${files.length - 4} more`);
       // More than one file: undo the whole turn in one go. (In a session
       // Blaube started, the last turn's are put back by Claude Code itself.)
       const rewind = m.turn && m.turn.rewind && current.owned && isLastTurn(m) ? m.turn.rewind : '';
@@ -499,7 +571,7 @@
         const all = document.createElement('button');
         all.className = 'undo all';
         all.type = 'button';
-        all.dataset.label = 'undo all';
+        all.dataset.label = 'Undo all';
         all.title = `Ask Claude to undo everything it changed in that turn (${files.length} files)`;
         all.setAttribute('aria-label', all.title);
         if (rewind) all.title = `Put back everything it changed in that turn (${files.length === 1 ? files[0] : files.length + ' files'})`;
@@ -588,6 +660,8 @@
     $('name').title = s.project;
     $('state').textContent = WORDS[s.state] || s.state;
     $('dot').style.background = DOTS[s.state] || DOTS.idle;
+    $('stateChip').className = 'state ' + s.state;
+    $('stateChip').hidden = !!s.demo;
     // A long name in a display font gets hard to read: plain font then.
     $('name').classList.toggle('plain', s.project.length > 16);
     // Its name beside the folder's (double-click either to rename it).
@@ -606,7 +680,7 @@
     $('terminal').style.display = s.demo || s.ended || s.owned ? 'none' : '';
     const stop = $('stop');
     stop.hidden = !(s.stoppable && s.state === 'working' && !s.ended);
-    stop.title = (navigator.platform.startsWith('Mac') ? '⌘.' : 'Ctrl+.') + (s.owned ? ': stop it now' : ': it stops before its next step');
+    stop.title = (s.owned ? 'Stop it now' : 'It stops before its next step') + (navigator.platform.startsWith('Mac') ? ' (⌘.)' : ' (Ctrl+.)');
     stop.disabled = !!s.stopping;
     stop.lastChild.textContent = s.stopping ? 'Stopping…' : 'Stop';
     renderMode(s);
@@ -622,10 +696,10 @@
     renderAsk(s.ask, s.asks);
     $('hint').textContent = hint(s);
     text.disabled = !!s.demo || (!s.connected && !s.typeable) || !!s.ended;
-    text.placeholder = s.ask && s.ask.kind === 'question' ? (s.ask.questions.length === 1 ? 'Or type your answer…' : 'Say something for later…')
-      : s.ask && s.ask.kind === 'plan' ? 'What should change?'
-      : !s.owned && s.state === 'working' && s.stoppable && !s.stopping ? 'Add something…'
-      : !s.owned && (s.state === 'working' || s.state === 'waiting') ? 'Say something for later…' : 'Say something…';
+    text.placeholder = s.ask && s.ask.kind === 'question' ? (s.ask.questions.length === 1 ? 'Or type your answer…' : 'Write a message for after this…')
+      : s.ask && s.ask.kind === 'plan' ? 'What should change in the plan?'
+      : !s.owned && s.state === 'working' && s.stoppable && !s.stopping ? 'Add to what it’s doing…'
+      : !s.owned && (s.state === 'working' || s.state === 'waiting') ? 'Write a message for when it’s done…' : `Message ${s.demo ? 'it' : s.project}…`;
     send.disabled = text.disabled || (!text.value.trim() && !files.length);
     // The slime's dots while it works on something you said: after the
     // last thing it got (anything still queued comes after them).
@@ -652,7 +726,7 @@
         if (h.waiting) li.className = 'wants';
         const b = document.createElement('b');
         b.textContent = h.name;
-        li.append(b, h.waiting ? ' needs you' : h.doing ? ` · ${h.doing}` : '');
+        li.append(b, h.waiting ? ' needs you' : h.doing ? `: ${h.doing}` : '');
         hl.append(li);
       }
     }
@@ -689,7 +763,7 @@
       const since = s.lookedAt ? s.log.findIndex((m, i) => i > 0 && m.at > s.lookedAt && s.log[i - 1].at <= s.lookedAt) : -1;
       const sinceShows = since > 0 && s.log.slice(since).some((m) => m.who === 'claude');
       for (let i = from; i < s.log.length; i++) {
-        if (i === since && sinceShows) { const d = document.createElement('div'); d.className = 'since'; d.textContent = 'Since you last looked'; inner.append(d); }
+        if (i === since && sinceShows) { const d = document.createElement('div'); d.className = 'since'; d.textContent = 'New since you last looked'; inner.append(d); }
         if (s.log[i].who === 'step') { ends[i] = addStep(s.log[i], !switched && i >= seen); continue; }
         const nodes = message(s.log[i], !switched && i >= seen);
         inner.append(...nodes);
@@ -714,7 +788,7 @@
       for (const e of inner.querySelectorAll('.msg.claude:not([data-measured])')) {
         e.dataset.measured = '1';
         const at = Number(e.dataset.at);
-        if (e.offsetHeight < 280 || open.has(at)) continue;
+        if (e.offsetHeight < 560 || open.has(at)) continue; // (taller than most of the box)
         e.classList.add('folded');
         const more = document.createElement('button');
         more.className = 'more';
@@ -730,40 +804,50 @@
     squeeze();
   }
 
-  // A dot per slime; a tap (or ⌘[ ⌘], ⌘1–9) hops to its talk box.
+  // A tab per session, its colour and its name; a tap (or ⌘[ ⌘], ⌘1–9)
+  // hops to its talk box. All sessions opens the overview.
   function renderOthers(s) {
     const box = $('others');
-    const list = s.others || [];
-    const key = JSON.stringify([s.id, list.map((o) => [o.id, o.color, o.state, o.project])]);
+    const list = s.demo ? [] : (s.others || []);
+    const all = $('allSessions');
+    all.hidden = !!s.demo;
+    const waiting = list.filter((o) => o.id !== s.id && o.state === 'waiting').length;
+    const count = $('sessionCount');
+    count.hidden = list.length < 2;
+    count.textContent = waiting ? `${waiting} need${waiting === 1 ? 's' : ''} you` : String(list.length);
+    count.classList.toggle('wants', !!waiting);
+    const key = JSON.stringify([s.id, list.map((o) => [o.id, o.color, o.state, o.project, o.title])]);
     if (box.dataset.key === key) return;
     box.dataset.key = key;
     box.textContent = '';
-    if (s.demo) return;
-    const all = document.createElement('button');
-    all.className = 'all';
-    all.title = `Every session at a glance (${navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl+'}0)`;
-    all.setAttribute('aria-label', all.title);
-    all.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 7h12M6 12h12M6 17h12"/></svg>';
-    all.onclick = () => showOverview(!document.body.classList.contains('overview'));
-    if (list.length < 2) { box.append(all); return; }
+    if (list.length < 2) return;
+    const how = navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl+';
     list.slice(0, 9).forEach((o, i) => {
       const b = document.createElement('button');
+      b.type = 'button';
       b.style.setProperty('--c', o.color);
       b.className = (o.id === s.id ? 'here' : '') + (o.state === 'waiting' ? ' wants' : '');
-      const how = navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl+';
+      const name = document.createElement('span');
+      name.textContent = o.project;
+      b.append(name);
+      if (o.state === 'waiting' && o.id !== s.id) { const w = document.createElement('small'); w.textContent = 'needs you'; b.append(w); }
       b.title = `${o.project}${o.title ? `: ${o.title}` : ''}${o.state === 'waiting' ? ' (needs you)' : ''} · ${how}${i + 1}`;
-      b.setAttribute('aria-label', b.title);
-      if (o.id !== s.id) b.onclick = () => api.switchTo && api.switchTo(o.id);
+      if (o.id === s.id) b.setAttribute('aria-current', 'true');
+      else b.onclick = () => api.switchTo && api.switchTo(o.id);
       box.append(b);
     });
-    box.append(all);
   }
+  $('allSessions').title = `Every session at a glance, and new ones (${navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl+'}0)`;
+  $('allSessions').addEventListener('click', () => showOverview(!document.body.classList.contains('overview')));
 
   // Every session at a glance: what it's up to, and the small print. A tap
   // goes to its box. (Redrawn with every update while it's open.)
   function showOverview(on) {
     const was = document.body.classList.contains('overview');
     document.body.classList.toggle('overview', !!(on && current && !current.demo));
+    const showing = document.body.classList.contains('overview');
+    $('allSessions').setAttribute('aria-expanded', String(showing));
+    $('allSessions').firstChild.textContent = showing ? 'Back to the chat' : 'All sessions';
     // (Find means something else in each: start it afresh.)
     if (was !== document.body.classList.contains('overview') && !$('findBar').hidden) { $('find').value = ''; $('findBar').hidden = true; allQuery = ''; allHits = []; find(''); }
     if (on) { drawOverview(current); loadHub(); }
@@ -1174,7 +1258,7 @@
     const opens = !!s.git && !s.ended && !String(s.id).startsWith('demo-');
     $('git').classList.toggle('opens', opens);
     $('git').setAttribute('aria-expanded', String(gitOpen));
-    $('git').title = opens ? (gitOpen ? 'Hide' : list.length ? 'Show the changed files and branches' : 'Show its branches') : '';
+    $('git').title = opens ? (gitOpen ? 'Hide the files and branches' : list.length ? 'Show the changed files and branches' : 'Show its branches') : '';
     renderBranches(s, list);
     const box = $('gitFiles');
     const was = box.hidden;
@@ -1228,7 +1312,7 @@
         const go = document.createElement('button');
         go.type = 'button';
         go.className = 'reveal';
-        go.textContent = '↗';
+        go.textContent = navigator.platform.startsWith('Mac') ? 'Finder' : 'Folder';
         go.title = `Show it in ${navigator.platform.startsWith('Mac') ? 'Finder' : 'its folder'}`;
         go.setAttribute('aria-label', go.title);
         go.onclick = () => api.reveal && api.reveal(current.id, f.path);
@@ -1236,7 +1320,7 @@
         const ed = document.createElement('button');
         ed.type = 'button';
         ed.className = 'reveal edit';
-        ed.textContent = '✎';
+        ed.textContent = 'Edit';
         ed.title = `Open it in ${s.editor}`;
         ed.setAttribute('aria-label', ed.title);
         ed.onclick = () => api.openInEditor(current.id, f.path, 0);
@@ -1247,7 +1331,7 @@
         const un = document.createElement('button');
         un.type = 'button';
         un.className = 'reveal discard';
-        un.textContent = '↺';
+        un.textContent = 'Discard';
         un.title = f.how === 'new' ? 'Discard this new file' : 'Discard your changes to it';
         un.setAttribute('aria-label', un.title);
         // (When it was tapped once, kept across the list being drawn again.)
@@ -1259,13 +1343,13 @@
             discardSure.set(f.path, Date.now());
             un.textContent = 'Discard?';
             un.classList.add('sure');
-            setTimeout(() => { if (un.isConnected && Date.now() - (discardSure.get(f.path) || 0) >= 4000) { un.textContent = '↺'; un.classList.remove('sure'); } }, 4100);
+            setTimeout(() => { if (un.isConnected && Date.now() - (discardSure.get(f.path) || 0) >= 4000) { un.textContent = 'Discard'; un.classList.remove('sure'); } }, 4100);
             return;
           }
           discardSure.delete(f.path);
           un.disabled = true;
           const err = await api.discard(current.id, f.path);
-          if (err) { un.disabled = false; un.textContent = '↺'; un.classList.remove('sure'); un.title = err; b.title = err; }
+          if (err) { un.disabled = false; un.textContent = 'Discard'; un.classList.remove('sure'); un.title = err; b.title = err; }
         };
         const pre = li.querySelector('pre');
         if (pre) li.insertBefore(un, pre); else li.append(un);
@@ -1694,7 +1778,7 @@
     const now = list.find((t) => t.status === 'in_progress');
     $('todoFill').style.width = Math.round(100 * done / list.length) + '%';
     $('todoNow').textContent = now ? now.doing : done === list.length ? 'All done' : 'Next: ' + (list.find((t) => t.status !== 'completed') || list[0]).text;
-    $('todoCount').textContent = `${done} of ${list.length}`;
+    $('todoCount').textContent = `${done} of ${list.length} done`;
     $('todoHead').title = todoOpen ? 'Hide the list' : 'Show the whole list';
     $('todoHead').setAttribute('aria-expanded', String(todoOpen));
     const ul = $('todoList');
@@ -1768,7 +1852,7 @@
       } else { updateSend(ask); focusCard(); }
     }
     if (ask.kind !== 'question') planButtons();
-    $('askMore').textContent = count > 1 ? `+${count - 1} more after this` : '';
+    $('askMore').textContent = count > 1 ? `${count - 1} more waiting after this` : '';
     $('always').textContent = ask.always || '';
     $('always').title = ask.alwaysFull || '';
     $('always').hidden = !ask.always || ask.kind === 'question';
@@ -1784,7 +1868,7 @@
   // On a permission ask, a note turns Deny into "no, do this instead".
   function planButtons() {
     const typed = typedForCard();
-    if (current.ask.kind === 'tool') { $('deny').textContent = typed ? 'Deny and say' : 'Deny'; return; }
+    if ((current.ask.kind || 'tool') === 'tool') { $('deny').textContent = typed ? 'Deny and say' : 'Deny'; return; }
     $('deny').textContent = typed ? 'Send changes' : 'Keep planning';
     if (Date.now() - cardAt > 450) { $('allow').disabled = typed; $('always').disabled = typed; }
   }
@@ -1805,13 +1889,30 @@
     new ResizeObserver(fadeCard).observe(el); // the box grew: maybe it all fits now
   }
 
+  // What a tool would do, in plain words ("run a command", "edit a file").
+  const TOOLS = { Bash: 'run a command', PowerShell: 'run a command', Edit: 'edit a file', MultiEdit: 'edit a file', NotebookEdit: 'edit a notebook', Write: 'write a file', Read: 'read a file', Glob: 'look for files', Grep: 'search in files', WebFetch: 'open a web page', WebSearch: 'search the web', Task: 'start a helper', Agent: 'start a helper', Skill: 'use a skill' };
+  function toolWords(tool) {
+    const t = String(tool || '');
+    if (TOOLS[t]) return TOOLS[t];
+    const mcp = /^mcp__(.+?)__(.+)$/.exec(t); // (a tool from an MCP server: its name, and whose)
+    if (mcp) return `use ${mcp[2].replace(/[_-]+/g, ' ')} (from ${mcp[1].replace(/[_-]+/g, ' ')})`;
+    return t ? `use ${t}` : 'go ahead';
+  }
+
   // Lays the card out for what's being asked: a tool, a question, a plan.
   function buildAsk(ask) {
     const kind = ask.kind || 'tool';
     const card = $('ask');
     card.dataset.kind = kind;
-    $('askWhat').textContent = kind === 'question' ? (ask.questions.length > 1 ? 'A couple of things first:' : 'Quick question:')
-      : kind === 'plan' ? 'Here’s my plan. Shall I go ahead?' : `Can I use ${ask.tool}?`;
+    $('askWhat').textContent = kind === 'question' ? (ask.questions.length > 1 ? `Claude has ${ask.questions.length} questions for you` : 'Claude has a question for you')
+      : kind === 'plan' ? 'Here’s the plan. Go ahead with it?' : `Allow Claude to ${toolWords(ask.tool)}?`;
+    $('askWhat').title = kind === 'tool' && ask.tool ? `The ${ask.tool} tool` : '';
+    // How to answer from the keyboard, in words.
+    const mac = navigator.platform.startsWith('Mac');
+    const go = mac ? '⌘Return' : 'Ctrl+Enter', no = mac ? '⌘Delete' : 'Ctrl+Backspace';
+    $('askKeys').textContent = kind === 'tool' ? `${go} allows · ${no} denies`
+      : kind === 'plan' ? `${go} goes ahead · ${no} keeps planning`
+      : ask.questions.length === 1 && !ask.questions[0].multiSelect && ask.questions[0].options.length > 1 ? `Press 1 to ${Math.min(9, ask.questions[0].options.length)} to pick` : '';
     // (An edit's − and + lines tinted, as in its steps.)
     if (/\n[−+] /.test(ask.detail || '')) colorDiff($('askDetail'), ask.detail); else $('askDetail').textContent = ask.detail || '';
     $('askDetail').hidden = kind !== 'tool' || !ask.detail;
@@ -1825,7 +1926,7 @@
     $('allow').textContent = kind === 'plan' ? 'Go ahead' : kind === 'question' ? 'Send' : 'Allow';
     $('deny').hidden = kind === 'question';
     const oneTap = kind === 'question' && ask.questions.length === 1 && !ask.questions[0].multiSelect;
-    $('askNote').textContent = kind === 'plan' ? 'Want changes? Type them below.' : kind === 'tool' ? 'Or type what to do instead.' : '';
+    $('askNote').textContent = kind === 'plan' ? 'Want changes? Write them in the field below, then Send changes.' : kind === 'tool' ? 'Or write in the field below what it should do instead, then Deny and say.' : '';
     // Several questions (or picking several): everything happens on the card.
     document.body.classList.toggle('carding', kind === 'question' && !oneTap);
     if (kind !== 'question') { $('askRow').hidden = false; return; }
@@ -1838,7 +1939,7 @@
       const line = document.createElement('div');
       line.className = 'text';
       line.append(q.question);
-      const aside = q.multiSelect ? 'pick any' : '';
+      const aside = q.multiSelect ? '(pick any)' : '';
       if (aside) { const a = document.createElement('span'); a.textContent = ' ' + aside; line.append(a); }
       const opts = document.createElement('div');
       // Short options with nothing to explain are round chips; others rows.
@@ -1916,7 +2017,7 @@
     if (ask.kind !== 'question' || askKey !== ask.key) return;
     const left = ask.questions.filter((q) => !hasAnswer(q)).length;
     $('allow').disabled = left > 0;
-    $('allow').textContent = left ? `${left} to go` : 'Send';
+    $('allow').textContent = left ? `${left} question${left === 1 ? '' : 's'} left to answer` : 'Send';
   }
 
   function nextUnanswered(ask, after = -1) {
@@ -1966,14 +2067,21 @@
       api.setHeight(current.id, Math.ceil(bubble.offsetHeight - ov.offsetHeight + content + 24 + 1));
       return;
     }
-    const chrome = bubble.offsetHeight - log.offsetHeight; // everything but the log
+    // Everything but the log, each at its full height (a card taller than
+    // the window has room for asks for that room).
+    let chrome = 0;
+    for (const el of bubble.children) {
+      if (el === log || !el.offsetParent) continue;
+      const cs = getComputedStyle(el);
+      chrome += Math.max(el.offsetHeight, el.scrollHeight) + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
+    }
     const pad = 14; // the log's own padding
     // A card's questions or plan may be scrolled: ask for their full height.
     let card = 0;
     for (const el of [$('askQuestions'), $('askPlan'), $('askDetail')]) if (el.offsetParent) card += el.scrollHeight - el.clientHeight;
     // A hidden (squeezed) log still wants its height back; an empty one doesn't.
     if (inner.offsetHeight) innerH = inner.offsetHeight;
-    const logH = inner.children.length && !(askKey && log.classList.contains('squeezed')) ? innerH + pad : 0;
+    const logH = inner.children.length ? innerH + pad : 0; // (with a card up too: what it's asking about stays in view if there's room)
     api.setHeight(current.id, Math.ceil(chrome + card + logH + 24 + 1)); // 24: room round the bubble
   }
 
@@ -1989,14 +2097,14 @@
 
   function fit() {
     text.style.height = 'auto';
-    text.style.height = Math.min(104, text.scrollHeight) + 'px';
-    text.style.overflowY = text.scrollHeight > 104 ? 'auto' : 'hidden';
+    text.style.height = Math.min(200, text.scrollHeight) + 'px';
+    text.style.overflowY = text.scrollHeight > 200 ? 'auto' : 'hidden';
   }
 
   api.onState((s) => {
     const first = !current || current.id !== s.id;
     if (first && current) drafts.set(current.id, text.value);
-    if (first) { document.body.classList.remove('overview'); $('find').value = ''; $('findBar').hidden = true; document.body.classList.remove('searching'); $('toast').hidden = true; gitOpen = false; recall = -1; suggAsked++; drawSuggest([]); }
+    if (first) { showOverview(false); $('find').value = ''; $('findBar').hidden = true; document.body.classList.remove('searching'); $('toast').hidden = true; gitOpen = false; recall = -1; suggAsked++; drawSuggest([]); }
     if (first) { seen = s.log.length; text.value = drafts.get(s.id) || ''; if (files.length) { files = []; drawFiles(); } } // before the card reads it
     render(s);
     if (first) { fit(); send.disabled = text.disabled || (!text.value.trim() && !files.length); }
@@ -2025,13 +2133,13 @@
   text.addEventListener('input', () => { if (askKey && current.ask && current.ask.kind === 'tool') planButtons(); });
   // Its permission mode under the field, as the terminal shows it; ⇧⇥ (or
   // a tap) changes it in a session Blaube started.
-  const MODES = { default: 'Asks before edits', acceptEdits: '⏵⏵ Accepting edits', plan: '⏸ Plan first', bypassPermissions: 'Bypassing permissions', dontAsk: 'Not asking first', auto: 'Auto mode' };
+  const MODES = { default: 'Asks before edits', acceptEdits: 'Accepting edits', plan: 'Plan first', bypassPermissions: 'Bypassing permissions', dontAsk: 'Not asking first', auto: 'Auto mode' };
   const CYCLE = ['default', 'acceptEdits', 'plan'];
   function renderMode(s) {
     const m = $('mode'), mode = s.mode || 'default';
     const shown = s.canMode || mode !== 'default';
     // (How full its context is, once that's worth knowing.)
-    const full = s.context >= 50 ? `${s.context}% context` : '';
+    const full = s.context >= 50 ? `${s.context}% of context used` : '';
     const about = [s.model, full, s.limit].filter(Boolean).join(' · '); // (and your usage limit, once it's close)
     m.hidden = !!s.ended || !!s.demo || (!shown && !about);
     m.className = 'mode ' + mode + (s.canMode ? ' can' : '');
@@ -2044,7 +2152,7 @@
       m.append(n);
     }
     if (shown) m.append(MODES[mode] || mode);
-    if (s.canMode) { const k = document.createElement('kbd'); k.textContent = '⇧⇥'; m.append(k); }
+    if (s.canMode) { const k = document.createElement('kbd'); k.textContent = 'Shift+Tab'; m.append(k); }
     m.title = s.canMode ? 'Change how it asks (Shift+Tab)' : 'Change it in its terminal (Shift+Tab there)';
   }
   function nextMode() {

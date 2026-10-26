@@ -16,6 +16,15 @@ const { inboxCommand, permissionCommand } = require('../../src/main/claudeHooks'
 const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(ROOT, 'shots');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// A POSIX shell for the hook commands: sh, or Git's bash on Windows (where
+// sh may not be on PATH). A shell that won't start fails the check, never
+// pops an error dialog.
+const SH = process.platform !== 'win32' ? 'sh' : [path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Git', 'bin', 'bash.exe')].find((p) => fs.existsSync(p)) || 'bash';
+const sh = (args, opts) => {
+	const p = spawn(SH, args, opts);
+	p.on('error', (e) => { console.log(`FAIL couldn’t start a shell (${SH}): ${e.message}`); p.emit('exit', -1, null); });
+	return p;
+};
 
 module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	let failed = 0;
@@ -28,7 +37,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 		req.end(JSON.stringify(Object.assign({ session_id: ID, cwd: '/tmp/kalkis' }, payload)));
 	});
 	const runHook = (cmd, payload, env = {}) => {
-		const p = spawn('sh', ['-c', cmd], { env: Object.assign({}, process.env, env) });
+		const p = sh(['-c', cmd], { env: Object.assign({}, process.env, env) });
 		let out = '', err = '';
 		p.stdout.on('data', (d) => { out += d; });
 		p.stderr.on('data', (d) => { err += d; });
@@ -223,7 +232,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await box(`(() => { const o = document.querySelectorAll('#askQuestions .opt'); o[0].click(); o[1].click(); const chip = document.querySelectorAll('#askQuestions .otherchip')[0]; chip.click(); const f = document.querySelectorAll('#askQuestions .other')[0]; f.value = 'and payroll'; f.dispatchEvent(new Event('input')); f.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })); })()`);
 	await sleep(300);
 	check(!(await box(`document.getElementById('ask').hidden`)), 'Enter with a question left doesn’t send half an answer');
-	check(await box(`document.getElementById('allow').textContent`) === '1 to go', 'the button says what’s left');
+	check(await box(`document.getElementById('allow').textContent`) === '1 question left to answer', 'the button says what’s left');
 	await box(`document.querySelectorAll('#askQuestions .opt')[2].click()`);
 	await box(`document.getElementById('allow').click()`);
 	const both = await Promise.race([quiz2.done, sleep(3000).then(() => null)]);
@@ -341,7 +350,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await hook({ hook_event_name: 'SessionEnd' });
 	check(await until(async () => (await box(`document.getElementById('state').textContent`)) === 'Ended'), 'the box stays when its session ends, saying it ended');
 	check(await box(`document.getElementById('text').disabled && document.getElementById('text').value === 'half-typed'`), 'the field is off, the draft kept');
-	check(await box(`/didn’t go in/.test(document.getElementById('hint').textContent) && [...document.querySelectorAll('.meta')].some((e) => e.textContent === 'not sent')`), 'and the queued message is marked not sent');
+	check(await box(`/didn’t go in/.test(document.getElementById('hint').textContent) && [...document.querySelectorAll('.meta')].some((e) => e.textContent === 'Not sent')`), 'and the queued message is marked not sent');
 	await shot('ended');
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
 	check(await until(() => !talk().isVisible()), 'Esc closes it');

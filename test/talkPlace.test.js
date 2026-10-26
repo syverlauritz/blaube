@@ -39,3 +39,11 @@ test('near the top it keeps to its side instead of flipping', () => {
   const again = placeTalk({ x: 700, y: 288, r: 60 }, area, 384, 400, first.tail.side);
   assert.equal(again.tail.side, first.tail.side);
 });
+
+test('a box that needs more room goes beside sooner, rather than squashed above', () => {
+  const at = { x: 700, y: 330, r: 60 };
+  assert.equal(placeTalk(at, area, 600, 460).tail.side, 'bottom');
+  const p = placeTalk(at, area, 600, 460, undefined, 380);
+  assert.notEqual(p.tail.side, 'bottom');
+  assert.equal(p.h, 460, 'beside, it gets all the room it asked for');
+});

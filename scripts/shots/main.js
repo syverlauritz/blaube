@@ -18,6 +18,7 @@ const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(ROOT, 'shots');
 const W = 900, H = 560;
 const { placeTalk } = require(path.join(ROOT, 'src', 'main', 'talkPlace.js'));
+const TALK_W = 600, TALK_MIN_H = 420, TALK_MAX_H = 820, TALK_MIN_ABOVE = 460; // (as src/main/main.js sizes the box)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const session = (id, project, state, extra = {}) => Object.assign({ id, project, state, activity: 'thinking', agents: [], tasks: [] }, extra);
@@ -517,6 +518,86 @@ const SCENES = {
 			{ who: 'you', text: 'and update the changelog when you’re done', via: 'blaube', status: 'queued' },
 		] },
 	},
+	// The talk box on a roomy desktop, in the states it's in most: a short
+	// chat, a long one (Markdown, code, steps), working, asking, an error.
+	talkShort: {
+		sessions: [session('hs', 'kalkis', 'done', { color: '#5B8DEF', look: 'antenna' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1280, 900],
+		talk: { key: 'hs', inbox: 'ready', git: 'main · 1 changed', log: [
+			{ who: 'you', text: 'what does the VAT calculator round to?', via: 'blaube', status: 'sent' },
+			{ who: 'claude', text: 'It rounds to **whole kroner**, half up, after adding the 25% VAT. The rounding lives in `src/vat.js` in `roundKr()`.' },
+		] },
+	},
+	talkHarness: {
+		sessions: [session('hh', 'blaube', 'done', { look: 'sprout' }), session('hh2', 'kalkis', 'waiting', { color: '#5B8DEF', look: 'bow' }), session('hh3', 'website', 'working', { color: '#E07BA8', look: 'catears' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1400, 1000],
+		talkJs: `setTimeout(() => { const b = [...document.querySelectorAll('button.step')].find((x) => /tests/.test(x.textContent)); if (b) b.click(); }, 400)`,
+		talk: { key: 'hh', inbox: 'ready', title: 'Faster window scan', git: 'feature/ledges · 3 changed', todos: [
+			{ id: '1', text: 'Find the slow part', doing: 'Finding the slow part', status: 'completed' },
+			{ id: '2', text: 'Keep one osascript running', doing: 'Keeping one osascript running', status: 'completed' },
+			{ id: '3', text: 'Run the tests', doing: 'Running the tests', status: 'completed' },
+		],
+		others: [{ id: 'hh', project: 'blaube', color: '#D97757', state: 'done' }, { id: 'hh2', project: 'kalkis', color: '#5B8DEF', state: 'waiting' }, { id: 'hh3', project: 'website', color: '#E07BA8', state: 'working' }],
+		log: [
+			{ who: 'you', text: 'why is the window ledge code slow on mac? fix it if you can', via: 'blaube', status: 'sent', n: 1 },
+			{ who: 'step', text: 'Read src/main/ledges.js', ok: true, n: 2 },
+			{ who: 'step', text: 'Searched for “osascript”', ok: true, n: 3 },
+			{ who: 'step', text: 'Read src/main/win/scan.swift', ok: true, n: 4 },
+			{ who: 'step', text: 'Edited src/main/ledges.js', ok: true, n: 5, detail: '− const out = execFileSync(\'osascript\', args);\n+ const out = scanner.latest();' },
+			{ who: 'step', text: 'Ran the tests', ok: false, n: 6, detail: '$ npm test\nnot ok 14 - a lone window makes one ledge along its top\n  AssertionError: 0 !== 1' },
+			{ who: 'step', text: 'Edited test/windows.test.js', ok: true, n: 7 },
+			{ who: 'step', text: 'Ran the tests', ok: true, n: 8, detail: '$ npm test\n# tests 277\n# pass 263\n# skipped 14' },
+			{ who: 'claude', at: 5, text: '## What was slow\nIt isn’t the scan itself: listing windows through CoreGraphics takes about a millisecond. The slow part:\n\n1. We started a new `osascript` process for **every** scan.\n2. Each start costs ~90 ms before it runs anything.\n3. At 60 scans a second that queues up and lags.\n\n## What I changed\n- One long-running scanner now prints only *changes*.\n- Windows smaller than 80×40 are skipped, and so are the menu bar and Dock layers.\n\n| | Before | After |\n|---|---|---|\n| Per scan | ~90 ms | <1 ms |\n| CPU while still | 18% | 0.3% |\n\n```js\nconst scanner = startScanner();\nscanner.on(\'change\', (list) => setLedges(list));\n```\n\nAll 263 tests pass.', turn: { took: 312e3, steps: 7, files: ['/w/src/main/ledges.js', '/w/test/windows.test.js'] } },
+			{ who: 'you', text: 'great, commit it', via: 'blaube', status: 'sent', n: 9 },
+			{ who: 'note', text: 'Allowed Bash: git commit -m "Scan windows with one long-running helper"' },
+			{ who: 'claude', text: 'Committed as `f3a91c2` “Scan windows with one long-running helper”.', turn: { steps: 2, files: [] } },
+		] },
+	},
+	talkWorking: {
+		sessions: [session('hw', 'blaube', 'working', { look: 'sprout' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1280, 950],
+		talk: { key: 'hw', inbox: 'busy', stoppable: true, doing: 'Editing talk.js', turnStart: Date.now() - 83e3, model: 'Opus 5.5', context: 64, git: 'main · 2 changed',
+			tasks: [{ id: 't1', label: 'Dev server', command: 'npm run dev', url: 'http://localhost:5173' }],
+			helpers: [{ name: 'Finding the tax tables', doing: 'Reading rates.js' }],
+			todos: [
+				{ id: '1', text: 'Log each step', doing: 'Logging each step', status: 'completed' },
+				{ id: '2', text: 'Show the steps in the talk box', doing: 'Showing the steps in the talk box', status: 'in_progress' },
+				{ id: '3', text: 'Run the tests', doing: 'Running the tests', status: 'pending' },
+			], log: [
+			{ who: 'you', text: 'make the talk box show what you did, step by step', via: 'blaube', status: 'sent', n: 1 },
+			{ who: 'step', text: 'Read inbox.js', ok: true, n: 2 },
+			{ who: 'step', text: 'Read talk.js', ok: true, n: 3 },
+			{ who: 'step', text: 'Edited inbox.js', ok: true, n: 4, detail: '− const MAX_LOG = 60;\n+ const MAX_LOG = 60;\n+ const MAX_STEPS = 40;' },
+			{ who: 'you', text: 'and keep it quiet, small text', via: 'blaube', status: 'queued', n: 5 },
+		] },
+	},
+	talkPermission: {
+		sessions: [session('hp', 'blaube', 'waiting', { color: '#5B8DEF', look: 'antenna', message: 'Claude needs your permission to use Bash' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1280, 950],
+		talk: { key: 'hp', inbox: 'busy', git: 'main', log: [
+			{ who: 'you', text: 'clean out the build folder and rebuild', via: 'blaube', status: 'sent', n: 1 },
+			{ who: 'step', text: 'Read package.json', ok: true, n: 2 },
+		], ask: { key: 1, kind: 'tool', tool: 'Bash', detail: 'rm -rf dist && npm run build:mac:local', always: 'Always allow npm run build:*', alwaysFull: 'Always allow npm run build:* in this project' }, asks: 2 },
+	},
+	talkError: {
+		sessions: [session('he', 'website', 'idle', { color: '#E07BA8', look: 'catears' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1280, 900],
+		talk: { key: 'he', inbox: 'ready', log: [
+			{ who: 'you', text: 'deploy the preview', via: 'blaube', status: 'sent', n: 1 },
+			{ who: 'step', text: 'Ran vercel deploy', ok: false, n: 2, detail: 'Error: No credentials found. Run `vercel login`.' },
+			{ who: 'note', error: true, text: 'API Error: 529 Overloaded. Claude’s servers are busy; it stopped before finishing. Send it a message to try again.' },
+		] },
+	},
 	crowd: {
 		sessions: [
 			session('a', 'blaube', 'working'),
@@ -529,7 +610,9 @@ const SCENES = {
 // The overview: the talk box with every session at a glance.
 // Find (⌘F) in a conversation with steps.
 SCENES.talkFind = Object.assign({}, SCENES.talkSteps, { talkJs: `setTimeout(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', metaKey: true })); const f = document.getElementById('find'); f.value = 'test'; f.dispatchEvent(new Event('input')); }, 400)` });
-SCENES.talkOverview = Object.assign({}, SCENES.talkChat, { talkJs: `setTimeout(() => document.querySelector('.others .all').click(), 400)` });
+SCENES.talkHarnessTop = Object.assign({}, SCENES.talkHarness, { talkJs: `setTimeout(() => { const b = [...document.querySelectorAll('button.step')].find((x) => /tests/.test(x.textContent)); if (b) b.click(); setTimeout(() => { document.getElementById('log').scrollTop = 0; }, 300); }, 400)` });
+SCENES.talkHarnessOverview = Object.assign({}, SCENES.talkHarness, { talkJs: `setTimeout(() => document.getElementById('allSessions').click(), 400)`, talk: Object.assign({}, SCENES.talkHarness.talk, { today: 'Today: 14 replies · 2h 10m of work · 23 files changed', others: [{ id: 'hh', project: 'blaube', color: '#D97757', state: 'done', status: 'Done: Committed as f3a91c2.', meta: 'feature/ledges · 3 changed' }, { id: 'hh2', project: 'kalkis', color: '#5B8DEF', state: 'waiting', status: 'Needs you: Claude needs your permission to use Bash', meta: '62% of context used · main', ask: { key: 3, tool: 'Bash', detail: 'npm run deploy' } }, { id: 'hh3', project: 'website', color: '#E07BA8', state: 'working', status: 'Editing Hero.tsx · 4m', meta: '2 of 5 on its list · main · 7 changed' }] }) });
+SCENES.talkOverview = Object.assign({}, SCENES.talkChat, { talkJs: `setTimeout(() => document.getElementById('allSessions').click(), 400)` });
 
 async function shoot(win, name, scene) {
 	const fire = (event, value) => win.webContents.send('fire', event, value);
@@ -597,13 +680,18 @@ async function addTalk(win, scene, name) {
 	win.webContents.send('fire', 'talking', t.key);
 	await sleep(100);
 	const area = { x: 0, y: 0, width: w, height: h - 44 };
-	let place = placeTalk(at, area, 384, 400);
-	const tw = new BrowserWindow({ width: 384, height: 400, show: false, frame: false, transparent: true, webPreferences: { preload: path.join(ROOT, 'src', 'main', 'talkPreload.js'), contextIsolation: true, sandbox: true } });
+	const TW = Math.min(TALK_W, w);
+	let place = placeTalk(at, area, TW, 400, undefined, TALK_MIN_ABOVE);
+	const tw = new BrowserWindow({ width: TW, height: 400, show: false, frame: false, transparent: true, webPreferences: { preload: path.join(ROOT, 'src', 'main', 'talkPreload.js'), contextIsolation: true, sandbox: true } });
 	let wantH = 400;
 	const onHeight = (e, _id, v) => { if (e.sender === tw.webContents) wantH = v; };
 	ipcMain.on('talk-height', onHeight);
+	ipcMain.removeHandler('talk-github-todo');
+	ipcMain.handle('talk-github-todo', () => []);
 	ipcMain.removeHandler('talk-hub');
 	ipcMain.handle('talk-hub', () => ({ folders: [{ path: '/Users/me/Git/blaube', name: 'blaube' }, { path: '/Users/me/Git/kalkis', name: 'kalkis' }], past: [{ id: 'p1', title: 'Speed up the build', where: 'blaube · yesterday' }, { id: 'p2', title: 'Fix the login bug', where: 'kalkis · 3 days ago' }] }));
+	ipcMain.removeHandler('talk-files-exist');
+	ipcMain.handle('talk-files-exist', () => []);
 	ipcMain.removeHandler('talk-paste');
 	ipcMain.handle('talk-paste', () => '/tmp/blaube-pastes/pasted-1.png'); // (nothing is saved for a picture)
 	tw.webContents.on('console-message', (e) => { if (e.level === 'error') console.log('talk error:', e.message); });
@@ -612,20 +700,22 @@ async function addTalk(win, scene, name) {
 	await sleep(500);
 	if (scene.talkJs) { await tw.webContents.executeJavaScript(scene.talkJs); await sleep(900); }
 	// The box hugs its content, like in the app (170-440 px, plus its tail).
-	const th = Math.round(Math.max(190, Math.min(t.ask ? 900 : 580, wantH)));
-	place = placeTalk(at, area, 384, th);
-	tw.setContentSize(384, place.h);
+	const th = Math.round(Math.max(TALK_MIN_H, Math.min(t.ask ? 900 : TALK_MAX_H, wantH)));
+	place = placeTalk(at, area, TW, th, undefined, TALK_MIN_ABOVE);
+	tw.setContentSize(TW, place.h);
 	tw.webContents.send('talk-tail', place.tail);
 	await sleep(400);
 	// It measures again for the side it ended up on (as in the app).
-	place = placeTalk(at, area, 384, Math.round(Math.max(190, Math.min(t.ask ? 900 : 580, wantH))), place.tail.side);
-	tw.setContentSize(384, place.h);
+	place = placeTalk(at, area, TW, Math.round(Math.max(TALK_MIN_H, Math.min(t.ask ? 900 : TALK_MAX_H, wantH))), place.tail.side, TALK_MIN_ABOVE);
+	tw.setContentSize(TW, place.h);
 	await sleep(400);
 	ipcMain.removeListener('talk-height', onHeight);
-	const fg = (await tw.webContents.capturePage()).toDataURL();
+	const fgImage = await tw.webContents.capturePage();
+	const fg = fgImage.toDataURL();
+	fs.writeFileSync(path.join(OUT, `${name}-box.png`), fgImage.toPNG()); // (the box by itself, too)
 	tw.destroy();
 	// The slime's layer draws the tail from under the bubble to its head.
-	win.webContents.send('fire', 'talk-rect', { id: t.key, x: place.x, y: place.y, w: 384, h: place.h, side: place.tail.side });
+	win.webContents.send('fire', 'talk-rect', { id: t.key, x: place.x, y: place.y, w: TW, h: place.h, side: place.tail.side });
 	await sleep(120);
 	// The renderer's CSP blocks data: images, so compose in a blank window.
 	const bg = (await win.webContents.capturePage()).toDataURL();
@@ -638,7 +728,7 @@ async function addTalk(win, scene, name) {
 		c.width = b.width; c.height = b.height;
 		const g = c.getContext('2d');
 		g.drawImage(b, 0, 0);
-		g.drawImage(f, ${place.x} * k, ${place.y} * k, 384 * k, ${place.h} * k);
+		g.drawImage(f, ${place.x} * k, ${place.y} * k, ${TW} * k, ${place.h} * k);
 		return c.toDataURL('image/png');
 	})()`);
 	cw.destroy();

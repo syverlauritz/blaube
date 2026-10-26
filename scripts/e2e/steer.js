@@ -18,6 +18,15 @@ const { toolHookCommand, permissionCommand } = require('../../src/main/claudeHoo
 
 const OUT = path.join(__dirname, '..', '..', 'shots');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// A POSIX shell for the hook commands: sh, or Git's bash on Windows (where
+// sh may not be on PATH). A shell that won't start fails the check, never
+// pops an error dialog.
+const SH = process.platform !== 'win32' ? 'sh' : [path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Git', 'bin', 'bash.exe')].find((p) => fs.existsSync(p)) || 'bash';
+const sh = (args, opts) => {
+	const p = spawn(SH, args, opts);
+	p.on('error', (e) => { console.log(`FAIL couldn’t start a shell (${SH}): ${e.message}`); p.emit('exit', -1, null); });
+	return p;
+};
 
 module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker }) {
 	let failed = 0;
@@ -33,7 +42,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	// A tool event the way Claude Code sends it: through the hook command,
 	// whose output is what Claude reads.
 	const tool = (payload) => new Promise((done) => {
-		const p = spawn('sh', ['-c', toolHookCommand(PORT)], { env: Object.assign({}, process.env, { CLAUDE_CODE_ENTRYPOINT: 'cli' }) });
+		const p = sh(['-c', toolHookCommand(PORT)], { env: Object.assign({}, process.env, { CLAUDE_CODE_ENTRYPOINT: 'cli' }) });
 		let out = '';
 		p.stdout.on('data', (d) => { out += d; });
 		p.on('exit', (code) => { let json = null; try { json = out ? JSON.parse(out) : null; } catch { /* checked by the caller */ } done({ code, out, json }); });
@@ -68,10 +77,10 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await sleep(400);
 
 	check(await until(() => box(`[...document.querySelectorAll('#inner .step')].some((e) => /tax\.js/.test(e.textContent))`)), 'the box shows the step it took (reading tax.js)');
-	check(await box(`!document.getElementById('todo').hidden && document.getElementById('todoCount').textContent === '0 of 2'`), 'and its to-do list (0 of 2)');
+	check(await box(`!document.getElementById('todo').hidden && document.getElementById('todoCount').textContent === '0 of 2 done'`), 'and its to-do list (0 of 2)');
 	check(await box(`/Adding the 2027 brackets/.test(document.getElementById('todoNow').textContent)`), 'with what it’s on now');
 	check(await until(() => box(`!document.getElementById('stop').hidden`)), 'a Stop button while it works');
-	check(await box(`document.getElementById('text').placeholder === 'Add something…'`), 'and the field says you can add something now');
+	check(await box(`document.getElementById('text').placeholder === 'Add to what it’s doing…'`), 'and the field says you can add something now');
 	check(await box(`!/Connect Claude Code/.test(document.getElementById('hint').textContent)`), 'a session whose steps reach Blaube isn’t told to connect');
 
 	// A helper it sends off shows under the dots, with what it's on.
@@ -118,7 +127,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await hook({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_use_id: 'tu3', tool_input: { command: 'npm run serve', description: 'Server', run_in_background: true }, tool_response: { backgroundTaskId: 'bash_9' } });
 	await until(() => box(`/Server/.test(document.getElementById('bg').textContent)`));
 	const out9 = fs.openSync(path.join(outDir, 'bash_9.output'), 'w');
-	const server = spawn('sh', ['-c', 'echo listening; sleep 60'], { stdio: ['ignore', out9, 'ignore'] });
+	const server = sh(['-c', 'echo listening; sleep 60'], { stdio: ['ignore', out9, 'ignore'] });
 	fs.closeSync(out9);
 	tracker.sessions.get(ID).pid = process.pid; // (its claude process: here, the app)
 	await sleep(300);
@@ -136,7 +145,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => box(`document.getElementById('bg').hidden`)), 'and it goes once Claude stops it');
 
 	// Asked whether it may edit a file: the card shows the change, tinted.
-	const asking = spawn('sh', ['-c', permissionCommand(PORT)], { env: Object.assign({}, process.env, { CLAUDE_CODE_ENTRYPOINT: 'cli' }) });
+	const asking = sh(['-c', permissionCommand(PORT)], { env: Object.assign({}, process.env, { CLAUDE_CODE_ENTRYPOINT: 'cli' }) });
 	asking.stdin.end(JSON.stringify({ session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'Edit', tool_input: { file_path: '/tmp/kalkis/src/tax.js', old_string: 'rate = 0.22', new_string: 'rate = 0.23' } }));
 	check(await until(() => box(`(() => { const d = document.getElementById('askDetail'); return !document.getElementById('ask').hidden && !!d.querySelector('.del') && /0\\.23/.test(d.querySelector('.add').textContent); })()`)), 'a permission card for an edit shows the change, tinted');
 	let askOut = '';
@@ -270,7 +279,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await key('0', mod);
 	await until(() => box(`document.body.classList.contains('overview')`));
 	// Another session asking permission is answered right from the overview.
-	const asking2 = spawn('sh', ['-c', permissionCommand(PORT)], { env: Object.assign({}, process.env, { CLAUDE_CODE_ENTRYPOINT: 'cli' }) });
+	const asking2 = sh(['-c', permissionCommand(PORT)], { env: Object.assign({}, process.env, { CLAUDE_CODE_ENTRYPOINT: 'cli' }) });
 	let answer2 = '';
 	asking2.stdout.on('data', (d) => { answer2 += d; });
 	asking2.stdin.end(JSON.stringify({ session_id: ID2, cwd: '/tmp/website', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'npm run build' } }));
@@ -279,7 +288,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await new Promise((r) => { asking2.on('exit', r); setTimeout(r, 4000); });
 	check(/"behavior":"allow"/.test(answer2), 'and Allow there answers it');
 	// And from the menu bar, without opening anything.
-	const asking3 = spawn('sh', ['-c', permissionCommand(PORT)], { env: Object.assign({}, process.env, { CLAUDE_CODE_ENTRYPOINT: 'cli' }) });
+	const asking3 = sh(['-c', permissionCommand(PORT)], { env: Object.assign({}, process.env, { CLAUDE_CODE_ENTRYPOINT: 'cli' }) });
 	let answer3 = '';
 	asking3.stdout.on('data', (d) => { answer3 += d; });
 	asking3.stdin.end(JSON.stringify({ session_id: ID2, cwd: '/tmp/website', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'npm publish' } }));
@@ -337,7 +346,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await page(`window.blaube.talk(${JSON.stringify(ID3)}, { x: 300, y: 600, r: 60 })`);
 	check(await until(() => talkId() === ID3 && box(`/feature.tax · 2 changed/.test(document.getElementById('git').textContent)`), 8000), 'in a git repository, its branch and what’s changed show');
 	check(await until(() => box(`!!document.querySelector('#inner .earlierbtn')`)), 'a session whose transcript goes further back offers Earlier messages');
-	check(await until(() => box(`(() => { const m = document.getElementById('mode'); return !m.hidden && m.textContent === 'Opus 5.5 · 60% context · ⏵⏵ Accepting edits' && !m.classList.contains('can'); })()`)), 'under the field: its model, how full it is, and that it’s accepting edits');
+	check(await until(() => box(`(() => { const m = document.getElementById('mode'); return !m.hidden && m.textContent === 'Opus 5.5 · 60% of context used · Accepting edits' && !m.classList.contains('can'); })()`)), 'under the field: its model, how full it is, and that it’s accepting edits');
 	await box(`document.querySelector('#inner .earlierbtn').click()`);
 	check(await until(() => box(`(() => { const e = document.querySelector('#inner .earlier'); return !!e && /set up the repo/.test(e.textContent) && /src folder/.test(e.textContent); })()`)), 'tapping it shows what was said before');
 	// /rename: its name, in its transcript where Claude Code keeps it.
