@@ -81,3 +81,11 @@ test('a background task that crashed is worth a notification', () => {
   assert.deepEqual(notification({ event: 'task', project: 'kalkis', text: 'Dev server' }), { title: 'kalkis: Dev server stopped', body: 'It ended with an error. Its last lines are in its box.' });
   assert.equal(notification({ event: 'task', project: 'kalkis', text: 'Dev server', seen: true }), null);
 });
+
+test('the overview says how long it has been waiting on you', () => {
+  const { glance } = require('../src/main/attention.js');
+  const now = 10 * 3600e3;
+  assert.equal(glance({ state: 'waiting', message: 'May I run npm test?', waitingSince: now - 5 * 60e3, now }).status, 'Needs you (5m): May I run npm test?');
+  assert.equal(glance({ state: 'waiting', waitingSince: now - 130 * 60e3, now }).status, 'Needs you (2h)');
+  assert.equal(glance({ state: 'waiting', waitingSince: now - 20e3, now }).status, 'Needs you');
+});

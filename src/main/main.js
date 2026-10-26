@@ -539,6 +539,7 @@ function glanceNow(o) {
     context: tk && tk.limit && tk.context ? Math.min(100, Math.round((tk.context / tk.limit) * 100)) : 0,
     git: gitStates.has(o.id) ? git.summary(gitStates.get(o.id)) : '',
     turnStart: o.turnStart,
+    waitingSince: o.state === 'waiting' ? o.updatedAt : 0,
     // Replies since its talk box was last open (never opened: since Blaube started).
     unread: o.id === talkId ? 0 : inbox.log(o.id).filter((e) => e.who === 'claude' && e.at > (looked.get(o.id) || 0)).length,
   });
@@ -1690,6 +1691,8 @@ app.whenReady().then(async () => {
     n.show();
   };
   setInterval(() => checkAway(), 30e3).unref();
+  // (The box's "4m" and "waiting 5m" keep up even when nothing else happens.)
+  setInterval(() => { if (talkWin && talkWin.isVisible() && talkId && tracker.list().some((o) => o.state === 'waiting' || o.state === 'working')) pushTalk(talkId); }, 30e3).unref();
   if (TEST) global.__blaubeCheckAway = checkAway;
   setTimeout(probeUsage, 20e3).unref();
   setInterval(probeUsage, 15 * 60e3).unref();
