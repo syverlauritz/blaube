@@ -94,6 +94,13 @@ module.exports = async function run({ win, tracker }) {
 	await sleep(2500);
 	ev('s3', 'SessionEnd');
 	check(await until(() => js(`(() => { const g = __blaube.buddies.get('s3'); return g && ['s1', 's2'].some((k) => __blaube.buddies.get(k).glanceAt === g); })()`), 2500), 'a session ends, the others watch its slime go');
+	// Errors keep coming: it steams up, and the turn ending calms it.
+	ev('s1', 'UserPromptSubmit');
+	await sleep(300);
+	for (let i = 0; i < 4; i++) { win.webContents.send('react', { id: 's1', kind: 'oops' }); await sleep(150); }
+	check(await until(() => js(`!!__blaube.buddies.get('s1').stuck`), 1500), 'errors keep coming, it steams up');
+	ev('s1', 'Stop', { last_assistant_message: 'Gave up for now.' });
+	check(await until(() => js(`!__blaube.buddies.get('s1').stuck`), 1500), 'the turn ends, it calms down');
 	await sleep(1500);
 	check(await js(`[...__blaube.buddies.values()].every((b) => [...b.body.px].every(Number.isFinite))`), 'bodies still finite after all that');
 	check(errs.length === 0, 'no renderer errors ' + errs.slice(0, 3).join(' | '));

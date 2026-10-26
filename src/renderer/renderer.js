@@ -1246,6 +1246,7 @@
     b.patted = false; // (see below)
     if (b.pendingHop) crouch(b);
     tingle(b);
+    fume(b);
     // A sneeze: it breathes in (stretching up), then "achoo!", which knocks
     // everything off its head and rocks it back.
     if (b.sneeze) {
@@ -1639,6 +1640,34 @@
 
   // Working hard: while a tool runs, now and then it tenses up and shivers
   // for a moment, a quick side-to-side tremble through its body.
+  // Struggling: errors keep coming (failed tools or tests, several in a
+  // couple of minutes with nothing going right). It gets steamed up, little
+  // puffs rising off its head and a cross face, so you can tell at a glance
+  // which session is going round in circles. A green run or the turn
+  // ending calms it down.
+  function struggle(b, n) {
+    if (CFG.stuckAfter <= 0) return;
+    b.fails = (b.fails || []).filter((t) => time - t < 120);
+    for (let i = 0; i < n; i++) b.fails.push(time);
+    if (!b.stuck && b.fails.length >= CFG.stuckAfter) {
+      b.stuck = { since: time };
+      quip(b, 'ugh, keeps failing', 2.5);
+    }
+  }
+  function fume(b) {
+    if (!b.stuck) return;
+    const last = b.fails[b.fails.length - 1] || 0;
+    if (b.state !== 'working' || time - last > 120) { b.stuck = null; b.fails = []; return; }
+    const body = b.body, r = body.o.radius;
+    if (time > (b.nextPuff || 0)) {
+      b.nextPuff = time + 0.45 + Math.random() * 0.5;
+      const c = body.centroid(), top = body.bbox().minY, side = Math.random() < 0.5 ? -1 : 1;
+      hearts.push({ puff: true, x: c.x + side * r * (0.25 + Math.random() * 0.3), y: top + 4, vx: side * (8 + Math.random() * 18), rise: 30 + Math.random() * 20, born: time, size: r * (0.08 + Math.random() * 0.05) });
+      // ...and it huffs: a little squash with each puff.
+      if (body.onFloor() && !body.grab) body.squashTop(r * 0.9, DT);
+    }
+  }
+
   function strain(b, r) {
     if (CFG.strain <= 0 || b.state !== 'working' || meditating(b)) return;
     const src = b.kind === 'child' ? b.agent : b.session;
@@ -2406,6 +2435,7 @@
     else if (st === 'waiting') { expression = 'worried'; mouth = 'o'; }
     else if (b.pain > 0.05) { expression = 'pained'; mouth = 'wobble'; }
     else if (st === 'done' && unseen(b)) { expression = 'happy'; mouth = 'grin'; }
+    else if (st === 'working' && b.stuck) { expression = 'pained'; mouth = 'wobble'; }
     else if (st === 'working') { expression = 'concentrate'; mouth = 'flat'; }
     else if (st === 'idle' && idleFor() > dozeAfter()) { expression = 'sleepy'; mouth = 'flat'; }
     // Saying something by itself (a status bubble): eyes open to tell you.
@@ -2754,7 +2784,17 @@
         h.from = null;
       }
       const hx = h.x + h.vx * age + Math.sin(age * 5 + h.born) * 4, hy = h.y - age * (h.rise || 45);
-      if (h.note) {
+      if (h.puff) {
+        // A puff of steam: a soft grey blob that swells and fades.
+        if (age > 1.1) { hearts.splice(i, 1); continue; }
+        ctx.save();
+        ctx.globalAlpha = 0.55 * Math.min(1, age * 8) * (1 - age / 1.1);
+        ctx.fillStyle = '#b9bfc9';
+        ctx.beginPath();
+        ctx.arc(hx, hy, h.size * (1 + age * 1.6), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else if (h.note) {
         // A sung note: a little ♪ in the singer's colour, white edged,
         // rocking as it rises.
         ctx.save();
@@ -3086,6 +3126,9 @@
     }
     // Tests only get a reaction when the result changes (fixed, or broken),
     // not on every run of a red-green loop.
+    // (A failed test shows up as an error too, so only errors count.)
+    if (m.kind === 'oops') struggle(b, Math.min(5, m.count || 1));
+    if (m.kind === 'cheer') { b.stuck = null; b.fails = []; }
     if (m.kind === 'cheer' || m.kind === 'testfail') {
       const was = b.lastTests;
       b.lastTests = m.kind;
@@ -3197,7 +3240,7 @@
 
   // Lets the renderer run in a plain browser for development and screenshots.
   function devShim() {
-    const listeners = { state: [], command: [], config: [], world: [], ledges: [], system: [], typing: [], talkRect: [] };
+    const listeners = { state: [], command: [], config: [], world: [], ledges: [], system: [], typing: [], talkRect: [], react: [] };
     window.__blaube = {
       setState: (s) => listeners.state.forEach((f) => f(s)),
       command: (c) => listeners.command.forEach((f) => f(c)),
@@ -3206,6 +3249,7 @@
       setLedges: (l) => listeners.ledges.forEach((f) => f(l)),
       system: (m) => listeners.system.forEach((f) => f(m)),
       typing: (id) => listeners.typing.forEach((f) => f(id)),
+      react: (m) => listeners.react.forEach((f) => f(m)),
       talkRect: (r) => listeners.talkRect.forEach((f) => f(r)),
       sys: () => sys,
       season: (k) => { seasonOverride = k; },
@@ -3228,6 +3272,7 @@
       onLedges: (f) => listeners.ledges.push(f),
       onSystem: (f) => listeners.system.push(f),
       onTyping: (f) => listeners.typing.push(f),
+      onReact: (f) => listeners.react.push(f),
       onTalkRect: (f) => listeners.talkRect.push(f),
       onState: (f) => listeners.state.push(f),
       onCommand: (f) => listeners.command.push(f),
