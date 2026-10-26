@@ -142,7 +142,7 @@
       ['windowCurious', 1, 0, 3, 0.05, 'Curious about new windows and ones you drag'],
       ['rideWobble', 1, 0, 3, 0.05, 'Riding a window you move: it wobbles as the window starts and stops'],
       ['gust', 1, 0, 3, 0.05, 'A window swept past fast blows leaves along and makes slimes lean away'],
-      ['seasons', 1, 0, 4, 0.05, 'Spring petals, autumn leaves and winter snow drift down and settle on them (how many)'],
+      ['seasons', 1, 0, 4, 0.05, 'Spring petals, summer butterflies, autumn leaves and winter snow (how many)'],
       ['systemLife', 1, 0, 2, 0.05, 'React to the computer: wake up with it, perk up on the charger, tire on low battery'],
       ['awayAfter', 300, 30, 1800, 10, 'You count as away after this long without keyboard or mouse (s)'],
       ['welcomeBack', true, 0, 0, 0, 'Back from away: say what changed while you were gone'],

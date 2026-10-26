@@ -1136,6 +1136,7 @@
     stepDrops();
     stepBubbles();
     stepSeason();
+    stepFlutters();
   }
 
   // --- Effort ---------------------------------------------------------------
@@ -1590,13 +1591,14 @@
   // on the ground; a slime that moves sheds them, and one that's collected a
   // few gives a little shake to get them off.
   const flakes = [];
-  let seasonOverride = null; // (dev: force 'leaves', 'petals', 'snow' or 'none')
+  let seasonOverride = null; // (dev: force 'leaves', 'petals', 'summer', 'snow' or 'none')
   function season() {
     if (seasonOverride) return seasonOverride;
     const d = new Date(), m = d.getMonth(), day = d.getDate();
     if (m === 11 || m <= 1) return 'snow';
     if ((m === 8 && day >= 22) || m === 9 || m === 10) return 'leaves';
     if ((m === 2 && day >= 20) || m === 3 || m === 4) return 'petals';
+    if (m >= 5 && m <= 7) return 'summer';
     return 'none';
   }
   const LEAF_COLORS = ['#d9822b', '#c4572a', '#e0a53a', '#a8643a'];
@@ -1607,7 +1609,7 @@
 
   function stepSeason() {
     const kind = CFG.seasons > 0 || showingOff ? season() : 'none';
-    if (kind !== 'none' && flakes.length < 80) {
+    if (kind !== 'none' && kind !== 'summer' && flakes.length < 80) {
       const rate = Math.max(CFG.seasons, showingOff ? 3 : 0) * (kind === 'snow' ? 0.9 : kind === 'petals' ? 0.6 : 0.3) * (W / 1600);
       if (Math.random() < rate * DT) {
         const snow = kind === 'snow';
@@ -1777,6 +1779,104 @@
         ctx.lineTo(f.size * 0.8, 0);
         ctx.stroke();
       }
+      ctx.restore();
+    }
+  }
+
+  // Summer: now and then a butterfly flutters by and lands on a slime's
+  // head. The slime goes still and cross-eyed looking up at it; it flies
+  // off when the slime moves or the cursor comes close, and a curious slime
+  // may hop up at one going past.
+  const flutters = [];
+  const WING_COLORS = ['#f2c14e', '#7fb3e6', '#f08aa5', '#f5f0e6'];
+  function addFlutter() {
+    const left = Math.random() < 0.5;
+    flutters.push({ x: left ? -20 : W + 20, y: H * (0.35 + Math.random() * 0.35), vx: 0, vy: 0, phase: Math.random() * 6, color: WING_COLORS[Math.floor(Math.random() * WING_COLORS.length)],
+      to: { x: W * (0.2 + Math.random() * 0.6), y: H * (0.3 + Math.random() * 0.4) }, on: null, born: time, perches: 0, leaveAt: time + 40 + Math.random() * 30, rest: 0 });
+  }
+  function stepFlutters() {
+    if ((CFG.seasons > 0 && season() === 'summer') && flutters.length < 2 && Math.random() < CFG.seasons * DT / 50) addFlutter();
+    for (let i = flutters.length - 1; i >= 0; i--) {
+      const u = flutters[i];
+      const ms = Math.hypot(mouse.vx, mouse.vy), near = Math.hypot(mouse.x - u.x, mouse.y - u.y) < 60 && ms > 30;
+      if (u.on) {
+        const b = u.on.b, body = b.body;
+        const v = body.velocity(DT);
+        if (b.dying || body.grab || Math.hypot(v.x, v.y) > 90 || near || time > u.rest) {
+          // Off it goes, up and away.
+          u.on = null; u.vy = -120; u.vx = (Math.random() - 0.5) * 160;
+          u.to = { x: u.x + (Math.random() - 0.5) * W * 0.5, y: Math.max(40, u.y - 150 - Math.random() * 120) };
+          u.cool = time + 3;
+          if (!b.dying) { b.glanceAt = { spot: u }; b.glanceUntil = time + 1.5; }
+          continue;
+        }
+        let top = 0;
+        for (let k = 0; k < body.n; k++) if (body.py[k] < body.py[top]) top = k;
+        u.x = body.px[top] + u.on.dx; u.y = body.py[top] - 3;
+        u.phase += DT * (Math.sin(time * 0.7 + u.color.length) > 0.6 ? 14 : 2); // (a slow open and close, now and then a flutter)
+        b.glanceAt = { spot: { x: u.x, y: u.y } }; b.glanceUntil = time + 0.2;
+        b.nextHop = Math.max(b.nextHop || 0, time + 0.5); // (holding still)
+        continue;
+      }
+      u.phase += DT * 22;
+      // Wandering flight: steer at a spot, with a bob on every wingbeat.
+      const dx = u.to.x - u.x, dy = u.to.y - u.y, d = Math.hypot(dx, dy) || 1;
+      u.vx += (dx / d * 90 - u.vx) * 1.5 * DT + (Math.random() - 0.5) * 300 * DT;
+      u.vy += (dy / d * 90 - u.vy) * 1.5 * DT + Math.sin(u.phase) * 260 * DT;
+      if (near) { u.vx += Math.sign(u.x - mouse.x) * 900 * DT; u.vy -= 600 * DT; }
+      u.x += u.vx * DT; u.y += u.vy * DT;
+      if (time > u.leaveAt) { u.to = { x: u.x < W / 2 ? -100 : W + 100, y: u.y - 100 }; if (u.x < -60 || u.x > W + 60 || u.y < -60) { flutters.splice(i, 1); continue; } }
+      else if (d < 30) {
+        // Somewhere new, or a calm slime's head to rest on.
+        const calm = [...buddies.values()].filter((b) => !b.dying && !b.body.grab && b.body.onFloor() && b.body.o.radius > 20 && !flutters.some((o) => o.on && o.on.b === b) && (b.state !== 'working' || Math.random() < 0.3));
+        const b = time > (u.cool || 0) && Math.random() < 0.6 && calm[Math.floor(Math.random() * calm.length)];
+        if (b) { const bb = b.body.bbox(); u.to = { x: (bb.minX + bb.maxX) / 2, y: bb.minY - 4, b }; }
+        else u.to = { x: Math.max(60, Math.min(W - 60, u.x + (Math.random() - 0.5) * 500)), y: H * (0.25 + Math.random() * 0.45) };
+      } else if (u.to.b && d < 50) {
+        const b = u.to.b, bb = b.body.bbox();
+        if (flutters.some((o) => o.on && o.on.b === b)) u.to = { x: u.x + (Math.random() - 0.5) * 300, y: H * 0.4 }; // (taken)
+        else if (Math.abs(u.x - (bb.minX + bb.maxX) / 2) < b.body.o.radius * 0.5 && Math.abs(u.y - bb.minY) < 30) {
+          u.on = { b, dx: (Math.random() - 0.5) * b.body.o.radius * 0.3 };
+          u.rest = time + 6 + Math.random() * 10;
+          u.perches++;
+          b.happyUntil = time + 1;
+          continue;
+        } else u.to = { x: (bb.minX + bb.maxX) / 2, y: bb.minY - 4, b };
+      }
+      // A bored slime might hop up at one going by, close overhead.
+      for (const b of buddies.values()) {
+        if (b.kind === 'child' || b.state !== 'idle' || b.dying || b.body.grab || !b.body.onFloor() || time < (b.nextSwat || 0)) continue;
+        const c = b.body.centroid(), r = b.body.o.radius, up = c.y - u.y;
+        if (Math.abs(u.x - c.x) > r * 1.5 || up < r * 1.5 || up > r * 3.5) continue;
+        b.nextSwat = time + 20 + Math.random() * 30;
+        if (Math.random() > 0.4) continue;
+        b.hop((u.x - c.x) * 1.5, -Math.sqrt(2 * CFG.gravity * (up - r * 0.5)));
+        b.glanceAt = { spot: u }; b.glanceUntil = time + 1.5;
+      }
+    }
+  }
+  function drawFlutters() {
+    for (const u of flutters) {
+      const open = Math.abs(Math.cos(u.phase)), facing = u.on ? 1 : Math.sign(u.vx) || 1;
+      ctx.save();
+      ctx.translate(u.x, u.y - (u.on ? 6 : 0));
+      ctx.scale(facing * 1.8, 1.8);
+      ctx.fillStyle = u.color;
+      ctx.strokeStyle = 'rgba(40, 30, 30, 0.35)';
+      ctx.lineWidth = 1;
+      for (const side of [-1, 1]) {
+        ctx.save();
+        ctx.scale(side * (0.15 + 0.85 * open), 1);
+        ctx.beginPath(); ctx.ellipse(5, -5, 6, 4.5, -0.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(4, 2.5, 4, 3, 0.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.restore();
+      }
+      ctx.strokeStyle = '#2b2730';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(0, 5); ctx.stroke();
+      ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(-2, -9); ctx.moveTo(0, -5); ctx.lineTo(2, -9); ctx.stroke();
       ctx.restore();
     }
   }
@@ -2414,7 +2514,7 @@
     const at = (s, f) => setTimeout(f, s * 1000);
     const big = () => bigs().filter((b) => !b.dying);
     const was = seasonOverride;
-    if (season() === 'none') seasonOverride = 'leaves';
+    if (season() === 'none' || season() === 'summer') seasonOverride = 'leaves';
     showingOff = true;
     at(0.5, () => { const b = big()[0]; if (b) b.trick = { n: 0, next: time }; }); // (only an idle one plays along)
     at(3, () => { const [b, o] = big(); if (b && o) { b.prank = null; b.nextPrank = 0; prankNow(b, o); } });
@@ -2431,6 +2531,7 @@
     at(14, () => charge());
     at(23, () => { const [b, o] = big(); if (b && o && !b.tag && !o.tag) tagNow(b, o); });
     at(29, () => { const b = big()[1] || big()[0]; if (b && !b.blow) b.blow = { at: time + 0.7, side: 1 }; });
+    at(31, () => addFlutter());
     at(17, () => { const b = buddies.get(HOME) || big()[0]; if (b) b.say([{ text: 'While you were away (demo):' }, ...summaryLines()], 6, false, false); });
     at(34, () => { seasonOverride = was; showingOff = false; });
   }
@@ -2915,6 +3016,7 @@
       else if (b.state === 'done' && unseen(b)) D.drawExclaim(ctx, b.body, time, W);
     }
     drawSeason(false);
+    drawFlutters();
     drawPets();
     drawBubbles();
     drawHearts();
@@ -3479,6 +3581,8 @@
       sys: () => sys,
       season: (k) => { seasonOverride = k; },
       flakes: () => flakes,
+      flutters: () => flutters,
+      flutter: () => addFlutter(),
       goo: () => bubbles,
       now: () => time,
       idleFor: (seconds) => { mouse.lastMove = performance.now() / 1000 - seconds; },
