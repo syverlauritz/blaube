@@ -19,9 +19,9 @@ function mostWanted(sessions) {
 // and can be answered right there (actions).
 // `turn`: what a finished turn came to ({ files, failed }: how many files it
 // changed, whether its tests failed), for the title.
-function notification({ event, project, title, text, secs = 0, seen = false, enabled = true, ask = null, turn = null }) {
+function notification({ event, project, name: shown, text, secs = 0, seen = false, enabled = true, ask = null, turn = null }) {
   if (!enabled || seen) return null;
-  const name = title || project || 'Claude';
+  const name = shown || project || 'Claude';
   const short = (t, n = 140) => { t = String(t || '').replace(/[`*_#>]+/g, '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
   // A question: what it asks; a single pick of up to three is answered
   // right there (actions), and a single question can be answered in words

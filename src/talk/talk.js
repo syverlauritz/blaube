@@ -608,7 +608,7 @@
           for (const o of (current.others || []).filter((x) => x.id !== current.id)) {
             const b = document.createElement('button');
             b.type = 'button';
-            b.textContent = o.project;
+            b.textContent = o.shownName || o.project;
             b.style.setProperty('--c', o.color);
             b.onclick = (ev2) => { ev2.stopPropagation(); menu.remove(); api.forward(current.id, o.id, m.text); };
             menu.append(b);
@@ -664,8 +664,8 @@
     $('stateChip').className = 'state ' + s.state;
     $('stateChip').hidden = !!s.demo;
     // Its name beside the folder's (double-click either to rename it).
-    $('subname').hidden = !s.title || s.title === s.project;
-    $('subname').textContent = s.title || '';
+    $('subname').hidden = !s.shownSub;
+    $('subname').textContent = s.shownSub || '';
     const root = document.documentElement.style;
     const color = s.color || '#d97757';
     root.setProperty('--color', color);
@@ -811,7 +811,7 @@
     count.hidden = list.length < 2;
     count.textContent = waiting ? `${waiting} need${waiting === 1 ? 's' : ''} you` : String(list.length);
     count.classList.toggle('wants', !!waiting);
-    const key = JSON.stringify([s.id, list.map((o) => [o.id, o.color, o.state, o.project, o.title])]);
+    const key = JSON.stringify([s.id, list.map((o) => [o.id, o.color, o.state, o.project, o.shownName])]);
     if (box.dataset.key === key) return;
     box.dataset.key = key;
     box.textContent = '';
@@ -823,7 +823,7 @@
       b.style.setProperty('--c', o.color);
       b.className = (o.id === s.id ? 'here' : '') + (o.state === 'waiting' ? ' wants' : '');
       const name = document.createElement('span');
-      name.textContent = o.project;
+      name.textContent = o.shownName || o.project;
       b.append(name);
       if (o.state === 'waiting' && o.id !== s.id) { const w = document.createElement('small'); w.textContent = 'needs you'; b.append(w); }
       b.title = `${o.project}${o.title ? `: ${o.title}` : ''}${o.state === 'waiting' ? ' (needs you)' : ''} · ${how}${i + 1}`;
@@ -1007,7 +1007,7 @@
       row.style.setProperty('--c', o.color);
       const name = document.createElement('b');
       name.textContent = o.project;
-      if (o.title) { const t = document.createElement('i'); t.className = 'title'; t.textContent = o.title; name.append(t); }
+      if (o.shownSub) { const t = document.createElement('i'); t.className = 'title'; t.textContent = o.shownSub; name.append(t); }
       const status = document.createElement('span');
       status.className = 'status';
       status.textContent = o.status || '';

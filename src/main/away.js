@@ -2,10 +2,10 @@
 // the computer, said once when you're back (so you needn't go round every
 // terminal to find out).
 
-// sessions: [{ id, project, title, state }]; logs: id -> log entries
+// sessions: [{ id, project, name, state }] (name: see shared/names.js); logs: id -> log entries
 // ({ who, at, turn }); since: when you went away. '' if nothing happened.
 function recap(sessions, logs, since) {
-  const name = (s) => s.title || s.project || 'A session';
+  const name = (s) => s.name || s.project || 'A session';
   const real = sessions.filter((s) => !String(s.id).startsWith('demo-'));
   const finished = [], need = [];
   let replies = 0;
