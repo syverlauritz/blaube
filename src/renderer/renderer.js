@@ -109,9 +109,7 @@
   function ensureAudio() {
     if (!audio) {
       const ctx = new AudioContext();
-      const out = ctx.createDynamicsCompressor(); // several at once stay soft
-      out.connect(ctx.destination);
-      audio = { ctx, out };
+      audio = { ctx, out: BlaubeVoice.master(ctx) }; // several at once never clip
     }
     if (audio.ctx.state === 'suspended') audio.ctx.resume();
     return audio;
