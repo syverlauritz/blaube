@@ -475,6 +475,14 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	const beforeTodo = new Set(owned.list());
 	await box(`[...document.querySelectorAll('#overview .row.github')].find((x) => /Brackets/.test(x.textContent)).click()`);
 	check(await until(() => owned.list().some((x) => !beforeTodo.has(x) && (tracker.sessions.get(x) || {}).cwd === madeIn && inbox.log(x).some((e) => e.who === 'you' && /^Work on GitHub issue acme\/tax#51\./.test(e.text))), 10000), 'a tap on one starts a session on it, in your clone');
+	// Something new for you there: a notification, with a button to start on it.
+	await sleep(1500);
+	fs.writeFileSync(path.join(ghDir, 'issues.json'), JSON.stringify([{ number: 51, title: 'Brackets for 2027', url: 'https://github.com/acme/tax/issues/51', repository: { nameWithOwner: 'acme/tax' }, updatedAt: new Date().toISOString() }, { number: 52, title: 'Rounding is off by one', url: 'https://github.com/acme/tax/issues/52', repository: { nameWithOwner: 'acme/tax' }, updatedAt: new Date().toISOString() }]));
+	check(await until(() => global.__blaubeGhNews && global.__blaubeGhNews.title === 'acme/tax#52 is yours now' && global.__blaubeGhNews.body === 'Rounding is off by one' && global.__blaubeGhNews.button === 'Start on it', 10000), 'an issue newly given you on GitHub gets a notification (what was there already doesn’t)');
+	const beforeNews = new Set(owned.list());
+	global.__blaubeGhNews.start();
+	check(await until(() => owned.list().some((x) => !beforeNews.has(x) && inbox.log(x).some((e) => e.who === 'you' && /^Work on GitHub issue acme\/tax#52\./.test(e.text))), 10000), 'and its button starts a session on it');
+	global.__blaubeGhNews = null;
 	global.__blaubeGh = '';
 	fs.rmSync(ghDir, { recursive: true, force: true });
 	for (const x of owned.list()) if ([madeIn, clonedTo].includes((tracker.sessions.get(x) || {}).cwd)) owned.end(x);

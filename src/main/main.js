@@ -2849,7 +2849,8 @@ app.whenReady().then(async () => {
   // "Work on an issue…": a GitHub issue's link (or owner/repo#42). A
   // session starts in your clone of its repository (cloned first if you
   // have none) and is asked to read the issue and fix it.
-  ipcMain.handle('talk-issue', (_e, text, opts) => new Promise((done) => {
+  ipcMain.handle('talk-issue', (_e, text, opts) => new Promise((done) => workOn(text, opts, done)));
+  function workOn(text, opts, done) {
     const r = cloner.issue(text);
     if (!r) return done('Paste the issue’s or pull request’s link, or owner/repo#42');
     const go = (dest) => {
@@ -2865,7 +2866,31 @@ app.whenReady().then(async () => {
       if (!dest) return done(`There’s no free folder name for ${r.name} in ${projectsDir()}`);
       cloner.clone(r.url, dest, (err) => (err ? done(`Couldn’t clone ${r.gh}: ${err}`) : go(dest)), { gh: r.gh });
     });
-  }));
+  }
+  // Something new for you on GitHub (a review asked of you, an issue given
+  // you), looked for every five minutes: a notification, with a button to
+  // start a session on it. What was there when Blaube started isn't news.
+  let ghSeen = null;
+  setInterval(() => {
+    const bin = (TEST ? global.__blaubeGh : pulls.findGh()) || ''; // (tests: a stand-in, never the real gh)
+    if (!bin) return;
+    require('./ghTodo').look((list) => {
+      if (ghSeen) for (const x of list) if (!ghSeen.has(x.url)) newOnGitHub(x);
+      ghSeen = new Set([...(ghSeen || []), ...list.map((x) => x.url)]);
+    }, { bin, fresh: TEST ? 0 : 5 * 60e3 });
+  }, TEST ? 1000 : 5 * 60e3).unref();
+  function newOnGitHub(x) {
+    const title = x.kind === 'review' ? `${x.repo}#${x.number} wants your review` : `${x.repo}#${x.number} is yours now`;
+    const button = x.kind === 'review' ? 'Review it' : 'Start on it';
+    if (TEST) { global.__blaubeGhNews = { title, body: x.title, button, start: () => workOn(x.url, {}, () => {}) }; return; }
+    if (!Notification.isSupported() || (prefs.config.notify || 'Behind windows') === 'Off') return;
+    const note = new Notification({ title, body: x.title, actions: [{ type: 'button', text: button }] });
+    note.on('action', () => { shown.delete(note); workOn(x.url, {}, (err) => { if (err) log(`github: ${err}`); }); });
+    note.on('click', () => { shown.delete(note); shell.openExternal(x.url); });
+    note.on('close', () => shown.delete(note));
+    shown.add(note);
+    note.show();
+  }
   // "New project…": a folder of its own next to your others, then a session in it.
   ipcMain.handle('talk-new-project', (_e, name, opts) => new Promise((done) => {
     cloner.newProject(projectsDir(), name, (err, dest) => { if (err) return done(err); startNew(dest, opts); done(''); });
