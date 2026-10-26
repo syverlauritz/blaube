@@ -2810,10 +2810,11 @@ app.whenReady().then(async () => {
   // have none) and is asked to read the issue and fix it.
   ipcMain.handle('talk-issue', (_e, text, opts) => new Promise((done) => {
     const r = cloner.issue(text);
-    if (!r) return done('Paste the issue’s link, or owner/repo#42');
+    if (!r) return done('Paste the issue’s or pull request’s link, or owner/repo#42');
     const go = (dest) => {
       const id = startNew(dest, opts);
-      if (id) sendMessage(id, `Work on GitHub issue ${r.gh}#${r.number}. Read it first, with its comments (\`gh issue view ${r.number} --repo ${r.gh} --comments\`). Then make a branch for it, fix it, and tell me what you changed. If it's unclear or big, tell me your plan before changing anything.`);
+      if (id && r.pr) sendMessage(id, `Review GitHub pull request ${r.gh}#${r.number}. Check it out (\`gh pr checkout ${r.number}\`) and read it with its comments (\`gh pr view ${r.number} --comments\`). Then tell me what it does, whether it's correct, and any bugs, risks or missing tests, each with its file and line. Don't push or comment on GitHub.`);
+      else if (id) sendMessage(id, `Work on GitHub issue ${r.gh}#${r.number}. Read it first, with its comments (\`gh issue view ${r.number} --repo ${r.gh} --comments\`). Then make a branch for it, fix it, and tell me what you changed. If it's unclear or big, tell me your plan before changing anything.`);
       done('');
     };
     const places = [...(prefs.recentFolders || []), ...tracker.list().map((o) => o.cwd), ...hubFolders];

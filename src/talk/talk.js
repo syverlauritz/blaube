@@ -856,7 +856,7 @@
     };
     if (api.clone) formChip('Clone a repository…', 'owner/repo, or its address', 'Clone', 'Cloning…', api.clone);
     if (api.newProject) formChip('New project…', 'Its name', 'Make it', 'Making it…', api.newProject);
-    if (api.issue) formChip('Work on an issue…', 'The issue’s link, or owner/repo#42', 'Start', 'Starting…', api.issue);
+    if (api.issue) formChip('Work on an issue or PR…', 'An issue’s or PR’s link, or owner/repo#42', 'Start', 'Starting…', api.issue);
     box.append(chips);
     if (hub.past.length) {
       section('Pick up where you left off');

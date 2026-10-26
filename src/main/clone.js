@@ -62,10 +62,11 @@ function newProject(parent, name, cb, { run = execFile } = {}) {
 // (url: the repository's, to clone), or null.
 function issue(text) {
   const t = String(text || '').trim();
-  const m = /^https:\/\/github\.com\/(\w[\w.-]*)\/([\w.][\w.-]*)\/issues\/(\d{1,7})(?:[/?#][^\s]*)?$/i.exec(t) || /^(\w[\w.-]*)\/([\w.][\w.-]*)#(\d{1,7})$/.exec(t);
+  const m = /^https:\/\/github\.com\/(\w[\w.-]*)\/([\w.][\w.-]*)\/(issues|pull)\/(\d{1,7})(?:[/?#][^\s]*)?$/i.exec(t) || /^(\w[\w.-]*)\/([\w.][\w.-]*)#()(\d{1,7})$/.exec(t);
   if (!m || /^\.+$/.test(m[2])) return null;
   const repo = m[2].replace(/\.git$/i, '');
-  return { gh: `${m[1]}/${repo}`, number: Number(m[3]), url: `https://github.com/${m[1]}/${repo}.git`, name: repo };
+  // (pr: a pull request's link, to review; owner/repo#42 may be either.)
+  return { gh: `${m[1]}/${repo}`, number: Number(m[4]), url: `https://github.com/${m[1]}/${repo}.git`, name: repo, pr: /^pull$/i.test(m[3]) };
 }
 // Which of `folders` is a clone of GitHub's `gh` (owner/repo), by its
 // origin: cb(folder or '').
