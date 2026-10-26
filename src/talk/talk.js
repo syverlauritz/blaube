@@ -1127,6 +1127,7 @@
   // Tap the git line for the files it's changed; tap one to see it.
   // (Its branches too: switch to one, or start a new one.)
   let gitOpen = false, gitFor = '';
+  const discardSure = new Map(); // file -> when its ↺ was tapped once
   $('git').addEventListener('click', () => { if (!current || !current.git || current.ended) return; gitOpen = !gitOpen; renderGitFiles(current); });
   function renderGitFiles(s) {
     const list = s.ended ? [] : (s.gitFiles || []);
@@ -1140,10 +1141,28 @@
     const box = $('gitFiles');
     const was = box.hidden;
     box.hidden = !gitOpen;
-    const key = JSON.stringify(list) + gitOpen + (s.editor || '');
+    const key = JSON.stringify(list) + gitOpen + (s.editor || '') + '|' + (s.putBack || '');
     if (box.dataset.key === key) return;
     box.dataset.key = key;
     box.textContent = '';
+    // Changes you just discarded: Put back (from git's stash).
+    if (gitOpen && s.putBack) {
+      const li = document.createElement('li');
+      li.className = 'putback';
+      const said = document.createElement('span');
+      said.textContent = `Discarded ${s.putBack.split('/').pop()}`;
+      const back = document.createElement('button');
+      back.type = 'button';
+      back.textContent = 'Put back';
+      back.title = `Brings back your changes to ${s.putBack}`;
+      back.onclick = async () => {
+        back.disabled = true;
+        const err = await api.putBack(current.id);
+        if (err) { said.textContent = err; back.remove(); requestAnimationFrame(fitWindow); }
+      };
+      li.append(said, back);
+      box.append(li);
+    }
     if (gitOpen) for (const f of list) {
       const li = document.createElement('li');
       const b = document.createElement('button');
@@ -1184,6 +1203,34 @@
         ed.setAttribute('aria-label', ed.title);
         ed.onclick = () => api.openInEditor(current.id, f.path, 0);
         li.append(...(s.editor ? [ed] : []), go, pre);
+      }
+      // (↺: discard its changes; a second tap to be sure.)
+      if (/^(changed|deleted|new)$/.test(f.how) && api.discard) {
+        const un = document.createElement('button');
+        un.type = 'button';
+        un.className = 'reveal discard';
+        un.textContent = '↺';
+        un.title = f.how === 'new' ? 'Discard this new file' : 'Discard your changes to it';
+        un.setAttribute('aria-label', un.title);
+        // (When it was tapped once, kept across the list being drawn again.)
+        if (Date.now() - (discardSure.get(f.path) || 0) < 4000) { un.textContent = 'Discard?'; un.classList.add('sure'); }
+        un.onclick = async () => {
+          const sure = discardSure.get(f.path) || 0;
+          if (Date.now() - sure > 4000) {
+            discardSure.clear();
+            discardSure.set(f.path, Date.now());
+            un.textContent = 'Discard?';
+            un.classList.add('sure');
+            setTimeout(() => { if (un.isConnected && Date.now() - (discardSure.get(f.path) || 0) >= 4000) { un.textContent = '↺'; un.classList.remove('sure'); } }, 4100);
+            return;
+          }
+          discardSure.delete(f.path);
+          un.disabled = true;
+          const err = await api.discard(current.id, f.path);
+          if (err) { un.disabled = false; un.textContent = '↺'; un.classList.remove('sure'); un.title = err; b.title = err; }
+        };
+        const pre = li.querySelector('pre');
+        if (pre) li.insertBefore(un, pre); else li.append(un);
       }
       box.append(li);
     }

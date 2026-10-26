@@ -400,6 +400,19 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	// Its branches, under the files: a new one, then back, no terminal.
 	execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'start'], { cwd: repo });
 	await box(`document.getElementById('git').click(); document.getElementById('git').click()`); // (closed and opened again: read afresh)
+	// ↺ discards a file's changes (twice, to be sure), and Put back brings them back.
+	const notes = fs.readFileSync(path.join(repo, 'notes.md'), 'utf8');
+	const unNotes = `[...document.querySelectorAll('#gitFiles li')].find((l) => /^notes\\.md/.test(l.firstChild.textContent)).querySelector('.discard')`;
+	await box(`${unNotes}.click()`);
+	check(await until(() => box(`${unNotes}.textContent === 'Discard?'`)) && fs.existsSync(path.join(repo, 'notes.md')), 'one tap on ↺ asks to be sure, and discards nothing yet');
+	await box(`${unNotes}.click()`);
+	check(await until(() => !fs.existsSync(path.join(repo, 'notes.md')) && inbox.log(ID3).some((e) => e.who === 'note' && /^Discarded your changes to notes\.md/.test(e.text))), 'a second tap discards it');
+	check(await until(() => box(`(() => { const t = [...document.querySelectorAll('#gitFiles li > button:first-child')].map((b) => b.textContent); return t.includes('src/tax.jsnew') && !t.includes('notes.mdnew'); })() && /Discarded notes\\.md/.test(document.querySelector('#gitFiles .putback').textContent)`), 10000), 'it leaves the list, with Put back in its place');
+	await sleep(500);
+	await shot('discard');
+	await box(`document.querySelector('#gitFiles .putback button').click()`);
+	check(await until(() => fs.existsSync(path.join(repo, 'notes.md')) && fs.readFileSync(path.join(repo, 'notes.md'), 'utf8') === notes && inbox.log(ID3).some((e) => e.text === 'Put back your changes to notes.md')), 'Put back brings it back as it was');
+	check(await until(() => box(`!document.querySelector('#gitFiles .putback') && [...document.querySelectorAll('#gitFiles li > button:first-child')].some((b) => b.textContent === 'notes.mdnew')`), 10000), 'and the list has it again');
 	check(await until(() => box(`(() => { const b = document.getElementById('branches'); return !b.hidden && [...b.querySelectorAll(':scope > button')].map((x) => x.textContent + (x.disabled ? '!' : '')).join() === 'feature/tax!,New branch…'; })()`)), 'the git line shows its branches too, the one it’s on marked');
 	await box(`[...document.querySelectorAll('#branches > button')].find((b) => b.textContent === 'New branch…').click()`);
 	await box(`(() => { const i = document.querySelector('#branches input'); i.value = 'bad name'; i.form.requestSubmit(); })()`);

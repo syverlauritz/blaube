@@ -499,6 +499,7 @@ function pushTalk(id, focusField = false) {
     // Its git status and what you might ask for next (see git.js).
     git: gitLine(id),
     gitFiles: gitFiles(id),
+    putBack: discarded.has(id) ? discarded.get(id).rel : '', // (the file whose changes you just discarded, to put back)
     editor: id.startsWith('demo-') || !editorNow() ? '' : editorNow().name, // (your code editor, to open its files in)
     scripts: s.cwd && !id.startsWith('demo-') ? runs.scripts(s.cwd).slice(0, 6).map((x) => x.name) : [], // (its package.json's, for Run)
     pr: prStates.get(id) ? { number: prStates.get(id).number, url: prStates.get(id).url, title: prStates.get(id).title } : null,
@@ -544,6 +545,7 @@ function carryFor(id, now = Date.now()) {
 let talkPicking = false; // (a file dialog from the box is open: it stays)
 let hubPast = [], hubFolders = [], hubCache = null; // what the overview last offered
 const gitStates = new Map(); // session id -> its last git status (or null: not a repository)
+const discarded = new Map(); // session id -> { root, rel }: the file whose changes you last discarded in its box
 const prStates = new Map(); // session id -> its branch's pull request, as gh last said (or null)
 // Its git line: the branch and what's changed, and how its pull request stands.
 const gitLine = (id) => [gitStates.has(id) ? git.summary(gitStates.get(id)) : '', pulls.words(prStates.get(id))].filter(Boolean).join(' · ');
@@ -643,7 +645,7 @@ function sweepSoon() { if (!sweepTimer) sweepTimer = setTimeout(() => { sweepTim
 function sweep() {
   const live = (id) => tracker.sessions.has(id) || owned.has(id) || (id === talkId && !!talkWin && !talkWin.isDestroyed() && talkWin.isVisible());
   for (const id of [...inbox.logs.keys(), ...inbox.todos.keys(), ...inbox.steerable, ...inbox.typed.keys()]) if (!live(id)) inbox.forget(id);
-  const maps = { gitStates, prStates, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan, carryLater, mcpStates, rewound, foreground };
+  const maps = { gitStates, prStates, discarded, looked, glances, talkHeights, notified, doing, errorCounts, apiErrorCounts, pickedModel, shellRan, carryLater, mcpStates, rewound, foreground };
   for (const id of [...muted]) if (!live(id)) muted.delete(id);
   for (const sid of runs.sessions()) if (!live(sid)) runs.stopAll(sid); // (its dev server goes with it)
   for (const m of Object.values(maps)) for (const id of [...m.keys()]) if (!live(id)) m.delete(id);
@@ -2842,6 +2844,35 @@ app.whenReady().then(async () => {
     const f = id === talkId && st && st.root && st.files.find((x) => path.join(st.root, x.path) === file);
     if (!f || f.how === 'deleted') return done('');
     git.diff(st.root, f.path, f.how, done);
+  }));
+  // Discard: a file's changes go (into git's stash, so Put back can bring
+  // them back), not while it's working (it may be changing it).
+  ipcMain.handle('talk-discard', (_e, id, file) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    const st = gitStates.get(id);
+    const f = s && st && st.root && st.files.find((x) => path.join(st.root, x.path) === file);
+    if (!f) return done('Can’t discard that one');
+    if (s.state === 'working' || s.state === 'waiting') return done('Not while it’s working: wait for it to finish');
+    git.discard(st.root, f.path, f.how, (err) => {
+      if (err) { inbox.add(id, { who: 'note', text: `Couldn’t discard ${f.path}: ${err}` }); return done(err); }
+      discarded.set(id, { root: st.root, rel: f.path });
+      inbox.add(id, { who: 'note', text: `Discarded your changes to ${f.path} (Put back, under its git line, brings them back)` });
+      git.forget(s.cwd);
+      git.status(s.cwd, (now) => { gitStates.set(id, now); pushTalk(id); });
+      done('');
+    });
+  }));
+  ipcMain.handle('talk-put-back', (_e, id) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    const d = discarded.get(id);
+    if (!s || !d) return done('Nothing to put back');
+    git.putBack(d.root, d.rel, (err) => {
+      discarded.delete(id);
+      inbox.add(id, { who: 'note', text: err ? `Couldn’t put back ${d.rel}: ${err}` : `Put back your changes to ${d.rel}` });
+      git.forget(s.cwd);
+      git.status(s.cwd, (now) => { gitStates.set(id, now); pushTalk(id); });
+      done(err);
+    });
   }));
   // The git line's branches: which there are, and switching (or making a
   // new one) while it isn't busy and nothing tracked is changed.

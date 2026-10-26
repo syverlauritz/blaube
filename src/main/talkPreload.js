@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   background: (id) => ipcRenderer.send('talk-background', id),
   forward: (from, to, text) => ipcRenderer.send('talk-forward', from, to, text),
   diff: (id, file) => ipcRenderer.invoke('talk-diff', id, file),
+  discard: (id, file) => ipcRenderer.invoke('talk-discard', id, file),
+  putBack: (id) => ipcRenderer.invoke('talk-put-back', id),
   branches: (id) => ipcRenderer.invoke('talk-branches', id),
   commits: (id) => ipcRenderer.invoke('talk-commits', id),
   branchChanges: (id) => ipcRenderer.invoke('talk-branch-changes', id),

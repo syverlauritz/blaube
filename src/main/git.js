@@ -237,4 +237,29 @@ function switchTo(cwd, name, create, cb) {
   });
 }
 
-module.exports = { parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };
+// Throws away your changes to one file (a tap in its box, not `git restore`
+// in a terminal), but into git's stash, so they can be put back. cb(error
+// or ''). Not a file in a conflict, or one git moved (renamed).
+const PUT_BACK = 'Blaube: put back ';
+function discard(root, rel, how, cb) {
+  if (!/^(changed|deleted|new)$/.test(how) || !rel || path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) return cb('Can’t discard that one');
+  execFile('git', ['stash', 'push', '--include-untracked', '-m', PUT_BACK + rel, '--', rel], { cwd: root, timeout: 10000, windowsHide: true }, (err, out, errOut) => {
+    forget(root);
+    if (err) return cb(/initial commit/.test(String(out) + errOut) ? 'Nothing’s committed yet, so there’s nothing to go back to' : gitSaid(errOut) || 'git couldn’t discard it');
+    if (/No local changes/i.test(String(out))) return cb('Nothing to discard');
+    cb('');
+  });
+}
+// Puts back the last one discarded, if it's still the newest stash.
+function putBack(root, rel, cb) {
+  execFile('git', ['stash', 'list', '-n', '1', '--format=%gs'], { cwd: root, timeout: 5000, windowsHide: true }, (err, out) => {
+    if (err || !String(out).trim().endsWith(PUT_BACK + rel)) return cb('It isn’t the newest thing in git’s stash any more: `git stash list` has it');
+    execFile('git', ['stash', 'pop', '--index'], { cwd: root, timeout: 10000, windowsHide: true }, (e2, _o, errOut) => {
+      forget(root);
+      cb(e2 ? (gitSaid(errOut) || 'git couldn’t put it back') : '');
+    });
+  });
+}
+const gitSaid = (errOut) => (String(errOut || '').split('\n').find((l) => /^(fatal|error):/.test(l)) || '').replace(/^(fatal|error):\s*/, '');
+
+module.exports = { discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };

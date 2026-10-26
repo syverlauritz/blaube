@@ -238,3 +238,46 @@ test('what a branch changed since it left main, file by file', async () => {
     assert.equal(await new Promise((r) => branchDiff(dir, '--output=/tmp/x', 'a.txt', r)), '');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('discarding a file’s changes keeps them in git’s stash, to put back', async () => {
+  const { discard, putBack } = require('../src/main/git');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-dis-'));
+  const env = Object.assign({}, process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
+  const g = (...a) => execFileSync('git', a, { cwd: dir, env }).toString().trim();
+  const p = (f, ...a) => new Promise((r) => f(dir, ...a, r));
+  try {
+    g('init', '-q', '-b', 'main');
+    fs.mkdirSync(path.join(dir, 'sub'));
+    for (const f of ['a.txt', 'b.txt', 'sub/c.txt']) fs.writeFileSync(path.join(dir, f), 'one\n');
+    g('add', '.'); g('commit', '-qm', 'base');
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'two\n');
+    fs.writeFileSync(path.join(dir, 'b.txt'), 'two\n');
+    fs.writeFileSync(path.join(dir, 'new file.txt'), 'n\n');
+    fs.rmSync(path.join(dir, 'sub/c.txt'));
+    assert.equal(await p(discard, 'a.txt', 'changed'), '');
+    assert.equal(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8'), 'one\n', 'back as committed');
+    assert.equal(fs.readFileSync(path.join(dir, 'b.txt'), 'utf8'), 'two\n', 'the others are left alone');
+    assert.equal(await p(discard, 'new file.txt', 'new'), '');
+    assert.equal(fs.existsSync(path.join(dir, 'new file.txt')), false);
+    assert.equal(await p(discard, 'sub/c.txt', 'deleted'), '');
+    assert.equal(fs.existsSync(path.join(dir, 'sub/c.txt')), true);
+    // Only the newest one discarded can be put back from here.
+    assert.match(await p(putBack, 'a.txt'), /stash/);
+    assert.equal(await p(putBack, 'sub/c.txt'), '');
+    assert.equal(fs.existsSync(path.join(dir, 'sub/c.txt')), false);
+    assert.equal(await p(discard, 'nothing.txt', 'changed'), 'Nothing to discard');
+    for (const [rel, how] of [['../x', 'changed'], ['/etc/hosts', 'changed'], ['a.txt', 'conflict'], ['a.txt', 'renamed'], ['', 'new']]) assert.equal(await p(discard, rel, how), 'Can’t discard that one', rel + ' ' + how);
+    assert.equal(g('status', '--porcelain'), 'M b.txt\n D sub/c.txt');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('nothing committed yet: nothing to discard back to, said so', async () => {
+  const { discard } = require('../src/main/git');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-dis0-'));
+  try {
+    execFileSync('git', ['init', '-q'], { cwd: dir });
+    fs.writeFileSync(path.join(dir, 'n.md'), 'x\n');
+    assert.equal(await new Promise((r) => discard(dir, 'n.md', 'new', r)), 'Nothing’s committed yet, so there’s nothing to go back to');
+    assert.equal(fs.existsSync(path.join(dir, 'n.md')), true);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
