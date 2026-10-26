@@ -1642,7 +1642,7 @@ app.whenReady().then(async () => {
     mcpStates.set(id, list);
     if (JSON.stringify(list) !== before) pushTalk(id);
   });
-  owned.on('start', (id) => setTimeout(() => { if (owned.has(id)) askMcp(id); }, 5000));
+  owned.on('start', (id) => setTimeout(() => { if (owned.has(id)) { askMcp(id); modelsFor(id, () => {}); } }, 5000));
   owned.on('result', (id) => askMcp(id));
   // "undo all" under a reply, in a session Blaube started: its files put
   // back as they were before that turn by Claude Code itself (rewind_files),
@@ -2176,13 +2176,15 @@ app.whenReady().then(async () => {
     try { past = history.pastSessions(new Set(live.map((o) => o.id)), 3); } catch { /* none */ }
     hubPast = past;
     hubFolders = folders;
-    const hub = { folders: folders.map((f) => ({ path: f, name: path.basename(f) })), past: past.map((p) => ({ id: p.id, title: p.title, where: `${path.basename(p.cwd)} · ${history.ago(p.at)}` })) };
+    const models = prefs.models && prefs.models.length ? prefs.models : [{ value: 'default', displayName: 'Default' }, { value: 'opus', displayName: 'Opus' }, { value: 'sonnet', displayName: 'Sonnet' }, { value: 'haiku', displayName: 'Haiku' }];
+    const hub = { models, folders: folders.map((f) => ({ path: f, name: path.basename(f) })), past: past.map((p) => ({ id: p.id, title: p.title, where: `${path.basename(p.cwd)} · ${history.ago(p.at)}` })) };
     hubCache = { at: Date.now(), hub };
     return hub;
   });
   // Only a folder the overview offered, and only if it's still there.
   ipcMain.on('talk-new', (_e, folder, opts) => {
-    const extra = [...(opts && opts.plan === true ? ['--permission-mode', 'plan'] : []), ...(opts && opts.worktree === true ? ['--worktree'] : [])]; // (Plan first, Own worktree)
+    const model = opts && typeof opts.model === 'string' && /^[\w.\-[\]]{1,60}$/.test(opts.model) && opts.model !== 'default' ? opts.model : '';
+    const extra = [...(opts && opts.plan === true ? ['--permission-mode', 'plan'] : []), ...(opts && opts.worktree === true ? ['--worktree'] : []), ...(model ? ['--model', model] : [])]; // (Plan first, Own worktree, its model)
     if (folder === 'pick') return newSession(extra);
     if (!hubFolders.includes(folder)) return;
     try { if (!fs.statSync(folder).isDirectory()) return; } catch { hubCache = null; return; }
@@ -2258,6 +2260,9 @@ app.whenReady().then(async () => {
     owned.control(id, { subtype: 'list_models' }, (ok, r) => {
       const list = ok && r && Array.isArray(r.models) ? r.models.filter((m) => m && typeof m.value === 'string').map((m) => ({ value: m.value, displayName: String(m.displayName || m.value), description: String(m.description || '') })) : [];
       if (list.length) modelLists.set(id, list);
+      // (Kept, for choosing a model for a new session.)
+      const keep = list.slice(0, 8).map((m) => ({ value: m.value, displayName: m.displayName }));
+      if (keep.length && JSON.stringify(keep) !== JSON.stringify(prefs.models || [])) { prefs.models = keep; savePrefs(); hubCache = null; }
       cb(list);
     });
   }

@@ -700,7 +700,7 @@
     requestAnimationFrame(fitWindow);
   }
   // Below the sessions: start one in a recent folder, or pick up a past one.
-  let hub = null, planFirst = false, ownTree = false;
+  let hub = null, planFirst = false, ownTree = false, newModel = 'default';
   function loadHub() {
     if (!api.hub) return;
     api.hub().then((h) => { hub = h; if (document.body.classList.contains('overview') && current) drawOverview(current); });
@@ -729,20 +729,32 @@
     tick2.onchange = () => { ownTree = tick2.checked; };
     tree.append(tick2, ' Own worktree');
     tree.title = 'It works on a copy of the project in a git worktree of its own, so sessions side by side don’t trip over each other';
-    box.lastChild.append(plan, tree);
+    // Its model, as `claude --model` would start it with.
+    const modelPick = document.createElement('select');
+    modelPick.className = 'newmodel';
+    modelPick.title = 'The model it starts with (/model changes it later)';
+    modelPick.setAttribute('aria-label', 'Model');
+    for (const m of hub.models || []) { const o = document.createElement('option'); o.value = m.value; o.textContent = m.displayName.replace(/\s*\(.*\)$/, ''); o.title = m.displayName; modelPick.append(o); }
+    if (![...modelPick.options].some((o) => o.value === newModel)) newModel = modelPick.options[0] ? modelPick.options[0].value : 'default';
+    modelPick.value = newModel;
+    modelPick.onchange = () => { newModel = modelPick.value; };
+    const opts = document.createElement('div');
+    opts.className = 'newopts';
+    opts.append(plan, tree, modelPick);
+    box.append(opts);
     const chips = document.createElement('div');
     chips.className = 'chips';
     for (const f of hub.folders) {
       const b = document.createElement('button');
       b.textContent = f.name;
       b.title = f.path;
-      b.onclick = () => api.newIn(f.path, { plan: planFirst, worktree: ownTree });
+      b.onclick = () => api.newIn(f.path, { plan: planFirst, worktree: ownTree, model: newModel });
       chips.append(b);
     }
     const pick = document.createElement('button');
     pick.textContent = 'Another folder…';
     pick.className = 'dim';
-    pick.onclick = () => api.newIn('pick', { plan: planFirst, worktree: ownTree });
+    pick.onclick = () => api.newIn('pick', { plan: planFirst, worktree: ownTree, model: newModel });
     chips.append(pick);
     box.append(chips);
     if (hub.past.length) {

@@ -219,6 +219,17 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await sleep(300);
 	check(!lastArgs().includes('--worktree') && inbox.log(plain).some((e) => /isn’t a git repository/.test(e.text)), 'Own worktree outside a git repository starts it in the folder, and says so');
 	owned.end(plain);
+	// A new session's model, from the overview: the ones Claude Code offers.
+	const was = new Set(owned.list());
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
+	check(await until(() => box(`(() => { const p = document.querySelector('#overview .newmodel'); return !!p && [...p.options].map((o) => o.textContent).join() === 'Default,Opus,Haiku'; })()`)), 'the overview offers a model for a new session, as Claude Code lists them');
+	if (process.env.BLAUBE_SHOTS) { await box(`document.querySelector('#overview .newmodel').scrollIntoView({ block: 'center' })`); await sleep(400); fs.writeFileSync(path.join(__dirname, '..', '..', 'shots', 'owned-newmodel.png'), (await talk().webContents.capturePage()).toPNG()); }
+	await box(`(() => { const p = document.querySelector('#overview .newmodel'); p.value = 'haiku'; p.dispatchEvent(new Event('change')); [...document.querySelectorAll('#overview .chips button')].find((b) => b.textContent === ${JSON.stringify(path.basename(dir))}).click(); })()`);
+	check(await until(() => owned.list().some((x) => !was.has(x)), 8000), 'and starts it there');
+	const picked = owned.list().find((x) => !was.has(x));
+	await sleep(300);
+	check(lastArgs()[lastArgs().indexOf('--model') + 1] === 'haiku', 'on the model picked (--model haiku)');
+	owned.end(picked);
 	require('node:child_process').execFileSync('git', ['init', '-q'], { cwd: dir });
 	const treed = startSession(dir, ['--worktree']);
 	await until(() => talkId() === treed, 8000);
