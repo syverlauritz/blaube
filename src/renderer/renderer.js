@@ -314,7 +314,7 @@
       const s = seen.get(m.id);
       m.vx = s.vx; m.vy = s.vy; m.t = t;
     }
-    for (const id of seen.keys()) if (!done.has(id)) { seen.delete(id); shook.delete(id); }
+    for (const id of seen.keys()) if (!done.has(id)) { seen.delete(id); shook.delete(id); ridden.delete(id); }
     noticeWindows(next, done);
     // Riders: keep them with where their window really is (only ever lifting
     // them: if it's lower, they're in the air above it).
