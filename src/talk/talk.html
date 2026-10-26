@@ -109,6 +109,16 @@
   /* Its git status, quietly, under its name. */
   .git { margin: -4px 22px 6px; font: 600 14px var(--ui); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .git[hidden] { display: none; }
+  button.git { display: block; border: 0; background: none; padding: 0; text-align: left; max-width: calc(100% - 44px); cursor: default; }
+  button.git.opens { cursor: pointer; }
+  button.git.opens:hover { color: var(--ink); }
+  .gitfiles { margin: -2px 22px 8px; padding: 0; list-style: none; max-height: 160px; overflow-y: auto; }
+  .gitfiles[hidden] { display: none; }
+  .gitfiles button { display: flex; gap: 8px; width: 100%; border: 0; background: none; padding: 1px 0; font: 500 13px var(--ui); color: var(--dim); text-align: left; cursor: pointer; }
+  .gitfiles button:hover { color: var(--ink); }
+  .gitfiles button span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gitfiles button small { flex: none; font: 600 12px var(--ui); color: var(--faint); }
+  .gitfiles .conflict small { color: #c0392b; }
   .link { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--color) 70%, transparent); text-underline-offset: 2px; cursor: pointer; word-break: break-all; }
   .link:hover { text-decoration-color: var(--color); }
   /* What it left running in the background (a dev server, a watcher). */
@@ -320,7 +330,8 @@
       <button class="round" id="terminal" title="Go to its terminal (or Alt-click the slime)" aria-label="Go to its terminal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7l5 5-5 5M12 17h7"/></svg></button>
       <button class="round" id="close" title="Close (Esc)" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
     </header>
-    <div class="git" id="git" hidden></div>
+    <button class="git" id="git" type="button" hidden aria-expanded="false"></button>
+    <ul class="gitfiles" id="gitFiles" hidden></ul>
     <ul class="bg" id="bg" hidden aria-label="Running in the background"></ul>
     <div class="findbar" id="findBar" hidden><input id="find" type="search" placeholder="Find in this conversation…" aria-label="Find in this conversation"><span id="findCount"></span></div>
     <button class="toast" id="toast" type="button" hidden aria-live="polite"></button>

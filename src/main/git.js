@@ -1,20 +1,27 @@
 // A session's git status, read locally (`git status`), for its talk box:
 // the branch, what's changed, what isn't pushed yet; and the one-tap
 // requests that make sense from there (commit, push, open a PR...).
+const path = require('node:path');
 const { execFile } = require('node:child_process');
 
-// `git status --porcelain=v2 --branch` -> { branch, ahead, behind, changed, untracked, upstream }
+// `git status --porcelain=v2 --branch` -> { branch, ahead, behind, changed,
+// untracked, upstream, conflicts, files: [{ path, how }] } (paths relative to
+// the repository, the first 30; how: changed, new, deleted, renamed, conflict).
+const FILES = 30;
 function parseStatus(out) {
-  const st = { branch: '', ahead: 0, behind: 0, changed: 0, untracked: 0, upstream: false, conflicts: 0 };
+  const st = { branch: '', ahead: 0, behind: 0, changed: 0, untracked: 0, upstream: false, conflicts: 0, files: [] };
+  const file = (p, how) => { if (p && st.files.length < FILES) st.files.push({ path: p, how }); };
+  const field = (line, n) => line.split(' ').slice(n).join(' '); // (a path may have spaces)
   for (const line of String(out || '').split('\n')) {
     if (line.startsWith('# branch.head ')) st.branch = line.slice(14).trim() === '(detached)' ? '' : line.slice(14).trim();
     else if (line.startsWith('# branch.upstream ')) st.upstream = true;
     else if (line.startsWith('# branch.ab ')) {
       const m = /\+(\d+) -(\d+)/.exec(line);
       if (m) { st.ahead = Number(m[1]); st.behind = Number(m[2]); }
-    } else if (line.startsWith('1 ') || line.startsWith('2 ')) st.changed++;
-    else if (line.startsWith('u ')) { st.changed++; st.conflicts++; }
-    else if (line.startsWith('? ')) st.untracked++;
+    } else if (line.startsWith('1 ')) { st.changed++; file(field(line, 8), line[2] === 'A' ? 'new' : /D/.test(line.slice(2, 4)) ? 'deleted' : 'changed'); }
+    else if (line.startsWith('2 ')) { st.changed++; file(field(line, 9).split('\t')[0], 'renamed'); }
+    else if (line.startsWith('u ')) { st.changed++; st.conflicts++; file(field(line, 10), 'conflict'); }
+    else if (line.startsWith('? ')) { st.untracked++; file(line.slice(2), 'new'); }
   }
   return st;
 }
@@ -60,13 +67,24 @@ function status(cwd, cb, now = Date.now()) {
   if (hit && now - hit.at < 4000) return cb(hit.st);
   if (asking.has(cwd)) { asking.get(cwd).push(cb); return; }
   asking.set(cwd, [cb]);
-  execFile('git', ['status', '--porcelain=v2', '--branch'], { cwd, timeout: 3000, windowsHide: true }, (err, out) => {
-    const st = err ? null : parseStatus(out);
+  const done = (st) => {
     cache.set(cwd, { at: Date.now(), st });
     const waiting = asking.get(cwd) || [];
     asking.delete(cwd);
     for (const f of waiting) f(st);
+  };
+  execFile('git', ['status', '--porcelain=v2', '--branch', '--untracked-files=all'], { cwd, timeout: 3000, windowsHide: true }, (err, out) => {
+    if (err) return done(null);
+    const st = parseStatus(out);
+    // Its files are named from the top of the repository: where that is.
+    if (roots.has(cwd)) { st.root = roots.get(cwd); return done(st); }
+    execFile('git', ['rev-parse', '--show-toplevel'], { cwd, timeout: 3000, windowsHide: true }, (e2, top) => {
+      st.root = e2 ? '' : path.resolve(String(top).trim());
+      if (st.root) roots.set(cwd, st.root);
+      done(st);
+    });
   });
 }
+const roots = new Map(); // cwd -> the top of its repository
 
 module.exports = { parseStatus, summary, quickActions, status };

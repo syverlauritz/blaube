@@ -433,6 +433,7 @@ function pushTalk(id, focusField = false) {
     focus: focusField,
     // Its git status and what you might ask for next (see git.js).
     git: gitStates.has(id) ? git.summary(gitStates.get(id)) : '',
+    gitFiles: gitFiles(id),
     quick: id.startsWith('demo-') ? [] : git.quickActions(gitStates.get(id) || null, s.state, {
       stopped: stoppedLast(inbox.log(id)),
       failedTests: failedTests(inbox.log(id)),
@@ -479,6 +480,12 @@ function glanceNow(o) {
     // Replies since its talk box was last open (never opened: since Blaube started).
     unread: o.id === talkId ? 0 : inbox.log(o.id).filter((e) => e.who === 'claude' && e.at > (looked.get(o.id) || 0)).length,
   });
+}
+
+// The files git says a session's folder has changed, as full paths.
+function gitFiles(id) {
+  const st = gitStates.get(id);
+  return st && st.root ? st.files.map((f) => ({ path: path.join(st.root, f.path), name: f.path, how: f.how })) : [];
 }
 
 // Sessions that are gone for good (not just ended: forgotten by the
@@ -1588,7 +1595,8 @@ app.whenReady().then(async () => {
   // A file a turn changed, shown in Finder (never opened: it could be a program).
   ipcMain.on('talk-reveal', (_e, id, file) => {
     if (!id || id !== talkId || typeof file !== 'string' || !path.isAbsolute(file)) return;
-    if (!inbox.log(id).some((e) => e.who === 'step' && e.file === file)) return; // only files its steps named
+    // (Only files its steps named, or git says are changed.)
+    if (!inbox.log(id).some((e) => e.who === 'step' && e.file === file) && !gitFiles(id).some((f) => f.path === file)) return;
     try { if (fs.statSync(file).isFile()) shell.showItemInFolder(file); } catch { /* gone */ }
   });
   // Another slime picked in the box (its dot, or a shortcut).

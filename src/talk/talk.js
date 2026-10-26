@@ -309,6 +309,7 @@
     if (document.body.classList.contains('overview')) drawOverview(s);
     $('git').textContent = s.git || '';
     $('git').hidden = !s.git || !!s.ended;
+    renderGitFiles(s);
     renderTasks(s);
     renderQuick(s);
     renderAsk(s.ask, s.asks);
@@ -613,6 +614,40 @@
       b.onclick = () => { if (!current) return; if (q.here) api.continueHere(current.id); else api.send(current.id, q.prompt); box.hidden = true; };
       box.append(b);
     }
+  }
+
+  // Tap the git line for the files it's changed; tap one to see it.
+  let gitOpen = false;
+  $('git').addEventListener('click', () => { if (!current || !(current.gitFiles || []).length) return; gitOpen = !gitOpen; renderGitFiles(current); });
+  function renderGitFiles(s) {
+    const list = s.ended ? [] : (s.gitFiles || []);
+    if (!list.length) gitOpen = false;
+    $('git').classList.toggle('opens', !!list.length);
+    $('git').setAttribute('aria-expanded', String(gitOpen));
+    $('git').title = list.length ? (gitOpen ? 'Hide the files' : 'Show the changed files') : '';
+    const box = $('gitFiles');
+    const was = box.hidden;
+    box.hidden = !gitOpen;
+    const key = JSON.stringify(list) + gitOpen;
+    if (box.dataset.key === key) return;
+    box.dataset.key = key;
+    box.textContent = '';
+    if (gitOpen) for (const f of list) {
+      const li = document.createElement('li');
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = f.how;
+      const name = document.createElement('span');
+      name.textContent = f.name;
+      const how = document.createElement('small');
+      how.textContent = f.how;
+      b.append(name, how);
+      b.title = f.path;
+      if (f.how !== 'deleted') b.onclick = () => api.reveal && api.reveal(current.id, f.path);
+      li.append(b);
+      box.append(li);
+    }
+    if (was !== box.hidden || gitOpen) requestAnimationFrame(fitWindow);
   }
 
   // What it left running in the background, each with a Stop (asked of
@@ -948,7 +983,7 @@
   api.onState((s) => {
     const first = !current || current.id !== s.id;
     if (first && current) drafts.set(current.id, text.value);
-    if (first) { document.body.classList.remove('overview'); $('find').value = ''; $('findBar').hidden = true; document.body.classList.remove('searching'); }
+    if (first) { document.body.classList.remove('overview'); $('find').value = ''; $('findBar').hidden = true; document.body.classList.remove('searching'); $('toast').hidden = true; gitOpen = false; }
     if (first) { seen = s.log.length; text.value = drafts.get(s.id) || ''; if (files.length) { files = []; drawFiles(); } } // before the card reads it
     render(s);
     if (first) { fit(); send.disabled = text.disabled || (!text.value.trim() && !files.length); }

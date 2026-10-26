@@ -181,6 +181,29 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await key('[', mod);
 	check(await until(() => talkId() === ID), '⌘[ goes to the one before');
 
+	// In a git repository: the git line, and the files it changed a tap away.
+	const repo = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'blaube-repo-'));
+	const { execFileSync } = require('node:child_process');
+	execFileSync('git', ['init', '-q', '-b', 'feature/tax'], { cwd: repo });
+	fs.mkdirSync(path.join(repo, 'src'));
+	fs.writeFileSync(path.join(repo, 'src', 'tax.js'), 'x');
+	fs.writeFileSync(path.join(repo, 'notes.md'), 'y');
+	const ID3 = ID + '-c';
+	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'SessionStart' });
+	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'hi' });
+	await tool({ session_id: ID3, cwd: repo, hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: path.join(repo, 'notes.md') } });
+	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'Stop', last_assistant_message: 'Hello.' });
+	await until(async () => !!(await page(`!!__blaube.buddies.get(${JSON.stringify(ID3)})`)), 6000);
+	await page(`window.blaube.talk(${JSON.stringify(ID3)}, { x: 300, y: 600, r: 60 })`);
+	check(await until(() => talkId() === ID3 && box(`/feature.tax · 2 changed/.test(document.getElementById('git').textContent)`), 8000), 'in a git repository, its branch and what’s changed show');
+	await box(`document.getElementById('git').click()`);
+	check(await until(() => box(`[...document.querySelectorAll('#gitFiles button')].map((b) => b.textContent).sort().join()`).then((t) => t === 'notes.mdnew,src/tax.jsnew')), 'tapping it lists the files');
+	await shot('gitfiles');
+	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Commit')`)), 'with Commit a tap away');
+	await hook({ session_id: ID3, hook_event_name: 'SessionEnd' });
+	await page(`window.blaube.talk(${JSON.stringify(ID)}, { x: 300, y: 600, r: 60 })`);
+	await until(() => talkId() === ID);
+
 	await hook({ session_id: ID2, hook_event_name: 'SessionEnd' });
 	await hook({ hook_event_name: 'SessionEnd' });
 	check(await until(async () => (await box(`[...document.querySelectorAll('#quick button')].map((b) => b.textContent).join()`)) === 'Pick it up here'), 'when it ends, it offers to pick it up right there');
