@@ -179,12 +179,15 @@
     else show();
   }
   // You told it something: it says "okay!" and the 👍 pops up as the "-kay"
-  // lands. Every time (it's you it answers, so it isn't rationed), at most
-  // every 2 s; while another slime is talking it just shows the 👍.
+  // lands. Out loud at most once a minute (a session fed prompts in a loop
+  // would say it over and over), else just the 👍; while another slime is
+  // talking it just shows the 👍 too.
   function okayBack(b) {
-    if (time - (b.okayAt ?? -1e9) < 2) return;
-    b.okayAt = time;
+    if (time - (b.thumbAt ?? -1e9) < 2) return;
+    b.thumbAt = time;
     const thumb = (seconds) => { if (!b.dying) b.say([{ text: '👍', size: 30 }], seconds); };
+    if (time - (b.okayAt ?? -1e9) < 60) { thumb(1.2); return; }
+    b.okayAt = time;
     const line = speak(b, 'okay!');
     if (!line) { thumb(1.2); return; }
     setTimeout(() => thumb(Math.max(0.8, line.length - line.land + 0.5)), (line.wait + line.land) * 1000);
