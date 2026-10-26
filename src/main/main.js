@@ -1131,10 +1131,13 @@ function notify(s, event, text, secs = 0) {
   // (And a permission ask can be answered "no, do this instead" in words.)
   // (A question: a tap on an answer, or one in your own words.)
   const askReply = ask && ask.kind === 'tool' && n.actions;
+  // (Done: its first two quick actions as buttons, Commit or Fix the tests, say.)
+  const quick = event === 'done' && !n.actions && doQuick ? quickFor(s.id, s).filter((q) => !q.here && !q.signIn && !q.bring && !('later' in q)).slice(0, 2) : [];
+  const buttons = n.actions || (quick.length ? quick.map((q) => q.label) : null);
   const answer = (label) => inbox.decide(s.id, ask.key, 'allow', { [n.question]: label });
   const note = new Notification(Object.assign({ title: n.title, body: n.body }, event === 'done' ? { hasReply: true, replyPlaceholder: `Reply to ${s.project}` } : askReply ? { hasReply: true, replyPlaceholder: 'Or say what to do instead' } : n.question ? { hasReply: true, replyPlaceholder: 'Or answer in your words' } : {},
-    n.actions ? { actions: n.actions.map((text) => ({ type: 'button', text })) } : {}));
-  note.on('action', (_e, i) => { shown.delete(note); if (ask && n.actions && !(n.question ? answer(n.actions[i]) : inbox.decide(s.id, ask.key, i === 0 ? 'allow' : 'deny')) && win) win.webContents.send('open-talk', s.id); });
+    buttons ? { actions: buttons.map((text) => ({ type: 'button', text })) } : {}));
+  note.on('action', (_e, i) => { shown.delete(note); if (quick[i] && tracker.sessions.has(s.id)) return doQuick(s.id, quick[i]); if (ask && n.actions && !(n.question ? answer(n.actions[i]) : inbox.decide(s.id, ask.key, i === 0 ? 'allow' : 'deny')) && win) win.webContents.send('open-talk', s.id); });
   note.on('reply', (_e, text) => {
     shown.delete(note);
     const said = String(text || '').trim();
