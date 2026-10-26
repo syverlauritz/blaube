@@ -300,6 +300,20 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await type('/exit');
 	check(await until(() => !owned.has(NID) && inbox.log(NID).some((e) => /^Ended\. Its conversation is kept/.test(e.text || ''))), '/exit ends a session Blaube started');
 
+	// Install Claude Code from the menu: its official installer (a stand-in here).
+	let ran = null;
+	global.__blaubeInstallRun = (bin, args) => {
+		ran = [bin, ...args];
+		const { EventEmitter } = require('node:events');
+		const p = new EventEmitter(); p.stdout = new EventEmitter(); p.stderr = new EventEmitter(); p.kill = () => {};
+		setTimeout(() => { p.stdout.emit('data', '✔ Claude Code installed\n'); p.emit('close', 0); }, 50);
+		return p;
+	};
+	global.__blaubeInstall();
+	check(await until(() => global.__blaubeInstalled && global.__blaubeInstalled.ok), 'Install Claude Code runs its official installer, no terminal');
+	check(!!ran && /install\.(sh|ps1)/.test(ran.join(' ')), 'the one its setup page has you paste');
+	check(await until(() => global.__blaubeAfterInstall === true), 'and then checks it’s signed in');
+
 	console.log(failed ? `\n${failed} failed` : '\nall passed');
 	return failed ? 1 : 0;
 };

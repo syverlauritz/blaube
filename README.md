@@ -78,7 +78,7 @@ npm install
 npm start
 ```
 
-Then right-click Blaube and choose **Connect Claude Code…** (the slime reminds you on first run). That adds Blaube's hooks to `~/.claude/settings.json` (a backup is saved as `settings.json.blaube-backup`, and your existing hooks are kept). Restart any running Claude Code sessions to pick them up. **Claude Code → Disconnect…** removes exactly what was added. If Claude Code isn't installed, Blaube says so and offers **Install Claude Code…**.
+Then right-click Blaube and choose **Connect Claude Code…** (the slime reminds you on first run). That adds Blaube's hooks to `~/.claude/settings.json` (a backup is saved as `settings.json.blaube-backup`, and your existing hooks are kept). Restart any running Claude Code sessions to pick them up. **Claude Code → Disconnect…** removes exactly what was added. If Claude Code isn't installed, Blaube says so and offers **Install Claude Code…**: after a dialog that shows what it runs, Blaube runs Claude Code's official installer itself (`curl -fsSL https://claude.ai/install.sh | bash`, or its PowerShell twin on Windows, as the setup page has you paste into a terminal), then has you sign in through your browser. No terminal needed (**Show me how instead** opens the setup page).
 
 Want to see it without Claude running? Choose **Play → Demo sessions** from the menu.
 

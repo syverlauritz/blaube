@@ -22,6 +22,7 @@ const limits = require('./limits');
 const usageProbe = require('./usageProbe');
 const auth = require('./auth');
 const renamer = require('./rename');
+const installer = require('./installer');
 const taskOutput = require('./taskOutput');
 const permRules = require('./permRules');
 const taskKill = require('./taskKill');
@@ -1225,7 +1226,7 @@ function appMenuTemplate() {
   return [
     { label: `Blaube ${app.getVersion()}`, enabled: false },
     { type: 'separator' },
-    ...(noClaude ? [{ label: 'Install Claude Code…', click: () => shell.openExternal(INSTALL_URL) }]
+    ...(noClaude ? [{ label: installing ? 'Installing Claude Code…' : 'Install Claude Code…', enabled: !installing, click: installClaude }]
       : installed ? [] : [{ label: claudeHooks.hasAnyBlaubeHooks() ? 'Update Claude Code connection…' : 'Connect Claude Code…', click: installHooks }]),
     ...newSessionMenu(),
     { type: 'separator' },
@@ -1352,6 +1353,34 @@ async function askDockAccess() {
     if (systemPreferences.isTrustedAccessibilityClient(false) || ++tries > 60) { clearInterval(poll); refreshDock(); }
   }, 2000);
 }
+
+// Installing Claude Code from the menu, no terminal: its official
+// installer, after a dialog that says what runs (see installer.js). Then
+// it signs in (afterInstall: your browser opens).
+let installing = false, afterInstall = () => {};
+async function installClaude() {
+  if (installing) return;
+  const line = installer.command()[2];
+  const { response } = TEST ? { response: 0 } : await dialog.showMessageBox({
+    type: 'question', buttons: ['Install', 'Show me how instead', 'Cancel'], defaultId: 0, cancelId: 2,
+    message: 'Install Claude Code?',
+    detail: `Blaube runs Claude Code's official installer, as its setup page has you do in a terminal:\n\n${line}\n\nIt goes in your home folder (no password needed). Then you sign in once, in your browser.`,
+  });
+  if (response === 1) { shell.openExternal(INSTALL_URL); return; }
+  if (response !== 0) return;
+  installing = true;
+  refreshTray();
+  installer.install((ok, last) => {
+    installing = false;
+    log(`install Claude Code: ${ok ? 'ok' : 'failed'}: ${last}`);
+    refreshTray();
+    if (TEST) global.__blaubeInstalled = { ok, last };
+    if (ok && claudeFound()) { afterInstall(); return; }
+    if (!TEST) dialog.showMessageBox({ type: 'warning', buttons: ['Show me how', 'OK'], defaultId: 0, cancelId: 1, message: 'Claude Code didn’t install.', detail: last || 'The installer stopped without saying why.' })
+      .then(({ response: r }) => { if (r === 0) shell.openExternal(INSTALL_URL); });
+  }, TEST && global.__blaubeInstallRun ? { run: global.__blaubeInstallRun } : {});
+}
+if (TEST) global.__blaubeInstall = installClaude;
 
 async function installHooks() {
   const file = claudeHooks.settingsPath();
@@ -1620,6 +1649,15 @@ app.whenReady().then(async () => {
     auth.status(bin, (ok) => { if (ok === null || ok === !signedOutNow) return; signedOutNow = !ok; if (talkId) pushTalk(talkId); });
   };
   ipcMain.on('talk-sign-in', (_e, id) => signIn(id));
+  // Just installed: signed in yet? If not, sign in (your browser opens).
+  afterInstall = () => {
+    const bin = owned.findClaude() || owned.shellPath();
+    auth.status(bin, (ok) => {
+      if (ok === false) { signedOutNow = true; signIn(''); }
+      if (TEST) global.__blaubeAfterInstall = ok;
+      if (!TEST && ok !== false) dialog.showMessageBox({ type: 'info', message: 'Claude Code is installed.', detail: 'Start a session from Blaube’s menu (New session…).' });
+    });
+  };
   const signIn = (id) => {
     const bin = owned.findClaude() || owned.shellPath();
     if (signingIn || !bin) return;
@@ -1701,7 +1739,7 @@ app.whenReady().then(async () => {
     if ((code || signal) && s && !TEST && inbox.log(id).length === 0) {
       if (/ENOENT|not found/i.test(err) && !claudeFound()) {
         dialog.showMessageBox({ type: 'warning', buttons: ['Install Claude Code…', 'OK'], defaultId: 0, cancelId: 1, message: 'Blaube can’t find Claude Code on this computer.', detail: 'Install it, then try New session again.' })
-          .then(({ response }) => { if (response === 0) shell.openExternal(INSTALL_URL); });
+          .then(({ response }) => { if (response === 0) installClaude(); });
       } else {
         dialog.showMessageBox({ type: 'warning', message: 'Claude Code couldn’t start there.', detail: err || `It stopped right away (${signal || `exit code ${code}`}).` });
       }
