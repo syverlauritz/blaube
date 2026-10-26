@@ -82,6 +82,15 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await hook({ hook_event_name: 'SubagentStop', agent_id: 'h1' });
 	check(await until(() => box(`document.querySelectorAll('#inner .dots .helpers li').length === 0`)), 'and goes when it’s done');
 
+	// Something it left running shows, with a Stop that asks Claude to end it.
+	await hook({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_use_id: 'tu1', tool_input: { command: 'npm run dev', description: 'Dev server', run_in_background: true }, tool_response: { backgroundTaskId: 'bash_7' } });
+	check(await until(() => box(`!document.getElementById('bg').hidden && /Dev server/.test(document.getElementById('bg').textContent)`)), 'a background task it started shows in the box');
+	await box(`document.querySelector('#bg button').click()`);
+	check(await until(() => (inbox.queue.get(ID) || []).some((e) => /Stop the background task .Dev server. \(id bash_7/.test(e.text))), 'its Stop asks Claude to stop it');
+	for (const e of inbox.queue.get(ID) || []) inbox.unsend(ID, e.n);
+	await hook({ hook_event_name: 'PreToolUse', tool_name: 'KillShell', tool_input: { shell_id: 'bash_7' } });
+	check(await until(() => box(`document.getElementById('bg').hidden`)), 'and it goes once Claude stops it');
+
 	// Tapping a step shows what it did.
 	await tool({ hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: '/tmp/kalkis/src/tax.js', old_string: 'export const brackets = [];', new_string: 'export const brackets = [2027];' }, tool_response: {} });
 	check(await until(() => box(`[...document.querySelectorAll('#inner .step.opens')].some((e) => /tax\.js/.test(e.textContent) && /Edit/.test(e.textContent))`)), 'an edit shows as a step you can open');

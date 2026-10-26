@@ -425,6 +425,7 @@ function pushTalk(id, focusField = false) {
     // reached us (it was started with them, whatever the file says now).
     connected: hooksOk || inbox.reachable.has(id) || inbox.steerable.has(id) || inbox.asks.has(id) || inbox.owned.has(id),
     doing: s.state === 'working' ? doing.get(id) || '' : '',
+    tasks: (s.tasks || []).filter((t) => !t.demo).slice(0, 4).map((t) => ({ id: t.id, label: t.description || t.command, command: t.command })),
     helpers: s.state === 'working' || s.state === 'waiting' ? (s.agents || []).slice(0, 5).map((a) => ({ name: agentDescription(s, a) || a.type, doing: helperDoing.get(`${id}/${a.id}`) || '', waiting: a.state === 'waiting' })) : [],
     focus: focusField,
     // Its git status and what you might ask for next (see git.js).

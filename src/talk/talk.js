@@ -287,6 +287,7 @@
     if (document.body.classList.contains('overview')) drawOverview(s);
     $('git').textContent = s.git || '';
     $('git').hidden = !s.git || !!s.ended;
+    renderTasks(s);
     renderQuick(s);
     renderAsk(s.ask, s.asks);
     $('hint').textContent = hint(s);
@@ -590,6 +591,32 @@
       b.onclick = () => { if (!current) return; if (q.here) api.continueHere(current.id); else api.send(current.id, q.prompt); box.hidden = true; };
       box.append(b);
     }
+  }
+
+  // What it left running in the background, each with a Stop (asked of
+  // Claude, which started it: no terminal needed).
+  function renderTasks(s) {
+    const box = $('bg');
+    const list = s.ended || s.demo ? [] : (s.tasks || []);
+    const key = JSON.stringify(list.map((t) => t.id)) + s.id;
+    box.hidden = !list.length;
+    if (box.dataset.key === key) return;
+    box.dataset.key = key;
+    box.textContent = '';
+    for (const t of list) {
+      const li = document.createElement('li');
+      const name = document.createElement('span');
+      name.textContent = t.label;
+      name.title = t.command;
+      const stop = document.createElement('button');
+      stop.type = 'button';
+      stop.textContent = 'Stop';
+      stop.title = `Ask Claude to stop ${t.command}`;
+      stop.onclick = () => { if (!current) return; stop.disabled = true; api.send(current.id, `Stop the background task “${t.label}” (id ${t.id}, \`${t.command}\`).`); };
+      li.append(name, stop);
+      box.append(li);
+    }
+    requestAnimationFrame(fitWindow);
   }
 
   // Its to-do list: how far it is and what it's on; the list on a tap.

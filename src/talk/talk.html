@@ -109,6 +109,15 @@
   /* Its git status, quietly, under its name. */
   .git { margin: -4px 22px 6px; font: 600 14px var(--ui); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .git[hidden] { display: none; }
+  /* What it left running in the background (a dev server, a watcher). */
+  .bg { margin: -2px 22px 6px; padding: 0; list-style: none; }
+  .bg[hidden] { display: none; }
+  .bg li { display: flex; align-items: center; gap: 8px; font: 600 14px var(--ui); color: var(--dim); }
+  .bg li span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bg li span::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 2px; background: var(--color); vertical-align: 1px; }
+  .bg button { border: 0; border-radius: 999px; padding: 1px 10px; background: var(--soft); font: 600 13px var(--ui); color: var(--dim); cursor: pointer; }
+  .bg button:hover { color: var(--ink); }
+  .bg button:disabled { opacity: .5; cursor: default; }
   /* What you might ask for next, one tap each. */
   .quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 8px; }
   .quick[hidden] { display: none; }
@@ -310,6 +319,7 @@
       <button class="round" id="close" title="Close (Esc)" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
     </header>
     <div class="git" id="git" hidden></div>
+    <ul class="bg" id="bg" hidden aria-label="Running in the background"></ul>
     <div class="findbar" id="findBar" hidden><input id="find" type="search" placeholder="Find in this conversation…" aria-label="Find in this conversation"><span id="findCount"></span></div>
     <button class="toast" id="toast" type="button" hidden aria-live="polite"></button>
     <div class="todo" id="todo" hidden>
