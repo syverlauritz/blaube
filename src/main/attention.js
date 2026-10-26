@@ -17,7 +17,9 @@ function mostWanted(sessions) {
 // `ask`: what it's asking permission for ({ kind, tool, detail }), or its
 // question ({ kind: 'question', input }), if anything: then it says what,
 // and can be answered right there (actions).
-function notification({ event, project, title, text, secs = 0, seen = false, enabled = true, ask = null }) {
+// `turn`: what a finished turn came to ({ files, failed }: how many files it
+// changed, whether its tests failed), for the title.
+function notification({ event, project, title, text, secs = 0, seen = false, enabled = true, ask = null, turn = null }) {
   if (!enabled || seen) return null;
   const name = title || project || 'Claude';
   const short = (t, n = 140) => { t = String(t || '').replace(/[`*_#>]+/g, '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
@@ -34,7 +36,10 @@ function notification({ event, project, title, text, secs = 0, seen = false, ena
   if (event === 'waiting') return { title: `${name} needs you`, body: short(text) || 'It’s waiting for your answer.' };
   if (event === 'error') return { title: `${name} couldn’t go on`, body: short(text) || 'Claude Code couldn’t get an answer.' };
   if (event === 'task') return { title: `${name}: ${short(text, 60) || 'a background task'} stopped`, body: 'It ended with an error. Its last lines are in its box.' };
-  if (event === 'done' && secs >= 20) return { title: `${name} is done`, body: short(text) || 'It finished its turn.' };
+  if (event === 'done' && secs >= 20) {
+    const files = turn && turn.files ? ` · ${turn.files} ${turn.files === 1 ? 'file' : 'files'} changed` : '';
+    return { title: turn && turn.failed ? `${name} is done, but its tests fail${files}` : `${name} is done${files}`, body: short(text) || 'It finished its turn.' };
+  }
   return null;
 }
 

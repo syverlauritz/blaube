@@ -100,3 +100,10 @@ test('a question in a notification: what it asks, its answers a tap away', () =>
   assert.equal(four.actions, undefined);
   assert.equal(four.question, 'Which?', 'still answerable in words');
 });
+
+test('a finished turn says what it came to in the title', () => {
+  const { notification } = require('../src/main/attention');
+  assert.equal(notification({ event: 'done', project: 'kalkis', text: 'Done.', secs: 90, turn: { files: 3, failed: false } }).title, 'kalkis is done · 3 files changed');
+  assert.equal(notification({ event: 'done', project: 'kalkis', text: 'Done.', secs: 90, turn: { files: 1, failed: true } }).title, 'kalkis is done, but its tests fail · 1 file changed');
+  assert.equal(notification({ event: 'done', project: 'kalkis', text: 'Done.', secs: 90, turn: { files: 0, failed: false } }).title, 'kalkis is done');
+});

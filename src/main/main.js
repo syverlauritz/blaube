@@ -1056,7 +1056,11 @@ function notify(s, event, text, secs = 0) {
   const seen = (talkWin && talkWin.isVisible() && talkId === s.id) || (mode !== 'Always' && prefs.config.onTop !== 'Off' && win && win.isVisible());
   // (Asking permission: Allow and Deny right in it, on macOS.)
   const ask = event === 'waiting' ? (inbox.asks.get(s.id) || []).slice(-1)[0] : null;
-  const n = attention.notification({ event, project: s.project, title: usage.sessionInfo(transcriptPath(s)).title, text, secs, seen, enabled: mode !== 'Off', ask });
+  // (Finished: what its turn came to, whether or not its reply is in yet.)
+  const log = inbox.log(s.id), last = [...log].reverse().find((e) => e.who === 'claude');
+  const t = event === 'done' ? require('./inbox').turnOf(log, Date.now()) || (last && Date.now() - last.at < 10e3 && last.turn) : null;
+  const turn = event === 'done' ? { files: t ? t.files.length : 0, failed: !!failedTests(log) } : null;
+  const n = attention.notification({ event, project: s.project, title: usage.sessionInfo(transcriptPath(s)).title, text, secs, seen, enabled: mode !== 'Off', ask, turn });
   if (!n || Date.now() - (notified.get(s.id) || 0) < 15000) return;
   notified.set(s.id, Date.now());
   // (On macOS you can answer one that's done right in the notification.)
