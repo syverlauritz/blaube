@@ -561,6 +561,7 @@
         if (m.body.onFloor()) m.hop(0, -380);
       }
       m.lastContext = context;
+      planTick(m, s.progress);
       m.session = s;
       m.color = colorFor(m);
       setEffort(m, s.effort);
@@ -3134,6 +3135,57 @@
     if (CFG.busySweat <= 0 || b.state !== 'working') return 0;
     return ramp(t.length, CFG.busySweat * 0.75, CFG.busySweat * 2) * 0.7;
   }
+  // Its todo list, worn as a row of beads across its middle: filled for
+  // done, glowing for the one it's on. Each one ticked off gets a hop,
+  // and the last a cheer.
+  function planTick(b, pr) {
+    const was = b.plan;
+    b.plan = pr || null;
+    if (!pr) { b.planAllAt = undefined; return; }
+    if (pr.done < pr.total) b.planAllAt = undefined;
+    if (!was || pr.done <= was.done || pr.total < was.total - 1) return;
+    b.beadAt = time;
+    if (CFG.planBeads <= 0 || b.body.grab || talkingTo === b.key) return;
+    const free = b.body.onFloor() && !b.pendingHop && !b.tag && !b.parade && !b.trick;
+    if (pr.done === pr.total) {
+      b.planAllAt = time;
+      if (free) b.hop(0, -520);
+      const c = b.body.centroid();
+      for (let i = 0; i < 3; i++) pops.push({ x: c.x + (i - 1) * 16, y: c.y - b.body.o.radius * 1.1, r: 8 + i * 4, born: time + i * 0.07, color: '#7bd88f', life: 0.5 });
+      quip(b, 'plan done!', 1.8);
+    } else {
+      if (free) b.hop(0, -300);
+      quip(b, `${pr.done}/${pr.total} \u2713`, 1.2, 15);
+    }
+  }
+  function drawBeads(b) {
+    const pr = b.plan, items = b.session && b.session.plan && b.session.plan.items;
+    if (!pr || !items || CFG.planBeads <= 0 || b.kind !== 'mother' || b.merging || b.dying) return;
+    if (b.planAllAt !== undefined && time - b.planAllAt > 8) return;
+    const box = b.body.bbox(), w = box.maxX - box.minX, h = box.maxY - box.minY;
+    if (w < 30) return;
+    const n = items.length, span = w * 0.56;
+    const gap = Math.min(b.body.o.radius * 0.2 * CFG.planBeads, span / Math.max(1, n - 1));
+    const br = Math.max(1.6, Math.min(gap * 0.36, b.body.o.radius * 0.075 * CFG.planBeads));
+    const cx = (box.minX + box.maxX) / 2, cy = box.maxY - h * 0.23, half = (gap * (n - 1)) / 2;
+    const fade = b.planAllAt !== undefined ? Math.max(0, 1 - (time - b.planAllAt - 6) / 2) : 1;
+    ctx.save();
+    for (let i = 0; i < n; i++) {
+      const dx = i * gap - half, u = half ? dx / (w * 0.5) : 0;
+      const x = cx + dx, y = cy - u * u * h * 0.32; // following the curve of its belly
+      const st = items[i].status;
+      // The one just ticked off pops up a size, then settles.
+      const k = i === pr.done - 1 && b.beadAt !== undefined ? 1 + 0.7 * Math.max(0, 1 - (time - b.beadAt) / 0.4) : 1;
+      ctx.beginPath();
+      ctx.arc(x, y, br * k, 0, Math.PI * 2);
+      if (st === 'completed') ctx.fillStyle = `rgba(255,255,255,${0.9 * fade})`;
+      else if (st === 'in_progress') ctx.fillStyle = `rgba(255,255,255,${(0.35 + 0.3 * Math.sin(time * 4)) * fade})`;
+      else ctx.fillStyle = `rgba(0,0,0,${0.16 * fade})`;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   function drawClouds() {
     for (const b of buddies.values()) {
       const cl = b.cloud;
@@ -3802,6 +3854,9 @@
     // How long it's been waiting on you.
     const waited = b.state === 'waiting' && b.stateSince !== undefined ? Math.floor((time - b.stateSince) / 60) : 0;
     if (waited >= 1) lines.push({ text: `Waiting ${waited} min`, dim: true });
+    // How far through its todo list.
+    const pr = b.kind === 'mother' && b.session && b.session.progress;
+    if (pr && pr.total) lines.push({ text: `Plan: ${pr.done} of ${pr.total}${pr.current ? ' \u00b7 ' + pr.current : ''}`, dim: true });
     // How full its context window is.
     const tk = b.kind === 'mother' && b.session && b.session.tokens;
     if (tk && tk.limit && tk.context) lines.push({ text: `${Math.min(100, Math.round((tk.context / tk.limit) * 100))}% of context used`, dim: true });
@@ -3874,6 +3929,7 @@
       nightcap(b);
       const sweat = Math.max(ramp(b.fill || 0, CFG.sweatAt, 1), busySweat(b));
       if (sweat > 0) D.drawSweat(ctx, b.body, time, sweat);
+      drawBeads(b);
       if (b.merging && b.kind === 'child' && !b.dying) {
         const box = b.body.bbox();
         D.drawHeart(ctx, b.body.centroid().x, Math.min(box.minY, b.body.lookTop ?? Infinity) - 14, Math.max(9, b.body.o.radius * 0.18), (time - b.merging.since) % 1.8);

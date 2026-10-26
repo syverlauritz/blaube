@@ -124,6 +124,12 @@ module.exports = async function run({ win, tracker }) {
 	check(await until(() => js(`(__blaube.buddies.get('s1').blushUntil || 0) > __blaube.now()`), 2000), 'thanked, it blushes');
 	ev('s2', 'UserPromptSubmit', { prompt: "no, that's wrong" });
 	check(await until(() => js(`(__blaube.buddies.get('s2').sheepishUntil || 0) > __blaube.now()`), 2000), 'told off, it looks sheepish');
+	// Its todo list shows as beads; ticking one off makes it hop.
+	const todos = (d) => ({ tool_name: 'TodoWrite', tool_input: { todos: ['Parse', 'Test', 'Ship'].map((c, i) => ({ content: c, status: i < d ? 'completed' : i === d ? 'in_progress' : 'pending' })) } });
+	ev('s1', 'PostToolUse', todos(0));
+	check(await until(() => js(`(__blaube.buddies.get('s1').plan || {}).total === 3`), 2000), 'its todo list shows as beads');
+	ev('s1', 'PostToolUse', todos(1));
+	check(await until(() => js(`(__blaube.buddies.get('s1').beadAt || 0) > __blaube.now() - 2`), 2000), 'one ticked off, it hops');
 	await sleep(1500);
 	check(await js(`[...__blaube.buddies.values()].every((b) => [...b.body.px].every(Number.isFinite))`), 'bodies still finite after all that');
 	check(errs.length === 0, 'no renderer errors ' + errs.slice(0, 3).join(' | '));

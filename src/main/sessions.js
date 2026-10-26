@@ -7,6 +7,7 @@
 // of the background tasks (servers and such) Claude started for it.
 const path = require('node:path');
 const { classify } = require('../shared/actions');
+const { planAfter, progress } = require('./plan');
 const { EventEmitter } = require('node:events');
 
 const STALE_WORKING_MS = 15 * 60 * 1000; // no hooks for this long means it probably died
@@ -87,13 +88,16 @@ class SessionTracker extends EventEmitter {
       agents: prev ? prev.agents : [],
       tasks: prev ? prev.tasks : [],
       tasksSeeded: !!(prev && prev.tasksSeeded),
+      // Its todo list (see plan.js); a finished one is put away at the next prompt.
+      plan: planNow(prev && prev.plan, payload),
       updatedAt: this.now(),
     };
+    session.progress = progress(session.plan);
     this.sessions.set(id, session);
     if (event === 'UserPromptSubmit') this.emit('prompt', session, payload.prompt);
     if (source === 'hook' && (event === 'PreToolUse' || event === 'Stop' || event === 'Notification')) this.emit('activity', { session, agentId: '', payload });
     if (source === 'hook' && (event === 'PostToolUse' || event === 'PostToolUseFailure')) this.emit('tooldone', { session, agentId: '', payload, failed: event === 'PostToolUseFailure' });
-    if (!prev || prev.state !== session.state) {
+    if (!prev || prev.state !== session.state || prev.plan !== session.plan) {
       this.emit('change', { session, from: prev ? prev.state : null, to: session.state });
     }
   }
@@ -238,6 +242,13 @@ class SessionTracker extends EventEmitter {
 
 // A tool runs between its PreToolUse and PostToolUse; the rest of a turn
 // is the model thinking.
+function planNow(plan, p) {
+  if (p.hook_event_name === 'PostToolUse') return planAfter(plan, p) || null;
+  const pr = progress(plan);
+  if (p.hook_event_name === 'UserPromptSubmit' && pr && pr.done === pr.total) return null;
+  return plan || null;
+}
+
 function activityAfter(event, prev) {
   if (event === 'PreToolUse') return 'tool';
   if (event === 'PostToolUse' || event === 'PostToolUseFailure' || event === 'UserPromptSubmit') return 'thinking';
