@@ -3543,6 +3543,49 @@
     if (t.landed && (Math.abs(b.body.angle) < 0.25 || time - t.landed > 3)) { b.tumble = null; b.body.o.upright = CFG.upright; }
   }
 
+  // A bored slime now and then does a roly-poly: it rolls over along the
+  // floor, face and ears going all the way round, and comes up the right
+  // way, grinning ("wheee!"). Twice round and it's a bit dizzy.
+  function roll(b) {
+    const g = b.roll, body = b.body, r = body.o.radius;
+    if (g) {
+      let d = body.angle - g.last;
+      if (d > Math.PI) d -= Math.PI * 2; else if (d < -Math.PI) d += Math.PI * 2;
+      g.last = body.angle; g.turned += d * g.dir;
+      const done = () => { b.roll = null; body.o.upright = CFG.upright; };
+      if (body.grab || b.merging || time - g.at > 5) { done(); return; }
+      b.nextHop = time + 1;
+      if (!g.over) {
+        // Over it goes: a steady turn, and the floor rolls it along.
+        body.o.upright = CFG.upright * 0.05;
+        const w = g.dir * Math.PI * 2 / 0.9 * Math.min(1.5, CFG.rolls);
+        body.spin((w - body.angularVelocity(DT)) * 0.25, DT);
+        if (body.onFloor()) body.impulse((g.dir * r * Math.abs(w) * 0.5 - body.velocity(DT).x) * 0.1, 0, DT);
+        if (g.turned > Math.PI * 2 * g.times - 0.35) {
+          g.over = time;
+          body.spin(-body.angularVelocity(DT) * 0.8, DT);
+          body.o.upright = CFG.upright;
+          if (g.times > 1) { b.dizzyUntil = Math.max(b.dizzyUntil, time + 1.5); quip(b, 'whoa…', 1.2); }
+          else { b.cheerUntil = time + 1.2; quip(b, 'wheee!', 1.1); }
+        }
+        return;
+      }
+      body.spin((-body.angle * 3 - body.angularVelocity(DT)) * 0.2, DT); // (settles back upright)
+      if (Math.abs(body.angle) < 0.08 || time - g.over > 2) done();
+      return;
+    }
+    if (CFG.rolls <= 0 || b.kind !== 'mother' || (b.state !== 'idle' && b.state !== 'done') || body.grab || b.merging || b.dying || !body.onFloor() || b.pendingHop || b.stackedBy || b.tower || b.frog || b.tag || b.parade || b.trick || b.keepy || (b.sleep || 0) > 0.1 || idleFor() > 60 || b === buddies.get(talkingTo)) return;
+    if (time < (b.nextRoll ?? (b.nextRoll = time + (150 + Math.random() * 350) / CFG.rolls))) return;
+    b.nextRoll = time + (300 + Math.random() * 600) / CFG.rolls;
+    rollNow(b);
+  }
+  function rollNow(b) {
+    const box = b.body.bbox(), r = b.body.o.radius;
+    const dir = W - box.maxX > box.minX ? 1 : -1;
+    if ((dir > 0 ? W - box.maxX : box.minX) < r * 4) return;
+    b.roll = { dir, at: time, turned: 0, last: b.body.angle, times: Math.random() < 0.25 ? 2 : 1 };
+  }
+
   // A somersault: once off the ground, a spin to go once round in the air;
   // landed, "ta-da!".
   function somersault(b) {
@@ -3963,7 +4006,7 @@
     at(29, () => { const b = big()[1] || big()[0]; if (b && !b.blow) b.blow = { at: time + 0.7, side: 1 }; });
     at(31, () => addFlutter());
     at(17, () => { const b = buddies.get(HOME) || big()[0]; if (b) b.say([{ text: 'While you were away (demo):' }, ...summaryLines()], 6, false, false); });
-    // Part two: a trampoline, a burp, a dream, a somersault, a tumble, leapfrog, a tower.
+    // Part two: a trampoline, a burp, a dream, a somersault, a tumble, leapfrog, a tower, a roly-poly.
     at(34, () => {
       const [b, o] = big();
       if (!b || !o || b.body.grab || o.body.grab) return;
@@ -3996,7 +4039,8 @@
       b.body.teleport(W * 0.5, y); o.body.teleport(W * 0.5 + (r + o.body.o.radius) * 1.3, y);
       setTimeout(() => { if (!b.dying && !o.dying && !b.tower && !o.tower) towerNow(b, o); }, 900);
     });
-    at(74, () => { seasonOverride = was; showingOff = false; });
+    at(73, () => { const b = big()[1] || big()[0]; if (b && !b.roll && !b.tower) rollNow(b); });
+    at(77, () => { seasonOverride = was; showingOff = false; });
   }
   let showingOff = false;
 
@@ -4087,6 +4131,7 @@
     burp(b);
     somersault(b);
     tumble(b);
+    roll(b);
     if (b.bounceAt && time > b.bounceAt) { // (sprung off a trampoline, see stackPlay)
       b.bounceAt = 0;
       if (!b.body.grab) { const v = b.body.velocity(DT); b.body.impulse((Math.random() - 0.5) * 120 - v.x * 0.5, -b.bounceV - v.y, DT); }
@@ -4450,7 +4495,7 @@
     const wide = CFG.eyeLife * Math.max(wideBy, wideSeen, over ? 0.5 : 0, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
     return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.6 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: b.shy > 0 ? { ...CFG, cheeks: Math.min(0.95, CFG.cheeks + b.shy * 0.55) } : CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal',
-      fullTurn: (body.fullTurn = !!((b.flip && b.flip.spun) || b.tumble)), // (mid-somersault the face, and what it wears, go all the way round)
+      fullTurn: (body.fullTurn = !!((b.flip && b.flip.spun) || b.tumble || b.roll)), // (mid-somersault the face, and what it wears, go all the way round)
     };
   }
 

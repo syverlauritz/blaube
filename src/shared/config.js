@@ -89,6 +89,7 @@
       ['hopCrouch', 0.09, 0, 0.3, 0.01, 'Crouch before a hop (s)'],
       ['crouchDepth', 1, 0, 3, 0.05, 'Crouch depth'],
       ['tumble', 1, 0, 2, 0.05, 'Thrown hard, it tumbles head over heels through the air (how much); lots of turns and it lands dizzy'],
+      ['rolls', 1, 0, 2, 0.05, 'A bored slime now and then rolls over along the floor (a roly-poly), face and ears going all the way round'],
       ['flightStretch', 0.3, 0, 1, 0.01, 'Stretch out while flying'],
       ['earTwitch', 1, 0, 2, 0.05, 'Ears and antennas twitch now and then, and prick up when your cursor comes close'],
       ['splatSpeed', 1900, 600, 8000, 50, 'Sticks to a wall it hits faster than (px/s)'],
