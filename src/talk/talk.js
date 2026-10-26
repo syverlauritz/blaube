@@ -24,6 +24,10 @@
   setInterval(() => { if (current && current.state === 'working') tickDoing(); }, 1000);
   dots.innerHTML = '<i></i><i></i><i></i><span class="doing"></span><button class="bgit" type="button" hidden title="Let it carry on in the background (Ctrl+B in the terminal)">Run in background</button><ul class="helpers"></ul>'; // and what it's doing ("Editing face.js"), and its helpers
   dots.querySelector('.bgit').onclick = (e) => { e.currentTarget.hidden = true; if (current) api.background(current.id); };
+	// Its helpers: under the dots while it works, and still at the end of the log once its turn is over (helpers sent off in the background carry on), the same ones whose slimes are out.
+	const helpersList = dots.querySelector('.helpers');
+	const rest = document.createElement('div');
+	rest.className = 'dots rest';
   const drafts = new Map(); // what you'd typed, per session
   const open = new Set(); // long replies you unfolded (by time)
 
@@ -737,7 +741,7 @@
     dots.querySelector('.bgit').hidden = !s.canBackground || !api.background;
     // Helpers it sent off, each with what it's on ("Finding the tax tables:
     // Reading rates.js"); one waiting on you says so.
-    const hl = dots.querySelector('.helpers');
+    const hl = helpersList;
     const hk = JSON.stringify(s.helpers || []);
     if (hl.dataset.key !== hk) {
       hl.dataset.key = hk;
@@ -774,6 +778,7 @@
       const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
       const from = extends_ ? drawn.entries.length : 0;
       dots.remove();
+      rest.remove(); // (put back after: new steps join the run they follow)
       if (!extends_) {
         inner.textContent = '';
         ends = [];
@@ -825,6 +830,12 @@
       drawn = { entries, thinking, open: openKey, hist: histKey };
       if (atBottom || switched) log.scrollTop = log.scrollHeight;
     }
+	if (thinking !== -1 && dots.isConnected) { if (hl.parentNode !== dots) dots.append(hl); rest.remove(); }
+	else if (!(s.helpers || []).length) rest.remove();
+	else {
+		if (hl.parentNode !== rest) rest.append(hl);
+		if (inner.lastElementChild !== rest) { const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40; inner.append(rest); if (atBottom) log.scrollTop = log.scrollHeight; }
+	}
     if (!$('findBar').hidden && $('find').value.trim()) find($('find').value);
     fitWindow(); // reading sizes lays it out, even while hidden
     squeeze();
@@ -1101,7 +1112,7 @@
     document.body.classList.toggle('searching', !!q);
     let hits = 0;
     for (const el of inner.children) {
-      if (el === dots) continue;
+      if (el === dots || el === rest) continue;
       if (el.classList.contains('steps')) {
         let any = false;
         for (const st of el.querySelectorAll('.step')) {

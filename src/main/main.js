@@ -12,6 +12,7 @@ const claudeHooks = require('./claudeHooks');
 const { toneOf } = require('./tone');
 const { openResumeTerminal, resumeCommand, focusSessionApp, typeIntoSession } = require('./terminal');
 const { startAgentsPoller, listAgents, findClaude } = require('./agents');
+const helperCheck = require('./helperCheck');
 const { Owned } = require('./owned');
 const history = require('./history');
 const attention = require('./attention');
@@ -686,7 +687,7 @@ function pushTalk(id, focusField = false) {
     signedOut: signedOutNow, signingIn: signingInNow(), // (Claude Code isn't signed in: see auth.js)
     canMode: owned.has(id), // (one Blaube started can be asked to change it)
     tasks: (s.tasks || []).filter((t) => !t.demo).slice(0, 4).map((t) => ({ id: t.id, label: t.description || t.command, command: t.command, url: taskUrls.get(`${id}/${t.id}`) || '' })).concat(runs.list(id)), // (and its scripts Blaube runs: runs.js)
-    helpers: s.state === 'working' || s.state === 'waiting' ? (s.agents || []).slice(0, 5).map((a) => ({ name: helperName(s, a), doing: helperDoing.get(`${id}/${a.id}`) || '', waiting: a.state === 'waiting' })) : [],
+    helpers: (s.agents || []).slice(0, 5).map((a) => ({ name: helperName(s, a), doing: helperDoing.get(`${id}/${a.id}`) || '', waiting: a.state === 'waiting' })), // (the same ones whose slimes are out, her turn over or not: background helpers carry on)
     focus: focusField,
     // Its git status and what you might ask for next (see git.js).
     git: gitLine(id),
@@ -2529,6 +2530,18 @@ app.whenReady().then(async () => {
   // (Sessions forgotten here never said SessionEnd: tidy up after them too.)
   setInterval(() => { if (tracker.prune()) { pushState(); refreshTray(); sweepSoon(); } }, 30 * 1000);
   setInterval(refreshUsage, 3000);
+	// Helpers that finished without a word reaching us go home (see helperCheck.js).
+	let checking = false;
+	const checkHelpers = () => {
+		if (checking) return;
+		checking = true;
+		helperCheck.reconcile(tracker.list(), transcriptPath, (s, a, why) => {
+			log(`helper ${s.id}/${a.id} goes home: ${why}`);
+			tracker.handle({ session_id: s.id, hook_event_name: 'SubagentStop', agent_id: a.id });
+		}).catch((e) => log(`helper check: ${e.message}`)).finally(() => { checking = false; });
+	};
+	setInterval(checkHelpers, Number(process.env.BLAUBE_HELPER_CHECK_MS) || helperCheck.CHECK_MS).unref();
+	if (TEST) global.__blaubeCheckHelpers = checkHelpers;
   setInterval(() => {
     const live = tracker.allTasks().filter((t) => !t.demo);
     if (!live.length) return;
