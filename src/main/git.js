@@ -121,4 +121,34 @@ function diff(root, rel, how, cb) {
   execFile('git', ['diff', 'HEAD', '--no-color', '--no-ext-diff', '--', rel], { cwd: root, timeout: 4000, maxBuffer: 4e6, windowsHide: true }, (err, out) => cb(err ? '' : compactDiff(out) || '(no changes in the text)'));
 }
 
-module.exports = { parseStatus, summary, quickActions, status, compactDiff, diff };
+// Branches, from the git line: which there are, and switching to one (or a
+// new one) without a terminal. Names are checked here as git would (no
+// leading -, no .., no spaces...), and git runs without a shell.
+function branchName(name) {
+  name = String(name || '').trim();
+  if (!name || name.length > 200 || name.startsWith('-') || name === '@') return '';
+  if (!/^[\w.\/@+-]+$/.test(name) || /\.\.|\/\/|@\{|^\/|\/$|\.$|\.lock$|(^|\/)\./.test(name)) return '';
+  return name;
+}
+// Local branches, the most recently committed to first (the first 30).
+function branches(cwd, cb) {
+  execFile('git', ['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', 'refs/heads'], { cwd, timeout: 3000, windowsHide: true }, (err, out) => {
+    if (err) return cb([]);
+    cb(String(out).split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 30));
+  });
+}
+// Calls back with '' once it's on `name` (made from here when `create`), or
+// what git said was wrong.
+function switchTo(cwd, name, create, cb) {
+  const b = branchName(name);
+  if (!b) return cb('That isn’t a name a branch can have');
+  execFile('git', create ? ['switch', '-c', b] : ['switch', '--no-guess', b], { cwd, timeout: 10000, windowsHide: true }, (err, _out, errText) => {
+    cache.delete(cwd);
+    if (!err) return cb('');
+    const lines = String(errText || err.message || '').split('\n').map((l) => l.trim()).filter(Boolean);
+    const said = lines.find((l) => /^(fatal|error):/.test(l)) || lines[0] || 'git couldn’t switch';
+    cb(said.replace(/^(fatal|error):\s*/, ''));
+  });
+}
+
+module.exports = { parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo };

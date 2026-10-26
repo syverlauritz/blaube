@@ -2679,6 +2679,26 @@ app.whenReady().then(async () => {
     if (!f || f.how === 'deleted') return done('');
     git.diff(st.root, f.path, f.how, done);
   }));
+  // The git line's branches: which there are, and switching (or making a
+  // new one) while it isn't busy and nothing tracked is changed.
+  ipcMain.handle('talk-branches', (_e, id) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    if (!s || !s.cwd || id.startsWith('demo-')) return done([]);
+    git.branches(s.cwd, done);
+  }));
+  ipcMain.handle('talk-switch-branch', (_e, id, name, create) => new Promise((done) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    const st = gitStates.get(id);
+    if (!s || !s.cwd || !st) return done('It isn’t in a git repository');
+    if (s.state === 'working' || s.state === 'waiting') return done('Not while it’s working: wait for it to finish');
+    if (st.changed) return done('It has changes that aren’t committed: commit them first');
+    git.switchTo(s.cwd, name, !!create, (err) => {
+      if (err) return done(err);
+      inbox.add(id, { who: 'note', text: create ? `Made a new branch, ${git.branchName(name)}, and switched to it` : `Switched to ${git.branchName(name)}` });
+      git.status(s.cwd, (now) => { gitStates.set(id, now); pushTalk(id); });
+      done('');
+    });
+  }));
   // ⌘F in the overview: what every session said.
   // Files named in its replies: which are real (they become tappable), and
   // one's start, to read right in the box.

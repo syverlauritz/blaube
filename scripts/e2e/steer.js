@@ -397,6 +397,20 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await sleep(800);
 	await shot('gitfiles');
 	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Commit')`)), 'with Commit a tap away');
+	// Its branches, under the files: a new one, then back, no terminal.
+	execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'start'], { cwd: repo });
+	await box(`document.getElementById('git').click(); document.getElementById('git').click()`); // (closed and opened again: read afresh)
+	check(await until(() => box(`(() => { const b = document.getElementById('branches'); return !b.hidden && [...b.querySelectorAll(':scope > button')].map((x) => x.textContent + (x.disabled ? '!' : '')).join() === 'feature/tax!,New branch…'; })()`)), 'the git line shows its branches too, the one it’s on marked');
+	await box(`[...document.querySelectorAll('#branches > button')].find((b) => b.textContent === 'New branch…').click()`);
+	await box(`(() => { const i = document.querySelector('#branches input'); i.value = 'bad name'; i.form.requestSubmit(); })()`);
+	check(await until(() => box(`document.querySelector('#branches .clonesaid').textContent === 'That isn’t a name a branch can have'`)), 'a name a branch can’t have is said so');
+	await box(`(() => { const i = document.querySelector('#branches input'); i.value = 'try-it'; i.form.requestSubmit(); })()`);
+	check(await until(() => execFileSync('git', ['branch', '--show-current'], { cwd: repo }).toString().trim() === 'try-it' && inbox.log(ID3).some((e) => e.text === 'Made a new branch, try-it, and switched to it')), 'New branch… makes one and switches to it');
+	check(await until(() => box(`/^try-it/.test(document.getElementById('git').textContent) && [...document.querySelectorAll('#branches > button')].map((x) => x.textContent).sort().join() === 'New branch…,feature/tax,try-it'`)), 'and the git line follows');
+	await sleep(500);
+	await shot('branches');
+	await box(`[...document.querySelectorAll('#branches > button')].find((b) => b.textContent === 'feature/tax').click()`);
+	check(await until(() => execFileSync('git', ['branch', '--show-current'], { cwd: repo }).toString().trim() === 'feature/tax' && inbox.log(ID3).some((e) => e.text === 'Switched to feature/tax')), 'tapping another branch switches to it');
 	// Files named in a reply open right in the box; a long reply's rest is a tap away.
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'UserPromptSubmit', prompt: 'what did you change?' });
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'Stop', last_assistant_message: 'I changed `src/tax.js:1` and [the notes](notes.md#L1), not `nope.js` or `console.log`.\n\n' + 'All of it. '.repeat(500) + 'THE END' });

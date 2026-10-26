@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   background: (id) => ipcRenderer.send('talk-background', id),
   forward: (from, to, text) => ipcRenderer.send('talk-forward', from, to, text),
   diff: (id, file) => ipcRenderer.invoke('talk-diff', id, file),
+  branches: (id) => ipcRenderer.invoke('talk-branches', id),
+  switchBranch: (id, name, create) => ipcRenderer.invoke('talk-switch-branch', id, name, create),
   earlier: (id) => ipcRenderer.invoke('talk-earlier', id),
   newIn: (folder, opts) => ipcRenderer.send('talk-new', folder, opts),
   pickUp: (id) => ipcRenderer.send('talk-pickup', id),

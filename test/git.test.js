@@ -100,3 +100,33 @@ test('signed out of Claude Code: Sign in, then Try again', () => {
   assert.deepEqual(q.map((a) => a.label).slice(0, 2), ['Sign in', 'Try again']);
   assert.equal(q[0].signIn, true);
 });
+
+test('branch names are checked the way git would', () => {
+  const { branchName } = require('../src/main/git');
+  assert.equal(branchName(' feature/login '), 'feature/login');
+  assert.equal(branchName('fix-2.1'), 'fix-2.1');
+  for (const bad of ['', '-x', '--force', 'a..b', 'a b', 'a//b', '/a', 'a/', 'a.', 'a.lock', '.hidden', 'a/.b', 'a@{1}', '@', 'a;rm', 'a~1', 'a^', 'a:b', 'x'.repeat(201)]) assert.equal(branchName(bad), '', bad);
+});
+
+test('branches are listed and switched to (and made) in a real repository', async () => {
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const { execFileSync } = require('node:child_process');
+  const { branches, switchTo } = require('../src/main/git');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-git-'));
+  const g = (...a) => execFileSync('git', a, { cwd: dir, env: Object.assign({}, process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' }) }).toString().trim();
+  try {
+    g('init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(dir, 'a'), '1');
+    g('add', 'a'); g('commit', '-qm', 'one');
+    const sw = (n, c) => new Promise((r) => switchTo(dir, n, c, r));
+    assert.equal(await sw('topic', true), '');
+    assert.equal(g('branch', '--show-current'), 'topic');
+    assert.deepEqual((await new Promise((r) => branches(dir, r))).sort(), ['main', 'topic']);
+    assert.equal(await sw('main', false), '');
+    assert.equal(g('branch', '--show-current'), 'main');
+    assert.match(await sw('topic', true), /already exists/);
+    assert.match(await sw('nope', false), /nope|invalid reference/);
+    assert.equal(await sw('--orphan', true), 'That isn’t a name a branch can have');
+    assert.deepEqual(await new Promise((r) => branches(path.join(dir, 'missing'), r)), []);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

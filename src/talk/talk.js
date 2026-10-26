@@ -1118,14 +1118,18 @@
   });
 
   // Tap the git line for the files it's changed; tap one to see it.
-  let gitOpen = false;
-  $('git').addEventListener('click', () => { if (!current || !(current.gitFiles || []).length) return; gitOpen = !gitOpen; renderGitFiles(current); });
+  // (Its branches too: switch to one, or start a new one.)
+  let gitOpen = false, gitFor = '';
+  $('git').addEventListener('click', () => { if (!current || !current.git || current.ended) return; gitOpen = !gitOpen; renderGitFiles(current); });
   function renderGitFiles(s) {
     const list = s.ended ? [] : (s.gitFiles || []);
-    if (!list.length) gitOpen = false;
-    $('git').classList.toggle('opens', !!list.length);
+    if (gitFor !== s.id) { gitFor = s.id; gitOpen = false; }
+    if (!s.git || s.ended) gitOpen = false;
+    const opens = !!s.git && !s.ended && !String(s.id).startsWith('demo-');
+    $('git').classList.toggle('opens', opens);
     $('git').setAttribute('aria-expanded', String(gitOpen));
-    $('git').title = list.length ? (gitOpen ? 'Hide the files' : 'Show the changed files') : '';
+    $('git').title = opens ? (gitOpen ? 'Hide' : list.length ? 'Show the changed files and branches' : 'Show its branches') : '';
+    renderBranches(s, list);
     const box = $('gitFiles');
     const was = box.hidden;
     box.hidden = !gitOpen;
@@ -1169,6 +1173,74 @@
       box.append(li);
     }
     if (was !== box.hidden || gitOpen) requestAnimationFrame(fitWindow);
+  }
+
+  // Under the files: the branch it's on and the others, newest first, to
+  // switch to (only while it's not busy and nothing tracked has changed:
+  // new files go along), and New branch… to start one here.
+  function renderBranches(s, list) {
+    const box = $('branches');
+    const busy = s.state === 'working' || s.state === 'waiting';
+    const dirty = list.some((f) => f.how !== 'new');
+    const key = [s.id, gitOpen, s.git, busy, dirty].join('|');
+    box.hidden = !gitOpen;
+    if (!gitOpen) { box.dataset.key = ''; return; }
+    if (box.dataset.key === key) return;
+    box.dataset.key = key;
+    const on = String(s.git).split(' · ')[0];
+    const said = document.createElement('div');
+    said.className = 'clonesaid';
+    const why = busy ? 'Switching waits until it’s done.' : dirty ? 'Commit its changes to switch branches.' : '';
+    const switchTo = async (name, create, btn) => {
+      btn.disabled = true;
+      said.textContent = '';
+      const err = await api.switchBranch(s.id, name, create);
+      btn.disabled = false;
+      if (err) { said.textContent = err; requestAnimationFrame(fitWindow); }
+    };
+    api.branches(s.id).then((names) => {
+      if (box.dataset.key !== key) return;
+      box.textContent = '';
+      const label = document.createElement('span');
+      label.className = 'branchon';
+      label.textContent = 'Branches';
+      box.append(label);
+      for (const n of names.slice(0, 8)) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = n;
+        if (n === on) { b.className = 'on'; b.disabled = true; b.title = 'It’s on this branch'; } else {
+          b.disabled = !!why;
+          b.title = why || `Switch to ${n}`;
+          b.onclick = () => switchTo(n, false, b);
+        }
+        box.append(b);
+      }
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'dim';
+      add.textContent = 'New branch…';
+      add.disabled = busy;
+      add.title = busy ? why : 'Start a new branch from here (its changes come along)';
+      add.onclick = () => {
+        const form = document.createElement('form');
+        form.className = 'cloneform';
+        const input = document.createElement('input');
+        input.placeholder = 'Its name, like fix-login';
+        input.setAttribute('aria-label', 'The new branch’s name');
+        const go = document.createElement('button');
+        go.type = 'submit';
+        go.textContent = 'Make it';
+        form.append(input, go);
+        form.onsubmit = (e) => { e.preventDefault(); if (input.value.trim()) switchTo(input.value.trim(), true, go); };
+        input.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); form.replaceWith(add); requestAnimationFrame(fitWindow); } });
+        add.replaceWith(form);
+        input.focus();
+        requestAnimationFrame(fitWindow);
+      };
+      box.append(add, said);
+      requestAnimationFrame(fitWindow);
+    });
   }
 
   // A diff, its added and removed lines tinted.
