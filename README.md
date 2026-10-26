@@ -40,6 +40,17 @@ A squishy Claude-orange slime that lives on your desktop. Grab it, toss it, watc
 
 Press **⌘⌥⇧B** (Ctrl+Alt+Shift+B on Windows), or **Option/Alt + right-click** a big slime. Every parameter (colour, sizes, all the physics, dragging, hops, Dock collision, a physics debug overlay) has a live slider. **Copy config** puts the current values on the clipboard as JSON (the full config plus just what you changed), ready to paste back to Claude to bake in as the new defaults. **Paste config** applies a JSON blob. Settings are saved between launches.
 
+Each section has its own **Reset**. The **Life** section holds everything that makes the slimes feel alive; every knob at 0 switches its behaviour off. If something feels off:
+
+- **Too twitchy overall:** lower `idleFidget`, `leanToCursor` and `personality` first.
+- **Hops feel slow to start:** lower `hopCrouch`. **Not springy enough:** raise `crouchDepth`.
+- **Too stretchy in the air:** lower `flightStretch`.
+- **Sticks to walls too easily:** raise `splatSpeed` (or set `splatHold` to 0). The same goes for `splashSpeed` and the goo droplets.
+- **Flinches when you just move the mouse normally:** raise `flinchSpeed`.
+- **Dizzy too easily when you carry one around:** raise `shakeDizzy` (the number of quick direction changes it takes).
+- **Comes over to you too soon (or not at all):** `seekAfter` (seconds of waiting) and `seekYou`.
+- **Busy slimes look nervous:** lower `strain`.
+
 ## No API tokens
 
 Blaube never calls the Anthropic API. The physics runs locally, and session status comes from two local sources:
@@ -142,6 +153,7 @@ On macOS and Linux the window's own mouse events are used. Problems that only sh
 npm test                 # physics, session tracking, transcripts, looks and hook installer tests
 npm start                # run the app (it restarts itself when you change its code)
 npm run shots            # render every scene to shots/*.png, for reviewing the look
+npm run e2e:life         # the real app, invisible, through fake hooks: the slimes' life and voice (no tokens)
 BLAUBE_DEMO=1 npm start  # run with fake sessions
 npm run dist:mac         # build a .dmg (on macOS; ad-hoc signed, never uses your keychain)
 npm run build:mac:local  # just build dist/mac-*/Blaube.app
