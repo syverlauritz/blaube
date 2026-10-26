@@ -2014,6 +2014,31 @@ app.whenReady().then(async () => {
       } catch (e) { inbox.add(id, { who: 'note', text: `Couldn’t open it: ${e.message}`, error: true }); }
       return;
     }
+    // "/export": the conversation as Markdown, to Downloads (as ⌘S).
+    if (/^\/export\s*$/i.test(String(text).trim())) {
+      const file = saveConversation(id);
+      inbox.add(id, file ? { who: 'note', text: `Saved the conversation to ${path.basename(path.dirname(file))}/${path.basename(file)}`, file } : { who: 'note', text: 'Couldn’t save it', error: true });
+      return;
+    }
+    // "/status": what it's running on, as Claude Code's /status says.
+    if (/^\/status\s*$/i.test(String(text).trim()) && sess && !id.startsWith('demo-')) {
+      const bin = owned.findClaude() || owned.shellPath();
+      const say = (version) => {
+        const st = gitStates.get(id);
+        const mode = { acceptEdits: 'accepting edits', plan: 'planning first', bypassPermissions: 'not asking', default: 'asking first' }[sess.mode || 'default'] || sess.mode;
+        inbox.add(id, { who: 'note', text: [
+          version ? `Claude Code ${version}` : '',
+          modelName(pickedModel.get(id) || usage.sessionInfo(transcriptPath(sess)).model),
+          mode,
+          signedOutNow ? 'signed out' : '',
+          sess.cwd ? `in ${sess.cwd.replace(os.homedir(), '~')}${st && st.branch ? ` (${st.branch})` : ''}` : '',
+          owned.has(id) ? 'started by Blaube' : 'in a terminal',
+        ].filter(Boolean).join(' · ') });
+      };
+      if (!bin) return say('');
+      require('node:child_process').execFile(bin, ['--version'], { timeout: 8000, encoding: 'utf8', windowsHide: true }, (err, out) => say(err ? '' : String(out).trim().split(/\s/)[0]));
+      return;
+    }
     // "/login": Claude Code signed in through your browser (see auth.js).
     if (/^\/login\s*$/i.test(String(text).trim())) {
       if (owned.findClaude() || owned.shellPath()) return signIn(id);

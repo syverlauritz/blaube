@@ -53,6 +53,7 @@ const ABOUT = {
   config: 'Opens your Claude Code settings',
   context: 'What fills its context',
   doctor: 'Checks your Claude Code install',
+  export: 'Saves the conversation to Downloads',
   effort: 'How hard it thinks',
   hooks: 'Opens the settings file hooks go in',
   login: 'Signs Claude Code in, in your browser',
@@ -62,6 +63,7 @@ const ABOUT = {
   permissions: 'What it may do without asking',
   plan: 'Plans first, before changing anything',
   rename: 'Names this session',
+  status: 'What it’s running on',
   upgrade: 'Updates Claude Code',
   usage: 'How much of your limits you’ve used',
 };

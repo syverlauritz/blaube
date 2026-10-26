@@ -14,6 +14,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // answered, a message answered (or not yet, if it's "slow").
 const FAKE = `#!/usr/bin/env node
 const A = process.argv.slice(2).join(' '), SIGNED = require('node:path').join(__dirname, 'signed-in');
+if (A === '--version') { console.log('9.9.9 (Claude Code)'); process.exit(0); }
 if (A === 'doctor') { console.log('Claude Code doctor\\n\\nNo problems found'); process.exit(0); }
 if (A === 'auth status --json') { console.log(JSON.stringify({ loggedIn: require('node:fs').existsSync(SIGNED) })); process.exit(0); }
 if (A === 'auth login') { console.log('Opening your browser… https://claude.ai/oauth/authorize?fake=1'); setTimeout(() => { require('node:fs').writeFileSync(SIGNED, ''); console.log('Login successful.'); process.exit(0); }, 300); return; }
@@ -135,6 +136,10 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(() => fs.existsSync(path.join(dir, 'signed-in'))) && !inbox.log(id).some((e) => e.who === 'you' && e.text === '/login'), '/login signs in the same way, without going to Claude');
 	await type('/mcp');
 	check(await until(() => inbox.log(id).some((e) => e.text === 'Its MCP servers: github (connected) · linear (connected)')), '/mcp lists its MCP servers and how they are');
+	await type('/status');
+	check(await until(() => inbox.log(id).some((e) => /^Claude Code 9\.9\.9 · .+ · in .+ · started by Blaube$/.test(e.text || ''))), '/status says what it’s running on');
+	await type('/export');
+	check(await until(() => inbox.log(id).some((e) => /^Saved the conversation to Downloads\/.+\.md$/.test(e.text || '') && fs.existsSync(e.file))), '/export saves the conversation to Downloads');
 	await type('/doctor');
 	check(await until(() => inbox.log(id).some((e) => e.who === 'step' && e.text === 'Checked Claude Code (claude doctor)' && !e.running && /No problems found/.test(e.detail || ''))), '/doctor runs Claude Code’s checkup right there, as a step');
 	await type('/usage');
