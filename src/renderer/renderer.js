@@ -2631,9 +2631,30 @@
 
   // Bored but awake (idle, you're around): now and then it amuses itself
   // with a little trick, three hops, each higher than the last.
+  // A calm slime nearby may watch and copy it, hop for hop, a beat behind;
+  // its last one falls a little short, and the first one says "copycat!".
   function trick(b) {
     if (CFG.tricks <= 0 || b.kind === 'child') return;
     const ok = b.state === 'idle' && !b.body.grab && !b.merging && !b.prank && !b.tag && (b.sleep || 0) < 0.1 && idleFor() < 30 && b !== buddies.get(talkingTo);
+    const c = b.copy;
+    if (c) {
+      if (!ok || c.lead.dying || time - c.start > 12) { b.copy = null; return; }
+      b.nextHop = time + 1;
+      b.glanceAt = c.lead; b.glanceUntil = time + 0.3;
+      if (!b.body.onFloor()) c.up = true;
+      const h = c.hops[0];
+      if (h && time > h.at && b.body.onFloor() && !b.pendingHop && (h.n === 1 || c.up)) { // (each from the ground, like the leader)
+        c.hops.shift();
+        c.up = false;
+        b.hop(h.vx, h.vy * (h.n >= 3 ? 0.8 : 1));
+        if (h.n >= 3) {
+          b.copy = null;
+          b.happyUntil = time + 1.5;
+          if (!c.lead.dying && Math.random() < 0.7) setTimeout(() => { if (!c.lead.dying) { quip(c.lead, 'copycat!', 1.2); c.lead.glanceAt = b; c.lead.glanceUntil = time + 1.2; } }, 700);
+        }
+      }
+      return;
+    }
     if (b.trick) {
       if (!ok) { b.trick = null; return; }
       if (!b.body.onFloor()) { b.trick.up = true; return; }
@@ -2641,13 +2662,23 @@
       if (b.trick.n >= 3) { b.trick = null; b.happyUntil = time + 1.5; return; }
       b.trick.n++;
       b.trick.up = false;
-      b.hop((Math.random() - 0.5) * 40, -(240 + b.trick.n * 130) * Math.min(1.4, CFG.tricks));
+      const vx = (Math.random() - 0.5) * 40, vy = -(240 + b.trick.n * 130) * Math.min(1.4, CFG.tricks);
+      b.hop(vx, vy);
+      const o = b.trick.copy;
+      if (o && o.copy) o.copy.hops.push({ at: time + 0.45, vx, vy, n: b.trick.n });
       b.trick.next = time + 0.12;
       return;
     }
     if (!ok || !b.body.onFloor() || time < (b.nextTrick ?? (b.nextTrick = time + (120 + Math.random() * 240) / CFG.tricks))) return;
     b.nextTrick = time + (180 + Math.random() * 300) / CFG.tricks;
+    startTrick(b, Math.random() < CFG.copycat);
+  }
+  function startTrick(b, copied) {
     b.trick = { n: 0, next: time };
+    if (!copied || CFG.copycat <= 0) return;
+    const p = b.body.centroid(), r = b.body.o.radius;
+    const o = [...buddies.values()].find((o) => o !== b && o.kind !== 'child' && o.state === 'idle' && !o.trick && !o.copy && !o.tag && !o.prank && !o.body.grab && !o.merging && !o.dying && (o.sleep || 0) < 0.1 && o.body.onFloor() && Math.abs(o.body.centroid().x - p.x) < r * 8);
+    if (o) { b.trick.copy = o; o.copy = { lead: b, hops: [], start: time }; }
   }
 
   // Two bored slimes now and then play tag: one hops after the other, which
@@ -2900,7 +2931,7 @@
     const was = seasonOverride;
     if (season() === 'none' || season() === 'summer') seasonOverride = 'leaves';
     showingOff = true;
-    at(0.5, () => { const b = big()[0]; if (b) b.trick = { n: 0, next: time }; }); // (only an idle one plays along)
+    at(0.5, () => { const b = big()[0]; if (b) startTrick(b, true); }); // (only an idle one plays along; another copies it)
     at(3, () => { const [b, o] = big(); if (b && o) { b.prank = null; b.nextPrank = 0; prankNow(b, o); } });
     at(7, () => {
       const b = big()[0];
