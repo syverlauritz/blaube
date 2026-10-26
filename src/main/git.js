@@ -3,6 +3,7 @@
 // requests that make sense from there (commit, push, open a PR...).
 const path = require('node:path');
 const { execFile } = require('node:child_process');
+const { signedOut } = require('./auth');
 
 // `git status --porcelain=v2 --branch` -> { branch, ahead, behind, changed,
 // untracked, upstream, conflicts, files: [{ path, how }] } (paths relative to
@@ -44,7 +45,11 @@ function quickActions(st, state, more = {}) {
   if (state === 'working' || state === 'waiting') return [];
   const out = [];
   if (more.stopped) out.push({ label: 'Carry on', prompt: 'Carry on where you stopped.' });
-  else if (more.apiError) {
+  else if (more.apiError && signedOut(more.apiError)) {
+    // Signed out of Claude Code: sign in (in your browser), then try again.
+    out.push({ label: 'Sign in', prompt: 'Signs Claude Code in, in your browser, as /login does', signIn: true });
+    out.push({ label: 'Try again', prompt: 'Carry on where you left off.' });
+  } else if (more.apiError) {
     // A usage limit: it can carry on by itself once the limit lifts.
     if (more.carryAt && more.carryAt.set) out.push({ label: `Don’t carry on at ${more.carryAt.label}`, prompt: 'It won’t carry on by itself', later: 0 });
     else if (more.carryAt) out.push({ label: `Carry on at ${more.carryAt.label}`, prompt: 'Carries on by itself when your usage limit lifts', later: more.carryAt.at });

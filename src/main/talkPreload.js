@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   attach: (id) => ipcRenderer.invoke('talk-attach', id),
   answer: (id, key, choice) => ipcRenderer.send('talk-answer', id, key, choice),
   later: (id, at) => ipcRenderer.send('talk-later', id, at),
+  signIn: (id) => ipcRenderer.send('talk-sign-in', id),
   taskOutput: (id, taskId) => ipcRenderer.invoke('talk-task-output', id, taskId),
   stopTask: (id, taskId) => ipcRenderer.invoke('talk-stop-task', id, taskId),
   mcpReconnect: (id, name) => ipcRenderer.invoke('talk-mcp-reconnect', id, name),

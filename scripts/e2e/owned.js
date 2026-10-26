@@ -13,6 +13,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Claude Code's stream-json mode, as far as this needs: control requests
 // answered, a message answered (or not yet, if it's "slow").
 const FAKE = `#!/usr/bin/env node
+const A = process.argv.slice(2).join(' '), SIGNED = require('node:path').join(__dirname, 'signed-in');
+if (A === 'auth status --json') { console.log(JSON.stringify({ loggedIn: require('node:fs').existsSync(SIGNED) })); process.exit(0); }
+if (A === 'auth login') { console.log('Opening your browser… https://claude.ai/oauth/authorize?fake=1'); setTimeout(() => { require('node:fs').writeFileSync(SIGNED, ''); console.log('Login successful.'); process.exit(0); }, 300); return; }
 let model = 'claude-opus', turn = null, used = [12, 40], mcpUp = false; const seen = new Set();
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
 require('node:fs').writeFileSync(require('node:path').join(process.cwd(), 'args-' + process.pid), JSON.stringify(process.argv.slice(2)));
@@ -40,6 +43,7 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
   if (m.type === 'user' && m.message.content === '/cost') { out({ type: 'assistant', message: { model: '<synthetic>', content: [{ type: 'text', text: 'Error: Nothing to show yet' }] } }); return out({ type: 'result', subtype: 'success', result: '' }); }
   if (m.type === 'user' && m.message.content === 'busy week') used = [30, 82];
   if (m.type === 'user' && m.message.content === 'busy week') out({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', rateLimitType: 'seven_day', utilization: 0.82, resetsAt: Math.round(Date.now() / 1000) + 3 * 86400, unifiedWindows: { five_hour: { utilization: 0.3, resetsAt: Math.round(Date.now() / 1000) + 3600, status: 'allowed' }, seven_day: { utilization: 0.82, resetsAt: Math.round(Date.now() / 1000) + 3 * 86400, status: 'allowed' } } } });
+  if (m.type === 'user' && m.message.content === 'signed out') return out({ type: 'result', subtype: 'success', is_error: true, result: 'Not logged in · Please run /login' });
   if (m.type === 'user') turn = setTimeout(() => out({ type: 'result', subtype: 'success', result: model + ' here.' }), m.message.content === 'slow' ? 20000 : m.message.content === 'edit two' ? 1500 : m.message.content === 'start the server' ? 6000 : 50);
 });
 `;
@@ -114,6 +118,18 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
 	check(await until(() => box(`/^Usage: 12% of 5 hours \\(resets .+\\) · 40% of the week/.test((document.querySelector('#overview .usage') || {}).textContent || '')`)), 'the overview has your usage limits, asked of Claude Code after a turn');
 	check(global.__blaubeTrayMenu().items.some((i) => /^Usage: 12% of 5 hours \(resets .+\) · 40% of the week/.test(i.label)), 'and so does the menu bar menu');
+	check(await until(() => box(`/Claude Code is signed out/.test((document.querySelector('#overview .signedout') || {}).textContent || '')`)), 'a signed-out Claude Code shows at the top of the overview, asked of claude auth status');
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
+	await until(() => box(`!document.body.classList.contains('overview')`));
+	// Signed out: Sign in runs claude auth login (your browser), no terminal.
+	await type('signed out');
+	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Sign in')`)), 'a turn that fails for being signed out offers Sign in');
+	await box(`[...document.querySelectorAll('#quick button')].find((b) => b.textContent === 'Sign in').click()`);
+	check(await until(() => inbox.log(id).some((e) => /the page is https:\/\/claude\.ai\/oauth\/authorize\?fake=1/.test(e.text || ''))), 'it says the sign-in page, for when no browser opens');
+	check(await until(() => inbox.log(id).some((e) => e.text === 'Signed in. Try again to carry on.')), 'and says when it’s signed in');
+	check(fs.existsSync(path.join(dir, 'signed-in')), 'through claude auth login');
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
+	check(await until(() => box(`document.body.classList.contains('overview') && !document.querySelector('#overview .signedout')`)), 'and the overview no longer says signed out');
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
 	await until(() => box(`!document.body.classList.contains('overview')`));
 	// "undo all": the turn's files put back by Claude Code itself (rewind_files).

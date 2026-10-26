@@ -19,6 +19,7 @@ const { Notification } = require('electron');
 const { slashCommand, commandNames, expand: expandCommand, control: controlFor, contextNote, EFFORTS } = require('./commands');
 const limits = require('./limits');
 const usageProbe = require('./usageProbe');
+const auth = require('./auth');
 const taskOutput = require('./taskOutput');
 const permRules = require('./permRules');
 const taskKill = require('./taskKill');
@@ -461,6 +462,7 @@ function pushTalk(id, focusField = false) {
     canBackground: !!foreground.get(id) && Date.now() - foreground.get(id).at >= 3000,
     mcp: (mcpStates.get(id) || []).filter((m) => m.status === 'failed' || m.status === 'needs-auth'), // (MCP servers that aren't there)
     usage: limits.line(usageLimits),
+    signedOut: signedOutNow, signingIn: signingInNow(), // (Claude Code isn't signed in: see auth.js)
     canMode: owned.has(id), // (one Blaube started can be asked to change it)
     tasks: (s.tasks || []).filter((t) => !t.demo).slice(0, 4).map((t) => ({ id: t.id, label: t.description || t.command, command: t.command, url: taskUrls.get(`${id}/${t.id}`) || '' })),
     helpers: s.state === 'working' || s.state === 'waiting' ? (s.agents || []).slice(0, 5).map((a) => ({ name: helperName(s, a), doing: helperDoing.get(`${id}/${a.id}`) || '', waiting: a.state === 'waiting' })) : [],
@@ -490,6 +492,7 @@ function pushTalk(id, focusField = false) {
   }
 }
 let usageLimits = null; // (see limits.js)
+let signedOutNow = false, signingInNow = () => false; // (Claude Code signed out; signing in now)
 const mcpStates = new Map(); // id -> its MCP servers, for a session Blaube started
 const rewound = new Map(); // id -> what Claude should hear with your next message (files you put back, notes you added)
 const tellNext = (id, what) => rewound.set(id, [rewound.get(id), what].filter(Boolean).join(' '));
@@ -919,7 +922,7 @@ function refreshUsage() {
     const api = file ? usage.sessionApiErrors(file) : { count: 0 };
     if (readySessions.has(s.id) && apiErrorCounts.has(s.id) && api.count > apiErrorCounts.get(s.id)) {
       const last = inbox.log(s.id).slice(-1)[0];
-      if (!(last && last.who === 'claude' && last.text.trim() === api.text)) inbox.add(s.id, { who: 'note', text: `Claude Code: ${api.text}`, error: true });
+      if (!(last && ((last.who === 'claude' && last.text.trim() === api.text) || last.text === `Claude Code: ${api.text}`))) inbox.add(s.id, { who: 'note', text: `Claude Code: ${api.text}`, error: true });
       // (And its slime says so, for when its box is closed.)
       if (win) win.webContents.send('say', { id: s.id, text: shorten(api.text, 80), seconds: 6, status: true, aloud: true });
       notify(s, 'error', api.text);
@@ -1583,7 +1586,7 @@ app.whenReady().then(async () => {
   let lastProbe = 0, noPlanLimits = false;
   const probeUsage = () => {
     if (TEST || noPlanLimits || owned.list().length || Date.now() - lastProbe < 10 * 60e3) return;
-    const bin = findClaude() || owned.shellPath();
+    const bin = owned.findClaude() || owned.shellPath();
     if (!bin) return;
     lastProbe = Date.now();
     usageProbe.probe(bin, (r) => {
@@ -1591,6 +1594,30 @@ app.whenReady().then(async () => {
       setLimits(limits.fromUsage(r && r.rate_limits));
     });
   };
+  // Whether Claude Code is signed in (asked when the overview opens, at
+  // most every 5 minutes), and signing it in from the box: Sign in runs
+  // `claude auth login`, which opens your browser, as /login does.
+  let lastAuth = 0, signingIn = false;
+  signingInNow = () => signingIn;
+  const checkAuth = (force) => {
+    const bin = owned.findClaude() || owned.shellPath();
+    if (!bin || signingIn || (!force && Date.now() - lastAuth < 5 * 60e3)) return;
+    lastAuth = Date.now();
+    auth.status(bin, (ok) => { if (ok === null || ok === !signedOutNow) return; signedOutNow = !ok; if (talkId) pushTalk(talkId); });
+  };
+  ipcMain.on('talk-sign-in', (_e, id) => {
+    const bin = owned.findClaude() || owned.shellPath();
+    if (signingIn || !bin) return;
+    signingIn = true;
+    const say = (text, error) => { if (id && tracker.sessions.has(id)) inbox.add(id, Object.assign({ who: 'note', text }, error ? { error: true } : {})); if (talkId) pushTalk(talkId); };
+    say('Signing Claude Code in: finish in your browser');
+    auth.login(bin, (ok, why) => {
+      signingIn = false;
+      if (ok) signedOutNow = false;
+      say(ok ? 'Signed in. Try again to carry on.' : `It didn’t sign in: ${why}`);
+      checkAuth(true);
+    }, (url) => say(`If your browser didn’t open, the page is ${url}`));
+  });
   setTimeout(probeUsage, 20e3).unref();
   setInterval(probeUsage, 15 * 60e3).unref();
   // Its MCP servers, as /mcp shows them: one that couldn't connect shows
@@ -1648,6 +1675,7 @@ app.whenReady().then(async () => {
     if (r.interrupted && !r.text) inbox.observe({ session_id: id, hook_event_name: 'Stop' }); // (stopped: nothing went wrong)
     else if (!r.text && r.said) inbox.add(id, { who: 'note', text: r.said.replace(/^Error:\s*/, '') }); // (Claude Code itself answered a command)
     else if (r.error && !r.text) inbox.add(id, { who: 'note', text: `Something went wrong${r.subtype ? ` (${r.subtype})` : ''}.` });
+    else if (r.error) inbox.add(id, { who: 'note', text: `Claude Code: ${r.text.trim()}`, error: true }); // (it couldn't get an answer: signed out, overloaded, a usage limit)
     else inbox.replied(id, r.text);
     tracker.handle({ session_id: id, hook_event_name: 'Stop', last_assistant_message: r.text }, 'blaube');
   });
@@ -2057,6 +2085,7 @@ app.whenReady().then(async () => {
   // past sessions to pick up (read only when the overview opens).
   ipcMain.handle('talk-hub', () => {
     probeUsage();
+    checkAuth();
     // (Looking through past transcripts is slow-ish: at most every 30 s.)
     if (hubCache && Date.now() - hubCache.at < 30000) return hubCache.hub;
     const live = tracker.list();

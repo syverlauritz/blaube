@@ -764,6 +764,14 @@
     if (!$('findBar').hidden && allQuery) { drawHits(box); box.scrollTop = scroll; requestAnimationFrame(fitWindow); return; }
     if (s.today) { const t = document.createElement('div'); t.className = 'today'; t.textContent = s.today; box.append(t); }
     if (s.usage) { const u = document.createElement('div'); u.className = 'today usage'; u.textContent = s.usage; box.append(u); }
+    // Claude Code is signed out: every session would fail, so say so first.
+    if (s.signedOut && api.signIn) {
+      const row = document.createElement('div');
+      row.className = 'signedout';
+      row.textContent = s.signingIn ? 'Signing Claude Code in: finish in your browser…' : 'Claude Code is signed out, so no session can get an answer.';
+      if (!s.signingIn) { const b = document.createElement('button'); b.type = 'button'; b.textContent = 'Sign in'; b.title = 'Signs Claude Code in, in your browser, as /login does'; b.onclick = () => api.signIn(''); row.append(' ', b); }
+      box.append(row);
+    }
     for (const o of s.others || []) {
       const row = document.createElement('button');
       row.className = 'row' + (o.id === s.id ? ' here' : '') + (o.state === 'waiting' ? ' wants' : '');
@@ -985,7 +993,7 @@
       b.type = 'button';
       b.textContent = q.label;
       b.title = q.prompt;
-      b.onclick = () => { if (!current) return; if (q.here) api.continueHere(current.id); else if (q.bring) api.bringHere(current.id); else if ('later' in q) api.later(current.id, q.later); else api.send(current.id, q.prompt); box.hidden = true; };
+      b.onclick = () => { if (!current) return; if (q.here) api.continueHere(current.id); else if (q.signIn) api.signIn(current.id); else if (q.bring) api.bringHere(current.id); else if ('later' in q) api.later(current.id, q.later); else api.send(current.id, q.prompt); box.hidden = true; };
       box.append(b);
     }
   }

@@ -94,3 +94,9 @@ test('after a usage limit, it offers to carry on when it lifts, or to call that 
   assert.equal(set[0].later, 0);
   assert.equal(quickActions(null, 'done', { apiError: 'x' })[0].label, 'Try again');
 });
+
+test('signed out of Claude Code: Sign in, then Try again', () => {
+  const q = quickActions(null, 'done', { apiError: 'Claude Code: Invalid API key · Please run /login' });
+  assert.deepEqual(q.map((a) => a.label).slice(0, 2), ['Sign in', 'Try again']);
+  assert.equal(q[0].signIn, true);
+});
