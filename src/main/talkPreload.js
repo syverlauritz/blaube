@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   onRefused: (cb) => ipcRenderer.on('talk-refused', (_e, key) => cb(key)),
   onTail: (cb) => ipcRenderer.on('talk-tail', (_e, t) => cb(t)),
   setHeight: (id, h) => ipcRenderer.send('talk-height', id, h),
+  shown: (id, drawn) => ipcRenderer.send('talk-shown', id, drawn),
   resize: (phase, edge, x, y) => ipcRenderer.send('talk-resize', phase, edge, x, y),
   pin: (on) => ipcRenderer.send('talk-pin', on),
   dark: (on) => ipcRenderer.send('talk-dark', on),

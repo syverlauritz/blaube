@@ -2115,6 +2115,9 @@
       const w = $('wrap');
       w.classList.remove('pop'); void w.offsetWidth; w.classList.add('pop');
       text.focus();
+      // The window stays unseen until a frame of this start has been drawn
+      // (else whatever it last drew shows first): say so once it has.
+      if (api.shown) requestAnimationFrame(() => { const drawn = Number(getComputedStyle(w).opacity); requestAnimationFrame(() => api.shown(s.id, drawn)); });
     }
   });
   // Beside the slime the bubble is narrower (the tail takes room), so text
