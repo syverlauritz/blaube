@@ -45,12 +45,23 @@
 
 	// How many of a look a Blaube wears, and where and how big each one is:
 	// random, but the same every time for the same Blaube. Some looks come
-	// in twos or threes (antennas, sprouts, curls); pairs (ears, horns) get a
-	// random spread instead.
+	// in twos or threes (antennas, sprouts, curls); ear pairs get a random
+	// spread instead. Horns come one to five, evenly along the top of the
+	// head (an odd number has one in the middle), each a little bigger or
+	// smaller.
 	const MAX = { antenna: 3, curl: 2 }; // never more than one plant
+	const HORN_SPAN = [0, 0, 1, 1.35, 1.65, 1.9]; // radians round the head, first to last, by count
 	function partsOf(key, name) {
 		let s = hash(key + '/' + name) || 1;
 		const rnd = () => ((s = Math.imul(s ^ (s >>> 15), 2246822507) ^ (s + 0x9e3779b9)) >>> 0) / 4294967296;
+		if (name === 'horns') {
+			const n = 1 + Math.floor(rnd() * 4.999);
+			return Array.from({ length: n }, (_, i) => ({
+				shift: n === 1 ? 0 : (i / (n - 1) - 0.5) * HORN_SPAN[n],
+				spread: 1,
+				scale: (1.45 - n * 0.1) * (0.9 + rnd() * 0.2),
+			}));
+		}
 		const n = 1 + Math.floor(rnd() * (MAX[name] || 1) * 0.999);
 		const parts = [];
 		for (let i = 0; i < n; i++) {
@@ -401,12 +412,16 @@
 					});
 					break;
 				case 'horns':
-					// Little pointed nubs in the body's colour, tips bending outward.
-					if (back) for (const s of [-1, 1]) at(s * 0.5, () => {
+					// Little blunt nubs in the body's colour with rounded tips, the
+					// ones off to the side bending outward (the middle one stands
+					// straight).
+					if (back) at(0, () => {
+						const lean = Math.sign(part.shift) * Math.min(1, Math.abs(part.shift) * 2) * u * 0.3, tip = u * 0.34;
 						ctx.beginPath();
 						ctx.moveTo(-u * 0.75, u * 0.8);
-						ctx.quadraticCurveTo(-u * 0.45, -u * 0.6, s * u * 0.55, -u * 1.55);
-						ctx.quadraticCurveTo(u * 0.45, -u * 0.6, u * 0.75, u * 0.8);
+						ctx.quadraticCurveTo(-u * 0.6, -u * 0.45, lean - tip, -u * 1.2);
+						ctx.arc(lean, -u * 1.2, tip, Math.PI, 0);
+						ctx.quadraticCurveTo(u * 0.6, -u * 0.45, u * 0.75, u * 0.8);
 						ctx.closePath();
 						ctx.fill();
 					});
