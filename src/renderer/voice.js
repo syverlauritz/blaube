@@ -1,6 +1,7 @@
 // Blaube's voice: a cute babble, made up on the spot, through a talkbox:
-// a buzzy synth note shaped into vowels by a sweeping "mouth" filter, some
-// syllables with a soft consonant tick at the start. It follows the words it's saying: one
+// a soft synth note shaped into vowels by a sweeping "mouth" filter, every
+// syllable a round "wah" that glides into the next, some with a soft
+// consonant tick at the start. It follows the words it's saying: one
 // syllable per vowel group, the vowel it would have, pauses between words
 // and longer ones at commas and full stops. A question rises at the end, an
 // exclamation is brighter. Bigger slimes have a lower, darker voice.
@@ -77,10 +78,12 @@
   // max syllables, pace (1 normal, lower faster). Returns { sylls: [{ t0,
   // t1, vowel, open }], length } in seconds from `at`, and stop().
   //
-  // The sound is a talkbox: one buzzy synth note for the whole line,
+  // The sound is a talkbox: one soft synth note for the whole line,
   // gliding from pitch to pitch, played through a "mouth" of three resonant
   // formant filters that sweep from vowel to vowel. Syllables are swells in
-  // its volume; words and pauses let it fall quiet.
+  // its volume, each opening with a "wah"; words and pauses let it fall
+  // quiet. Few, round syllables: a word of one is long, a word of more is
+  // a quick pair ("wah wah wahwah").
   function speak(ctx, text, opts = {}) {
     const at = opts.at ?? ctx.currentTime + 0.02;
     const out = opts.out || ctx.destination;
@@ -89,7 +92,7 @@
     const character = rng(seed); // the same for every line of one slime
     const pace = (0.9 + character() * 0.25) * (opts.pace || 1);
     const base = opts.pitch || 330;
-    const list = syllables(text, opts.max || 14);
+    const list = syllables(text, opts.max || 10);
     const question = /\?\s*$/.test(text), excited = /!\s*$/.test(text);
 
     // Plan the line first: when each syllable is, its pitch and vowel.
@@ -97,13 +100,14 @@
     const plan = [];
     list.forEach((s, i) => {
       const last = i === list.length - 1;
-      const dur = (s.stress ? 0.12 : 0.09) * pace * (last ? 1.5 : 1) * (0.85 + rand() * 0.3);
+      const alone = s.stress && s.gap !== '';
+      const dur = (alone ? 0.22 : s.stress ? 0.15 : 0.13) * pace * (last ? 1.5 : 1) * (0.85 + rand() * 0.3);
       // Intonation: a gentle fall over the phrase, a hop on stressed
       // syllables, a rise at the end of a question.
       let semis = (rand() * 5 - 1.5) + (s.stress ? 1.5 : 0) - 2.5 * (i / list.length) + (excited ? 2 : 0);
       if (last && question) semis = 6;
       if (last && !question && !excited) semis -= 2;
-      const gap = { '': 0.012, word: 0.05 + rand() * 0.04, comma: 0.2, stop: 0.32, end: 0 }[s.gap] * pace;
+      const gap = { '': 0, word: 0.03 + rand() * 0.05, comma: 0.22, stop: 0.34, end: 0 }[s.gap] * pace;
       plan.push({ t, dur, gap, f0: base * Math.pow(2, semis / 12), v: VOWELS[s.vowel], s, last });
       t += dur + gap;
     });
@@ -137,42 +141,35 @@
     const formantShift = 1.15 + character() * 0.25 + (base > 400 ? 0.1 : 0);
     const last = plan[plan.length - 1];
     const t = last.t + last.dur;
-    const end = t + 0.12;
+    const end = t + 0.35;
+    const wahAmount = o.wah ?? 0.8;
 
-    // The buzz: a saw and a slightly detuned square, with a little vibrato.
+    // The note: a saw softened by a triangle, with a little vibrato. Kept
+    // well under full scale, so a few voices together don't clip.
     const bus = ctx.createGain();
-    bus.gain.value = o.volume * 0.75;
+    bus.gain.value = o.volume * 0.8;
     const amp = ctx.createGain();
     amp.gain.setValueAtTime(0, at);
-    const saw = ctx.createOscillator(), sq = ctx.createOscillator();
-    saw.type = 'sawtooth'; sq.type = 'square';
-    sq.detune.value = 9;
-    const sqGain = ctx.createGain();
-    sqGain.gain.value = 0.35;
+    const saw = ctx.createOscillator(), tri = ctx.createOscillator();
+    saw.type = 'sawtooth'; tri.type = 'triangle';
+    tri.detune.value = 7;
+    const sawGain = ctx.createGain(), triGain = ctx.createGain();
+    sawGain.gain.value = 0.55; triGain.gain.value = 0.6;
     const vib = ctx.createOscillator(), vibDepth = ctx.createGain();
     vib.frequency.value = 5.5 + character();
     vibDepth.gain.value = o.vibrato || 14; // cents
-    vib.connect(vibDepth); vibDepth.connect(saw.detune); vibDepth.connect(sq.detune);
-    // A bit of grit, like a speaker driven through a tube.
-    const grit = ctx.createWaveShaper();
-    const curve = new Float32Array(256);
-    for (let i = 0; i < 256; i++) { const x = i / 127.5 - 1; curve[i] = Math.tanh(x * 2.2); }
-    grit.curve = curve;
-    const pre = ctx.createGain();
-    saw.connect(pre); sq.connect(sqGain).connect(pre);
-    pre.connect(grit);
-    // The wah: a resonant filter that sweeps open at the start of every
-    // syllable ("wa-"), then stays open. o.wah 0..1 is how far shut it
-    // starts.
+    vib.connect(vibDepth); vibDepth.connect(saw.detune); vibDepth.connect(tri.detune);
+    // The wah: a resonant low-pass that starts shut ("w") at every
+    // syllable and sweeps open ("-ah"). o.wah 0..1 is how far shut it
+    // starts and how slowly it opens.
     const wah = ctx.createBiquadFilter();
     wah.type = 'lowpass';
-    wah.Q.value = 9;
-    const wahOpen = Math.min(7000, 2200 + base * 4) * formantShift;
-    wah.frequency.setValueAtTime(wahOpen, at);
-    grit.connect(wah);
+    wah.Q.value = 3 + wahAmount * 3;
+    const wahOpen = Math.min(4500, 1800 + base * 2.5) * formantShift;
+    saw.connect(sawGain).connect(wah); tri.connect(triGain).connect(wah);
 
     // The mouth: three resonances that glide between vowels.
-    const mouth = [['f1', 7, 1.2], ['f2', 12, 0.9], ['f3', 14, 0.45]].map(([k, q, g]) => {
+    const mouth = [['f1', 5, 1], ['f2', 8, 0.6], ['f3', 10, 0.25]].map(([k, q, g]) => {
       const bp = ctx.createBiquadFilter();
       bp.type = 'bandpass'; bp.Q.value = q;
       const gain = ctx.createGain(); gain.gain.value = g;
@@ -181,46 +178,79 @@
     });
     const tone = ctx.createBiquadFilter();
     tone.type = 'lowpass';
-    tone.frequency.value = Math.min(9000, 2600 + base * 9); // a big voice is darker
+    tone.frequency.value = Math.min(5000, 1800 + base * 4); // a big voice is darker
     amp.connect(tone).connect(bus).connect(out);
 
+    // Each syllable: shut for the "w" just before it, then a sweep open
+    // into the vowel. Ramps in time order, so they never overlap.
+    let swept = at;
+    const held = new Map();
+    const sweep = (param, shut, open, t0, len) => {
+      const from = Math.max(swept, t0 - 0.04);
+      if (from < t0 - 0.005) { param.setValueAtTime(held.get(param) ?? open, from); param.exponentialRampToValueAtTime(shut, t0); }
+      else param.setValueAtTime(shut, t0);
+      param.exponentialRampToValueAtTime(open, t0 + len);
+      held.set(param, open);
+    };
+
     const first = plan[0];
-    for (const osc of [saw, sq]) osc.frequency.setValueAtTime(first.f0 * 0.9, at);
-    for (const m of mouth) m.bp.frequency.setValueAtTime(formant(first.v, m.k) * formantShift * 0.6, at);
+    for (const osc of [saw, tri]) osc.frequency.setValueAtTime(first.f0 * 0.94, at);
+    wah.frequency.setValueAtTime(wahOpen, at);
+    for (const m of mouth) m.bp.frequency.setValueAtTime(formant(first.v, m.k) * formantShift, at);
     for (const p of plan) {
       const { t: t0, dur, v } = p, t1 = t0 + dur;
-      // Pitch slides into each syllable (the talkbox glide), and bends at
-      // the end of the line: up for a question, down otherwise.
-      const lip = /[bmpw]/.test(p.s.consonant) ? 0.9 : 1;
-      for (const osc of [saw, sq]) {
-        osc.frequency.setTargetAtTime(p.f0 * lip, t0, 0.008);
-        osc.frequency.setTargetAtTime(p.f0, t0 + 0.02, 0.03);
+      // The pitch glides from syllable to syllable (portamento), and bends
+      // at the end of the line: up for a question, down otherwise.
+      for (const osc of [saw, tri]) {
+        osc.frequency.setTargetAtTime(p.f0, t0 - 0.02, p.hold ? 0.025 : 0.04);
         if (p.last && o.bend !== 1) osc.frequency.setTargetAtTime(p.f0 * o.bend, t0 + dur * 0.4, dur * 0.4);
       }
-      // The mouth opens into the vowel ("b", "m": from nearly shut).
-      for (const m of mouth) {
-        const f = formant(v, m.k) * formantShift;
-        if (lip < 1) m.bp.frequency.setValueAtTime(f * 0.55, t0);
-        m.bp.frequency.setTargetAtTime(f, t0, 0.025);
+      // "Wah": the filter and the mouth go from shut and round ("w", "u")
+      // to the vowel, over the first part of the syllable.
+      const len = Math.min(dur * 0.6, (p.hold ? 0.09 : 0.05) + wahAmount * 0.07);
+      if (!p.tied) {
+        sweep(wah.frequency, wahAmount > 0 ? wahOpen * Math.pow(0.1, wahAmount) : wahOpen, wahOpen, t0, len);
+        for (const m of mouth) {
+          const f = formant(v, m.k) * formantShift, w = formant(VOWELS.u, m.k) * formantShift;
+          sweep(m.bp.frequency, f * Math.pow(w / f, Math.max(0.3, wahAmount)), f, t0, len);
+        }
+        swept = t0 + len;
       }
-      // A swell per syllable; inside a word it dips but doesn't stop.
-      const floor = p.legato ? 0.7 : p.gap < 0.02 ? 0.25 : 0.0001;
-      amp.gain.setTargetAtTime(1, t0, 0.012);
-      const wahAmount = o.wah ?? 0.8;
-      if (wahAmount > 0 && !p.tied) {
-        wah.frequency.setValueAtTime(wahOpen * Math.pow(0.12, wahAmount), t0);
-        wah.frequency.setTargetAtTime(wahOpen, t0, p.hold ? 0.06 : 0.035);
-      }
-      amp.gain.setTargetAtTime(floor, t1 - Math.min(p.hold ? 0.06 : 0.04, dur * 0.4), 0.018);
+      // A round swell per syllable that overlaps the next a little: inside
+      // a word it dips but doesn't stop, between words it nearly does.
+      const floor = p.legato ? 0.8 : p.gap < 0.02 ? 0.4 : p.gap < 0.15 ? 0.08 : 0.0001;
+      amp.gain.setTargetAtTime(p.s.stress || p.hold ? 1 : 0.8, t0 - 0.005, 0.02);
+      amp.gain.setTargetAtTime(floor, t1 - Math.min(p.hold ? 0.07 : 0.05, dur * 0.4), 0.035);
       if (/[stkcfhzxqjdg]/.test(p.s.consonant)) tick(ctx, bus, t0, p.s.consonant);
     }
-    amp.gain.setTargetAtTime(0, t - 0.02, 0.02);
-    for (const osc of [saw, sq, vib]) { osc.start(at); osc.stop(end); }
+    amp.gain.setTargetAtTime(0, t - 0.02, 0.05);
+    for (const osc of [saw, tri, vib]) { osc.start(at); osc.stop(end); }
 
     const sylls = plan.map((p) => ({ t0: p.t - at, t1: p.t + p.dur - at, vowel: p.s.vowel, open: p.hold || p.s.stress ? 1 : 0.75, hold: !!p.hold }));
     // stop(): cut it short with a quick fade (for a new line over it).
     const stop = () => { const now = ctx.currentTime; bus.gain.cancelScheduledValues(now); bus.gain.setTargetAtTime(0, now, 0.015); };
     return { sylls, length: t - at, stop };
+  }
+
+  // Everyone's voices meet here before the speakers: a gentle compressor,
+  // then a soft ceiling just under full scale, so however many slimes talk
+  // or sing at once it never clips. Connect voices to what this returns.
+  function master(ctx) {
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -12; comp.knee.value = 10; comp.ratio.value = 4;
+    comp.attack.value = 0.004; comp.release.value = 0.25;
+    const trim = ctx.createGain();
+    trim.gain.value = 0.6; // the compressor adds its own make-up gain
+    const ceiling = ctx.createWaveShaper();
+    const curve = new Float32Array(1025);
+    for (let i = 0; i < curve.length; i++) {
+      const x = i / 512 - 1, a = Math.abs(x);
+      curve[i] = Math.sign(x) * (a < 0.55 ? a : 0.55 + 0.27 * Math.tanh((a - 0.55) / 0.27));
+    }
+    ceiling.curve = curve;
+    ceiling.oversample = '2x';
+    comp.connect(trim).connect(ceiling).connect(ctx.destination);
+    return comp;
   }
 
   // A vowel's third formant isn't in the table: it barely moves, so it's
@@ -236,7 +266,7 @@
     hp.frequency.value = /[sz]/.test(consonant) ? 4500 : 2200;
     const ng = ctx.createGain();
     const len = /[sz]/.test(consonant) ? 0.035 : 0.018;
-    ng.gain.setValueAtTime(0.22, t);
+    ng.gain.setValueAtTime(0.07, t);
     ng.gain.exponentialRampToValueAtTime(0.001, t + len);
     n.connect(hp).connect(ng).connect(out);
     n.start(t); n.stop(t + len + 0.01);
@@ -259,7 +289,7 @@
     return null; // done
   }
 
-  const api = { speak, sing, syllables, pitchFor, mouthAt, hash, VOWELS };
+  const api = { speak, sing, master, syllables, pitchFor, mouthAt, hash, VOWELS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.BlaubeVoice = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
