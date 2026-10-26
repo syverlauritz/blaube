@@ -69,6 +69,7 @@ let prefs = { config: {}, displayId: null, colors: {} };
 
 function loadPrefs() {
   try { prefs = Object.assign(prefs, JSON.parse(fs.readFileSync(prefsFile(), 'utf8'))); } catch { /* first run */ }
+  if (prefs.notify === false && prefs.config && !prefs.config.notify) prefs.config.notify = 'Off'; // (from before it was a setting)
   prefs.config = BlaubeConfig.sanitize(prefs.config);
   if (!prefs.colors || typeof prefs.colors !== 'object') prefs.colors = {};
 }
@@ -836,8 +837,9 @@ const notified = new Map(); // session id -> when it last notified
 const shown = new Set(); // notifications still on screen
 function notify(s, event, text, secs = 0) {
   if (TEST || !Notification.isSupported() || s.id.startsWith('demo-')) return;
-  const seen = (prefs.config.onTop !== 'Off' && win && win.isVisible()) || (talkWin && talkWin.isVisible() && talkId === s.id);
-  const n = attention.notification({ event, project: s.project, title: usage.sessionInfo(transcriptPath(s)).title, text, secs, seen, enabled: prefs.notify !== false });
+  const mode = prefs.config.notify || 'Behind windows';
+  const seen = (talkWin && talkWin.isVisible() && talkId === s.id) || (mode !== 'Always' && prefs.config.onTop !== 'Off' && win && win.isVisible());
+  const n = attention.notification({ event, project: s.project, title: usage.sessionInfo(transcriptPath(s)).title, text, secs, seen, enabled: mode !== 'Off' });
   if (!n || Date.now() - (notified.get(s.id) || 0) < 15000) return;
   notified.set(s.id, Date.now());
   const note = new Notification({ title: n.title, body: n.body });
@@ -985,7 +987,7 @@ function appMenuTemplate() {
     { type: 'separator' },
     { label: 'Colour', submenu: colorMenu(prefs.config.color, (hex) => setConfig(Object.assign({}, prefs.config, { color: hex }))) },
     { label: 'Live on display', submenu: displayMenu() },
-    { label: 'Notify me when they’re behind windows', type: 'checkbox', checked: prefs.notify !== false, click: (i) => { prefs.notify = i.checked; savePrefs(); } },
+    { label: 'Notifications', submenu: ['Behind windows', 'Always', 'Off'].map((m) => ({ label: m === 'Behind windows' ? 'When they’re behind windows' : m, type: 'radio', checked: (prefs.config.notify || 'Behind windows') === m, click: () => setConfig(Object.assign({}, prefs.config, { notify: m })) })) },
     { label: 'Sounds', type: 'checkbox', checked: prefs.config.voice !== 'Off', click: (i) => setConfig(Object.assign({}, prefs.config, { voice: i.checked ? 'On' : 'Off' })) },
     { label: 'Stay in front of other windows', type: 'checkbox', checked: prefs.config.onTop !== 'Off', click: (i) => setConfig(Object.assign({}, prefs.config, { onTop: i.checked ? 'On' : 'Off' })) },
     { label: 'Settings…', click: openSettings },
@@ -1143,6 +1145,16 @@ function trayIcon() {
   return img;
 }
 
+function trayMenu() {
+  const live = tracker.list().filter(isReady).filter((o) => !o.id.startsWith('demo-'));
+  const mark = { waiting: '❓', working: '⏳', done: '✅', idle: '💤' };
+  const rows = live.map((o) => {
+    const g = glanceAt(o);
+    return { label: `${mark[o.state] || '•'}  ${o.project}`, sublabel: g.status, toolTip: g.meta, click: () => { if (!win) return; if (process.platform === 'darwin') app.focus({ steal: true }); win.webContents.send('open-talk', o.id); } };
+  });
+  return Menu.buildFromTemplate([...(rows.length ? [...rows, { type: 'separator' }] : []), ...appMenuTemplate()]);
+}
+
 function refreshTray() {
   if (!tray) return;
   const busy = tracker.list().filter((s) => s.state === 'working').length;
@@ -1168,8 +1180,10 @@ app.whenReady().then(async () => {
 
   if (!TEST) {
     tray = new Tray(trayIcon());
-    tray.on('click', () => tray.popUpContextMenu(appMenu()));
-    tray.on('right-click', () => tray.popUpContextMenu(appMenu()));
+    // The menu bar icon: every session first (a click opens its talk box,
+    // even with the slimes hidden), then Blaube's menu.
+    tray.on('click', () => tray.popUpContextMenu(trayMenu()));
+    tray.on('right-click', () => tray.popUpContextMenu(trayMenu()));
   }
   refreshTray();
 
