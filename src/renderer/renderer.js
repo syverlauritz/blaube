@@ -872,6 +872,7 @@
       case 'waiting':
         if (wantsAttention(b)) b.hop(0, -CFG.waitingHopStrength);
         b.nextHop = time + 2.2;
+        cheerOn(b, false, true); // (the others look over: it needs you)
         break;
       case 'done': {
         const took = b.session && b.session.turnStart ? (Date.now() - b.session.turnStart) / 1000 : 0;
@@ -940,7 +941,7 @@
 
   // A slime finishes: the others look over, and calm ones nearby are
   // pleased for it (a long one gets a little hop of applause).
-  function cheerOn(b, big) {
+  function cheerOn(b, big, lookOnly) {
     if (CFG.cheerOthers <= 0) return;
     const c = b.body.centroid();
     let i = 0;
@@ -951,7 +952,7 @@
         if (o.dying || b.dying) return;
         o.glanceAt = b;
         o.glanceUntil = time + 1.2 + Math.random() * 0.6;
-        if (!near || o.state === 'working' || o.state === 'waiting' || o.body.grab) return;
+        if (lookOnly || !near || o.state === 'working' || o.state === 'waiting' || o.body.grab) return;
         o.happyUntil = time + 1.5;
         if (big && o.body.onFloor() && Math.random() < 0.7 * CFG.cheerOthers) o.hop(0, -(300 + Math.random() * 120) * Math.min(1.5, CFG.cheerOthers));
       }, 300 + i++ * 140 + Math.random() * 200);
