@@ -1886,7 +1886,9 @@
     while (flips.length && time - flips[0] > 1.5) flips.shift();
     if (CFG.shakeDizzy > 0 && flips.length >= CFG.shakeDizzy) { b.dizzyUntil = time + 1.8; flips.length = 0; feel(b, -0.35); }
     b.stillFor = Math.hypot(g.vx, g.vy) < 90 ? (b.stillFor || 0) + DT : 0;
-    b.wriggling = CFG.wriggle > 0 && b.stillFor > CFG.wriggleAfter && time > b.dizzyUntil && (b.stillFor - CFG.wriggleAfter) % 2.6 < 1.3;
+    // (Grumpy with you, it wants down much sooner.)
+    const after = CFG.wriggleAfter * ((b.mood || 0) < -0.3 ? 0.3 : 1);
+    b.wriggling = CFG.wriggle > 0 && b.stillFor > after && time > b.dizzyUntil && (b.stillFor - after) % 2.6 < 1.3;
     if (b.wriggling && time > (b.nextKick || 0)) {
       // Kicks: held by its top, a lean swings its bottom from side to side.
       b.kickDir = -(b.kickDir || 1);
