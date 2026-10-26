@@ -1432,7 +1432,8 @@
     // away, peeking back now and then; keep it up and it giggles and squirms.
     const staring = CFG.shy > 0 && !drag && !b.patted && body.contains(mouse.x, mouse.y) && performance.now() / 1000 - mouse.lastMove > 0.8;
     b.stare = staring ? (b.stare || 0) + DT : Math.max(0, (b.stare || 0) - DT * 2);
-    b.shy = ramp(b.stare, 0.6, 2.2) * Math.min(1, CFG.shy);
+    // (Thanked, it goes bashful the same way for a moment.)
+    b.shy = Math.max(ramp(b.stare, 0.6, 2.2) * Math.min(1, CFG.shy), time < (b.blushUntil || 0) ? Math.min(0.9, (b.blushUntil - time) / 1.5) : 0);
     if (b.shy > 0.3) {
       if (time > (b.nextPeek || 0)) {
         b.peekBack = !b.peekBack;
@@ -3468,6 +3469,7 @@
     else if (b.nibbling) { expression = 'happy'; mouth = time - b.nibbling.at < 0.5 ? 'o' : Math.round((time - b.nibbling.at) / 0.18) % 2 ? 'grin' : 'flat'; } // (chomp chomp)
     else if (b.patted) { expression = 'happy'; mouth = 'smile'; }
     else if (time < (b.petWorryUntil || 0)) { expression = 'worried'; mouth = 'o'; }
+    else if (time < (b.sheepishUntil || 0)) { expression = 'worried'; mouth = 'wobble'; } // (told off)
     else if (time < (b.squirmUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
     else if ((b.shy || 0) > 0.3) { expression = 'normal'; mouth = 'smile'; }
     else if (time < (b.wantsPetsUntil || 0) && time > (b.pettedUntil || 0)) { expression = 'normal'; mouth = 'smile'; }
@@ -4206,6 +4208,25 @@
       return;
     }
     if (m.kind === 'commit' && once('commit', 20)) { b.nodAt = time; b.nodQuiet = true; return; }
+    // You thanked it, or told it off, in a prompt.
+    if (m.kind === 'praise' || m.kind === 'scold') {
+      if (CFG.feelings <= 0 || !once('tone', 8)) return;
+      const pick = (a) => a[Math.floor(Math.random() * a.length)];
+      if (m.kind === 'praise') {
+        b.blushUntil = time + 3;
+        b.squirmUntil = time + 0.6 + 0.4 * Math.min(1, CFG.feelings);
+        b.happyUntil = time + 2.5;
+        const top = b.body.bbox().minY, c = b.body.centroid();
+        for (let i = 0; i < 2; i++) hearts.push({ x: c.x + (i ? 12 : -12), y: top - 6, vx: (i ? 30 : -30), born: time + i * 0.15, size: 10 });
+        b.say([{ text: pick(['aw, thanks!', 'hehe', 'anytime!']) }], 1.8);
+      } else {
+        b.sheepishUntil = time + 2.5;
+        b.droopUntil = time + 2.5;
+        if (grounded) b.body.impulse(0, 120 * Math.min(1.5, CFG.feelings), DT);
+        b.say([{ text: pick(['sorry…', 'oops…', 'on it…']) }], 1.8);
+      }
+      return;
+    }
     if (m.kind !== 'oops' || time < (b.nextWince || 0)) return;
     b.nextWince = time + 20;
     b.winceUntil = time + 0.7;

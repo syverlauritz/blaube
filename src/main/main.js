@@ -8,6 +8,7 @@ const { SONGS } = require('../shared/songs');
 const { placeTalk } = require('./talkPlace');
 const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
+const { toneOf } = require('./tone');
 const { openResumeTerminal, resumeCommand, focusSessionApp, typeIntoSession } = require('./terminal');
 const { startAgentsPoller, listAgents, findClaude } = require('./agents');
 const { Owned } = require('./owned');
@@ -1067,7 +1068,14 @@ app.whenReady().then(async () => {
     pushState();
     refreshTray();
   });
-  tracker.on('prompt', (s) => { doing.delete(s.id); if (win) win.webContents.send('nod', s.id); });
+  tracker.on('prompt', (s, text) => {
+    doing.delete(s.id);
+    if (!win) return;
+    win.webContents.send('nod', s.id);
+    // Thanked or told off: the slime blushes, or looks sheepish.
+    const tone = toneOf(text);
+    if (tone) win.webContents.send('react', { id: s.id, kind: tone });
+  });
   tracker.on('change', () => pushTalk(talkId));
   // A turn ended: anything waiting for a session without an inbox hook can be typed now.
   const typeSoon = new Map();
@@ -1082,7 +1090,8 @@ app.whenReady().then(async () => {
   inbox.on('change', (id) => pushTalk(id));
   // A message from the slime went in: its turn starts, as if typed.
   inbox.on('delivered', (id) => {
-    if (tracker.sessions.has(id)) tracker.handle({ session_id: id, hook_event_name: 'UserPromptSubmit' }, 'blaube');
+    const said = [...inbox.log(id)].reverse().find((e) => e.who === 'you');
+    if (tracker.sessions.has(id)) tracker.handle({ session_id: id, hook_event_name: 'UserPromptSubmit', prompt: said && said.text }, 'blaube');
   });
   // Replies to what you said from the slime pop up as a speech bubble,
   // unless its talk box is open (it shows them, and would cover the bubble).
