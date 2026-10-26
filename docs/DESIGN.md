@@ -59,9 +59,16 @@ ships that breaks a "must".
   boxes, a pointed wedge tail (the talk box's; the little bubbles' tails stay chubby and round-tipped).
   All of Blaube's words are in one rounded font, Nunito (chosen over
   Fredoka, Baloo 2 and Quicksand; not up for review), except the name line
-  of a bubble or talk box, which uses the display font picked in Settings
+  of a bubble, which uses the display font picked in Settings
   (Coiny by default; very long names fall back to Nunito to stay readable). Wanted ("more rounded", "more
   childlike in general").
+- The talk box is for reading: only Nunito in it, its name line too (heavier,
+  not a display font). It stays exactly where it opened (it never drifts
+  after its blob or moves when what's in it grows; that scrolls), you can
+  resize it by its edges and corners (the size is kept per screen), and its
+  tail slides round the box's whole outline to the edge facing its blob,
+  wherever the blob is carried; up against or under the box, the tail
+  shrinks away.
 - Blobs talk out loud in a made-up babble through a talkbox: a buzzy
   synth note shaped by a sweeping vowel filter, with a wah on the attack of
   each syllable only (it opens and stays open; no wah-wah on held notes).
