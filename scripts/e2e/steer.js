@@ -376,11 +376,16 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(inbox.log(ID3).some((e) => e.who === 'note' && /limit lifted/.test(e.text)), 'saying so');
 	for (const e of inbox.queue.get(ID3) || []) inbox.unsend(ID3, e.n);
 	// "!ls" runs right here, as the terminal's bash mode does, and goes along with the next message.
+	// "# always use pnpm": remembered in its project's CLAUDE.md, as in the terminal.
+	await type('# always use pnpm');
+	check(await until(() => { try { return fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8') === '- always use pnpm\n'; } catch { return false; } }), '# notes go in the project’s CLAUDE.md');
+	check(await until(() => box(`[...document.querySelectorAll('#inner .note')].some((e) => /^Remembered in blaube-repo-\\w+\\/CLAUDE\\.md: always use pnpm$/.test(e.textContent))`)), 'and the box says so');
+	check(!inbox.log(ID3).some((e) => e.who === 'you' && /always use pnpm/.test(e.text)), 'instead of going as a message');
 	await type('!ls src');
 	check(await until(() => inbox.log(ID3).some((e) => e.who === 'step' && e.text === 'You ran ls src' && e.ok && !e.running && /tax\.js/.test(e.detail))), '!ls runs in its folder and shows what it printed');
 	check(await until(() => box(`[...document.querySelectorAll('#inner .step')].some((e) => /You ran ls src/.test(e.textContent))`)), 'as a step in the box');
 	await type('what is in there?');
-	check(await until(() => inbox.log(ID3).some((e) => e.who === 'you' && /^\(I ran `ls src` myself\. It printed:\n```\ntax\.js\n```\)\n\nwhat is in there\?$/.test(e.text))), 'and what it printed goes along with the next message');
+	check(await until(() => inbox.log(ID3).some((e) => e.who === 'you' && /^\(I ran `ls src` myself\. It printed:\n```\ntax\.js\n```\)\n\n\(I added this to \S+CLAUDE\.md, for you to keep in mind from now on: always use pnpm\)\n\nwhat is in there\?$/.test(e.text))), 'and what it printed goes along with the next message (and the note it should keep in mind)');
 	// What it may do without asking, and taking one back (as /permissions does).
 	fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
 	const localSettings = path.join(repo, '.claude', 'settings.local.json');

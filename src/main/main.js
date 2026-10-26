@@ -21,6 +21,7 @@ const limits = require('./limits');
 const taskOutput = require('./taskOutput');
 const permRules = require('./permRules');
 const taskKill = require('./taskKill');
+const memory = require('./memory');
 const { openResumeTerminal, resumeCommand, focusSessionApp, typeIntoSession } = require('./terminal');
 const { startAgentsPoller, listAgents, findClaude } = require('./agents');
 const { Owned } = require('./owned');
@@ -489,7 +490,8 @@ function pushTalk(id, focusField = false) {
 }
 let usageLimits = null; // (see limits.js)
 const mcpStates = new Map(); // id -> its MCP servers, for a session Blaube started
-const rewound = new Map(); // id -> what Claude should hear about files you put back
+const rewound = new Map(); // id -> what Claude should hear with your next message (files you put back, notes you added)
+const tellNext = (id, what) => rewound.set(id, [rewound.get(id), what].filter(Boolean).join(' '));
 const endedTasks = new Set(); // `${session}/${task}` whose ending was seen (or caused)
 const taskUrls = new Map(); // `${session}/${task}` -> the local address it said it's on
 const foreground = new Map(); // id -> { tool, at, what }: a command it's waiting on, in a session Blaube started
@@ -1595,7 +1597,7 @@ app.whenReady().then(async () => {
         const files = (r.filesChanged || []).map((f) => path.basename(f));
         const what = files.length ? files.join(', ') : 'its files';
         inbox.add(id, { who: 'note', text: `Put back ${what} as they were before that turn` });
-        rewound.set(id, `I put ${files.length ? (r.filesChanged || []).join(', ') : 'the files you changed'} back as they were before your last turn: those changes are gone now.`);
+        tellNext(id, `I put ${files.length ? (r.filesChanged || []).join(', ') : 'the files you changed'} back as they were before your last turn: those changes are gone now.`);
         done(true);
       });
     });
@@ -1866,6 +1868,19 @@ app.whenReady().then(async () => {
     // "!git log": run right here, in its folder, as the terminal's bash
     // mode does; what it printed goes along with your next message.
     if (/^!\S/.test(String(text).trim())) return runForSession(id, String(text).trim().slice(1).trim());
+    // "# always use pnpm": remembered in its project's CLAUDE.md, as the
+    // terminal's # does.
+    const note = memory.noteIn(text);
+    const sess = tracker.sessions.get(id);
+    if (note && sess && sess.cwd) {
+      const st = gitStates.get(id);
+      try {
+        const file = memory.remember((st && st.root) || sess.cwd, note);
+        inbox.add(id, { who: 'note', text: `Remembered in ${path.basename(path.dirname(file))}/CLAUDE.md: ${note}`, file });
+        tellNext(id, `I added this to ${file}, for you to keep in mind from now on: ${note}`); // (it read CLAUDE.md when it started)
+      } catch (e) { inbox.add(id, { who: 'note', text: `Couldn’t write CLAUDE.md: ${e.message}`, error: true }); }
+      return;
+    }
     // One of your own commands (/deploy staging) is only a prompt: it goes
     // as a message, so it needs no terminal.
     const prompt = expandCommand(text, (tracker.sessions.get(id) || {}).cwd);
