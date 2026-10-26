@@ -97,7 +97,7 @@ module.exports = async function run({ win, tracker }) {
 	const ledge = { id: 9, x0: 80, x1: 440, y: Math.round(size.h * 0.45), wx: 80, at: Date.now() };
 	win.webContents.send('ledges', [ledge]);
 	await sleep(100);
-	await js(`(() => { ${kid}.body.teleport(260, ${ledge.y - 120}); ${mom}.body.teleport(${size.w - 500}, ${size.h - 200}); })()`);
+	await js(`(() => { ${kid}.body.teleport(260, ${ledge.y - 120}); ${kid}.nextHop = __blaube.now() + 2.5; ${mom}.body.teleport(${size.w - 500}, ${size.h - 200}); })()`);
 	check(await until(() => js(`${kid}.body.onLedge && ${kid}.body.onFloor()`), 3000), 'the helper is up on a window, mum on the floor far off');
 	check(await until(() => js(`${kid}.body.onFloor() && !${kid}.body.onLedge && ${kid}.body.centroid().x > ${ledge.x1}`), 10000), 'it hops down off the window after her');
 	check(await js(`!${kid}.gaveUp`), 'without giving up');
