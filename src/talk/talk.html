@@ -109,6 +109,8 @@
   /* Its git status, quietly, under its name. */
   .git { margin: -4px 22px 6px; font: 600 14px var(--ui); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .git[hidden] { display: none; }
+  .link { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--color) 70%, transparent); text-underline-offset: 2px; cursor: pointer; word-break: break-all; }
+  .link:hover { text-decoration-color: var(--color); }
   /* What it left running in the background (a dev server, a watcher). */
   .bg { margin: -2px 22px 6px; padding: 0; list-style: none; }
   .bg[hidden] { display: none; }

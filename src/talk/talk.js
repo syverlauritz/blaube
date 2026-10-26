@@ -87,12 +87,34 @@
           if (!bit) continue;
           if (bit[0] === '`') { const c = document.createElement('code'); c.textContent = bit.slice(1, -1); span.append(c); }
           else if (bit.startsWith('**')) { const b = document.createElement('b'); b.textContent = bit.slice(2, -2); span.append(b); }
-          else span.append(bit);
+          else links(span, bit);
         }
         el.append(span);
         if (j < lines.length - 1) el.append('\n');
       });
     });
+  }
+
+  // Web links in a reply ([text](url) or a bare https://…) open in your
+  // browser: a PR it opened is a tap away.
+  function links(span, text) {
+    const re = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|https?:\/\/[^\s<>"'`]+/g;
+    let at = 0, m;
+    while ((m = re.exec(text))) {
+      let url = m[2] || m[0], label = m[1] || '';
+      let tail = '';
+      if (!m[2]) { const t = /[.,;:!?)\]]+$/.exec(url); if (t) { tail = t[0]; url = url.slice(0, -tail.length); } label = url; }
+      span.append(text.slice(at, m.index));
+      const a = document.createElement('a');
+      a.className = 'link';
+      a.href = url;
+      a.textContent = label;
+      a.title = url;
+      a.addEventListener('click', (e) => { e.preventDefault(); if (api.openLink) api.openLink(url); });
+      span.append(a, tail);
+      at = m.index + m[0].length;
+    }
+    span.append(text.slice(at));
   }
 
   // A step goes into the run of steps it follows (or starts one). A run

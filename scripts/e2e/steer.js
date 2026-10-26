@@ -141,6 +141,14 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	check(await until(() => box(`(() => { const t = [...document.querySelectorAll('#inner .turnmeta')].pop(); return !!t && /step/.test(t.textContent) && /tax\\.js/.test(t.textContent); })()`)), 'the reply says how many steps it took and which files changed');
 	await shot('stopped');
 
+	// Links in a reply open in the browser.
+	await hook({ hook_event_name: 'UserPromptSubmit', prompt: 'open a PR' });
+	await hook({ hook_event_name: 'Stop', last_assistant_message: 'Opened [the PR](https://github.com/a/b/pull/7). Also https://example.com/x.' });
+	check(await until(() => box(`(() => { const a = [...document.querySelectorAll('#inner .msg.claude a.link')]; return a.length === 2 && a[0].textContent === 'the PR' && a[0].getAttribute('href') === 'https://github.com/a/b/pull/7' && a[1].getAttribute('href') === 'https://example.com/x'; })()`)), 'links in a reply are links (a trailing full stop isn’t part of one)');
+	await box(`document.querySelector('#inner .msg.claude a.link').click()`);
+	await sleep(200);
+	check(talk().webContents.getURL().endsWith('talk.html'), 'tapping one doesn’t take the box away');
+
 	// Take the conversation with you: ⌘S saves it as Markdown, ⇧⌘C copies
 	// it, and files and replies drag out into other apps.
 	await key('s', mod);

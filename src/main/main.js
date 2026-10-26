@@ -330,6 +330,9 @@ function makeTalkWin() {
     webPreferences: { preload: path.join(__dirname, 'talkPreload.js'), contextIsolation: true, sandbox: true },
   });
   talkWin.loadFile(path.join(__dirname, '..', 'talk', 'talk.html'));
+  // Links in replies open in your browser (talk-link), never in here.
+  talkWin.webContents.on('will-navigate', (e) => e.preventDefault());
+  talkWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   if (TEST) talkWin.setOpacity(0);
   talkWin.on('blur', () => {
     if (!talkWin || !talkWin.isVisible() || talkWin.webContents.isDevToolsFocused()) return;
@@ -1563,6 +1566,12 @@ app.whenReady().then(async () => {
     pickUp({ id, cwd: last.cwd, at: 0, title: last.project, file: null });
   });
   ipcMain.on('talk-pickup', (_e, id) => { const p = hubPast.find((x) => x.id === id); if (p) { hubCache = null; hideTalk(); pickUp(p); } });
+  // A web link in a reply, opened in your browser (web links only).
+  ipcMain.on('talk-link', (_e, url) => {
+    let u = null;
+    try { u = new URL(String(url)); } catch { return; }
+    if ((u.protocol === 'https:' || u.protocol === 'http:') && !TEST) shell.openExternal(u.href);
+  });
   ipcMain.on('talk-copy', (_e, text) => { if (typeof text === 'string' && text.length < 1e6) clipboard.writeText(text); });
   ipcMain.handle('talk-save', (_e, id) => (id && id === talkId ? saveConversation(id) : ''));
   ipcMain.on('talk-copy-all', (_e, id) => { if (id && id === talkId) clipboard.writeText(conversationMarkdown(id)); });
