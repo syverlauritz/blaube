@@ -1480,6 +1480,10 @@
     requestAnimationFrame(fitWindow);
   }
   const addFile = (path, name) => { if (path && !files.some((f) => f.path === path)) { files.push({ path, name: name || path.split(/[\\/]/).pop() }); drawFiles(); } };
+  $('attach').addEventListener('click', () => {
+    if (!current || current.demo || !api.attach) return;
+    api.attach(current.id).then((paths) => { for (const p of paths || []) addFile(p); text.focus(); });
+  });
   text.addEventListener('paste', async (e) => {
     if (!current || text.disabled || !api.paste) return;
     const items = [...(e.clipboardData ? e.clipboardData.items : [])].filter((it) => it.kind === 'file' && /^image\//.test(it.type));

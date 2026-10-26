@@ -352,7 +352,7 @@ function makeTalkWin() {
   talkWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   if (TEST) talkWin.setOpacity(0);
   talkWin.on('blur', () => {
-    if (!talkWin || !talkWin.isVisible() || talkWin.webContents.isDevToolsFocused()) return;
+    if (!talkWin || !talkWin.isVisible() || talkWin.webContents.isDevToolsFocused() || talkPicking) return;
     hideTalk();
     talkHiddenAt = Date.now(); // a click on its slime right now means "close"
     talkHiddenId = talkId;
@@ -476,6 +476,7 @@ function pushTalk(id, focusField = false) {
     });
   }
 }
+let talkPicking = false; // (a file dialog from the box is open: it stays)
 let hubPast = [], hubFolders = [], hubCache = null; // what the overview last offered
 const gitStates = new Map(); // session id -> its last git status (or null: not a repository)
 
@@ -1740,6 +1741,20 @@ app.whenReady().then(async () => {
     try { if (!fs.statSync(folder).isDirectory()) return; } catch { hubCache = null; return; }
     hideTalk();
     startSession(folder, extra);
+  });
+  // 📎 in the box: files to go with the next message (the box stays open
+  // while you pick).
+  ipcMain.handle('talk-attach', async (_e, id) => {
+    const s = id === talkId && tracker.sessions.get(id);
+    if (!s || TEST) return [];
+    talkPicking = true;
+    try {
+      const { canceled, filePaths } = await dialog.showOpenDialog({ title: `Files for ${s.project}`, defaultPath: s.cwd || undefined, properties: ['openFile', 'multiSelections'] });
+      return canceled ? [] : filePaths.slice(0, 20);
+    } finally {
+      talkPicking = false;
+      if (talkWin && talkWin.isVisible()) talkWin.focus();
+    }
   });
   // What was said before the box's own log, from its transcript.
   ipcMain.handle('talk-earlier', (_e, id) => {
