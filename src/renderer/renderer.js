@@ -5859,39 +5859,39 @@
     api.talk(id, pressed || landedHead(b));
   }
   // Where its head will be once it's standing on what's under it: how tall
-  // it stands (learnt while it rests, see noteResting) up from the floor or
-  // ledge below it.
-  let standK = 0; // (how tall slimes stand, in radii: any slime's, for one not yet seen resting)
+  // it stands (standHeight) up from the floor or ledge below it. Standing
+  // there already, where its head has settled.
   function landedHead(b) {
-    if (standing(b)) return restingHead(b);
     const at = headTop(b), body = b.body;
     if (body.grab) return at;
-    const box = body.bbox();
+    const box = body.bbox(), c = body.centroid();
     const floor = floorAt((box.minX + box.maxX) / 2, box.maxY);
-    const standH = b.standH || (standK ? standK * body.o.radius : 0);
-    if (standH) at.y = floor - standH;
-    else if (floor > box.maxY) at.y += floor - box.maxY;
+    // (What it wears on its head stands up over it the same, down or not.)
+    const worn = Math.max(0, c.y - body.o.radius - at.y);
+    at.y = floor - standHeight(b) - worn;
     return at;
   }
-  // Down: on something for a moment and not crouching for a hop, with its
-  // head's height smoothed over its wobble and breath (see noteResting).
-  const standing = (b) => b.downSince != null && time - b.downSince > 0.3;
-  const restingHead = (b) => Object.assign({}, b.restHead, { x: b.body.centroid().x });
-  function noteResting() {
-    for (const b of buddies.values()) {
-      const body = b.body;
-      if (!body.onFloor() || body.grab || b.dying || b.pendingHop) { b.downSince = null; b.restHead = null; continue; }
-      if (b.downSince == null) b.downSince = time;
-      const h = headTop(b);
-      if (!b.restHead) b.restHead = h;
-      else { b.restHead.y += (h.y - b.restHead.y) * 0.06; b.restHead.r = h.r; }
-      // How tall it stands, from what it stands on to its settled head.
-      if (time - b.downSince > 0.3) {
-        const stand = body.bbox().maxY - b.restHead.y;
-        b.standH = b.standH ? b.standH + (stand - b.standH) * 0.06 : stand;
-        standK = b.standH / body.o.radius;
-      }
-    }
+  // How tall a slime stands at rest, from what it stands on to the top of
+  // its head (its middle plus a radius): a copy of its body, with its own
+  // make-up, let settle on a floor for a moment, out of sight. Its shape in
+  // the air (stretched, tucked, squashed by landing) says nothing about
+  // that, and one that's always hopping is never seen at rest to learn it.
+  const standHeights = new Map(); // what makes it up -> how tall it stands
+  function standHeight(b) {
+    // (Its size between breaths: how full its context is, how it droops.)
+    const scale = (1 + CFG.contextInflate * (b.fill || 0) * (b.fill || 0)) * (1 - CFG.droop * (b.droop || 0));
+    const o = b.body.o, key = [o.radius.toFixed(1), o.points, o.pressure, o.gravity, o.fullness, o.shapeStiffness, o.edgeStiffness, scale.toFixed(3)].join();
+    if (standHeights.has(key)) return standHeights.get(key);
+    const r = o.radius, t = new SoftBody(0, 0, Object.assign({}, o));
+    const floor = r * 4;
+    t.setBounds(-r * 4, -r * 4, r * 4, floor);
+    t.areaScale = scale;
+    t.teleport(0, floor - r * 1.05);
+    for (let i = 0; i < 240; i++) t.step(DT);
+    const h = floor - (t.centroid().y - r);
+    if (standHeights.size > 50) standHeights.clear();
+    standHeights.set(key, h);
+    return h;
   }
 
   // Drawing is what costs the GPU (every frame shown costs about the same,
@@ -5984,7 +5984,6 @@
     checkPetting();
     if (paintNow(now)) draw();
     updateIgnore();
-    noteResting();
     followTalk();
     requestAnimationFrame(frame);
   }
