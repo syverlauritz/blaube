@@ -891,6 +891,7 @@
         b.happyUntil = time + 2.5;
         b.nextHop = time + CFG.doneHopEvery + (b.stretchAt ? 3 : 0); // (room for the stretch)
         cheerOn(b, took > 300);
+        if (b.kind === 'mother') setTimeout(allDone, 1500);
         break;
       }
     }
@@ -982,6 +983,24 @@
         if (o.body.onFloor()) o.hop(0, -180 * Math.min(1.5, CFG.farewell));
       }
     }, 250 + i * 160 + Math.random() * 200));
+  }
+
+  // The last session busy finishes and everything's done: a Mexican wave of
+  // hops along the row, and the one at the end says so.
+  let lastWave = -1e9;
+  function allDone() {
+    if (CFG.allDoneWave <= 0 || time - lastWave < 60) return;
+    const ms = [...buddies.values()].filter((o) => o.kind === 'mother' && !o.dying && !o.merging);
+    if (ms.length < 2 || ms.some((o) => o.state === 'working' || o.state === 'waiting')) return;
+    lastWave = time;
+    ms.sort((p, q) => p.body.centroid().x - q.body.centroid().x);
+    if (Math.random() < 0.5) ms.reverse();
+    ms.forEach((o, i) => setTimeout(() => {
+      if (o.dying || o.body.grab) return;
+      o.happyUntil = time + 1.5;
+      if (o.body.onFloor()) o.hop(0, -(300 + 60 * Math.min(1, CFG.allDoneWave)) * Math.min(1.4, CFG.allDoneWave));
+      if (i === ms.length - 1) quip(o, 'all done!', 2);
+    }, 250 * i));
   }
 
   function label(b) {

@@ -137,6 +137,7 @@
       ['cheerOthers', 1, 0, 2, 0.05, 'When one finishes, the others look over and nearby ones are pleased for it'],
       ['play', 1, 0, 2, 0.05, 'Two bored slimes now and then play tag: hop after, bump, "tag!", swap'],
       ['greetNew', 1, 0, 2, 0.05, 'A new session\'s slime lands and the nearest calm one hops over to say hi'],
+      ['allDoneWave', 1, 0, 2, 0.05, 'When the last busy session finishes, they do a wave of hops along the row: all done!'],
       ['farewell', 1, 0, 2, 0.05, 'When a session ends, the others watch its slime go, a little deflated, and the nearest says bye'],
       ['jealous', 1, 0, 3, 0.05, 'Petting one: another comes over for some too'],
       ['pranks', 1, 0, 5, 0.05, 'Now and then one sneaks up on another: boo! (more on Halloween)'],
