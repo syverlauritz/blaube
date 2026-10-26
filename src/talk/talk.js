@@ -581,7 +581,7 @@
         const q = allQuery;
         showOverview(false);
         if (h.id === current.id) openFind(q);
-        else { pendingFind = q; api.switchTo(h.id); }
+        else { pendingFind = q; api.switchTo(h.id); setTimeout(() => { pendingFind = ''; }, 2000); } // (if it never comes, forget it)
       };
       box.append(row);
     }
@@ -1066,7 +1066,7 @@
   api.onState((s) => {
     const first = !current || current.id !== s.id;
     if (first && current) drafts.set(current.id, text.value);
-    if (first) { document.body.classList.remove('overview'); $('find').value = ''; $('findBar').hidden = true; document.body.classList.remove('searching'); $('toast').hidden = true; gitOpen = false; }
+    if (first) { document.body.classList.remove('overview'); $('find').value = ''; $('findBar').hidden = true; document.body.classList.remove('searching'); $('toast').hidden = true; gitOpen = false; recall = -1; }
     if (first) { seen = s.log.length; text.value = drafts.get(s.id) || ''; if (files.length) { files = []; drawFiles(); } } // before the card reads it
     render(s);
     if (first) { fit(); send.disabled = text.disabled || (!text.value.trim() && !files.length); }
