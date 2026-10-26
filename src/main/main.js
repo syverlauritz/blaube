@@ -291,6 +291,12 @@ function openTuning() {
 let talkWin = null, talkId = null, talkTail = null;
 let talkSpot = null; // the top of the slime, in screen coordinates
 let talkHiddenAt = 0, talkHiddenId = null, talkReady = null, talkBefore = 0;
+// When it last opened, and the last press outside it since (Windows: seen by
+// the button watcher). Opened from a click on a slime (a window that never
+// takes focus), Windows may hand the focus straight back to the app you were
+// in: the box blurs a moment after showing, though you never clicked away.
+let talkShownAt = 0, talkPressedAt = 0, talkLight = null;
+const TALK_SETTLE = 600; // (ms: a blur this soon after it opened, with no press since, is that)
 let lastOtherApp = 0; // the app in front before you reached for a slime (macOS)
 let frontLookup = Promise.resolve(); // that lookup, while it runs
 const talkHeights = new Map(); // session id -> how tall its box wants to be (without the tail)
@@ -392,6 +398,7 @@ function pinTalk(rec, on) {
   if (!rec) return;
   if (on && !rec.pinned) {
     const id = talkId;
+    lightTalk(id, -1); // (pinned the moment it opened: seen now all the same)
     pinnedTalks.set(id, { id, win: talkWin, box: talkBox, tail: talkTail, pinned: true });
     talkWin = null; talkId = null; talkBox = null; talkTail = null;
     if (win) win.webContents.send('talking', null); // (its slime is free to wander off)
@@ -460,12 +467,18 @@ function makeTalkWin() {
   // Links in replies open in your browser (talk-link), never in here.
   talkWin.webContents.on('will-navigate', (e) => e.preventDefault());
   talkWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  if (TEST) talkWin.setOpacity(0);
+  // Unseen until it has drawn itself as it starts to grow (see lightTalk):
+  // shown at full strength, Windows and macOS put up whatever it last drew
+  // (the last conversation) for a frame or more before it fades in.
+  talkWin.setOpacity(0);
   // Tests print the talk box's own errors, so a broken handler can't hide.
   if (TEST) talkWin.webContents.on('console-message', (e) => { if (e.level === 'error') console.log('[talk error]', e.message, e.sourceId ? `${path.basename(e.sourceId)}:${e.lineNumber}` : ''); });
   // (Pinned, it's not this one any more: it stays.)
   w.on('blur', () => {
     if (w !== talkWin || !talkWin.isVisible() || talkWin.webContents.isDevToolsFocused() || talkPicking) return;
+    // Windows taking the focus back as it opens: not you clicking away. It
+    // stays (a press outside it closes it then: see pressedAway).
+    if (process.platform === 'win32' && Date.now() - talkShownAt < TALK_SETTLE && talkPressedAt < talkShownAt) { log(`talk box lost the focus ${Date.now() - talkShownAt} ms after opening: kept open`); return; }
     hideTalk();
     talkHiddenAt = Date.now(); // a click on its slime right now means "close"
     talkHiddenId = talkId;
@@ -484,10 +497,15 @@ function openTalkFor(id, at) {
   const show = () => {
     if (talkId !== id) return;
     placeTalkWin();
+    talkWin.setOpacity(0); // (seen once it has drawn its start: see lightTalk)
+    if (TEST) global.__blaubeTalkLit = false;
+    talkShownAt = Date.now();
     if (TEST) talkWin.showInactive(); // never takes your focus
     else { talkWin.show(); talkWin.focus(); } // already filled in while hidden
     sendTalkRect();
-    pushTalk(id, true);
+    pushTalk(id, true); // (it starts to grow, and says when it has: talk-shown)
+    clearTimeout(talkLight);
+    talkLight = setTimeout(() => lightTalk(id, -1), 300); // in case it never says
     if (win) win.webContents.send('talking', id);
   };
   const render = () => {
@@ -524,12 +542,38 @@ function hideTalk(switching = false) {
   if (!talkWin || !talkWin.isVisible()) return;
   if (talkId) looked.set(talkId, Date.now()); // you've read it up to now
   const onPurpose = talkWin.isFocused();
+  clearTimeout(talkLight);
+  talkWin.setOpacity(0); // (so it opens unseen next time, whatever it last drew)
+  if (TEST) global.__blaubeTalkLit = false;
   talkWin.hide();
   talkMoving = null;
   sendTalkRect();
   if (win && !switching) win.webContents.send('talking', null);
   if (onPurpose && !switching && process.platform === 'darwin' && !TEST) activateApp(talkBefore);
 }
+
+// The box has drawn itself as it starts to grow (`drawn`: how strongly, 0
+// to 1; -1: it never said): now it can be seen.
+function lightTalk(id, drawn) {
+  clearTimeout(talkLight);
+  if (!talkWin || talkWin.isDestroyed() || !talkWin.isVisible() || talkId !== id) return;
+  if (TEST) { // (tests are never seen: they note it instead)
+    if (!global.__blaubeTalkLit && global.__blaubeTalkFade) global.__blaubeTalkFade.push({ id, after: Date.now() - talkShownAt, drawn });
+    global.__blaubeTalkLit = true;
+  } else talkWin.setOpacity(1);
+}
+
+// A press anywhere but on a slime (Windows: from the button watcher).
+// Outside the box it's you clicking away: its blur closes it, or this does
+// when it never got the focus (Windows can refuse it).
+function pressedAway(p) {
+  if (!talkWin || talkWin.isDestroyed() || !talkWin.isVisible() || talkPicking) return;
+  const b = talkWin.getBounds();
+  if (p.x >= b.x && p.y >= b.y && p.x < b.x + b.width && p.y < b.y + b.height) return; // (in it)
+  talkPressedAt = Date.now();
+  if (!talkWin.isFocused()) hideTalk();
+}
+if (TEST) global.__blaubePressAt = pressedAway;
 
 let hooksOk = null; // whether Claude Code is connected, checked when the box opens
 const talkLasts = new Map(); // session id -> what its box last showed of it, for when it ends
@@ -2318,6 +2362,7 @@ app.whenReady().then(async () => {
   if (!TEST) startButtonWatcher((button, down, alt) => { // (tests click the page themselves, never with your mouse)
     if (!win || win.isDestroyed()) return;
     const { x, y, over } = cursorInWindow();
+    if (down && !over && !holding) pressedAway(screen.getCursorScreenPoint());
     if (down && (over || holding)) {
       pressed[button] = true;
       win.webContents.send('pointer', { kind: 'down', button, x, y, alt });
@@ -3568,6 +3613,10 @@ app.whenReady().then(async () => {
     }
     applyBounds(rec);
     if (phase === 'end') talkMoving = null;
+  });
+  // It has drawn its first frame, starting to grow: it can be seen.
+  ipcMain.on('talk-shown', (e, id, drawn) => {
+    if (talkWin && !talkWin.isDestroyed() && e.sender === talkWin.webContents) lightTalk(id, Number(drawn));
   });
   // The box grew or shrank to fit what's in it (its first measurement is
   // what it opens at).
