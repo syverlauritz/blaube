@@ -553,7 +553,7 @@
       let m = buddies.get(s.id);
       if (!m || m.dying) m = addMother(s);
       m.merging = null;
-      if (s.activity === 'tool' && m.lastActivity !== 'tool') m.pulse = true;
+      if (s.activity === 'tool' && m.lastActivity !== 'tool') { m.pulse = true; m.toolSince = time; }
       m.lastActivity = s.activity;
       const context = s.tokens ? s.tokens.context : 0;
       if (m.lastContext > 40000 && context < m.lastContext * 0.6) {
@@ -573,7 +573,7 @@
         if (!c || c.dying) c = split(m, key, 'child');
         c.merging = null;
         c.mother = m;
-        if (a.activity === 'tool' && c.lastActivity !== 'tool') c.pulse = true;
+        if (a.activity === 'tool' && c.lastActivity !== 'tool') { c.pulse = true; c.toolSince = time; }
         c.lastActivity = a.activity;
         c.agent = a;
         c.color = colorFor(c);
@@ -1399,6 +1399,7 @@
       }
     }
     strain(b, r);
+    tapFoot(b, r);
     const calm = (b.state === 'idle' || b.state === 'done') && !meditating(b) && !b.stackedBy && time > (b.pounceUntil || 0);
     if (!calm) return;
     // A cursor close by: it leans over toward it, curious. Not when you're
@@ -2021,6 +2022,17 @@
       // ...and it huffs: a little squash with each puff.
       if (body.onFloor() && !body.grab) body.squashTop(r * 0.9, DT);
     }
+  }
+
+  // One tool running a long while (a slow build, a long test run): it waits
+  // patiently, tapping a foot.
+  function tapFoot(b, r) {
+    const src = b.kind === 'child' ? b.agent : b.session;
+    b.tapping = CFG.tapAfter > 0 && b.state === 'working' && src && src.activity === 'tool' && time - (b.toolSince ?? time) > CFG.tapAfter && !meditating(b);
+    if (!b.tapping || time < (b.nextTap || 0)) return;
+    b.nextTap = time + 0.42;
+    const side = b.key.length % 2 ? 1 : -1, c = b.body.centroid(), bot = b.body.bbox().maxY;
+    b.body.pushAt(c.x + side * r * 0.55, bot, 0, 240, r * 0.32, DT);
   }
 
   function strain(b, r) {
@@ -3055,6 +3067,7 @@
     else if (b.pain > 0.05) { expression = 'pained'; mouth = 'wobble'; }
     else if (st === 'done' && unseen(b)) { expression = 'happy'; mouth = 'grin'; }
     else if (st === 'working' && b.stuck) { expression = 'pained'; mouth = 'wobble'; }
+    else if (st === 'working' && b.tapping) { expression = 'normal'; mouth = 'flat'; b.glanceAt = { spot: { x: body.centroid().x + (b.key.length % 2 ? 1 : -1) * body.o.radius * 2, y: body.bbox().maxY + body.o.radius } }; b.glanceUntil = time + 0.1; }
     else if (st === 'working') { expression = 'concentrate'; mouth = 'flat'; }
     else if (st === 'idle' && idleFor() > dozeAfter()) { expression = 'sleepy'; mouth = 'flat'; }
     // Saying something by itself (a status bubble): eyes open to tell you.
