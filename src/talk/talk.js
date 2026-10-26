@@ -218,7 +218,7 @@
     stop.lastChild.textContent = s.stopping ? 'Stopping…' : 'Stop';
     renderTodo(s);
     renderOthers(s);
-    if (document.body.classList.contains('overview')) { if ((s.others || []).length > 1) drawOverview(s); else showOverview(false); }
+    if (document.body.classList.contains('overview')) drawOverview(s);
     $('git').textContent = s.git || '';
     $('git').hidden = !s.git || !!s.ended;
     renderQuick(s);
@@ -305,17 +305,18 @@
   function renderOthers(s) {
     const box = $('others');
     const list = s.others || [];
-    const key = JSON.stringify([s.id, list]);
+    const key = JSON.stringify([s.id, list.map((o) => [o.id, o.color, o.state])]);
     if (box.dataset.key === key) return;
     box.dataset.key = key;
     box.textContent = '';
-    if (list.length < 2) return;
+    if (s.demo) return;
     const all = document.createElement('button');
     all.className = 'all';
     all.title = `Every session at a glance (${navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl+'}0)`;
     all.setAttribute('aria-label', all.title);
     all.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 7h12M6 12h12M6 17h12"/></svg>';
     all.onclick = () => showOverview(!document.body.classList.contains('overview'));
+    if (list.length < 2) { box.append(all); return; }
     list.slice(0, 9).forEach((o, i) => {
       const b = document.createElement('button');
       b.style.setProperty('--c', o.color);
@@ -332,12 +333,53 @@
   // Every session at a glance: what it's up to, and the small print. A tap
   // goes to its box. (Redrawn with every update while it's open.)
   function showOverview(on) {
-    document.body.classList.toggle('overview', on && current && (current.others || []).length > 1);
-    if (on) drawOverview(current);
+    document.body.classList.toggle('overview', !!(on && current && !current.demo));
+    if (on) { drawOverview(current); loadHub(); }
     requestAnimationFrame(fitWindow);
+  }
+  // Below the sessions: start one in a recent folder, or pick up a past one.
+  let hub = null;
+  function loadHub() {
+    if (!api.hub) return;
+    api.hub().then((h) => { hub = h; if (document.body.classList.contains('overview') && current) drawOverview(current); });
+  }
+  function drawHub(box) {
+    if (!hub) return;
+    const section = (title) => { const h = document.createElement('div'); h.className = 'hubhead'; h.textContent = title; box.append(h); };
+    section('New session in');
+    const chips = document.createElement('div');
+    chips.className = 'chips';
+    for (const f of hub.folders) {
+      const b = document.createElement('button');
+      b.textContent = f.name;
+      b.title = f.path;
+      b.onclick = () => api.newIn(f.path);
+      chips.append(b);
+    }
+    const pick = document.createElement('button');
+    pick.textContent = 'Another folder…';
+    pick.className = 'dim';
+    pick.onclick = () => api.newIn('pick');
+    chips.append(pick);
+    box.append(chips);
+    if (hub.past.length) {
+      section('Pick up where you left off');
+      for (const p of hub.past) {
+        const row = document.createElement('button');
+        row.className = 'row past';
+        const name = document.createElement('b');
+        name.textContent = p.title;
+        const m = document.createElement('small');
+        m.textContent = p.where;
+        row.append(name, m);
+        row.onclick = () => api.pickUp(p.id);
+        box.append(row);
+      }
+    }
   }
   function drawOverview(s) {
     const box = $('overview');
+    const scroll = box.scrollTop;
     box.textContent = '';
     for (const o of s.others || []) {
       const row = document.createElement('button');
@@ -353,6 +395,8 @@
       row.onclick = () => { showOverview(false); if (o.id !== s.id && api.switchTo) api.switchTo(o.id); };
       box.append(row);
     }
+    drawHub(box);
+    box.scrollTop = scroll;
     requestAnimationFrame(fitWindow);
   }
 
@@ -398,11 +442,11 @@
   });
   document.addEventListener('keydown', (e) => {
     if (!current || !(e.metaKey || e.ctrlKey) || e.altKey || !api.switchTo) return;
+    if (e.key === '0') { e.preventDefault(); return showOverview(!document.body.classList.contains('overview')); }
     const list = (current.others || []).slice(0, 9);
     if (list.length < 2) return;
     const at = list.findIndex((o) => o.id === current.id);
     let to = null;
-    if (e.key === '0') { e.preventDefault(); return showOverview(!document.body.classList.contains('overview')); }
     if (/^[1-9]$/.test(e.key)) to = list[Number(e.key) - 1];
     else if (e.key === '[' || e.key === ']') to = list[(at + (e.key === ']' ? 1 : list.length - 1)) % list.length];
     if (!to) return;

@@ -549,6 +549,8 @@ async function addTalk(win, scene, name) {
 	let wantH = 400;
 	const onHeight = (e, _id, v) => { if (e.sender === tw.webContents) wantH = v; };
 	ipcMain.on('talk-height', onHeight);
+	ipcMain.removeHandler('talk-hub');
+	ipcMain.handle('talk-hub', () => ({ folders: [{ path: '/Users/me/Git/blaube', name: 'blaube' }, { path: '/Users/me/Git/kalkis', name: 'kalkis' }], past: [{ id: 'p1', title: 'Speed up the build', where: 'blaube · yesterday' }, { id: 'p2', title: 'Fix the login bug', where: 'kalkis · 3 days ago' }] }));
 	ipcMain.removeHandler('talk-paste');
 	ipcMain.handle('talk-paste', () => '/tmp/blaube-pastes/pasted-1.png'); // (nothing is saved for a picture)
 	tw.webContents.on('console-message', (e) => { if (e.level === 'error') console.log('talk error:', e.message); });

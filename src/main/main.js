@@ -435,6 +435,7 @@ function pushTalk(id, focusField = false) {
     });
   }
 }
+let hubPast = []; // the past sessions the overview last offered
 const gitStates = new Map(); // session id -> its last git status (or null: not a repository)
 
 // A session at a glance, for the overview in the talk box.
@@ -1412,6 +1413,19 @@ app.whenReady().then(async () => {
       return file;
     } catch { return ''; }
   });
+  // The overview's lower half: folders to start a session in, and recent
+  // past sessions to pick up (read only when the overview opens).
+  ipcMain.handle('talk-hub', () => {
+    const live = tracker.list();
+    const folders = [...new Set([...(prefs.recentFolders || []), ...live.map((o) => o.cwd).filter(Boolean)])]
+      .filter((f) => { try { return fs.statSync(f).isDirectory(); } catch { return false; } }).slice(0, 5);
+    let past = [];
+    try { past = history.pastSessions(new Set(live.map((o) => o.id)), 3); } catch { /* none */ }
+    hubPast = past;
+    return { folders: folders.map((f) => ({ path: f, name: path.basename(f) })), past: past.map((p) => ({ id: p.id, title: p.title, where: `${path.basename(p.cwd)} · ${history.ago(p.at)}` })) };
+  });
+  ipcMain.on('talk-new', (_e, folder) => { if (folder === 'pick') newSession(); else if (typeof folder === 'string' && folder) { hideTalk(); startSession(folder); } });
+  ipcMain.on('talk-pickup', (_e, id) => { const p = hubPast.find((x) => x.id === id); if (p) { hideTalk(); pickUp(p); } });
   // Another slime picked in the box (its dot, or a shortcut).
   ipcMain.on('talk-switch', (_e, id) => { if (id && id !== talkId && tracker.sessions.has(id) && win) win.webContents.send('open-talk', id); });
   ipcMain.on('talk-unsend', (_e, id, n) => { if (id && id === talkId) inbox.unsend(id, n); });
