@@ -48,7 +48,7 @@ function notification({ event, project, title, text, secs = 0, seen = false, ena
 // One session at a glance, for the overview: what it's up to (in words,
 // with how long it's been waiting on you) and the small print (to-do
 // progress, context, git).
-function glance({ state, doing = '', message = '', lastReply = '', todo = null, context = 0, git = '', turnStart = 0, waitingSince = 0, unread = 0, now = Date.now() }) {
+function glance({ state, doing = '', message = '', lastReply = '', todo = null, context = 0, git = '', tests = null, turnStart = 0, waitingSince = 0, unread = 0, now = Date.now() }) {
   const clip = (t, n = 80) => { t = String(t || '').replace(/[`*_#>]+/g, '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
   const mins = turnStart ? Math.floor((now - turnStart) / 60000) : 0;
   const waited = state === 'waiting' && waitingSince ? Math.floor((now - waitingSince) / 60000) : 0;
@@ -56,7 +56,7 @@ function glance({ state, doing = '', message = '', lastReply = '', todo = null, 
     : state === 'working' ? `${doing ? clip(doing, 60) : 'Working'}${mins >= 1 ? ` · ${mins}m` : ''}`
     : state === 'done' ? `Done${lastReply ? ': ' + clip(lastReply, 70) : ''}`
     : lastReply ? clip(lastReply, 80) : 'Idle';
-  const meta = [unread ? `${unread} new repl${unread === 1 ? 'y' : 'ies'} since you looked` : '', todo && todo.of ? `${todo.done} of ${todo.of} on its list` : '', context >= 50 ? `${context}% context` : '', git].filter(Boolean).join(' · ');
+  const meta = [unread ? `${unread} new repl${unread === 1 ? 'y' : 'ies'} since you looked` : '', todo && todo.of ? `${todo.done} of ${todo.of} on its list` : '', context >= 50 ? `${context}% context` : '', tests && tests.fail ? `${tests.fail} test${tests.fail === 1 ? '' : 's'} failing` : tests && tests.pass ? 'tests pass' : '', git].filter(Boolean).join(' · ');
   return { status, meta };
 }
 

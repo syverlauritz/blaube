@@ -503,6 +503,12 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await shot('run');
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
 	check(await until(() => box(`[...document.querySelectorAll('.rowlink')].some((l) => /^dev · localhost:\\d+$/.test(l.firstChild.textContent))`)), 'the overview lists it with Open too');
+	// How its last test run went, on its row and its step.
+	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', tool_input: { command: 'npm test' }, error: 'Exit code 1\n# pass 10\n# fail 2' });
+	check(await until(() => box(`document.getElementById('overview').textContent.includes('2 tests failing')`), 10000) && inbox.log(ID3).some((e) => e.who === 'step' && / · 2 failing$/.test(e.text)), 'a failed test run says how many failed, on its step and its overview row');
+	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_response: { stdout: '# pass 12\n# fail 0\n', stderr: '' } });
+	check(await until(() => box(`document.getElementById('overview').textContent.includes('tests pass') && !document.getElementById('overview').textContent.includes('tests failing')`), 10000), 'and once they pass, that');
+	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'Stop', last_assistant_message: 'They pass now.' });
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
 	await until(() => box(`!document.body.classList.contains('overview')`));
 	await box(`[...[...document.querySelectorAll('#bg li')].find((l) => l.firstChild.textContent === 'dev').querySelectorAll('button')].find((b) => b.textContent === 'Stop').click()`);

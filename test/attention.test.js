@@ -27,6 +27,8 @@ test('a session at a glance, in words', () => {
   assert.deepEqual(glance({ state: 'working', doing: 'Editing face.js', turnStart: now - 4.5 * 60e3, now, todo: { done: 2, of: 4 }, context: 72, git: 'main · 3 changed' }),
     { status: 'Editing face.js · 4m', meta: '2 of 4 on its list · 72% context · main · 3 changed' });
   assert.equal(glance({ state: 'working', turnStart: now - 10e3, now }).status, 'Working');
+  assert.equal(glance({ state: 'done', tests: { pass: 10, fail: 2 }, git: 'main' }).meta, '2 tests failing · main');
+  assert.equal(glance({ state: 'done', tests: { pass: 10, fail: 0 } }).meta, 'tests pass');
   assert.equal(glance({ state: 'done', lastReply: '**All** tests pass.' }).status, 'Done: All tests pass.');
   assert.equal(glance({ state: 'idle' }).status, 'Idle');
   assert.equal(glance({ state: 'idle', context: 20 }).meta, '', 'a little context isn’t worth saying');

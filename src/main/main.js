@@ -557,10 +557,11 @@ const looked = new Map(); // session id -> when you last had its talk box open
 const glances = new Map(); // session id -> { at, state, g } (worked out at most once a second)
 function glanceAt(o) {
   const hit = glances.get(o.id);
-  if (hit && hit.state === o.state && Date.now() - hit.at < 1000) return hit.g;
+  const n = inbox.log(o.id).length; // (something new in its log: read afresh)
+  if (hit && hit.state === o.state && hit.n === n && Date.now() - hit.at < 1000) return hit.g;
   // (With its title, "Add the 2027 brackets", to tell two in one project apart.)
   const g = Object.assign(glanceNow(o), { title: o.id.startsWith('demo-') ? '' : usage.sessionInfo(transcriptPath(o)).title });
-  glances.set(o.id, { at: Date.now(), state: o.state, g });
+  glances.set(o.id, { at: Date.now(), state: o.state, n, g });
   return g;
 }
 function glanceNow(o) {
@@ -574,6 +575,7 @@ function glanceNow(o) {
     todo: todo.length ? { done: todo.filter((t) => t.status === 'completed').length, of: todo.length } : null,
     context: tk && tk.limit && tk.context ? Math.min(100, Math.round((tk.context / tk.limit) * 100)) : 0,
     git: gitLine(o.id),
+    tests: ([...inbox.log(o.id)].reverse().find((e) => e.who === 'step' && e.tests) || {}).tests || null, // (how its last test run went)
     turnStart: o.turnStart,
     waitingSince: o.state === 'waiting' ? o.updatedAt : 0,
     // Replies since its talk box was last open (never opened: since Blaube started).
