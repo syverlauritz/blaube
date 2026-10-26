@@ -226,7 +226,7 @@
     }
 
     // Reshapes the rest shape partway (t from 0 to 1) from its circle toward
-    // a heart (or a star). Shape matching then pulls the skin over toward
+    // a heart (or a star, or bristling spikes). Shape matching then pulls the skin over toward
     // it, pressure keeping it plump; t = 0 is a plain circle again.
     morph(t, shape = 'heart') {
       const n = this.n, r = this.o.radius;
@@ -239,7 +239,11 @@
         let mx = 0, my = 0;
         for (let i = 0; i < n; i++) {
           const a = (i / n) * Math.PI * 2;
-          if (shape === 'star') {
+          if (shape === 'spiky') {
+            // Bristling all over (a fright).
+            const k = 1 + 0.2 * Math.cos(12 * a);
+            hx[i] = Math.cos(a) * k; hy[i] = Math.sin(a) * k;
+          } else if (shape === 'star') {
             // Five soft points, one straight up.
             const k = 1 + 0.32 * Math.cos(5 * (a + Math.PI / 2));
             hx[i] = Math.cos(a) * k; hy[i] = Math.sin(a) * k;

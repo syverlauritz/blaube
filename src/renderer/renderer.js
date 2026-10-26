@@ -2988,6 +2988,7 @@
         o.startleUntil = time + 0.6; o.surpriseUntil = time + 0.6;
         o.body.lean(away * o.body.o.radius * 4, DT);
         o.hop(away * 160, -340);
+        bristle(o);
         setTimeout(() => { if (!o.dying && !b.dying) { o.annoyedUntil = time + 1.4; o.annoyedAt = b; b.happyUntil = time + 1.6; } }, 700);
       } else if (p.stage === 'boo' && time - p.at > 1.5) b.prank = null;
       return;
@@ -3048,6 +3049,7 @@
         o.startleUntil = time + 0.6; o.surpriseUntil = time + 0.6;
         o.body.lean(away * o.body.o.radius * 4, DT);
         o.hop(away * 160, -340);
+        bristle(o);
         b.happyUntil = time + 1.8;
         end();
         return;
@@ -3853,7 +3855,7 @@
     const g = b.shape, body = b.body;
     if (g) {
       const t = time - g.at, k = Math.min(1, CFG.shapes);
-      const amt = body.grab || b.dying ? 0 : Math.max(0, Math.min(1, t / 0.6)) * Math.max(0, Math.min(1, ((g.hold || 3.2) - t) / 0.7));
+      const amt = body.grab || b.dying ? 0 : Math.max(0, Math.min(1, t / (g.rise || 0.6))) * Math.max(0, Math.min(1, ((g.hold || 3.2) - t) / (g.fall || 0.7)));
       body.morph(amt * k * 0.9, g.kind);
       b.shapeAmt = amt * k;
       if (amt > 0 && body.onFloor()) {
@@ -3862,7 +3864,7 @@
         body.spin((-body.angle * 4 - body.angularVelocity(DT)) * 0.3 * amt, DT);
       }
       if (t > 0.7 && !g.said && !g.quiet) { g.said = true; quip(b, 'ta-da!', 1.2); b.happyUntil = time + 2; hearts.push({ x: body.centroid().x, y: body.bbox().minY - 8, vx: 0, born: time, size: 12 }); }
-      if (amt <= 0 && t > 0.6) { body.morph(0, g.kind); b.shape = null; b.shapeAmt = 0; }
+      if (amt <= 0 && t > (g.rise || 0.6)) { body.morph(0, g.kind); b.shape = null; b.shapeAmt = 0; }
       b.nextHop = time + 1;
       return;
     }
@@ -3870,6 +3872,11 @@
     if (time < (b.nextShape ?? (b.nextShape = time + (200 + Math.random() * 500) / CFG.shapes))) return;
     b.nextShape = time + (500 + Math.random() * 800) / CFG.shapes;
     b.shape = { at: time };
+  }
+  // A real fright: it bristles all over for a moment, like a startled cat.
+  function bristle(b) {
+    if (CFG.shapes <= 0 || b.shape || b.dying) return;
+    b.shape = { at: time, kind: 'spiky', quiet: true, rise: 0.1, hold: 0.8, fall: 0.4 };
   }
   function skateNow(b) {
     const box = b.body.bbox(), r = b.body.o.radius;
