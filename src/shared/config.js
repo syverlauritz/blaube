@@ -95,7 +95,7 @@
       ['splashDrops', 1, 0, 3, 0.05, 'Goo droplets fly off on hard hits'],
       ['splashSpeed', 1500, 500, 6000, 50, 'Splashes when it hits faster than (px/s)'],
       ['doneStretch', 1, 0, 2, 0.05, 'After a long turn (over 5 minutes) it has a good long stretch and a yawn'],
-      ['gooStrands', 1, 0, 2, 0.05, 'Two slimes that hit hard stick for a moment: a goo strand stretches between them and snaps'],
+      ['gooStrands', 1, 0, 2, 0.05, 'Goo strands: two slimes that hit hard stick for a moment, and one lifted after a rest comes away from the floor with a strand that snaps'],
       ['contactJiggle', 1, 0, 3, 0.05, 'A hard landing jiggles slimes it touches'],
       ['droop', 0.2, 0, 0.5, 0.01, 'Deflates on a failed tool or test'],
       ['tapAfter', 60, 0, 600, 5, 'One tool running this many seconds: it waits, tapping a foot (0 = never)'],

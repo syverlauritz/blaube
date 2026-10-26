@@ -2592,31 +2592,41 @@
     const near = (x, o) => { const c = o.body.centroid(); let best = 0, bd = Infinity; for (let i = 0; i < x.body.n; i++) { const d = Math.hypot(x.body.px[i] - c.x, x.body.py[i] - c.y); if (d < bd) { bd = d; best = i; } } return best; };
     strands.push({ a, b, ia: near(a, b), ib: near(b, a), born: time });
   }
+  // Lifted off the floor after a rest, it comes away with a strand of goo
+  // still stuck to the spot it sat on, until that snaps.
+  function stickToFloor(b) {
+    const body = b.body;
+    if (CFG.gooStrands <= 0 || strands.length > 6 || !body.onFloor() || time - (b.restSince ?? time) < 1.5 || b.body.o.radius < 20) return;
+    const c = body.centroid();
+    let ia = 0, best = -Infinity;
+    for (let i = 0; i < body.n; i++) { const k = body.py[i] - Math.abs(body.px[i] - c.x) * 0.3; if (k > best) { best = k; ia = i; } }
+    strands.push({ a: b, b: null, fx: body.px[ia], fy: body.py[ia], ia, ib: 0, born: time });
+  }
   function stepStrands() {
     for (let i = strands.length - 1; i >= 0; i--) {
-      const t = strands[i], A = t.a.body, B = t.b.body;
-      if (t.a.dying || t.b.dying || t.a.removed || t.b.removed) { strands.splice(i, 1); continue; }
-      const ax = A.px[t.ia], ay = A.py[t.ia], bx = B.px[t.ib], by = B.py[t.ib];
+      const t = strands[i], A = t.a.body, B = t.b && t.b.body;
+      if (t.a.dying || t.a.removed || (t.b && (t.b.dying || t.b.removed))) { strands.splice(i, 1); continue; }
+      const ax = A.px[t.ia], ay = A.py[t.ia], bx = B ? B.px[t.ib] : t.fx, by = B ? B.py[t.ib] : t.fy;
       const dx = bx - ax, dy = by - ay, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d;
-      const max = (A.o.radius + B.o.radius) * 1.3 * CFG.gooStrands, age = time - t.born;
+      const max = (A.o.radius + (B ? B.o.radius : A.o.radius * 0.2)) * 1.3 * CFG.gooStrands, age = time - t.born;
       t.d = d; t.max = max;
-      if (d > max || age > 3) {
+      if (d > max || age > (B ? 3 : 2.5)) {
         // Snap: what's left of it flies back to each side.
         strands.splice(i, 1);
-        if (d > 12) for (const [o, x, y, sx, sy] of [[t.a, ax, ay, ux, uy], [t.b, bx, by, -ux, -uy]]) drops.push({ owner: o, x: x + sx * 6, y: y + sy * 6, vx: -sx * 260, vy: -sy * 260 - 80, r: o.body.o.radius * 0.07, born: time, landed: 0 });
+        if (d > 12) for (const [o, x, y, sx, sy] of [[t.a, ax, ay, ux, uy], [t.b || t.a, bx, by, -ux, -uy]]) drops.push({ owner: o, x: x + sx * 6, y: y + sy * 6, vx: -sx * 260, vy: -sy * 260 - 80, r: o.body.o.radius * 0.07, born: time, landed: 0 });
         continue;
       }
       // Stretched, it pulls: hardest at the spot it's stuck to.
       const pull = Math.max(0, d - 6) * 26 * CFG.gooStrands * DT;
       A.pushAt(ax, ay, ux * pull, uy * pull, A.o.radius * 0.45, DT);
-      B.pushAt(bx, by, -ux * pull, -uy * pull, B.o.radius * 0.45, DT);
+      if (B) B.pushAt(bx, by, -ux * pull, -uy * pull, B.o.radius * 0.45, DT);
     }
   }
   function drawStrands() {
     for (const t of strands) {
       if (!t.d || t.d < 4) continue;
-      const A = t.a.body, B = t.b.body, ax = A.px[t.ia], ay = A.py[t.ia], bx = B.px[t.ib], by = B.py[t.ib];
-      const thin = Math.max(0.15, 1 - t.d / t.max), w = Math.min(A.o.radius, B.o.radius) * 0.22 * thin;
+      const A = t.a.body, B = t.b ? t.b.body : null, ax = A.px[t.ia], ay = A.py[t.ia], bx = B ? B.px[t.ib] : t.fx, by = B ? B.py[t.ib] : t.fy;
+      const thin = Math.max(0.15, 1 - t.d / t.max), w = (B ? Math.min(A.o.radius, B.o.radius) : A.o.radius * 0.8) * 0.22 * thin;
       // Sagging a little in the middle, thinnest there.
       const mx = (ax + bx) / 2, my = (ay + by) / 2 + t.d * 0.12;
       ctx.save();
@@ -2624,7 +2634,7 @@
       ctx.strokeStyle = t.a.color;
       ctx.lineWidth = w * 1.6;
       ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo(mx, my, (ax + mx) / 2, (ay + my) / 2 + t.d * 0.03); ctx.stroke();
-      ctx.strokeStyle = t.b.color;
+      ctx.strokeStyle = (t.b || t.a).color;
       ctx.beginPath(); ctx.moveTo(bx, by); ctx.quadraticCurveTo(mx, my, (bx + mx) / 2, (by + my) / 2 + t.d * 0.03); ctx.stroke();
       ctx.lineWidth = w;
       ctx.strokeStyle = t.a.color;
@@ -3414,6 +3424,8 @@
     } else b.blink = Math.max(0, b.blink - 0.2);
 
     if (b.bubble && time > b.bubble.until) b.bubble = null;
+    // How long it's sat still on the ground (it sticks a little, after a while).
+    if (b.body.onFloor() && !b.body.grab) b.restSince ??= time; else b.restSince = undefined;
     if (b.pulse) {
       b.pulse = false;
       if (b.body.onFloor() && !b.body.grab) b.body.impulse(0, 260, DT);
@@ -4171,6 +4183,7 @@
     const b = buddyAt(e.clientX, e.clientY);
     if (!b) return;
     drag = { buddy: b, x0: e.clientX, y0: e.clientY, t0: time, moved: false };
+    stickToFloor(b);
     b.body.startGrab(e.clientX, e.clientY);
     // Pressed: the skin under the cursor gives in, and it springs back.
     if (CFG.pokeDent > 0) {
