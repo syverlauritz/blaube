@@ -2116,6 +2116,18 @@
     }
   }
 
+  // Fond of you (petted lately): it tags along after your cursor for a bit.
+  function tagAlong(b) {
+    if ((b.mood || 0) < 0.75 || b.kind === 'child' || b.body.grab || !b.body.onFloor() || b.pendingHop || time < (b.nextTag || 0)) return;
+    if (b.state !== 'idle' && b.state !== 'done') return;
+    if (performance.now() / 1000 - mouse.lastMove > 3 || mouse.x < 0 || mouse.x > W) return;
+    const c = b.body.centroid(), r = b.body.o.radius, dx = mouse.x - c.x;
+    if (Math.abs(dx) < r * 3) return;
+    b.nextTag = time + 1.2 + Math.random() * 1.5;
+    b.happyUntil = time + 1;
+    b.hop(Math.sign(dx) * Math.min(480, (Math.abs(dx) - r * 2) * 1.2), -330);
+  }
+
   // A little exclamation ("boo!", "hic!") in a balloon, unless it's
   // already showing something that matters more.
   function quip(b, text, seconds, size) {
@@ -2209,6 +2221,7 @@
     pounce(b);
     prank(b);
     jealous(b);
+    tagAlong(b);
     trick(b);
     hiccup(b);
     // Hanging over the edge of a window: it clings and shuffles back on.
