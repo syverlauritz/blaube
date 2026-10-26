@@ -1433,9 +1433,9 @@
   const rest = (f) => (f.kind === 'snow' ? f.size * 0.9 : f.size * 0.5);
 
   function stepSeason() {
-    const kind = CFG.seasons > 0 ? season() : 'none';
+    const kind = CFG.seasons > 0 || showingOff ? season() : 'none';
     if (kind !== 'none' && flakes.length < 80) {
-      const rate = CFG.seasons * (kind === 'snow' ? 0.9 : 0.3) * (W / 1600);
+      const rate = Math.max(CFG.seasons, showingOff ? 3 : 0) * (kind === 'snow' ? 0.9 : 0.3) * (W / 1600);
       if (Math.random() < rate * DT) {
         const snow = kind === 'snow';
         flakes.push({ kind, x: Math.random() * W, y: -10, vx: 0, vy: snow ? 40 : 60, drift: (Math.random() - 0.5) * 30, sway: Math.random() * 6.28,
@@ -2051,8 +2051,11 @@
     const c = b.body.centroid(), r = b.body.o.radius;
     const others = [...buddies.values()].filter((o) => o !== b && o.big && calmOf(o) && Math.abs(o.body.centroid().y - c.y) < r && Math.abs(o.body.centroid().x - c.x) < r * 12);
     if (!others.length) return;
-    const o = others[Math.floor(Math.random() * others.length)], oc = o.body.centroid();
+    prankNow(b, others[Math.floor(Math.random() * others.length)]);
+  }
+  function prankNow(b, o) {
     // Land just beside it, on the near side.
+    const c = b.body.centroid(), r = b.body.o.radius, oc = o.body.centroid();
     const side = Math.sign(c.x - oc.x) || 1, tx = oc.x + side * (o.body.o.radius + r * 1.05);
     const vy = 300, air = 2 * vy / CFG.gravity;
     b.prank = { o, stage: 'sneak', at: time };
@@ -2129,6 +2132,32 @@
     b.happyUntil = time + 1;
     b.hop(Math.sign(dx) * Math.min(480, (Math.abs(dx) - r * 2) * 1.2), -330);
   }
+
+  // The tuning panel's Show off button: a quick run through the rarer bits
+  // of life (they'd otherwise take hours to all turn up).
+  function showOff() {
+    const at = (s, f) => setTimeout(f, s * 1000);
+    const big = () => bigs().filter((b) => !b.dying);
+    const was = seasonOverride;
+    if (season() === 'none') seasonOverride = 'leaves';
+    showingOff = true;
+    at(0.5, () => { const b = big()[0]; if (b) b.trick = { n: 0, next: time }; }); // (only an idle one plays along)
+    at(3, () => { const [b, o] = big(); if (b && o) { b.prank = null; b.nextPrank = 0; prankNow(b, o); } });
+    at(7, () => {
+      const b = big()[0];
+      if (!b) return;
+      const body = b.body, c = body.centroid();
+      let top = 0;
+      for (let i = 0; i < body.n; i++) if (body.py[i] < body.py[top]) top = i;
+      flakes.push({ kind: 'leaves', x: c.x, y: body.py[top], vx: 0, vy: 0, drift: 0, sway: 0, size: 9, a: 0, va: 0, color: LEAF_COLORS[0], on: { b, i: top, dx: 0 }, landed: 0 });
+      b.sneeze = { at: time + 0.7 };
+    });
+    at(10, () => { const b = big()[1] || big()[0]; if (b) b.hics = { n: 3, next: time }; });
+    at(14, () => charge());
+    at(17, () => { const b = buddies.get(HOME) || big()[0]; if (b) b.say([{ text: 'While you were away (demo):' }, ...summaryLines()], 6, false, false); });
+    at(25, () => { seasonOverride = was; showingOff = false; });
+  }
+  let showingOff = false;
 
   // A little exclamation ("boo!", "hic!") in a balloon, unless it's
   // already showing something that matters more.
@@ -3114,7 +3143,8 @@
       for (const b of buddies.values()) b.body.teleport(W / 2 + (Math.random() - 0.5) * 200, H / 3);
     } else if (cmd === 'hop') {
       for (const b of buddies.values()) b.hop((Math.random() - 0.5) * 600, -900);
-    } else if (cmd === 'yawn') {
+    } else if (cmd === 'life-demo') showOff();
+    else if (cmd === 'yawn') {
       const b = bigs()[0];
       if (b) yawn(b, 1.6, 1);
     } else if (cmd === 'hello') {

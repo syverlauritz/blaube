@@ -1158,6 +1158,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.on('open-tuning', openTuning);
   ipcMain.on('demo', runDemo);
+  ipcMain.on('life-demo', () => win && win.webContents.send('command', 'life-demo'));
   ipcMain.handle('config-get', () => prefs.config);
   ipcMain.on('config-set', (_e, partial) => setConfig(Object.assign({}, prefs.config, partial)));
   ipcMain.handle('config-replace', (_e, full) => { setConfig(full); return prefs.config; });

@@ -6,4 +6,5 @@ contextBridge.exposeInMainWorld('blaubeTuning', {
   replace: (full) => ipcRenderer.invoke('config-replace', full),
   copy: () => ipcRenderer.invoke('config-copy'),
   demo: () => ipcRenderer.send('demo'),
+  lifeDemo: () => ipcRenderer.send('life-demo'),
 });

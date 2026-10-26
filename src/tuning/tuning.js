@@ -97,6 +97,7 @@
     status('Back to defaults.');
   });
   document.getElementById('demo').addEventListener('click', () => api.demo());
+  document.getElementById('lifeDemo').addEventListener('click', () => api.lifeDemo && api.lifeDemo());
 
   build();
   api.get().then((c) => { cfg = c; render(); });
