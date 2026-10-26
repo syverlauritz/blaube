@@ -1810,6 +1810,14 @@
     }
     // Left alone for a couple of minutes, idle slimes doze off and yawn.
     if (b.body.onFloor() && !b.body.grab && !b.merging) huddle(b);
+    // Still needing you after a few minutes: it says so (once per wait),
+    // with what it's waiting on.
+    if (CFG.waitNudge > 0 && b.kind === 'mother' && b.state === 'waiting' && b.nudgedFor !== b.stateSince && time - (b.stateSince ?? time) > CFG.waitNudge * 60 && !sys.away && b !== buddies.get(talkingTo)) {
+      b.nudgedFor = b.stateSince;
+      const mins = Math.round((time - b.stateSince) / 60);
+      const what = b.status && b.status.state === 'waiting' && b.status.text;
+      b.say([{ text: `Still waiting on you (${mins} min)` }, ...(what ? [{ text: what, size: 12 }] : [])], 6, false, false);
+    }
     if (b.kind !== 'home' && b.state === 'idle' && idleFor() > dozeAfter() && time > (b.nextIdleYawn || 0)) {
       if (b.nextIdleYawn) yawn(b, 1.6, 0.5);
       b.nextIdleYawn = time + (25 + Math.random() * 40) / (1 + lateness());
@@ -2529,6 +2537,17 @@
     window.addEventListener('mousedown', onDown);
     window.addEventListener('mouseup', onUp);
   }
+  // Scrolling over a slime squishes it: down presses it flat, up pulls it
+  // tall. Keep at it and it giggles.
+  window.addEventListener('wheel', (e) => {
+    const b = CFG.scrollSquish > 0 && buddyAt(e.clientX, e.clientY);
+    if (!b || b.body.grab || !b.body.onFloor()) return;
+    const r = b.body.o.radius, d = Math.max(-1, Math.min(1, (e.deltaY || 0) / 60));
+    b.body.squashTop(d * CFG.scrollSquish * r * 4, DT);
+    b.squished = Math.min(3, (time - (b.squishedAt || -9) < 0.6 ? b.squished || 0 : 0) + Math.abs(d) * 0.15);
+    b.squishedAt = time;
+    if (b.squished > 1.2) { b.happyUntil = time + 1; b.squished = 0; if (Math.random() < 0.3) b.say([{ text: 'hehe' }], 1.2, false, false); }
+  }, { passive: true });
   window.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     if (!fromApp) onContext(e);
