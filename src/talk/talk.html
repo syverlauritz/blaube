@@ -120,6 +120,13 @@
   .gitfiles button span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .gitfiles button small { flex: none; font: 600 12px var(--ui); color: var(--faint); }
   .gitfiles .conflict small { color: #c0392b; }
+  .gitfiles li { display: flex; flex-wrap: wrap; align-items: center; }
+  .gitfiles li > button:first-child { flex: 1; min-width: 0; width: auto; }
+  .gitfiles .reveal { flex: none; width: auto; padding: 0 0 0 8px; color: var(--faint); }
+  .gitfiles .diff { flex-basis: 100%; margin: 3px 0 6px; font-size: 12px; max-height: 200px; }
+  .diff .add { color: #1e7e34; }
+  .diff .del { color: #c0392b; }
+  .diff .hunk { color: var(--faint); }
   .link { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--color) 70%, transparent); text-underline-offset: 2px; cursor: pointer; word-break: break-all; }
   .link:hover { text-decoration-color: var(--color); }
   /* What it left running in the background (a dev server, a watcher). */

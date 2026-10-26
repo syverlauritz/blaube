@@ -218,7 +218,10 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId }) {
 	await page(`window.blaube.talk(${JSON.stringify(ID3)}, { x: 300, y: 600, r: 60 })`);
 	check(await until(() => talkId() === ID3 && box(`/feature.tax · 2 changed/.test(document.getElementById('git').textContent)`), 8000), 'in a git repository, its branch and what’s changed show');
 	await box(`document.getElementById('git').click()`);
-	check(await until(() => box(`[...document.querySelectorAll('#gitFiles button')].map((b) => b.textContent).sort().join()`).then((t) => t === 'notes.mdnew,src/tax.jsnew')), 'tapping it lists the files');
+	check(await until(() => box(`[...document.querySelectorAll('#gitFiles li > button:first-child')].map((b) => b.textContent).sort().join()`).then((t) => t === 'notes.mdnew,src/tax.jsnew')), 'tapping it lists the files');
+	await box(`[...document.querySelectorAll('#gitFiles li > button:first-child')].find((b) => /tax\\.js/.test(b.textContent)).click()`);
+	check(await until(() => box(`[...document.querySelectorAll('#gitFiles .diff')].some((p) => !p.hidden && p.querySelector('.add') && /\\+x/.test(p.textContent) && p.offsetHeight > 20)`)), 'tapping a file shows what changed in it');
+	await sleep(800);
 	await shot('gitfiles');
 	check(await until(() => box(`[...document.querySelectorAll('#quick button')].some((b) => b.textContent === 'Commit')`)), 'with Commit a tap away');
 	await hook({ session_id: ID3, hook_event_name: 'SessionEnd' });

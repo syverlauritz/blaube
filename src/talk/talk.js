@@ -690,12 +690,43 @@
       const how = document.createElement('small');
       how.textContent = f.how;
       b.append(name, how);
-      b.title = f.path;
-      if (f.how !== 'deleted') b.onclick = () => api.reveal && api.reveal(current.id, f.path);
+      b.title = f.how === 'deleted' ? f.path : `${f.path}\nTap to see what changed`;
       li.append(b);
+      if (f.how !== 'deleted') {
+        // Tap: what changed in it; ↗: show it in Finder.
+        const pre = document.createElement('pre');
+        pre.className = 'stepout diff';
+        pre.hidden = true;
+        b.setAttribute('aria-expanded', 'false');
+        b.onclick = () => {
+          pre.hidden = !pre.hidden;
+          b.setAttribute('aria-expanded', String(!pre.hidden));
+          if (!pre.hidden && !pre.textContent && api.diff) api.diff(current.id, f.path).then((t) => { colorDiff(pre, t || '(can’t show it)'); requestAnimationFrame(fitWindow); });
+          requestAnimationFrame(fitWindow);
+        };
+        const go = document.createElement('button');
+        go.type = 'button';
+        go.className = 'reveal';
+        go.textContent = '↗';
+        go.title = `Show it in ${navigator.platform.startsWith('Mac') ? 'Finder' : 'its folder'}`;
+        go.setAttribute('aria-label', go.title);
+        go.onclick = () => api.reveal && api.reveal(current.id, f.path);
+        li.append(go, pre);
+      }
       box.append(li);
     }
     if (was !== box.hidden || gitOpen) requestAnimationFrame(fitWindow);
+  }
+
+  // A diff, its added and removed lines tinted.
+  function colorDiff(pre, text) {
+    pre.textContent = '';
+    for (const line of String(text).split('\n')) {
+      const l = document.createElement('span');
+      l.className = /^\+/.test(line) ? 'add' : /^-/.test(line) ? 'del' : /^@@/.test(line) ? 'hunk' : '';
+      l.textContent = line + '\n';
+      pre.append(l);
+    }
   }
 
   // What it left running in the background, each with a Stop (asked of

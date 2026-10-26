@@ -60,3 +60,25 @@ test('after failed tests it offers to fix them; nearly full, to compact', () => 
   assert.deepEqual(labels({ context: 85, canCompact: false }), ['Run tests']);
   assert.deepEqual(labels({ context: 50, canCompact: true }), ['Run tests']);
 });
+
+test('a file’s diff loses its headers, and long ones are cut', () => {
+  const { compactDiff } = require('../src/main/git.js');
+  const d = 'diff --git a/x.js b/x.js\nindex 1..2 100644\n--- a/x.js\n+++ b/x.js\n@@ -1,2 +1,2 @@\n-old\n+new\n same\n';
+  assert.equal(compactDiff(d), '@@ -1,2 +1,2 @@\n-old\n+new\n same');
+  assert.match(compactDiff('+' + 'x'.repeat(7000)), /…$/);
+});
+
+test('a real repository: the diff of a changed file, the start of a new one', async () => {
+  const { diff } = require('../src/main/git.js');
+  const { execFileSync } = require('node:child_process');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-diff-'));
+  const g = (...a) => execFileSync('git', a, { cwd: root });
+  g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't');
+  fs.writeFileSync(path.join(root, 'a.js'), 'one\ntwo\n');
+  g('add', '.'); g('commit', '-qm', 'x');
+  fs.writeFileSync(path.join(root, 'a.js'), 'one\nthree\n');
+  fs.writeFileSync(path.join(root, 'b.js'), 'fresh\n');
+  const got = (rel, how) => new Promise((r) => diff(root, rel, how, r));
+  assert.match(await got('a.js', 'changed'), /^@@ .*\n one\n-two\n\+three$/);
+  assert.equal(await got('b.js', 'new'), '+fresh');
+});

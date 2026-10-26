@@ -1567,6 +1567,13 @@ app.whenReady().then(async () => {
     hideTalk();
     startSession(folder);
   });
+  // One changed file's diff, for the git line's file list.
+  ipcMain.handle('talk-diff', (_e, id, file) => new Promise((done) => {
+    const st = gitStates.get(id);
+    const f = id === talkId && st && st.root && st.files.find((x) => path.join(st.root, x.path) === file);
+    if (!f || f.how === 'deleted') return done('');
+    git.diff(st.root, f.path, f.how, done);
+  }));
   // ⌘F in the overview: what every session said.
   ipcMain.handle('talk-search', (_e, q) => attention.search(tracker.list().filter(isReady).filter((o) => !o.id.startsWith('demo-')).map((o) => ({ id: o.id, project: o.project, log: inbox.log(o.id) })), typeof q === 'string' ? q.slice(0, 200) : '').slice(0, 10));
   // A session that ended while its box was open, picked up right there.

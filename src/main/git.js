@@ -87,4 +87,26 @@ function status(cwd, cb, now = Date.now()) {
 }
 const roots = new Map(); // cwd -> the top of its repository
 
-module.exports = { parseStatus, summary, quickActions, status };
+// What changed in one file, for the talk box: the diff against the last
+// commit without its headers (a new file: its start). Calls back with text.
+const DIFF = 6000;
+function compactDiff(text) {
+  const out = String(text || '').split('\n').filter((l) => !/^(diff --git|index |--- |\+\+\+ |new file mode|deleted file mode|similarity index|rename (from|to) )/.test(l)).join('\n').replace(/\s+$/, '');
+  return out.length > DIFF ? out.slice(0, DIFF) + '\n…' : out;
+}
+function diff(root, rel, how, cb) {
+  const fs = require('node:fs');
+  const file = path.join(root, rel);
+  if (how === 'new') {
+    fs.readFile(file, (err, buf) => {
+      if (err) return cb('');
+      if (buf.subarray(0, 8000).includes(0)) return cb('(not text)');
+      const t = buf.toString('utf8', 0, Math.min(buf.length, DIFF));
+      cb(t.replace(/\n$/, '').split('\n').map((l) => '+' + l).join('\n') + (buf.length > DIFF ? '\n…' : ''));
+    });
+    return;
+  }
+  execFile('git', ['diff', 'HEAD', '--no-color', '--no-ext-diff', '--', rel], { cwd: root, timeout: 4000, maxBuffer: 4e6, windowsHide: true }, (err, out) => cb(err ? '' : compactDiff(out) || '(no changes in the text)'));
+}
+
+module.exports = { parseStatus, summary, quickActions, status, compactDiff, diff };
