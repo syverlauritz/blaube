@@ -1140,7 +1140,7 @@
     const box = $('gitFiles');
     const was = box.hidden;
     box.hidden = !gitOpen;
-    const key = JSON.stringify(list) + gitOpen;
+    const key = JSON.stringify(list) + gitOpen + (s.editor || '');
     if (box.dataset.key === key) return;
     box.dataset.key = key;
     box.textContent = '';
@@ -1175,7 +1175,15 @@
         go.title = `Show it in ${navigator.platform.startsWith('Mac') ? 'Finder' : 'its folder'}`;
         go.setAttribute('aria-label', go.title);
         go.onclick = () => api.reveal && api.reveal(current.id, f.path);
-        li.append(go, pre);
+        // (✎: in your code editor.)
+        const ed = document.createElement('button');
+        ed.type = 'button';
+        ed.className = 'reveal edit';
+        ed.textContent = '✎';
+        ed.title = `Open it in ${s.editor}`;
+        ed.setAttribute('aria-label', ed.title);
+        ed.onclick = () => api.openInEditor(current.id, f.path, 0);
+        li.append(...(s.editor ? [ed] : []), go, pre);
       }
       box.append(li);
     }
