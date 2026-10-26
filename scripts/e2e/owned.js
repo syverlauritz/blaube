@@ -27,6 +27,7 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
   }
   if (m.type === 'user' && m.message.content === '/compact') { out({ type: 'system', subtype: 'compact_boundary' }); return out({ type: 'result', subtype: 'success', result: '' }); }
   if (m.type === 'user' && m.message.content === '/cost') { out({ type: 'assistant', message: { model: '<synthetic>', content: [{ type: 'text', text: 'Error: Nothing to show yet' }] } }); return out({ type: 'result', subtype: 'success', result: '' }); }
+  if (m.type === 'user' && m.message.content === 'busy week') out({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', rateLimitType: 'seven_day', utilization: 0.82, resetsAt: Math.round(Date.now() / 1000) + 3 * 86400, unifiedWindows: { five_hour: { utilization: 0.3, resetsAt: Math.round(Date.now() / 1000) + 3600, status: 'allowed' }, seven_day: { utilization: 0.82, resetsAt: Math.round(Date.now() / 1000) + 3 * 86400, status: 'allowed' } } } });
   if (m.type === 'user') turn = setTimeout(() => out({ type: 'result', subtype: 'success', result: model + ' here.' }), m.message.content === 'slow' ? 20000 : 50);
 });
 `;
@@ -81,6 +82,14 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await type('thoughts?');
 	check(await until(() => inbox.log(id).some((e) => e.who === 'you' && /^\(I ran `echo hi there` myself\. It printed:\n```\nhi there\n```\)\n\nthoughts\?$/.test(e.text))), 'which then carries it');
 	await until(() => tracker.sessions.get(id).state === 'done');
+	// What /usage says, without it: how much of your limits you've used.
+	await type('busy week');
+	check(await until(() => box(`/82% of the week used/.test(document.getElementById('mode').textContent)`)), 'close to a usage limit, the box says so under the field');
+	await until(() => tracker.sessions.get(id).state === 'done');
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
+	check(await until(() => box(`/^Usage: 30% of 5 hours \\(resets .+\\) · 82% of the week \\(resets \\w+\\)$/.test((document.querySelector('#overview .usage') || {}).textContent || '')`)), 'and the overview has how much of each limit is used, and when it resets');
+	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
+	await until(() => box(`!document.body.classList.contains('overview')`));
 	await type('slow');
 	check(await until(() => tracker.sessions.get(id).state === 'working', 3000), 'a long turn starts');
 	check(await until(() => box(`!document.getElementById('stop').hidden`)), 'with Stop beside its name');

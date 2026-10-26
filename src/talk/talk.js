@@ -683,6 +683,7 @@
     box.textContent = '';
     if (!$('findBar').hidden && allQuery) { drawHits(box); box.scrollTop = scroll; requestAnimationFrame(fitWindow); return; }
     if (s.today) { const t = document.createElement('div'); t.className = 'today'; t.textContent = s.today; box.append(t); }
+    if (s.usage) { const u = document.createElement('div'); u.className = 'today usage'; u.textContent = s.usage; box.append(u); }
     for (const o of s.others || []) {
       const row = document.createElement('button');
       row.className = 'row' + (o.id === s.id ? ' here' : '') + (o.state === 'waiting' ? ' wants' : '');
@@ -1341,12 +1342,12 @@
     const shown = s.canMode || mode !== 'default';
     // (How full its context is, once that's worth knowing.)
     const full = s.context >= 50 ? `${s.context}% context` : '';
-    const about = [s.model, full].filter(Boolean).join(' · ');
+    const about = [s.model, full, s.limit].filter(Boolean).join(' · '); // (and your usage limit, once it's close)
     m.hidden = !!s.ended || !!s.demo || (!shown && !about);
     m.className = 'mode ' + mode + (s.canMode ? ' can' : '');
     m.textContent = '';
     // (Which model it is, first: Opus 5.5 · Accepting edits.)
-    if (about) { const n = document.createElement('span'); n.className = 'model' + (s.context >= 80 ? ' full' : ''); n.textContent = about + (shown ? ' · ' : ''); m.append(n); }
+    if (about) { const n = document.createElement('span'); n.className = 'model' + (s.context >= 80 || /reached/.test(s.limit || '') ? ' full' : ''); n.textContent = about + (shown ? ' · ' : ''); m.append(n); }
     if (shown) m.append(MODES[mode] || mode);
     if (s.canMode) { const k = document.createElement('kbd'); k.textContent = '⇧⇥'; m.append(k); }
     m.title = s.canMode ? 'Change how it asks (Shift+Tab)' : 'Change it in its terminal (Shift+Tab there)';

@@ -123,6 +123,7 @@ class Owned extends EventEmitter {
     const s = this.sessions.get(id);
     if (m.type === 'system' && typeof m.permissionMode === 'string') this.emit('mode', id, m.permissionMode);
     if (m.type === 'system' && m.subtype === 'compact_boundary') this.emit('compacted', id);
+    if (m.type === 'rate_limit_event' && m.rate_limit_info) this.emit('limits', m.rate_limit_info, id); // (your usage limits, see limits.js)
     // Claude Code's own answer to a command (not Claude's): "No messages to compact".
     if (m.type === 'assistant' && m.message && m.message.model === '<synthetic>' && s) {
       const c = m.message.content;

@@ -17,6 +17,7 @@ const shellRun = require('./shellRun');
 const { failedTests, stoppedLast, erredLast } = require('./inbox');
 const { Notification } = require('electron');
 const { slashCommand, commandNames, expand: expandCommand, control: controlFor } = require('./commands');
+const limits = require('./limits');
 const { openResumeTerminal, resumeCommand, focusSessionApp, typeIntoSession } = require('./terminal');
 const { startAgentsPoller, listAgents, findClaude } = require('./agents');
 const { Owned } = require('./owned');
@@ -451,6 +452,8 @@ function pushTalk(id, focusField = false) {
     model: modelName(pickedModel.get(id) || (id.startsWith('demo-') ? '' : usage.sessionInfo(transcriptPath(s)).model)),
     canBring: canBringIn(s), // (it could carry on in Blaube instead)
     context: contextOf(id), // (how full its context is, %)
+    limit: limits.warn(usageLimits), // (your usage limits, once they're close)
+    usage: limits.line(usageLimits),
     canMode: owned.has(id), // (one Blaube started can be asked to change it)
     tasks: (s.tasks || []).filter((t) => !t.demo).slice(0, 4).map((t) => ({ id: t.id, label: t.description || t.command, command: t.command })),
     helpers: s.state === 'working' || s.state === 'waiting' ? (s.agents || []).slice(0, 5).map((a) => ({ name: helperName(s, a), doing: helperDoing.get(`${id}/${a.id}`) || '', waiting: a.state === 'waiting' })) : [],
@@ -478,6 +481,7 @@ function pushTalk(id, focusField = false) {
     });
   }
 }
+let usageLimits = null; // (see limits.js)
 let talkPicking = false; // (a file dialog from the box is open: it stays)
 let hubPast = [], hubFolders = [], hubCache = null; // what the overview last offered
 const gitStates = new Map(); // session id -> its last git status (or null: not a repository)
@@ -1477,6 +1481,12 @@ app.whenReady().then(async () => {
     pushState();
   });
   owned.on('mode', (id, mode) => tracker.setMode(id, mode));
+  // Your usage limits, as Claude Code tells a session Blaube started.
+  owned.on('limits', (info) => {
+    const before = JSON.stringify(usageLimits);
+    usageLimits = limits.read(info) || usageLimits;
+    if (JSON.stringify(usageLimits) !== before && talkId) pushTalk(talkId);
+  });
   owned.on('compacted', (id) => inbox.add(id, { who: 'note', text: 'Compacted: it carries on from a summary of the conversation so far' }));
   owned.on('result', (id, r) => {
     pickedModel.delete(id); // (its transcript says now)
