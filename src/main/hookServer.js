@@ -53,6 +53,10 @@ function headOf(text) {
 }
 
 function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
+  // Sessions whose claude.exe is being looked for, and how many looks have
+  // come up empty. (Kept here: the tracker makes a new session object for
+  // every event, so a flag or a pid put on the old one was lost.)
+  const finding = new Set(), misses = new Map();
   const server = http.createServer((req, res) => {
     // Only Claude Code's hooks (curl) talk to Blaube. A web page could reach
     // 127.0.0.1 too (fake sessions, words put in a session's mouth, a
@@ -139,11 +143,14 @@ function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
         const hookPid = req.headers['x-blaube-pid'];
         // (Not when there's an answer for Claude: it must get there before
         // the hook gives up, and the next event can look for the pid.)
-        if (s && !s.pid && !s.findingPid && hookPid && !answer) {
-          s.findingPid = true;
+        const id = String(payload.session_id);
+        if (s && !s.pid && !finding.has(id) && (misses.get(id) || 0) < 3 && hookPid && !answer) {
+          finding.add(id);
           return findClaudeAncestor(String(hookPid), (pid) => {
-            s.findingPid = false;
-            if (pid) s.pid = pid;
+            finding.delete(id);
+            const now = tracker.sessions.get(id); // (the session as it is now)
+            if (pid && now && !now.pid) now.pid = pid;
+            if (!pid) misses.set(id, (misses.get(id) || 0) + 1);
             done();
           });
         }
