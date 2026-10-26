@@ -452,6 +452,8 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	execFileSync('git', ['update-ref', 'refs/heads/main', onMain], { cwd: repo });
 	await box(`document.getElementById('git').click(); document.getElementById('git').click()`);
 	check(await until(() => box(`(() => { const r = document.querySelector('#branches .behindrow'); return !!r && r.firstChild.textContent === 'main has 1 newer commit' && r.querySelector('button').textContent === 'Bring them in' && /merge main into this branch/.test(r.querySelector('button').title); })()`), 10000), 'when main has moved on, it says so, with Bring them in');
+	await sleep(600);
+	await shot('behind');
 	execFileSync('git', ['update-ref', 'refs/heads/main', 'main~1'], { cwd: repo });
 	execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'more'], { cwd: repo });
 	execFileSync('git', ['remote', 'set-url', 'origin', bare + '-gone'], { cwd: repo });
@@ -466,6 +468,8 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => box(`(() => { const u = ${undoMore}; return !!u && [...document.querySelectorAll('#branches .commits .undo')].length === 1; })()`), 10000), 'its newest commit, pushed nowhere, has Undo (and only it)');
 	await box(`${undoMore}.click()`);
 	await until(() => box(`(${undoMore} || {}).textContent === 'Undo it?'`));
+	await sleep(400);
+	await shot('undo');
 	await until(() => box(`(() => { const u = ${undoMore}; if (u) u.click(); return !!u; })()`));
 	check(await until(() => execFileSync('git', ['log', '-1', '--format=%s'], { cwd: repo }).toString().trim() === 'tax' && inbox.log(ID3).some((e) => /^Undid the commit “more”: its changes are back, not committed/.test(e.text || '')), 10000), 'a second tap takes it back, git reset --soft');
 	check(await until(() => box(`[...document.querySelectorAll('#branches .commits li > button:first-child')].map((b) => b.firstChild.textContent)[0] === 'tax' && !document.querySelector('#branches .commits .undo')`), 10000), 'and the list follows (tax is pushed: no Undo)');
@@ -521,6 +525,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => box(`document.getElementById('overview').textContent.includes('2 tests failing')`), 10000) && inbox.log(ID3).some((e) => e.who === 'step' && / · 2 failing$/.test(e.text)), 'a failed test run says how many failed, on its step and its overview row');
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_response: { stdout: '# pass 12\n# fail 0\n', stderr: '' } });
 	check(await until(() => box(`document.getElementById('overview').textContent.includes('tests pass') && !document.getElementById('overview').textContent.includes('tests failing')`), 10000), 'and once they pass, that');
+	check(await until(() => { const o = ((global.__blaubeState || {}).sessions || []).find((x) => x.id === ID3); return !!o && / · tests pass$/.test(o.info.branch); }, 10000), 'and hovering its slime says so');
 	await hook({ session_id: ID3, cwd: repo, hook_event_name: 'Stop', last_assistant_message: 'They pass now.' });
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
 	await until(() => box(`!document.body.classList.contains('overview')`));

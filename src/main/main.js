@@ -567,7 +567,7 @@ function glanceNow(o) {
     todo: todo.length ? { done: todo.filter((t) => t.status === 'completed').length, of: todo.length } : null,
     context: tk && tk.limit && tk.context ? Math.min(100, Math.round((tk.context / tk.limit) * 100)) : 0,
     git: gitLine(o.id),
-    tests: ([...inbox.log(o.id)].reverse().find((e) => e.who === 'step' && e.tests) || {}).tests || null, // (how its last test run went)
+    tests: lastTests(o.id), // (how its last test run went)
     turnStart: o.turnStart,
     waitingSince: o.state === 'waiting' ? o.updatedAt : 0,
     // Replies since its talk box was last open (never opened: since Blaube started).
@@ -627,6 +627,12 @@ function gitFailed(log) {
     if (log[i].gitRun && !log[i].running) return log[i].ok ? '' : log[i].gitRun;
   }
   return '';
+}
+// How its last test run went ({ pass, fail } or null), and in words.
+const lastTests = (id) => ([...inbox.log(id)].reverse().find((e) => e.who === 'step' && e.tests) || {}).tests || null;
+function testsWords(id) {
+  const t = lastTests(id);
+  return !t ? '' : t.fail ? `${t.fail} test${t.fail === 1 ? '' : 's'} failing` : t.pass ? 'tests pass' : '';
 }
 // What you might want next from its box (or the menu bar): see git.js.
 function quickFor(id, s) {
@@ -941,7 +947,7 @@ function pushState() {
     sessions: all.filter(isReady).map((s) => Object.assign({}, s, {
       color: colorOf(s),
       tokens: tokens.get(s.id) || null,
-      info: Object.assign(usage.sessionInfo(transcriptPath(s)), gitStates.get(s.id) ? { branch: gitLine(s.id) } : {}), // (its git line on hover: branch, changes, its PR)
+      info: Object.assign(usage.sessionInfo(transcriptPath(s)), gitStates.get(s.id) ? { branch: [gitLine(s.id), testsWords(s.id)].filter(Boolean).join(' · ') } : {}), // (its git line on hover: branch, changes, its PR, its tests)
       todo: (() => { const t = inbox.todos.get(s.id) || []; const done = t.filter((x) => x.status === 'completed').length; return t.length && done < t.length ? { done, of: t.length } : null; })(),
       effort: efforts.get(s.id) || defaultEffort(),
       agents: s.agents.map((a) => Object.assign({}, a, {
