@@ -477,7 +477,7 @@ function pushTalk(id, focusField = false) {
     }),
     // Every slime, to switch between them from the box.
     today: attention.today([...inbox.logs.values()]),
-    others: tracker.list().filter(isReady).map((o) => Object.assign({ id: o.id, project: o.project, color: colorOf(o) || prefs.config.color || '#D97757', state: o.state, ask: askOf(o.id) }, glanceAt(o))),
+    others: tracker.list().filter(isReady).map((o) => Object.assign({ id: o.id, project: o.project, color: colorOf(o) || prefs.config.color || '#D97757', state: o.state, ask: askOf(o.id), urls: (o.tasks || []).map((t) => ({ label: t.description || t.command, url: taskUrls.get(`${o.id}/${t.id}`) || '' })).filter((t) => t.url).slice(0, 2) }, glanceAt(o))),
   }, inbox.view(id), owned.has(id) ? { stoppable: true } : {})); // (one Blaube started can always be stopped)
   if (s.cwd && !id.startsWith('demo-')) {
     git.status(s.cwd, (st) => {

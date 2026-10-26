@@ -98,6 +98,10 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check((inbox.queue.get(ID) || []).length === queuedBefore, 'without asking Claude');
 	global.__blaubeCheckTasks();
 	check(await until(() => box(`[...document.querySelectorAll('#bg li')].some((li) => /Dev server/.test(li.textContent) && [...li.querySelectorAll('button')].some((b) => b.textContent === 'Open' && b.title === 'http://localhost:5173'))`)), 'a dev server gets Open, for where it says it’s on');
+	await key('0', mod);
+	check(await until(() => box(`[...document.querySelectorAll('#overview .rowlink')].some((r) => r.textContent === 'Dev server · localhost:5173Open')`)), 'and the overview has it too, to open from there');
+	await key('0', mod);
+	await until(() => box(`!document.body.classList.contains('overview')`));
 	fs.appendFileSync(path.join(outDir, 'bash_7.output'), 'GET / 500\n');
 	check(await until(() => box(`(() => { const o = document.querySelector('#bg .bgout'); return /GET \\/ 500$/.test(o.textContent); })()`)), 'and keeps up with it while open');
 	await box(`[...document.querySelectorAll('#bg button')].find((b) => b.textContent === 'Output').click()`);

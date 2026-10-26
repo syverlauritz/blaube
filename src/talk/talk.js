@@ -749,6 +749,18 @@
       if (o.meta) { const m = document.createElement('small'); m.textContent = o.meta; row.append(m); }
       row.onclick = () => { showOverview(false); if (o.id !== s.id && api.switchTo) api.switchTo(o.id); };
       box.append(row);
+      // A dev server it runs: open it right here.
+      for (const u of o.urls || []) {
+        const link = document.createElement('div');
+        link.className = 'rowask rowlink';
+        const what = document.createElement('span');
+        what.textContent = `${u.label} · ${u.url.replace(/^https?:\/\//, '').replace(/\/$/, '')}`;
+        const go = document.createElement('button');
+        go.type = 'button'; go.textContent = 'Open'; go.title = u.url;
+        go.onclick = () => api.openLink(u.url);
+        link.append(what, go);
+        box.append(link);
+      }
       // Asking permission: answered right here, without going to it.
       if (o.ask && api.answer) {
         const ask = document.createElement('div');
