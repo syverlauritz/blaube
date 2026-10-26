@@ -801,6 +801,7 @@
     const b = new Buddy(s.id, 'mother', W / 2, H * 0.42, CFG.mainRadius * 0.25);
     buddies.set(s.id, b);
     b.session = s;
+    b.needsGreet = time + 2.5;
     b.hop((Math.random() - 0.5) * 700, -300 - Math.random() * 250);
     for (const o of buddies.values()) {
       if (o === b || o.dying || o.kind === 'home') continue;
@@ -2458,6 +2459,51 @@
     }
   }
 
+  // On the floor, or sitting still on something (another slime, say).
+  const resting = (o) => o.body.onFloor() || (!o.body.grab && Math.hypot(o.body.velocity(DT).x, o.body.velocity(DT).y) < 40);
+
+  // A new session's slime lands: the nearest calm one hops over to say hi,
+  // and it says hi back with a little bounce.
+  function welcome(b) {
+    if (b.needsGreet && time > b.needsGreet && b.body.onFloor() && !b.body.grab) {
+      b.needsGreet = 0;
+      if (CFG.greetNew <= 0 || b.dying) return;
+      const c = b.body.centroid(), r = CFG.mainRadius; // (it's still growing)
+      let best = null, bd = r * 14;
+      for (const o of buddies.values()) {
+        if (o === b || o.kind === 'child' || o.dying || o.merging || o.body.grab || !resting(o) || o.tag || o.prank || o.blow || o === buddies.get(talkingTo)) continue;
+        if (o.state === 'working' && Math.random() < 0.7) continue; // (busy, mostly)
+        const d = Math.abs(o.body.centroid().x - c.x);
+        if (d < bd && Math.abs(o.body.centroid().y - c.y) < r * 1.5) { bd = d; best = o; }
+      }
+      if (!best) return;
+      const oc = best.body.centroid(), side = Math.sign(oc.x - c.x) || 1, gap = r + best.body.o.radius * 1.1;
+      best.greeting = { o: b, at: time };
+      if (Math.abs(oc.x - c.x) > gap * 1.3) {
+        const vy = 300 * Math.min(1.3, CFG.greetNew), air = 2 * vy / CFG.gravity;
+        best.hop((c.x + side * gap - oc.x) / air * 0.8, -vy);
+      }
+      return;
+    }
+    const g = b.greeting;
+    if (!g) return;
+    if (g.o.dying || b.body.grab || time - g.at > 5) { b.greeting = null; return; }
+    if (!resting(b) || b.pendingHop || time - g.at < 0.4) return;
+    b.greeting = null;
+    const o = g.o;
+    b.glanceAt = o; b.glanceUntil = time + 1.5;
+    b.happyUntil = time + 1.5;
+    quip(b, 'hi!', 1.2);
+    b.body.squashTop(-b.body.o.radius * 10, DT);
+    setTimeout(() => {
+      if (o.dying || b.dying) return;
+      o.glanceAt = b; o.glanceUntil = time + 1.5;
+      o.happyUntil = time + 1.5;
+      quip(o, 'hi', 1.2);
+      if (o.body.onFloor() && !o.body.grab) o.hop(0, -220 * Math.min(1.3, CFG.greetNew));
+    }, 600);
+  }
+
   // Once in a long while: a fit of hiccups. Each one jolts it up a little.
   function hiccup(b) {
     if (CFG.quirks <= 0 || b.kind === 'child' || b.dying) return;
@@ -2634,6 +2680,7 @@
     trick(b);
     tag(b);
     blow(b);
+    welcome(b);
     hiccup(b);
     // Hanging over the edge of a window: it clings and shuffles back on.
     const l = b.body.onLedge;
