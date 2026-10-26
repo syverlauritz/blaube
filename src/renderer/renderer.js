@@ -1462,7 +1462,16 @@
       const top = body.bbox().minY;
       if (mouse.y - top > r * 0.1) body.squashTop(-CFG.headPat * r * 0.6 * 60 * DT, DT);
       if (time - b.patSince > 1.5 && !b.patHeart) { b.patHeart = true; hearts.push({ x: c.x, y: top - 6, vx: 0, born: time, size: 10 }); }
-    } else { b.patSince = 0; b.patHeart = false; }
+      // Keep your hand there and it nods off under it, purring, breathing
+      // slow and deep.
+      if (CFG.patDoze > 0 && time - b.patSince > 6 / CFG.patDoze) {
+        if (!b.patDozing) { b.patDozing = true; quip(b, 'purrr…', 1.6); }
+        body.squashTop(-(0.5 + 0.5 * Math.sin((time - b.patSince) * 1.6)) * r * 0.35 * 60 * DT, DT); // (each breath pushes up into it)
+      }
+    } else {
+      if (b.patDozing) { b.blink = 1; b.surpriseUntil = time + 0.3; } // (blinks awake)
+      b.patSince = 0; b.patHeart = false; b.patDozing = false;
+    }
     // The cursor held still just out of reach above its head: it stretches
     // up on tiptoe toward it, eyes on it, and leans under it. If it still
     // can't reach after a moment it gives a little hop up to boop it (and a
@@ -4236,6 +4245,7 @@
     else if (b.sneeze) { expression = 'pained'; mouth = 'o'; } // (about to sneeze)
     else if (b.blow && time > b.blow.at) { expression = 'normal'; mouth = 'o'; } // (blowing a bubble)
     else if (b.nibbling) { expression = 'happy'; mouth = time - b.nibbling.at < 0.5 ? 'o' : Math.round((time - b.nibbling.at) / 0.18) % 2 ? 'grin' : 'flat'; } // (chomp chomp)
+    else if (b.patted && b.patDozing) { expression = 'sleepy'; mouth = 'smile'; } // (nodded off under your hand)
     else if (b.patted) { expression = 'happy'; mouth = 'smile'; }
     else if (b.reachSince && time - b.reachSince > 0.3) { mouth = 'o'; }
     else if (time < (b.petWorryUntil || 0)) { expression = 'worried'; mouth = 'o'; }
@@ -4408,6 +4418,8 @@
       const to = b.gazeTarget || mouse;
       b.gaze.x = to.x; b.gaze.y = to.y; b.gaze.vx = 0; b.gaze.vy = 0;
     }
+    // Nodded off under your hand: it stays asleep, whatever's going on.
+    if (b.patted && b.patDozing && expression !== 'dizzy') { expression = 'sleepy'; mouth = 'smile'; checkIn = false; }
     // Talking: the mouth follows its babble (not mid-yawn or seeing stars).
     // Shut between syllables, it's its own mouth (a smile, mostly).
     const talk = talkMouth(b);

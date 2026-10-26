@@ -124,6 +124,7 @@
       ['hugs', 1, 0, 1.5, 0.05, 'Hold a slime you carry gently against another for a moment and they hug, hearts and all'],
       ['reach', 1, 0, 3, 0.05, 'Hold the cursor still just above its head: it stretches up to reach it, then hops to boop it'],
       ['headPat', 1, 0, 3, 0.05, 'Rest the cursor on its head: it pushes up into it like a cat'],
+      ['patDoze', 1, 0, 3, 0.05, 'Keep the cursor resting on its head and it nods off under it, purring'],
       ['listen', 1, 0, 2, 0.05, 'Typing to it in its talk box: it watches and bobs along'],
       ['seekYou', 1, 0, 2, 0.05, 'Needing you a while, it hops over to your cursor'],
       ['seekAfter', 20, 3, 120, 1, 'Starts coming to you after waiting (s)'],
