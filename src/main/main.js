@@ -59,6 +59,7 @@ const taskKill = require('./taskKill');
 const memory = require('./memory');
 const { startFocusWatcher, transcriptPath } = require('./focus');
 const usage = require('./usage');
+const thinking = require('./thinking');
 const { createGitChanges } = require('./gitChanges');
 const gitChanges = createGitChanges();
 const { runningTasks } = require('./tasks');
@@ -2246,6 +2247,17 @@ app.whenReady().then(async () => {
   ipcMain.on('demo', runDemo);
   ipcMain.on('life-demo', () => win && win.webContents.send('command', 'life-demo'));
   ipcMain.handle('config-get', () => prefs.config);
+	// Its thought bubble while hovered: the end of its newest thinking (a
+	// session's own, or a helper's: "<session id>/<agent id>"), or, with
+	// none (not written, or redacted), what it's doing right now.
+	ipcMain.handle('thinking', async (_e, key) => {
+		const [id, agentId] = String(key || '').split('/');
+		const s = tracker.sessions.get(id);
+		if (!s) return { text: '', doing: '' };
+		const file = id.startsWith('demo-') ? '' : transcriptPath(s);
+		const text = file ? await thinking.thinkingOf(agentId ? thinking.helperFile(file, agentId) : file, !agentId) : '';
+		return { text, doing: (agentId ? helperDoing.get(`${id}/${agentId}`) : doing.get(id)) || '' };
+	});
   ipcMain.on('config-set', (_e, partial) => setConfig(Object.assign({}, prefs.config, partial)));
   ipcMain.handle('config-replace', (_e, full) => { setConfig(full); return prefs.config; });
   ipcMain.handle('config-copy', () => {

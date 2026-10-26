@@ -1552,7 +1552,11 @@
     const staring = CFG.shy > 0 && !drag && !b.patted && body.contains(mouse.x, mouse.y) && performance.now() / 1000 - mouse.lastMove > 0.8;
     b.stare = staring ? (b.stare || 0) + DT : Math.max(0, (b.stare || 0) - DT * 2);
     // (Thanked, it goes bashful the same way for a moment.)
-    b.shy = Math.max(ramp(b.stare, 0.6, 2.2) * Math.min(1, CFG.shy), time < (b.blushUntil || 0) ? Math.min(0.9, (b.blushUntil - time) / 1.5) : 0);
+    // Only a real cause (thanked, hugged) warms its cheeks, and that fades
+    // from a set start, never adding up; the cursor on its face makes it
+    // look away, not blush (cheeks stay as they are while hovered).
+    b.blush = time < (b.blushUntil || 0) ? Math.min(0.9, (b.blushUntil - time) / 1.5) : 0;
+    b.shy = Math.max(ramp(b.stare, 0.6, 2.2) * Math.min(1, CFG.shy), b.blush);
     if (b.shy > 0.3) {
       if (time > (b.nextPeek || 0)) {
         b.peekBack = !b.peekBack;
@@ -5308,7 +5312,7 @@
     }
     // Startled (poked, flinching): eyes go wide for a moment.
     const wide = CFG.eyeLife * Math.max(wideBy, wideSeen, over ? 0.5 : 0, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
-    return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.35 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: b.shy > 0 ? { ...CFG, cheeks: Math.min(0.95, CFG.cheeks + b.shy * 0.55) } : CFG, bodyColor: b.color,
+    return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, time < (b.strainUntil || 0) ? 0.35 * Math.min(1, CFG.strain) : 0), nod: nodOf(b), scale: CFG.faceScale, style: b.blush > 0 ? { ...CFG, cheeks: Math.min(0.95, CFG.cheeks + b.blush * 0.55) } : CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal' && !b.peek, peek: b.peek,
       fullTurn: (body.fullTurn = !!((b.flip && b.flip.spun) || b.tumble || b.roll)), // (mid-somersault the face, and what it wears, go all the way round)
     };
@@ -5403,6 +5407,35 @@
     return m[1][0].toUpperCase() + m[1].slice(1) + ' ' + m[2] + minor;
   }
 
+	// Its stream of consciousness while you hover it working: the end of its
+	// newest thinking from its transcript (a helper's own), asked for once a
+	// second while hovered, never waited on. With none (not written, or
+	// redacted), what it's doing right now instead, unless the status
+	// bubble already says just that.
+	function askThought(b) {
+		if (!b || !api.thinking || b.kind === 'home' || b.state !== 'working' || b.thoughtBusy) return;
+		const now = performance.now();
+		if (now - (b.thoughtAsked || 0) < 1000) return;
+		b.thoughtAsked = now;
+		b.thoughtBusy = true;
+		Promise.resolve(api.thinking(b.key)).then((r) => { b.thought = r || null; b.thoughtAt = time; }, () => {}).finally(() => { b.thoughtBusy = false; });
+	}
+	function thoughtOf(b, lines) {
+		if (b.state !== 'working' || b.kind === 'home' || !b.thought || time - (b.thoughtAt || -99) > 3) return '';
+		if (b.thought.text) return b.thought.text;
+		const doing = String(b.thought.doing || '').trim();
+		return doing && !lines.some((l) => l.text === doing) ? doing : '';
+	}
+	// The other slimes' heads (faces and whatever they wear), for a bubble
+	// to keep off.
+	function headsBut(b, list) {
+		return list.filter((o) => o !== b && !o.dying && o.kind !== 'home').map((o) => {
+			const c = o.body.centroid(), r = o.body.o.radius, box = o.body.bbox();
+			const top = Math.min(box.minY, o.body.lookTop ?? Infinity);
+			return { x: box.minX, y: top, w: box.maxX - box.minX, h: c.y + r * 0.5 - top };
+		});
+	}
+
   // Big slimes first, so children are drawn on top (and get clicked first).
   const drawOrder = () => [...buddies.values()].sort((a, b) => (a.body.grab ? 2 : a.big ? 0 : 1) - (b.body.grab ? 2 : b.big ? 0 : 1));
 
@@ -5419,6 +5452,7 @@
       hovered = under; hoverSeen = time;
     }
     else if (drag || time - hoverSeen > 0.35) hovered = null;
+    askThought(hovered);
     ctx.clearRect(0, 0, W, H);
     const list = drawOrder();
     if (CFG.shadow) for (const b of list) D.drawShadow(ctx, b.body, floorAt(b.body.centroid().x, b.body.bbox().maxY));
@@ -5470,7 +5504,11 @@
       // What it says is speech, in the fun font; anything with a state dot
       // or grey detail lines is a status list, in the plain one.
       const speech = !showHover && !!lines && lines.every((l) => !l.color && !l.dim && (!l.size || l.size >= 20));
-      if (lines && b !== buddies.get(talkingTo)) D.drawBubble(ctx, b.body, lines, alpha, W, speech);
+      if (lines && b !== buddies.get(talkingTo)) {
+        D.drawBubble(ctx, b.body, lines, alpha, W, speech);
+        const thought = showHover ? thoughtOf(b, lines) : '';
+        if (thought) D.drawThought(ctx, b.body, thought, W, headsBut(b, list));
+      }
     }
     if (CFG.debugOverlay) drawDebug(list);
   }

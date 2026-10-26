@@ -1,0 +1,11 @@
+{"type":"summary","summary":"Pancake recipe"}
+{"type":"user","message":{"role":"user","content":"make the pancakes fluffier"}}
+{"type":"assistant","message":{"id":"mtqkqc1","model":"claude-opus-5-5","content":[{"type":"thinking","thinking":"An old thought from the turn before, about syrup.","signature":"x"},{"type":"text","text":"Sure."}]}}
+{"type":"user","message":{"role":"user","content":"now add blueberries to the batter"}}
+{"type":"assistant","message":{"id":"mu0dq7d","model":"claude-opus-5-5","content":[{"type":"thinking","thinking":"The batter recipe lives in recipes/pancakes.md. Blueberries should be folded in at the end so they do not\nburst, and frozen ones need a dusting of flour first so they   do not sink to the bottom of the pan. I will read the file, then add a step after the whisking and a note about frozen berries.","signature":"sig1"}]}}
+{"type":"assistant","message":{"id":"m0eq74q","model":"claude-opus-5-5","content":[{"type":"tool_use","id":"tu1","name":"Read","input":{"file_path":"recipes/pancakes.md"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":"the thinking cap is a hat"}]}}
+{"type":"assistant","message":{"id":"mzvblzs","model":"claude-opus-5-5","content":[{"type":"thinking","thinking":"","signature":"empty-but-signed"},{"type":"redacted_thinking","data":"ZW5jcnlwdGVk"}]}}
+{"type":"assistant","message":{"id":"m1iewj5","model":"claude-opus-5-5","content":[{"type":"text","text":"Adding the blueberry step now."}]}}
+{"type":"assistant","message":{"id":"m5gbg4m","model":"claude-opus-5-5","content":[{"type":"thinking","thinking":"A helper line mixed in.","signature":"s"}]},"isSidechain":true}
+{"type":"assistant","message":{"id":"ma0nigl","model":"claude-opus-5-5","content":[{"type":"tool_use","id":"tu2","name":"Edit","input":{"file_path":"recipes/pancakes.md"}}]}}
