@@ -5997,8 +5997,10 @@
     // Speeding up shows at once; slowing down takes a moment (a hop's top
     // isn't the end of it).
     wantFps = Math.min(CFG.maxFps, Math.max(stageSpeed() / PX_PER_FRAME, wantFps - CFG.maxFps * Math.min(0.05, gap) / 0.4));
-    // Away from the computer: nobody's watching closely.
-    const fps = sys.away ? Math.min(10, CFG.calmFps) : Math.max(Math.min(CFG.calmFps, CFG.maxFps), wantFps);
+    // (Away from the computer counts the same: you may well be watching from
+    // across the room, and a 10 fps stage looked broken. Only a locked or
+    // sleeping screen stops drawing, above.)
+    const fps = Math.max(Math.min(CFG.calmFps, CFG.maxFps), wantFps);
     const every = Math.max(1, Math.ceil(1 / vsync / fps - 0.05)) * vsync;
     if (now - paintedAt < every - vsync / 2) return false;
     paintedAt = now;
