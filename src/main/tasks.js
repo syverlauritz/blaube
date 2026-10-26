@@ -24,7 +24,18 @@ function words(command) {
 	return out;
 }
 
+// One look at a time: calls made while one is running share its answer
+// (on Windows a look is a PowerShell scan of every process, a second or
+// more, and the 4 s poll and each session at startup would pile them up).
+let waiting = null;
 function listProcesses(cb) {
+	if (waiting) return void waiting.push(cb);
+	waiting = [cb];
+	const done = (procs) => { const all = waiting; waiting = null; for (const f of all) f(procs); };
+	look(done);
+}
+
+function look(cb) {
 	const opts = { timeout: 8000, maxBuffer: 32 << 20, windowsHide: true };
 	const parse = (stdout, re) => stdout.split(/\r?\n/).map((l) => re.exec(l)).filter(Boolean).map((m) => ({ pid: Number(m[1]), ppid: Number(m[2]), cmd: squash(m[3]) }));
 	if (process.platform === 'win32') {
