@@ -1262,7 +1262,7 @@ const shorten = (s, n = 70) => { s = String(s || '').replace(/\s+/g, ' ').trim()
 
 function describeTool(name, input = {}) {
   switch (name) {
-    case 'Bash': case 'PowerShell': return input.description ? shorten(input.description) : '$ ' + shorten(input.command, 50);
+    case 'Bash': case 'PowerShell': return input.description ? shorten(input.description) : thinking.plainCommand(input.command);
     case 'Read': return 'Reading ' + base(input.file_path);
     case 'Edit': case 'MultiEdit': return 'Editing ' + base(input.file_path);
     case 'Write': return 'Writing ' + base(input.file_path);

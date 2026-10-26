@@ -5481,6 +5481,17 @@
 		const doing = String(b.thought.doing || '').trim();
 		return doing && !lines.some((l) => l.text === doing) ? doing : '';
 	}
+	// A helper's one hover bubble: its whole task, its state, and what it's
+	// doing right now (plain words: "Reading face.js"); its thinking only
+	// when there's no action to show (an action reads clearer than the
+	// tail of a thought).
+	function helperCard(b, lines) {
+		const a = b.agent || {};
+		const fresh = b.state === 'working' && b.thought && time - (b.thoughtAt || -99) <= 3;
+		const doing = fresh ? String(b.thought.doing || '').trim() : '';
+		const text = fresh && !doing ? b.thought.text || '' : '';
+		return { task: a.description || a.type || 'agent', status: lines[1], action: doing || text, fromEnd: !doing && !!text };
+	}
 	// The other slimes' heads (faces and whatever they wear), for a bubble
 	// to keep off.
 	function headsBut(b, list) {
@@ -5559,7 +5570,8 @@
       // What it says is speech, in the fun font; anything with a state dot
       // or grey detail lines is a status list, in the plain one.
       const speech = !showHover && !!lines && lines.every((l) => !l.color && !l.dim && (!l.size || l.size >= 20));
-      if (lines && b !== buddies.get(talkingTo)) {
+      if (showHover && b.kind === 'child' && b !== buddies.get(talkingTo)) D.drawHelperThought(ctx, b.body, helperCard(b, lines), W, headsBut(b, list));
+      else if (lines && b !== buddies.get(talkingTo)) {
         D.drawBubble(ctx, b.body, lines, alpha, W, speech);
         const thought = showHover ? thoughtOf(b, lines) : '';
         if (thought) D.drawThought(ctx, b.body, thought, W, headsBut(b, list));

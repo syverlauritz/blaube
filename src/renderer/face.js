@@ -1231,6 +1231,89 @@
 		ctx.restore();
 	}
 
+	// A helper, hovered: one thought bubble over its head, its puffs
+	// trailing down to it, holding its task (bold, wrapped to three lines),
+	// its state (dot and word) and what it's doing now (grey, two lines).
+	// card: { task, status: { text, color }, action, fromEnd } (fromEnd: the
+	// action is a thought's tail, so its newest words are the ones kept).
+	// avoid: other slimes' heads, which it never covers, as with drawThought.
+	const CARD_W = 260, TASK_LINE = 22, TASK_LINES = 3, ACTION_LINES = 2;
+	function drawHelperThought(ctx, b, card, W, avoid = []) {
+		if (!card || !card.task || !fontsReady) return;
+		ctx.save();
+		const taskFont = `700 16px ${TEXT_FONT}`, stateFont = `600 15px ${TEXT_FONT}`, actionFont = `600 14px ${TEXT_FONT}`;
+		ctx.font = taskFont;
+		let task = wrap(ctx, card.task, CARD_W);
+		if (task.length <= TASK_LINES) task = balanced(ctx, card.task, CARD_W); // (evened out when it all fits)
+		if (task.length > TASK_LINES) task = [...task.slice(0, TASK_LINES - 1), ellipsize(ctx, task.slice(TASK_LINES - 1).join(' '), CARD_W).replace(/\s+\S*…$/, '…')]; // (cut at a word)
+		ctx.font = actionFont;
+		let action = card.action ? wrap(ctx, card.action, CARD_W) : [];
+		if (action.length > ACTION_LINES) {
+			if (card.fromEnd) {
+				action = action.slice(-ACTION_LINES);
+				if (!action[0].startsWith('…')) action[0] = '…' + action[0];
+			} else action = [action[0], ellipsize(ctx, action.slice(1).join(' ') + '…', CARD_W)];
+		}
+		const widest = (rows, font, extra = 0) => { ctx.font = font; return Math.max(0, ...rows.map((r) => ctx.measureText(r).width + extra)); };
+		const status = card.status && card.status.text ? card.status : null;
+		const tw = Math.max(widest(task, taskFont), status ? widest([status.text], stateFont, status.color ? 16 : 0) : 0, widest(action, actionFont));
+		const w = Math.max(ICON_W, Math.ceil(tw) + PAD_X * 2);
+		const h = task.length * TASK_LINE + (status ? 22 : 0) + action.length * THOUGHT_LINE + PAD_Y * 2;
+		// Over its head with room for the puffs, and up past any bubble
+		// already there or another slime's head.
+		const c = b.centroid(), box = b.bbox();
+		const top = b.lookTop != null ? Math.min(box.minY, b.lookTop) : box.minY;
+		const tip = { x: c.x, y: top - 4 };
+		const x = Math.max(8, Math.min(W - w - 8, c.x - w / 2));
+		let y = tip.y - 30 - h;
+		for (let tries = 0; tries < 8 && y > 8; tries++) {
+			const hit = placed.find((o) => x < o.x + o.w + GAP && x + w + GAP > o.x && y < o.y + o.h + 26 && y + h + GAP > o.y)
+				|| avoid.find((o) => x < o.x + o.w && x + w > o.x && y < o.y + o.h && y + h > o.y);
+			if (!hit) break;
+			y = hit.y - GAP - h;
+		}
+		y = Math.max(8, y);
+		placed.push({ x, y, w, h });
+		const p = settle(b, { tip, x, y, gap: 30 }, w, h);
+		ctx.fillStyle = '#fff';
+		ctx.beginPath();
+		const rad = pillRadius(h);
+		// Two puffs on the way from its bottom down to its head.
+		const from = { x: Math.max(p.x + rad, Math.min(p.x + w - rad, tip.x)), y: p.y + h + 2 };
+		for (const [k, pr] of [[0.3, 6], [0.72, 3.8]]) {
+			const px = from.x + (tip.x - from.x) * k, py = from.y + (tip.y - from.y) * k;
+			ctx.moveTo(px + pr, py);
+			ctx.arc(px, py, pr, 0, Math.PI * 2);
+		}
+		ctx.fill();
+		roundRect(ctx, p.x, p.y, w, h, rad);
+		ctx.fill();
+		ctx.textAlign = 'left';
+		ctx.textBaseline = 'middle';
+		let ly = p.y + PAD_Y;
+		ctx.font = taskFont;
+		ctx.fillStyle = INK;
+		for (const row of task) { ctx.fillText(row, p.x + PAD_X, ly + TASK_LINE / 2); ly += TASK_LINE; }
+		if (status) {
+			let lx = p.x + PAD_X;
+			if (status.color) {
+				ctx.fillStyle = status.color;
+				ctx.beginPath();
+				ctx.arc(lx + 5, ly + 11, 5, 0, Math.PI * 2);
+				ctx.fill();
+				lx += 16;
+			}
+			ctx.font = stateFont;
+			ctx.fillStyle = INK;
+			ctx.fillText(ellipsize(ctx, status.text, w - (lx - p.x) - PAD_X), lx, ly + 11);
+			ly += 22;
+		}
+		ctx.font = actionFont;
+		ctx.fillStyle = '#6b7280';
+		for (const row of action) { ctx.fillText(row, p.x + PAD_X, ly + THOUGHT_LINE / 2); ly += THOUGHT_LINE; }
+		ctx.restore();
+	}
+
   // Wrapped, then evened out: as narrow as it goes without taking another
   // line, so two lines come out about the same length, not a long one and
   // a word. (Kept, as a bubble is measured every frame.)
@@ -1282,5 +1365,5 @@
     ctx.closePath();
   }
 
-  root.BlaubeDraw = { setFont, setCrowd, drawHeart, drawBrokenHeart, drawNote, drawShadow, drawBody, vary, drawFace, drawGlasses, drawDots, drawThinking, drawDream, drawZzz, drawFlush, drawSweat, drawPet, drawExclaim, drawLabel, drawBubble, drawThought, STATE_COLORS };
+  root.BlaubeDraw = { setFont, setCrowd, drawHeart, drawBrokenHeart, drawNote, drawShadow, drawBody, vary, drawFace, drawGlasses, drawDots, drawThinking, drawDream, drawZzz, drawFlush, drawSweat, drawPet, drawExclaim, drawLabel, drawBubble, drawThought, drawHelperThought, STATE_COLORS };
 })(globalThis);
