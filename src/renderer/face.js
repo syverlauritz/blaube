@@ -253,11 +253,27 @@
           }
           if (!s.eyeWhites) {
             // Solid eyes; the whole face turns to look around instead.
+            // face.eyeKind picks a style (to tell models apart): 'tall'
+            // ovals, a white 'glint', a 'sparkle' (a big glint and a small
+            // one), or plain dots.
+            const kind = face.eyeKind || 'dot';
+            const tall = kind === 'tall' ? 1.45 : 1, narrow = kind === 'tall' ? 0.8 : 1;
             ctx.fillStyle = ink;
             ctx.beginPath();
-            ctx.ellipse(x, y, ew * 0.8, eh * 0.8 * open, 0, 0, Math.PI * 2);
+            ctx.ellipse(x, y, ew * 0.8 * narrow, eh * 0.8 * tall * open, 0, 0, Math.PI * 2);
             ctx.fill();
-            if (s.eyeShine && open > 0.3) {
+            if ((kind === 'glint' || kind === 'sparkle') && open > 0.3) {
+              ctx.fillStyle = '#fff';
+              ctx.beginPath();
+              ctx.arc(x - ew * 0.22, y - eh * 0.28 * open, ew * (kind === 'sparkle' ? 0.3 : 0.24), 0, Math.PI * 2);
+              ctx.fill();
+              if (kind === 'sparkle') {
+                ctx.beginPath();
+                ctx.arc(x + ew * 0.28, y + eh * 0.3 * open, ew * 0.13, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+            if (s.eyeShine && open > 0.3 && kind === 'dot') {
               ctx.fillStyle = '#fff';
               ctx.beginPath();
               ctx.arc(x - ew * 0.25, y - eh * 0.3 * open, ew * 0.22, 0, Math.PI * 2);
@@ -327,9 +343,37 @@
         const tx = ax + yaw, ty = ay + pitch;
         if (Math.abs(tx) > Math.PI / 2) continue; // turned out of sight
         const w = Math.min(1.1, Math.cos(tx) / Math.cos(ax)), h = Math.min(1.1, Math.cos(ty) / Math.cos(ay));
+        const cx = R * Math.sin(tx), cy = R * Math.sin(ty), cw = r * (0.12 + 0.07 * puffed) * w, ch = r * (0.07 + 0.09 * puffed) * h;
+        // face.cheekKind picks a blush (to tell models apart): soft 'oval's,
+        // three slanted 'lines', 'freckles', or little 'hearts'.
+        const ck = puffed > 0.3 ? 'oval' : face.cheekKind || 'oval';
         ctx.beginPath();
-				ctx.ellipse(R * Math.sin(tx), R * Math.sin(ty), r * (0.12 + 0.07 * puffed) * w, r * (0.07 + 0.09 * puffed) * h, 0, 0, Math.PI * 2);
+        if (ck === 'lines') {
+          ctx.save();
+          ctx.globalAlpha = Math.min(1, ctx.globalAlpha * 2.2);
+          ctx.strokeStyle = ctx.fillStyle; ctx.lineCap = 'round'; ctx.lineWidth = r * 0.028;
+          for (let k = -1; k <= 1; k++) { ctx.moveTo(cx + k * cw * 0.55 - cw * 0.18, cy + ch * 0.55); ctx.lineTo(cx + k * cw * 0.55 + cw * 0.18, cy - ch * 0.55); }
+          ctx.stroke();
+          ctx.restore();
+        } else if (ck === 'freckles') {
+          ctx.save();
+          ctx.globalAlpha = Math.min(1, ctx.globalAlpha * 2.2);
+          for (const [fx, fy] of [[-0.45, -0.2], [0.1, 0.25], [0.5, -0.25]]) { ctx.moveTo(cx + fx * cw + r * 0.03, cy + fy * ch); ctx.arc(cx + fx * cw, cy + fy * ch, r * 0.03, 0, Math.PI * 2); }
+          ctx.fill();
+          ctx.restore();
+        } else if (ck === 'hearts') {
+          ctx.save();
+          ctx.globalAlpha = Math.min(1, ctx.globalAlpha * 1.8);
+          const k = ch * 1.35;
+          ctx.moveTo(cx, cy + k * 0.9);
+          ctx.bezierCurveTo(cx - k * 1.4, cy - k * 0.1, cx - k * 0.6, cy - k * 1.1, cx, cy - k * 0.35);
+          ctx.bezierCurveTo(cx + k * 0.6, cy - k * 1.1, cx + k * 1.4, cy - k * 0.1, cx, cy + k * 0.9);
+          ctx.fill();
+          ctx.restore();
+        } else {
+				ctx.ellipse(cx, cy, cw, ch, 0, 0, Math.PI * 2);
         ctx.fill();
+        }
       }
       ctx.restore();
     }
