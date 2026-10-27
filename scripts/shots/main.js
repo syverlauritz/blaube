@@ -341,6 +341,15 @@ const SCENES = {
 		size: [900, 560],
 		motion: { frames: 85, every: 45, drop: 6, hard: 52 },
 	},
+	// Going green on any colour: blue with its helpers, orange, purple;
+	// sicker and sicker, then over it.
+	sickColors: {
+		sessions: [session('g1', 'kalkis', 'working', { color: '#5B8DEF', agents: [{ id: 'ga', description: 'Find the tables', type: 'general-purpose' }, { id: 'gb', description: 'Run the tests', type: 'general-purpose' }] }), session('g2', 'blaube', 'idle'), session('g3', 'web', 'idle', { color: '#B07CE8' })],
+		config: { snackJar: 'Off', seasons: 0 },
+		wait: 4000,
+		size: [1100, 560],
+		motion: { frames: 16, every: 160, drop: 0, still: true, hopAt: [], jsAt: { 0: 'sick' } },
+	},
 	// Shaken around by the mouse, then dropped: do the looks stay on and
 	// swing smoothly?
 	shake: {
@@ -1214,6 +1223,7 @@ async function shootMotion(win, name, m) {
 			if (m.jsAt && m.jsAt[i] === 'cookieFar') { await js(`[...__blaube.buddies.values()][0].body.teleport(260, 430)`); await sleep(1500); }
 			// (a cookie's worth more of your usage used: 62% to 67%, one cookie out)
 			if (m.jsAt && m.jsAt[i] === 'cookie') win.webContents.send('fire', 'limits', usage(0.67, 0.41));
+			if (m.jsAt && m.jsAt[i] === 'sick') await js(`(() => { for (const b of __blaube.buddies.values()) { b.queasy = 0.95; b.shookAt = 1e9; } setTimeout(() => { for (const b of __blaube.buddies.values()) b.shookAt = 0; }, 1500); })()`);
 			if (m.jsAt && m.jsAt[i] === 'giveUp') await js(`(() => { const k = [...__blaube.buddies.values()].find((b) => b.kind === 'child'); k.tries = { key: 'shot', n: 9 }; })()`);
 			if (m.jsAt && m.jsAt[i] === 'ghost') await js(`(() => { const l = [...__blaube.buddies.values()]; __blaube.ghost(l[0], l[1]); })()`);
 			if (m.mouseAt && m.mouseAt[i]) {

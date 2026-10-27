@@ -932,7 +932,7 @@
 	// rises with each shake (held()) and wears off by itself; b.sick (0..1,
 	// how green and swollen) follows it.
 	const barfs = [];
-	const SICK_HUE = 105, BARF = ['#6FAE3E', '#5E9C33', '#80BD4B'];
+	const SICK_RGB = '120,190,82', BARF = ['#6FAE3E', '#5E9C33', '#80BD4B'];
 	function queasyStep(b) {
 		if (!b.queasy && !b.sick) return;
 		// (Wears off: fast once it's down, slowly while still held and shaken now and then.)
@@ -942,24 +942,16 @@
 		b.sick = (b.sick || 0) + (want * want * (3 - 2 * want) - (b.sick || 0)) * Math.min(1, DT * 4);
 		if (b.sick < 0.002 && !b.queasy) b.sick = 0;
 	}
-	// Its body colour, gone green as it's sick: its hue turned round to a
-	// leafy green (through yellow, never through brown), as bright as it was.
-	function sickColor(b) {
+	// Going green: a leafy green laid over its own colour (any colour, plain
+	// blending), fading in as it gets sicker until it's green all over.
+	function drawSick(b) {
 		const k = Math.min(1, b.sick || 0);
-		if (k <= 0.002) return b.color;
-		const n = parseInt(String(b.color || '#D97757').slice(1), 16);
-		const [h, sat, l] = toHsl((n >> 16) & 255, (n >> 8) & 255, n & 255);
-		let dh = SICK_HUE - h;
-		if (dh > 180) dh -= 360; if (dh < -180) dh += 360;
-		return `hsl(${(h + dh * k).toFixed(1)}, ${(sat + (0.46 - sat) * k) * 100}%, ${(l + (0.56 - l) * k) * 100}%)`;
-	}
-	function toHsl(r, g, b) {
-		r /= 255; g /= 255; b /= 255;
-		const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
-		if (!d) return [0, 0, l];
-		const s = d / (1 - Math.abs(2 * l - 1));
-		const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
-		return [(h * 60 + 360) % 360, s, l];
+		if (k <= 0.002) return;
+		ctx.save();
+		ctx.fillStyle = `rgba(${SICK_RGB},${0.9 * k})`;
+		D.bodyPath(ctx, b.body);
+		ctx.fill();
+		ctx.restore();
 	}
 	function barfNow(b) {
 		const c = b.body.centroid(), e = b.body.bounds, t = b.faceTurn || { x: 0 };
@@ -6498,10 +6490,10 @@
     drawSeason(true);
 		if (!jar.held) drawJar(); // (on the floor, behind the slimes)
     for (const b of list) {
-      const color = sickColor(b);
-      Looks.drawLook(ctx, b, 'back', color);
-      D.drawBody(ctx, b.body, color);
-      Looks.drawLook(ctx, b, 'front', color);
+      Looks.drawLook(ctx, b, 'back', b.color);
+      D.drawBody(ctx, b.body, b.color);
+      Looks.drawLook(ctx, b, 'front', b.color);
+      drawSick(b);
       D.drawFlush(ctx, b.body, ramp(b.fill || 0, CFG.redAt, 1), CFG, b.faceTurn);
       drawSplats(b);
       const face = faceFor(b);

@@ -625,3 +625,47 @@ test('a test run says how it went: how many fail, or pass', () => {
   assert.deepEqual(steps.map((e) => e.text), ['Run the tests · 2 failing', 'Ran npx vitest run · 12 pass', 'Ran ls']);
   assert.deepEqual(steps[0].tests, { pass: 10, fail: 2 });
 });
+
+test('queued messages survive a restart: snapshot, restore, and old ones dropped', () => {
+  const a = new Inbox(() => 1000000);
+  a.send('s1', 'one'); a.send('s1', 'two'); a.send('s2', 'other');
+  const saved = JSON.parse(JSON.stringify(a.snapshot()));
+  assert.equal(saved.length, 3);
+  const b = new Inbox(() => 1000500);
+  assert.equal(b.restore(saved), 3);
+  assert.deepEqual(b.snapshot().map((x) => [x.id, x.text, x.at]), saved.map((x) => [x.id, x.text, x.at]));
+  assert.equal(b.view('s1').queued, 2);
+  assert.deepEqual(b.log('s1').map((e) => [e.who, e.text, e.status]), [['you', 'one', 'queued'], ['you', 'two', 'queued']]);
+  // Old (over a day) and broken entries are let go.
+  const c = new Inbox(() => 1000000 + 25 * 3600e3);
+  assert.equal(c.restore([{ id: 's1', text: 'stale', at: 1000000 }, { id: '', text: 'x', at: c.now() }, { id: 's1', text: ' ', at: c.now() }, null]), 0);
+  assert.equal(c.restore('nonsense'), 0);
+  assert.equal(c.snapshot().length, 0);
+  assert.equal(c.restore([{ id: 's1', text: 'fresh', at: c.now() - 1000 }]), 1);
+});
+
+test('a restored message goes in at the next step of a steerable session', () => {
+  const a = new Inbox();
+  a.send('s1', 'after restart');
+  const b = new Inbox();
+  b.restore(a.snapshot());
+  const step = { session_id: 's1', hook_event_name: 'PostToolUse' };
+  assert.equal(b.step(step, true) !== '', true);
+  assert.match(JSON.parse(b.step(Object.assign({}, step), true) || '{}').hookSpecificOutput?.additionalContext || 'none', /none/); // (once only)
+  assert.equal(b.view('s1').queued, 0);
+  assert.equal(b.log('s1')[0].status, 'sent');
+  assert.deepEqual(b.snapshot(), []);
+});
+
+test('a restored message goes to the Stop waiter', () => {
+  const a = new Inbox();
+  a.send('s1', 'for the stop hook');
+  const b = new Inbox();
+  b.restore(a.snapshot());
+  const got = [];
+  b.wait('s1', (t) => got.push(t));
+  assert.equal(got.length, 1);
+  assert.match(got[0], /for the stop hook$/);
+  assert.equal(b.log('s1')[0].status, 'delivering');
+  assert.deepEqual(b.snapshot(), []);
+});

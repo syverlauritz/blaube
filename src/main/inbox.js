@@ -337,6 +337,32 @@ class Inbox extends EventEmitter {
     this.emit('change', to);
   }
 
+  // The queued messages, plain, to keep across a restart: a Blaube that
+  // quits (an update, a crash) would otherwise lose them without a word.
+  snapshot() {
+    const out = [];
+    for (const [id, q] of this.queue) for (const e of q) out.push({ id, text: e.text, at: e.at, via: e.via || 'blaube' });
+    return out;
+  }
+
+  // Puts those back: queued again, and in the talk box log, to go in at the
+  // session's next step or when its Stop hook asks. Anything older than a
+  // day is let go (nobody wants a stale "yes do it" delivered tomorrow).
+  restore(data, maxAge = 24 * 3600e3) {
+    if (!Array.isArray(data)) return 0;
+    let n = 0;
+    for (const d of data) {
+      if (!d || !d.id || typeof d.text !== 'string' || !d.text.trim()) continue;
+      const at = Number(d.at);
+      if (!(at > 0) || this.now() - at > maxAge) continue;
+      const id = String(d.id);
+      const entry = this.add(id, { who: 'you', text: d.text, via: d.via || 'blaube', status: 'queued', at });
+      this.queue.set(id, [...(this.queue.get(id) || []), entry]);
+      n++;
+    }
+    return n;
+  }
+
   log(id) { return this.logs.get(id) || []; }
 
   add(id, entry) {

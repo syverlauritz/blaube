@@ -107,7 +107,8 @@ ships that breaks a "must".
   mouth: shut, it's the blob's own mouth; open, a dark oval that drops
   from the top lip, never bigger than a yawn, a pink tongue when wide.
 - Shaken hard while held, a blob gets dizzy, then swells up and turns green
-  (its hue turns to leafy green, through yellow, never brown), cheeks full,
+  (a plain leafy green faded in over its own colour, evenly, whatever its
+  colour; not rising from the bottom, no hue shifting), cheeks full,
   then barfs: heaves, "bleh!", a green stream from its mouth pouring out and
   down, puddles on the floor that fade. A blob it lands on gets splats and
   the zigzag mouth with squeezed eyes ("eww!"). This is wanted (it isn't

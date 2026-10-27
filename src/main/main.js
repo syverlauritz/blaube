@@ -190,6 +190,28 @@ function savePrefs() {
   }, 300);
 }
 
+// Messages typed to a busy session wait in the inbox's queue; kept in a file
+// too, so a restart (an update, a crash) doesn't lose them. Not in test mode.
+const queueFile = () => path.join(app.getPath('userData'), 'inbox-queue.json');
+let queueTimer = null, queueSaved = '[]';
+function saveQueue(now) {
+  clearTimeout(queueTimer);
+  const write = () => {
+    queueTimer = null;
+    const json = JSON.stringify(inbox.snapshot());
+    if (json === queueSaved) return;
+    try { fs.mkdirSync(path.dirname(queueFile()), { recursive: true }); fs.writeFileSync(queueFile(), json); queueSaved = json; } catch { /* not fatal */ }
+  };
+  if (now) write(); else queueTimer = setTimeout(write, 300);
+}
+function loadQueue() {
+  if (TEST) return;
+  try { inbox.restore(JSON.parse(fs.readFileSync(queueFile(), 'utf8'))); } catch { /* none yet */ }
+  queueSaved = JSON.stringify(inbox.snapshot()); // (what's in the file now, or about to be written fresh)
+  inbox.on('change', () => saveQueue());
+  app.on('before-quit', () => saveQueue(true));
+}
+
 // In front of every window (the default), or behind them like the desktop,
 // when you need to see all of a window. The talk box always opens in front
 // of other apps; in front, the slimes are in front of the talk boxes too (a
@@ -2140,6 +2162,13 @@ app.whenReady().then(async () => {
   if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? 'app.blaube.desktop' : process.execPath);
 
   loadPrefs();
+  loadQueue(); // (before the hook server starts, so a session's first step finds its messages)
+  // Connected by an older Blaube: its hooks are brought up to date by
+  // themselves (you said yes to connecting; this is the same hooks, newer),
+  // so new sessions can take messages mid-turn, Stop works, and so on.
+  if (!TEST && claudeHooks.hasAnyBlaubeHooks() && !claudeHooks.isInstalled(undefined, PORT)) {
+    try { claudeHooks.install(claudeHooks.settingsPath(), PORT); log('brought the Claude Code hooks up to date'); } catch (e) { log(`couldn't bring the Claude Code hooks up to date: ${e.message}`); }
+  }
 
   // Restarting (after a code change, or an update) the old Blaube can still
   // hold the port for a moment: keep trying for a few seconds first.
