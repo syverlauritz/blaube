@@ -86,7 +86,11 @@
 	const LEAN = 0.18; // the same lean as the face
 	const REACH = 0.4; // how far squashing may carry it off the crown
 	const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
-	const leanOf = (body) => body.fullTurn ? body.angle : Math.max(-LEAN, Math.min(LEAN, body.angle));
+	const leanOf = (body) => {
+		if (body.fullTurn) return body.angle;
+		const lean = Math.max(-LEAN, Math.min(LEAN, body.angle));
+		return lean + (body.angle - lean) * (body.turnAmt || 0); // (held: turning with the body, see faceFor)
+	};
 
 	// How far the skin itself has turned since the body was made: the best
 	// fit rotation of all the points onto their rest shape (smooth: every

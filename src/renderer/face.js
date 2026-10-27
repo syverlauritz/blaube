@@ -89,8 +89,11 @@
     const world = ctx.getTransform();
     ctx.translate(c.x, c.y);
     // The face leans with the body, but only so far: a face lying on its
-    // side after a tumble looks broken, not cute.
-    ctx.rotate(face.fullTurn ? b.angle : Math.max(-0.18, Math.min(0.18, b.angle)));
+    // side after a tumble looks broken, not cute. Held up, though, it turns
+    // all the way with the body.
+    // (Held, it turns with the body as far as turnAmt says: see faceFor.)
+    const lean = Math.max(-0.18, Math.min(0.18, b.angle));
+    ctx.rotate(face.fullTurn ? b.angle : lean + (b.angle - lean) * (face.turnAmt || 0));
     const ref = (face.style && face.style.mainRadius) || r;
     const fs = (face.scale || 1) * Math.max(0.75, Math.min(1.5, Math.sqrt(ref / r)));
     ctx.scale(Math.min(1.4, st.x) * fs, Math.min(1.4, st.y) * fs);

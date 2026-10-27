@@ -50,7 +50,7 @@
       ['shapeStiffness', 0, 0, 0.2, 0.001, 'Shape memory'],
       ['upright', 0.05, 0, 0.3, 0.005, 'Self-righting'],
       ['bounce', 0, 0, 1, 0.01, 'Bounciness'],
-      ['friction', 0.07, 0, 1, 0.01, 'Friction'],
+      ['friction', 0.43, 0, 1, 0.01, 'Friction'],
       ['maxSpeed', 4000, 500, 12000, 100, 'Speed limit (px/s)'],
       ['breathe', 0.06, 0, 0.15, 0.005, 'Breathing'],
     ]],

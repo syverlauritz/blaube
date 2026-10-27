@@ -118,7 +118,8 @@ ships that breaks a "must".
 - The app icon is today's blob (a dome, bead eyes, blush, small smile) on a
   dark rounded square, drawn by the app's own code (scripts/make-icons.js).
 - Held, the cursor is a hinge: picked up by its side, a blob swings round
-  and hangs from that spot (its face and what it wears stay upright).
+  and hangs from that spot, and its face and what it wears turn with it
+  (the creative director's call, over Must 6); let go, they ease back upright.
   Landings and skids are physics: no hidden braking; it only plants its
   feet once it's nearly still.
 - Choir mode: every blob sings in parts, fuller with more blobs, eyes

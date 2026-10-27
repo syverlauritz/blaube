@@ -6342,6 +6342,9 @@
     return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, b.cheekStrain || 0, time < (b.scaredUntil || 0) ? 0.45 : 0, time < (b.strainUntil || 0) ? 0.35 * Math.min(1, CFG.strain) : 0), puffed: b.cheekPuff || 0, nod: nodOf(b), scale: CFG.faceScale, style: b.blush > 0 ? { ...CFG, cheeks: Math.min(0.95, CFG.cheeks + b.blush * 0.55) } : CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal' && !b.peek && !watching, peek: b.peek,
       fullTurn: (body.fullTurn = !!((b.flip && b.flip.spun) || b.tumble || b.roll)), // (mid-somersault the face, and what it wears, go all the way round)
+      // Held, the face (and what it wears) turns with the body as it hangs
+      // and swings from the cursor; let go, it eases back upright.
+      turnAmt: (body.turnAmt = (body.turnAmt || 0) + ((body.grab ? 1 : 0) - (body.turnAmt || 0)) * ease(body.grab ? 0.04 : 0.025)),
     };
   }
 
