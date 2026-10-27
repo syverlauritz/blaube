@@ -386,6 +386,15 @@ const SCENES = {
 		size: [1200, 460],
 		motion: { frames: 50, every: 40, drop: 0, still: true, hopAt: [] },
 	},
+	// A butterfly flying in, flapping and leaning into its turns, and
+	// landing on a head.
+	butterfly: {
+		sessions: [session('f1', 'blaube', 'idle'), session('f2', 'kalkis', 'idle', { color: '#5B8DEF' })],
+		config: { snackJar: 'Off', seasons: 0 },
+		wait: 2500,
+		size: [900, 560],
+		motion: { frames: 60, every: 80, drop: 0, still: true, hopAt: [], jsAt: { 0: 'butterfly' } },
+	},
 	// Shaken around by the mouse, then dropped: do the looks stay on and
 	// swing smoothly?
 	shake: {
@@ -1266,6 +1275,7 @@ async function shootMotion(win, name, m) {
 			if (m.jsAt && m.jsAt[i] === 'sick') await js(`(() => { for (const b of __blaube.buddies.values()) { b.queasy = 0.95; b.shookAt = 1e9; } setTimeout(() => { for (const b of __blaube.buddies.values()) b.shookAt = 0; }, 1500); })()`);
 			if (m.jsAt && m.jsAt[i] === 'curse') win.webContents.send('fire', 'react', { id: 'c1', kind: 'curse' });
 			if (m.jsAt && m.jsAt[i] === 'balloon') await js(`(() => { const b = [...__blaube.buddies.values()][0]; b.balloon = { at: __blaube.now(), stage: 'breathe', gulp: -1 }; })()`);
+			if (m.jsAt && m.jsAt[i] === 'butterfly') await js(`(() => { __blaube.flutter(); const u = __blaube.flutters()[0]; u.x = 120; u.y = 200; })()`);
 			if (m.jsAt && m.jsAt[i] === 'giveUp') await js(`(() => { const k = [...__blaube.buddies.values()].find((b) => b.kind === 'child'); k.tries = { key: 'shot', n: 9 }; })()`);
 			if (m.jsAt && m.jsAt[i] === 'ghost') await js(`(() => { const l = [...__blaube.buddies.values()]; __blaube.ghost(l[0], l[1]); })()`);
 			if (m.mouseAt && m.mouseAt[i]) {

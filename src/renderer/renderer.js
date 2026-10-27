@@ -690,7 +690,7 @@
 
   // The shots script (scripts/shots) opens the window with ?debug to look
   // inside while it plays a scene.
-  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, hearts: () => hearts, now: () => time, sys, spoken, input: { down: (e) => onDown(e), move: (e) => onMove(e), up: (e) => onUp(e) }, ownMouse: false, ghost: (b, o) => ghostNow(b, o), ledges: () => ledges, roomFor: (b) => roomFor(b), mover: () => mover, jar: () => jar, cookies: () => cookies, throwCookie: (key) => throwCookie(key ? buddies.get(key) : undefined), jarLines: () => Snack.lines(jar.lim, Date.now(), jar), jarOn: () => jarOn(), mouthAt: (b) => mouthAt(b) };
+  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, hearts: () => hearts, now: () => time, sys, spoken, input: { down: (e) => onDown(e), move: (e) => onMove(e), up: (e) => onUp(e) }, ownMouse: false, ghost: (b, o) => ghostNow(b, o), ledges: () => ledges, roomFor: (b) => roomFor(b), mover: () => mover, jar: () => jar, cookies: () => cookies, throwCookie: (key) => throwCookie(key ? buddies.get(key) : undefined), jarLines: () => Snack.lines(jar.lim, Date.now(), jar), jarOn: () => jarOn(), mouthAt: (b) => mouthAt(b), flutter: (bat) => addFlutter(bat), flutters: () => flutters };
   const petSize = () => 34 * CFG.size;
 
   function syncPets(sessions) {
@@ -2609,13 +2609,29 @@
         b.nextHop = Math.max(b.nextHop || 0, time + 0.5); // (holding still)
         continue;
       }
-      u.phase += DT * (u.bat ? 30 : 22);
-      // Wandering flight: steer at a spot, with a bob on every wingbeat.
+      // Flying is physics: gravity pulls it down and the air slows it; each
+      // downstroke of its wings pushes it along the way it's tilted. It
+      // steers only by tilting and by how hard it beats (toward its spot,
+      // with a wander), so it bobs with every beat and leans into turns.
       const dx = u.to.x - u.x, dy = u.to.y - u.y, d = Math.hypot(dx, dy) || 1;
-      u.vx += (dx / d * 90 - u.vx) * 1.5 * DT + (Math.random() - 0.5) * 300 * DT;
-      u.vy += (dy / d * 90 - u.vy) * 1.5 * DT + Math.sin(u.phase) * 260 * DT;
-      if (near) { u.vx += Math.sign(u.x - mouse.x) * 900 * DT; u.vy -= 600 * DT; }
+      const FG = 300, DRAG = 1.4, BEAT = u.bat ? 13 : 8;
+      u.wander = (u.wander || 0) + (Math.random() - 0.5) * 8 * DT;
+      u.wander *= 1 - DT * 0.8;
+      const sp = Math.min(110, d * 1.5);
+      const ax = (dx / d * sp - u.vx) * 2.2 + Math.cos(u.wander * 3) * 60, ay = (dy / d * sp - u.vy) * 2.2 + Math.sin(u.wander * 2) * 40;
+      const tx = ax + u.vx * DRAG, ty = ay + u.vy * DRAG - FG; // (the push it needs from its wings)
+      const want = Math.max(-1.2, Math.min(1.2, Math.atan2(tx, -ty))); // (its tilt: 0 is wings-up)
+      u.tilt = (u.tilt || 0) + (want - (u.tilt || 0)) * Math.min(1, DT * 6);
+      const power = Math.max(0.4, Math.min(1.8, Math.hypot(tx, ty) / FG));
+      const last = u.phase;
+      u.phase += DT * BEAT * Math.PI * 2 * (0.8 + 0.25 * power);
+      const down = Math.max(0, Math.sin(u.phase)); // (the downstroke pushes; the upstroke doesn't)
+      const thrust = FG * Math.PI * power * down;
+      u.vx += (Math.sin(u.tilt) * thrust - u.vx * DRAG) * DT;
+      u.vy += (-Math.cos(u.tilt) * thrust + FG - u.vy * DRAG) * DT;
+      if (near) { u.vx += Math.sign(u.x - mouse.x) * 700 * DT; u.vy -= 500 * DT; } // (startled: a flurry away)
       u.x += u.vx * DT; u.y += u.vy * DT;
+      if (u.y > floorAt(u.x) - 8) { u.y = floorAt(u.x) - 8; u.vy = Math.min(0, u.vy); }
       if (time > u.leaveAt) { u.to = { x: u.x < W / 2 ? -100 : W + 100, y: u.y - 100 }; if (u.x < -60 || u.x > W + 60 || u.y < -60) { flutters.splice(i, 1); continue; } }
       else if (d < 30 && u.bat) u.to = { x: Math.max(60, Math.min(W - 60, u.x + (Math.random() - 0.5) * 700)), y: H * (0.1 + Math.random() * 0.4) };
       else if (d < 30) {
@@ -2627,7 +2643,7 @@
       } else if (u.to.b && d < 50) {
         const b = u.to.b, bb = b.body.bbox();
         if (flutters.some((o) => o.on && o.on.b === b)) u.to = { x: u.x + (Math.random() - 0.5) * 300, y: H * 0.4 }; // (taken)
-        else if (Math.abs(u.x - (bb.minX + bb.maxX) / 2) < b.body.o.radius * 0.5 && Math.abs(u.y - bb.minY) < 30) {
+        else if (Math.abs(u.x - (bb.minX + bb.maxX) / 2) < b.body.o.radius * 0.6 && Math.abs(u.y - bb.minY) < 55) { // (close enough over the crown, bobbing: it settles)
           u.on = { b, dx: (Math.random() - 0.5) * b.body.o.radius * 0.3 };
           u.rest = time + 6 + Math.random() * 10;
           u.perches++;
@@ -2674,25 +2690,26 @@
         ctx.restore();
         continue;
       }
+      // Two wings, flapping: each a soft rounded shape from the middle,
+      // folding in and out with the beat, the pair turned with its tilt.
       ctx.save();
       ctx.translate(u.x, u.y - (u.on ? 6 : 0));
-      ctx.scale(facing * 1.8, 1.8);
+      ctx.rotate(u.on ? 0 : u.tilt || 0);
+      ctx.scale(1.4, 1.4);
       ctx.fillStyle = u.color;
-      ctx.strokeStyle = 'rgba(40, 30, 30, 0.35)';
-      ctx.lineWidth = 1;
+      const span = 0.2 + 0.8 * open;
       for (const side of [-1, 1]) {
         ctx.save();
-        ctx.scale(side * (0.15 + 0.85 * open), 1);
-        ctx.beginPath(); ctx.ellipse(5, -5, 6, 4.5, -0.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.ellipse(4, 2.5, 4, 3, 0.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.scale(side * span, 1);
+        ctx.beginPath();
+        ctx.moveTo(0, 1);
+        ctx.bezierCurveTo(4, -12, 15, -14, 15, -6);
+        ctx.bezierCurveTo(15, 0, 8, 2, 7, 4);
+        ctx.bezierCurveTo(10, 9, 5, 12, 1, 6);
+        ctx.closePath();
+        ctx.fill();
         ctx.restore();
       }
-      ctx.strokeStyle = '#2b2730';
-      ctx.lineWidth = 2;
-      ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(0, 5); ctx.stroke();
-      ctx.lineWidth = 0.8;
-      ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(-2, -9); ctx.moveTo(0, -5); ctx.lineTo(2, -9); ctx.stroke();
       ctx.restore();
     }
   }
@@ -4982,14 +4999,13 @@
     if (near && Math.random() < 0.6) setTimeout(() => { if (!near.o.dying) { quip(near.o, 'hehe', 1.1); near.o.glanceAt = b; near.o.glanceUntil = time + 1.2; near.o.squirmUntil = time + 0.5; } }, 500);
   }
 
-  // Fast asleep, now and then it dreams: of what it was last working on, or
-  // of sheep jumping a fence.
+  // Fast asleep, now and then it dreams of what it was last working on.
   function dream(b) {
     if (b.state === 'working' && b.kind === 'mother') { const a = activityOf(b); if (a !== 'thinking') b.lastWork = a; }
     if (CFG.dreams <= 0 || (b.sleep || 0) < 0.9 || b.kind === 'home') { if ((b.sleep || 0) < 0.5) b.nextDream = undefined; return; }
     if (b.nextDream === undefined) b.nextDream = time + (6 + Math.random() * 10) / CFG.dreams;
     if (time < b.nextDream) return;
-    b.dream = { what: b.lastWork && Math.random() < 0.5 ? b.lastWork : 'sheep', until: time + 5 + Math.random() * 3 };
+    if (b.lastWork) b.dream = { what: b.lastWork, until: time + 5 + Math.random() * 3 };
     b.nextDream = time + (25 + Math.random() * 30) / CFG.dreams;
   }
 
@@ -5370,7 +5386,7 @@
       b.body.impulse(-v.x, 500 - v.y, DT);
     });
     at(39, () => { const b = big()[0]; if (b) { b.bubble = null; b.burpAt = time; } });
-    at(42, () => { const b = big()[1] || big()[0]; if (b) { b.dream = { what: 'sheep', until: time + 4.5, demo: true }; b.napUntil = time + 4.5; } });
+    at(42, () => { const b = big()[1] || big()[0]; if (b) { b.dream = { what: 'edit', until: time + 4.5, demo: true }; b.napUntil = time + 4.5; } });
     at(47.5, () => { const b = big()[0]; if (b) { b.forceFlip = true; startTrick(b, false); } });
     at(53, () => {
       const b = big()[1] || big()[0];
