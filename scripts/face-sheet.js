@@ -21,13 +21,13 @@ app.whenReady().then(async () => {
 function draw() {
   const CFG = Object.assign({}, BlaubeConfig.DEFAULTS);
   const rows = [
-    ['', [['dot', 'oval', 'Opus'], ['tall', 'lines', 'Sonnet'], ['small', 'freckles', 'Haiku'], ['wide', 'hearts', 'Fable']]],
+    ['', [['dot', 'oval', 'Opus'], ['tall', 'lines', 'Sonnet'], ['small', 'freckles', 'Haiku'], ['wide', 'hearts', 'Fable'], ['dot', 'oval', 'Max effort', 'xhigh']]],
   ];
   const cw = 300, rh = 300, c = document.createElement('canvas');
-  c.width = cw * 4; c.height = rh * rows.length;
+  c.width = cw * 5; c.height = rh * rows.length;
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#1f2024'; ctx.fillRect(0, 0, c.width, c.height);
-  rows.forEach(([title, cells], ri) => cells.forEach(([eyeKind, cheekKind, label], ci) => {
+  rows.forEach(([title, cells], ri) => cells.forEach(([eyeKind, cheekKind, label, effort], ci) => {
     const x0 = ci * cw, floor = ri * rh + rh - 70, r = 95;
     const body = new SoftBody(x0 + cw / 2, floor - r * 1.2, Object.assign({}, CFG, { points: CFG.mainPoints, radius: r }));
     body.setBounds(x0, ri * rh - 400, x0 + cw, floor);
@@ -35,7 +35,7 @@ function draw() {
     const off = x0 + cw / 2 - body.centroid().x;
     for (let i = 0; i < body.n; i++) body.px[i] += off;
     BlaubeDraw.drawBody(ctx, body, CFG.color);
-    BlaubeDraw.drawFace(ctx, body, { expression: 'normal', mouth: 'smile', blink: 0, look: { x: x0 + cw / 2, y: floor + 400 }, lookAmount: 0, scale: CFG.faceScale, style: CFG, bodyColor: CFG.color, eyeKind, cheekKind });
+    BlaubeDraw.drawFace(ctx, body, { expression: 'normal', mouth: 'smile', blink: 0, look: { x: x0 + cw / 2, y: floor + 400 }, lookAmount: 0, scale: CFG.faceScale, style: CFG, bodyColor: CFG.color, eyeKind, cheekKind, effort });
     ctx.fillStyle = '#e8e8ea'; ctx.font = '600 20px -apple-system, sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(title ? `${title}: ${label}` : label, x0 + cw / 2, floor + 45);
   }));

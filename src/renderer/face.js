@@ -244,10 +244,11 @@
             break;
           }
           if (effort === 'xhigh') {
-            // Plain white eyes, no pupils.
-            ctx.fillStyle = '#fff';
+            // Calm half-closed eyes, solid black like every eye: low and
+            // flat, lids half down.
+            ctx.fillStyle = ink;
             ctx.beginPath();
-            ctx.ellipse(x, y, ew * 1.25, eh * 1.1 * open, 0, 0, Math.PI * 2);
+            ctx.ellipse(x, y + eh * 0.2, ew * 0.95, eh * 0.42 * open, 0, 0, Math.PI * 2);
             ctx.fill();
             break;
           }

@@ -66,7 +66,7 @@ ships that breaks a "must".
 - High effort wears glasses; low effort drools; max effort floats.
 - Brows never pop in and out: a face either has them the whole time or not.
 - Done shows a "!" balloon; needs you shows a "?" balloon with an "o" mouth.
-- Max effort has flat white half-closed eyes.
+- Max effort has calm half-closed eyes, solid black (all eyes are black).
 - Expressions and faces are the creative director's call. Judges may note
   how a face reads, but never redesign an approved face.
 - Pets get happy "^ ^" eyes and a heart when they reach their owner.
