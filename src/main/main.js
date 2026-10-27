@@ -70,6 +70,7 @@ const dock = require('./dock');
 const { watchWindows, ledges } = require('./windows');
 const BlaubeConfig = require('../shared/config');
 const { visibility, blocked } = require('./visibility');
+const updater = require('./updater');
 
 const PORT = Number(process.env.BLAUBE_PORT) || DEFAULT_PORT;
 
@@ -1814,6 +1815,7 @@ function appMenuTemplate({ nested = false, colour = false, blobs = true } = {}) 
   const noClaude = !claudeFound();
   return [
     { label: `Blaube ${app.getVersion()}`, enabled: false },
+    ...(nested ? [] : [updater.menuItem()]),
     { type: 'separator' },
     ...(blobs ? [blobsItem()] : []),
     ...(noClaude ? [{ label: installing ? 'Installing Claude Code…' : 'Install Claude Code…', enabled: !installing, click: installClaude }]
@@ -2164,6 +2166,7 @@ app.whenReady().then(async () => {
     tray.on('right-click', () => tray.popUpContextMenu(trayMenu()));
   }
   refreshTray();
+  updater.start({ log, test: !!TEST });
 
   focus = startFocusWatcher(() => { if (markFrontSeen()) pushState(); });
   tracker.on('change', (c) => { if (c && c.to === 'gone' && c.session) forgetBlob(c.session.id); });

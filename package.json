@@ -11,7 +11,7 @@
     "test": "node --test test/*.test.js",
     "dist": "electron-builder",
     "dist:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
-    "dist:win": "electron-builder --win --x64 && electron-builder --win --arm64",
+    "dist:win": "electron-builder --win --x64 --arm64",
     "build:mac:local": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir --publish never",
     "shots": "electron scripts/shots/main.js",
     "e2e": "BLAUBE_TEST=scripts/e2e/talk.js BLAUBE_PORT=47870 electron .",
@@ -19,7 +19,9 @@
     "e2e:life": "BLAUBE_TEST=scripts/e2e/life.js BLAUBE_PORT=47872 electron .",
     "e2e:grab": "BLAUBE_TEST=scripts/e2e/grab.js BLAUBE_PORT=47877 electron .",
     "e2e:blobs": "BLAUBE_TEST=scripts/e2e/blobs.js BLAUBE_PORT=47878 electron .",
-    "e2e:jar": "BLAUBE_TEST=scripts/e2e/jar.js BLAUBE_PORT=47953 electron ."
+    "e2e:jar": "BLAUBE_TEST=scripts/e2e/jar.js BLAUBE_PORT=47953 electron .",
+    "release": "npm version minor -m \"Release %s\" && git push --follow-tags",
+    "release:patch": "npm version patch -m \"Release %s\" && git push --follow-tags"
   },
   "build": {
     "appId": "app.blaube.desktop",
@@ -45,13 +47,20 @@
             "arm64",
             "x64"
           ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.png",
       "extendInfo": {
         "LSUIElement": true
       },
-      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "artifactName": "${productName}-mac-${arch}.${ext}",
       "identity": null,
       "hardenedRuntime": false
     },
@@ -60,7 +69,8 @@
         {
           "target": "nsis",
           "arch": [
-            "x64"
+            "x64",
+            "arm64"
           ]
         }
       ],
@@ -69,12 +79,42 @@
     "nsis": {
       "oneClick": true,
       "perMachine": false,
-      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+      "artifactName": "${productName}-Setup-windows.${ext}"
     },
-    "afterPack": "build/adhoc-sign.js"
+    "afterPack": "build/adhoc-sign.js",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "syverlauritz",
+        "repo": "blaube",
+        "releaseType": "release"
+      }
+    ],
+    "dmg": {
+      "artifactName": "${productName}-mac-${arch}.${ext}"
+    }
   },
   "devDependencies": {
     "electron": "^45.0.0",
     "electron-builder": "^26.15.3"
-  }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  },
+  "homepage": "https://github.com/syverlauritz/blaube",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/syverlauritz/blaube.git"
+  },
+  "bugs": {
+    "url": "https://github.com/syverlauritz/blaube/issues"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "desktop-pet",
+    "electron",
+    "softbody",
+    "physics"
+  ]
 }

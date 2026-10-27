@@ -1,4 +1,21 @@
-# Blaube
+<p align="center"><img src="docs/img/blobs.png" alt="Five orange Blaube blobs in a row, wearing a curl, horns, cat ears, antennas and a bow; two have thought bubbles with turning gears" width="720"></p>
+
+<h1 align="center">Blaube</h1>
+
+<p align="center"><b>A squishy desktop buddy that keeps an eye on your Claude Code sessions.</b></p>
+
+<p align="center">
+  <a href="https://github.com/syverlauritz/blaube/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/syverlauritz/blaube?color=D97757&label=download"></a>
+  <a href="https://github.com/syverlauritz/blaube/actions/workflows/build.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/syverlauritz/blaube/build.yml?branch=main"></a>
+  <img alt="macOS and Windows" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows-555">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/syverlauritz/blaube?color=555"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/syverlauritz/blaube/releases/latest/download/Blaube-mac-arm64.dmg">macOS, Apple Silicon</a> ·
+  <a href="https://github.com/syverlauritz/blaube/releases/latest/download/Blaube-mac-x64.dmg">macOS, Intel</a> ·
+  <a href="https://github.com/syverlauritz/blaube/releases/latest/download/Blaube-Setup-windows.exe">Windows</a>
+</p>
 
 A squishy Claude-orange blob that lives on your desktop. Grab it, toss it, watch it bounce off the edges of your screen. It also keeps an eye on your Claude Code sessions: every session (one per terminal) is its own big blob, every subagent it runs splits off as a little blob, and they tell you when Claude is working, needs you, or is done.
 
@@ -84,10 +101,14 @@ echo '{"session_id":"test","hook_event_name":"UserPromptSubmit","cwd":"/tmp/test
 
 ## Getting started
 
-Download the latest build from the [latest release](https://github.com/syverlauritz/blaube/releases/tag/latest), no GitHub login needed:
+Download the [latest release](https://github.com/syverlauritz/blaube/releases/latest), no GitHub login needed:
 
-- macOS: [Apple Silicon](https://github.com/syverlauritz/blaube/releases/download/latest/Blaube-mac-arm64.dmg) · [Intel](https://github.com/syverlauritz/blaube/releases/download/latest/Blaube-mac-x64.dmg)
-- Windows: [x64](https://github.com/syverlauritz/blaube/releases/download/latest/Blaube-Setup-windows-x64.exe) · [ARM](https://github.com/syverlauritz/blaube/releases/download/latest/Blaube-Setup-windows-arm64.exe)
+| | |
+| --- | --- |
+| **macOS** | [Apple Silicon](https://github.com/syverlauritz/blaube/releases/latest/download/Blaube-mac-arm64.dmg) (M1 and newer) · [Intel](https://github.com/syverlauritz/blaube/releases/latest/download/Blaube-mac-x64.dmg) |
+| **Windows** | [Installer](https://github.com/syverlauritz/blaube/releases/latest/download/Blaube-Setup-windows.exe) (x64 and ARM) |
+
+On a Mac, open the `.dmg` and drag Blaube into Applications. On Windows, run the installer: it installs for you only, no admin needed. To try what's next, the [nightly build](https://github.com/syverlauritz/blaube/releases/tag/nightly) is made from every push to `main` (it doesn't update itself).
 
 Or run from source:
 
@@ -129,6 +150,13 @@ This needs a paid Apple Developer Program membership (99 USD/year). Windows sign
 
 On Windows, Claude Code runs hooks through Git Bash, which has `curl`. On macOS `curl` is built in.
 
+### Updates
+
+Blaube looks for a new version when it starts and every four hours after that; **Check for updates…**, under the version at the top of its menu, looks right away.
+
+- **Windows:** the new version downloads in the background and is installed the next time you quit Blaube, or now with **Restart to update to x.y.z**.
+- **macOS:** the menu says **Download Blaube x.y.z…**, which opens the release to download it and drag it over the old one. (macOS only lets an app replace itself when it's signed with a Developer ID; once the build is signed (see *Signing and notarizing* above), Macs update like Windows does.)
+
 ## How it works
 
 | Piece | File |
@@ -148,6 +176,7 @@ On Windows, Claude Code runs hooks through Git Bash, which has `curl`. On macOS 
 | Session state machine from hook events | `src/main/sessions.js` |
 | Local hook server | `src/main/hookServer.js` |
 | Installing/removing hooks in `~/.claude/settings.json` | `src/main/claudeHooks.js` |
+| Updates from GitHub Releases | `src/main/updater.js` |
 
 The window covers the screen's work area but lets clicks pass through everywhere except the blobs themselves.
 
@@ -169,9 +198,9 @@ npm run shots            # render every scene to shots/*.png, for reviewing the 
 npm run e2e:life         # the real app, invisible, through fake hooks: the blobs' life and voice (no tokens)
 npm run e2e:jar          # the snack jar, with made-up usage: hover, drag and keep, a cookie into a mouth, empty and refill
 BLAUBE_DEMO=1 npm start  # run with fake sessions
-npm run dist:mac         # build a .dmg (on macOS; ad-hoc signed, never uses your keychain)
+npm run dist:mac         # build the .dmgs and update zips (on macOS; ad-hoc signed, never uses your keychain)
 npm run build:mac:local  # just build dist/mac-*/Blaube.app
-npm run dist:win         # build an installer (on Windows)
+npm run dist:win         # build the installer, for x64 and ARM (on Windows)
 BLAUBE_TEST=scripts/e2e/steer.js BLAUBE_PORT=47873 npx electron .  # the real app, invisible: steps, Stop, mid-turn messages, slash commands, the overview (no tokens)
 BLAUBE_TEST=scripts/e2e/owned.js BLAUBE_PORT=47876 npx electron .  # a session Blaube started, against a stand-in for Claude Code: /model, /plan, ⇧⇥ modes, Stop at once, bringing one in from a terminal (no tokens)
 BLAUBE_TEST=scripts/e2e/many.js BLAUBE_PORT=47874 npx electron .   # load: a dozen busy sessions at once, and nothing kept once they’re gone
@@ -205,6 +234,14 @@ Set `BLAUBE_PORT` to use a different port; reconnect Claude Code afterwards so t
 
 How the look is decided and reviewed: `docs/DESIGN.md` (the brief, including what the creative director has decided) and `docs/REVIEW.md` (render, independent judges, fix, repeat). Problems that only show on a real desktop are logged to `blaube.log` in the app's data folder.
 
+### Releasing
+
+1. Move the notes under **Unreleased** in `CHANGELOG.md` into a new `## [x.y.z] - date` section and commit.
+2. `npm run release` (a minor version, 0.2.0 → 0.3.0) or `npm run release:patch` (0.2.0 → 0.2.1). It bumps `package.json`, commits, tags `vx.y.z` and pushes.
+3. CI tests it, builds the Mac and Windows installers, and publishes the release with that changelog section as its notes. Installed copies see it within four hours.
+
+The release carries the installers, the Mac zips and the update feeds (`latest.yml`, `latest-mac.yml`) with their blockmaps; don't remove those, or installed copies stop updating.
+
 ## Known open issues
 
 - Pressing a blob straight down onto another still squashes it (on purpose, for now).
@@ -218,3 +255,7 @@ How the look is decided and reviewed: `docs/DESIGN.md` (the brief, including wha
 - Roaming across multiple monitors (for now, pick one with **Live on display**).
 - Showing cloud sessions, if Anthropic ever offers a local, token-free way to read their status.
 - Feeding, more tricks.
+
+## License
+
+[MIT](LICENSE)

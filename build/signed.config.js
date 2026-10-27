@@ -6,6 +6,8 @@ process.env.BLAUBE_DEVELOPER_ID = '1';
 const base = require('../package.json').build;
 const mac = { ...base.mac, hardenedRuntime: true };
 delete mac.identity;
-const config = { ...base, mac };
+// blaubeSigned lets the app install its own updates (src/main/updater.js):
+// Squirrel.Mac only accepts a Developer ID signature.
+const config = { ...base, mac, extraMetadata: { blaubeSigned: true } };
 delete config.afterPack;
 module.exports = config;

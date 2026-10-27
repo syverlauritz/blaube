@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
 
 jobs:
@@ -53,10 +54,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # One installer per CPU type, so each download carries a single copy of Electron.
       # With a Developer ID certificate in the repo secrets, the Mac build is
       # signed and notarized. Without one it is ad-hoc signed, which runs but
-      # still needs "Open Anyway" in Privacy & Security on first launch.
+      # still needs "Open Anyway" in Privacy & Security on first launch (and
+      # can't install its own updates). Both CPU types in one run, so the Mac update feed (latest-mac.yml)
+      # lists both zips and Windows gets one installer for x64 and ARM.
       - if: runner.os == 'macOS' && env.CSC_LINK != ''
         run: npx electron-builder --mac --arm64 --x64 --publish never --config build/signed.config.js
       - if: runner.os == 'macOS' && env.CSC_LINK == ''
@@ -64,61 +66,81 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
       - if: runner.os == 'Windows'
-        run: |
-          npx electron-builder --win --x64 --publish never
-          npx electron-builder --win --arm64 --publish never
+        run: npx electron-builder --win --x64 --arm64 --publish never
+      # The installers, the zips the Mac updater downloads, and the update
+      # feeds (latest*.yml) with their blockmaps.
       - uses: actions/upload-artifact@v4
         with:
-          name: blaube-${{ runner.os }}-arm64
+          name: blaube-${{ runner.os }}
           path: |
-            dist/*-arm64.dmg
-            dist/*-arm64.exe
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: blaube-${{ runner.os }}-x64
-          path: |
-            dist/*-x64.dmg
-            dist/*-x64.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest*.yml
           if-no-files-found: error
 
-  # Publishes every build as a rolling "latest" pre-release, so installers
-  # download with a plain link (no GitHub login), e.g.
-  # https://github.com/syverlauritz/blaube/releases/download/latest/Blaube-mac-arm64.dmg
+  # A v* tag (npm run release) publishes a real release. The app checks
+  # GitHub's newest release for updates, and the README links download from
+  # it with plain links, e.g.
+  # https://github.com/syverlauritz/blaube/releases/latest/download/Blaube-mac-arm64.dmg
   release:
+    needs: [package, life]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag matches package.json
+        run: test "v$(node -p 'require(`./package.json`).version')" = "$TAG"
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v v="${TAG#v}" '/^## /{p = index($0, "[" v "]") > 0; next} p' CHANGELOG.md > notes.md
+          cat notes.md
+      - name: Publish the release
+        run: |
+          if [ -s notes.md ]; then notes=(--notes-file notes.md); else notes=(--generate-notes); fi
+          gh release create "$TAG" artifacts/* -R "$GITHUB_REPOSITORY" --title "Blaube ${TAG#v}" --verify-tag "${notes[@]}"
+
+  # Every push to main: a rolling "nightly" pre-release to try what's next.
+  # (Pre-releases are never offered as updates.)
+  nightly:
     needs: package
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     # One at a time: two pushes close together would otherwise delete the
     # release under each other's uploads.
     concurrency:
-      group: latest-release
+      group: nightly-release
       cancel-in-progress: false
     permissions:
       contents: write
     env:
       GH_TOKEN: ${{ github.token }}
-      SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      SHA: ${{ github.sha }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-      - name: Give the installers stable names
+          merge-multiple: true
+      - name: Replace the nightly pre-release
         run: |
-          mkdir out
-          cp artifacts/blaube-macOS-arm64/*.dmg out/Blaube-mac-arm64.dmg
-          cp artifacts/blaube-macOS-x64/*.dmg out/Blaube-mac-x64.dmg
-          cp artifacts/blaube-Windows-x64/*.exe out/Blaube-Setup-windows-x64.exe
-          cp artifacts/blaube-Windows-arm64/*.exe out/Blaube-Setup-windows-arm64.exe
-          ls -la out
-      - name: Replace the latest pre-release
-        run: |
-          gh release delete latest -R "$GITHUB_REPOSITORY" --cleanup-tag -y || true
-          # A run that failed halfway can leave the tag behind (and a draft
-          # release with it), and then creating the release again fails with
-          # "tag_name already exists". Runs go one at a time, so clear both.
-          gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/latest" || true
+          # (latest: what this was called before real releases, whose
+          # /releases/latest links it would muddle)
+          for t in nightly latest; do
+            gh release delete "$t" -R "$GITHUB_REPOSITORY" --cleanup-tag -y || true
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$t" || true
+          done
+          # A run that failed halfway can leave a draft release behind.
           gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft) | .id' | xargs -r -I{} gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/{}" || true
-          gh release create latest out/* -R "$GITHUB_REPOSITORY" --prerelease --target "$SHA" \
-            --title "Latest build (${SHA::7})" \
-            --notes "Built automatically from ${SHA}. macOS: Blaube-mac-arm64.dmg (Apple Silicon) or Blaube-mac-x64.dmg (Intel). Windows: Blaube-Setup-windows-x64.exe or -arm64.exe."
+          gh release create nightly artifacts/*.dmg artifacts/*.exe -R "$GITHUB_REPOSITORY" --prerelease --target "$SHA" \
+            --title "Nightly (${SHA::7})" \
+            --notes "Built automatically from ${SHA}, not a release: things may be half done. Releases update themselves; this doesn't. macOS: Blaube-mac-arm64.dmg (Apple Silicon) or Blaube-mac-x64.dmg (Intel). Windows: Blaube-Setup-windows.exe."

@@ -1,0 +1,31 @@
+name: Something's wrong
+description: A blob misbehaves, a click falls through, something crashes
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. A screenshot or screen recording helps a lot.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Blaube version
+      description: The top row of Blaube's right-click menu, e.g. "Blaube 0.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Computer
+      options: [macOS (Apple Silicon), macOS (Intel), Windows (x64), Windows (ARM)]
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: blaube.log (optional)
+      description: "The last lines of blaube.log, in ~/Library/Application Support/Blaube on macOS or %APPDATA%\\Blaube on Windows"
+      render: text
