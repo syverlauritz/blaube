@@ -72,16 +72,16 @@
       chords: 'C:4 F:2 C:2 F:2 C:2 G:2 C:2 C:2 F:2 C:2 G:2 C:2 F:2 C:2 G:2 C:4 F:2 C:2 F:2 C:2 G:2 C:2',
     },
 		{
-			id: 'can-can',
-			title: 'Can-can (Offenbach)',
-			bpm: 150,
-			// Jacques Offenbach, the Infernal Galop from Orpheus in the Underworld, 1858. Sung on "la".
+			id: 'mountain-king',
+			title: 'In the Hall of the Mountain King',
+			bpm: 138,
+			// Edvard Grieg, from Peer Gynt, 1875. Sung on "dum", twice.
 			notes: `
-				C4:1:la C4:.5:la D4:.5:la F4:.5:la E4:.5:la D4:.5:la G4:.5:la G4:1:la G4:.5:la A4:.5:la E4:.5:la F4:.5:la D4:.5:la
-				D4:1:la D4:.5:la F4:.5:la E4:.5:la D4:.5:la C4:.5:la C5:.5:la B4:.5:la A4:.5:la G4:.5:la F4:.5:la E4:.5:la D4:.5:la C4:1.5:la
-				C4:1:la C4:.5:la D4:.5:la F4:.5:la E4:.5:la D4:.5:la G4:.5:la G4:1:la G4:.5:la A4:.5:la E4:.5:la F4:.5:la D4:.5:la
-				D4:1:la D4:.5:la F4:.5:la E4:.5:la D4:.5:la C4:.5:la G4:.5:la D4:.5:la E4:.5:la C4:3.5:la`,
-			chords: 'C:4 G:4 G:2 C:2 G:2 C:2 C:4 G:4 G:2 C:2 G:2 C:2',
+				A3:.5:dum B3:.5:dum C4:.5:dum D4:.5:dum E4:.5:dum C4:.5:dum E4:1:dum D#4:.5:dum B3:.5:dum D#4:1:dum D4:.5:dum Bb3:.5:dum D4:1:dum
+				A3:.5:dum B3:.5:dum C4:.5:dum D4:.5:dum E4:.5:dum C4:.5:dum E4:.5:dum A4:.5:dum G4:.5:dum E4:.5:dum C4:.5:dum E4:.5:dum G4:2:dum
+				A3:.5:dum B3:.5:dum C4:.5:dum D4:.5:dum E4:.5:dum C4:.5:dum E4:1:dum D#4:.5:dum B3:.5:dum D#4:1:dum D4:.5:dum Bb3:.5:dum D4:1:dum
+				A3:.5:dum B3:.5:dum C4:.5:dum D4:.5:dum E4:.5:dum C4:.5:dum E4:.5:dum A4:.5:dum G4:.5:dum E4:.5:dum C4:.5:dum E4:.5:dum G4:2:dum`,
+			chords: 'Am:4 B7:2 Bb:2 Am:4 C:4 Am:4 B7:2 Bb:2 Am:4 C:4',
 		},
   ];
 

@@ -12,7 +12,7 @@ const FFMPEG = 'C:\\ffmpeg\\bin\\ffmpeg.exe';
 const HERE = __dirname, OUT = path.join(HERE, 'out');
 const RAW = path.join(OUT, 'raw.mp4'), SOUND = path.join(OUT, 'sound.webm');
 const take = JSON.parse(fs.readFileSync(path.join(HERE, 'marks.json'), 'utf8'));
-const KEEP = { painting: [0, 9], title: [0.2, 4.8], watches: [0.2, 4.2], talk: [0.2, 3.6], cookies: [0.3, 3.2], play: [0.2, 3], yearn: [0.3, 3.5], chase: [0.3, 3.2], fly: [0.5, 6], sings: [0.3, 4.5], dizzy: [0.3, 5.6], soft: [0, 5.4], end: [0, 4] };
+const KEEP = { painting: [0, 9], title: [0.2, 4.8], watches: [0.2, 4.2], talk: [0.2, 3.6], cookies: [0.3, 3.2], play: [0.2, 3], yearn: [0.5, 5], chase: [0.3, 3.2], fly: [0.5, 6], sings: [0.3, 4.5], dizzy: [0.3, 5.6], soft: [0, 5.4], end: [0, 4] };
 const marks = take.scenes.filter((m) => !KEEP[m.name] || KEEP[m.name][1] > 0); // (a scene kept for 0 s is left out)
 const span = (m) => { const [a, d] = KEEP[m.name] || [0.2, 9]; return [m.start + a, Math.min(m.end, m.start + a + d)]; };
 

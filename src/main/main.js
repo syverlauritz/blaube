@@ -4085,7 +4085,7 @@ app.whenReady().then(async () => {
     const run = require(path.resolve(TEST));
     Promise.resolve(run({ app, win, tracker, inbox, owned, startSession, PORT, talk: () => talkWin, talkId: () => talkId, pinned: () => pinnedTalks, log,
 			// (film: which screen, the windows it puts up as ledges, made-up usage and sizes)
-			moveToDisplay, otherWindows: (list) => { otherWindows = { list, at: Date.now() }; sendLedges(); }, demoTokens, demoEfforts, pickedModel, pushState,
+			moveToDisplay, otherWindows: (list) => { otherWindows = { list, at: Date.now() }; sendLedges(); }, demoTokens, demoEfforts, pickedModel, pushState, setBlobHidden,
 			talkSize: (w, h) => { prefs.talkSizes = Object.assign({}, prefs.talkSizes, { [talkSizeKey(currentDisplay().workArea)]: { w, h } }); } }))
       .then((code) => app.exit(code || 0), (e) => { console.error(e); app.exit(1); });
   }

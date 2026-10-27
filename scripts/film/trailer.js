@@ -22,7 +22,7 @@ const { DEFAULTS } = require('../../src/shared/config');
 
 const HERE = __dirname;
 const OUT = path.join(HERE, 'out');
-const SONG = process.env.FILM_SONG || 'can-can';
+const SONG = process.env.FILM_SONG || 'mountain-king';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // The cast: one of each model, effort and look.
@@ -33,7 +33,7 @@ const CAST = {
 	docs: { model: 'claude-fable-5', effort: 'max', look: 'catears', tokens: 250000 },
 };
 
-module.exports = async function run({ win, tracker, inbox, talk, moveToDisplay, otherWindows, demoTokens, demoEfforts, pickedModel, pushState, talkSize }) {
+module.exports = async function run({ win, tracker, inbox, talk, moveToDisplay, otherWindows, demoTokens, demoEfforts, pickedModel, pushState, talkSize, setBlobHidden }) {
 	win.webContents.on('console-message', (e) => { if (e.level === 'error') console.log('[film] renderer:', e.message); });
 	const js = (s) => win.webContents.executeJavaScript(s).catch((err) => { console.log('[film] failed:', s.slice(0, 160)); throw err; });
 	const until = async (fn, ms = 4000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return true; await sleep(50); } return false; };
@@ -310,25 +310,33 @@ module.exports = async function run({ win, tracker, inbox, talk, moveToDisplay, 
 		close(cap4);
 		idle(...ALL);
 
-		// A helper whose mother is up out of reach: it hops and hops for her.
-		const cap5 = await stage('they yearn');
-		const high = await card({ title: 'up here.txt', text: 'up here', size: 80, w: 560, h: 200, x: 820, y: 520 });
-		await onCard('docs', high, 0.5);
-		await onFloor('blaube', 0.1); await onFloor('api', 0.3); await onFloor('website', 0.9);
-		await settled(ALL, 4000);
-		ev('docs', 'UserPromptSubmit', { prompt: 'write the docs' }); // (busy up there, so she stays put)
-		const kid = helper('docs');
-		await until(() => has(`docs/${kid}`), 4000);
+		// (Not docs: at max effort her little ones float and meditate.)
+		// Just a mother up on a window higher than they can jump, and her
+		// little ones on the floor below jumping for her again and again. (A helper's legs reach about 700 px up, so she's well above that.)
+		// (the caption is her window: nothing higher for her to hop up onto)
+		const high = await card({ title: 'readme.txt', text: 'they yearn', size: 110, w: 720, h: 260, x: 360, y: 760 });
+		ev('website', 'UserPromptSubmit', { prompt: 'run the tests' }); // (busy up there, so she stays put)
+		for (const id of ALL) if (id !== 'website') setBlobHidden(id, true); // (the others off the stage for the shot)
+		await onCard('website', high, 0.5);
+		const kids = [helper('website'), helper('website', 'general-purpose'), helper('website', 'Plan')];
+		await until(async () => (await Promise.all(kids.map((k) => has(`website/${k}`)))).every(Boolean), 6000);
 		await sleep(1500);
-		await onCard(`docs/${kid}`, cap5, 0.55);
-		await settled([`docs/${kid}`, 'docs'], 4000);
+		for (const [i, k] of kids.entries()) await onFloor(`website/${k}`, 0.25 + i * 0.25);
+		await settled(['website', ...kids.map((k) => `website/${k}`)], 4000);
+		await until(() => js(`[...__blaube.buddies.keys()].every((k) => k.startsWith('website'))`), 6000); // (the others gone for the shot)
+		console.log('[film]   yearn: on screen', await js(`[...__blaube.buddies.keys()].join(' ')`), 'mum ledge', await js(`(${B('website')}.body.onLedge || {}).y`), 'floor', floor);
 		await scene('yearn', async () => {
-			await sleep(5000); // (far from her, it hops and hops to get to her)
+			for (let i = 0; i < 7; i++) { // (they jump for her, and fall short)
+				await sleep(1000);
+				if (process.env.FILM_DEBUG) console.log('[film]   kid:', await js(`(() => { const k = ${B(`website/${kids[0]}`)}, m = ${B('website')}, t = __blaube.now(); return JSON.stringify({ y: Math.round(k.body.centroid().y), floor: k.body.onFloor(), next: +(k.nextHop - t).toFixed(1), trying: !!k.trying, gave: !!k.gaveUp, merging: !!k.merging, move: !!k.move, grab: !!k.body.grab, state: k.state, mumLedge: !!m.body.onLedge, rise: Math.round(k.body.bbox().maxY - m.body.bbox().maxY) }); })()`));
+			}
 		});
-		helperDone('docs', kid);
-		ev('docs', 'Stop');
-		close(cap5, high);
-		await sleep(2500); // (it gets home once the window's gone)
+		for (const k of kids) helperDone('website', k);
+		ev('website', 'Stop');
+		close(high);
+		await sleep(3000); // (they get home once the window's gone)
+		for (const id of ALL) setBlobHidden(id, false);
+		await until(async () => (await Promise.all(ALL.map(has))).every(Boolean), 6000);
 		idle(...ALL);
 
 		const cap6 = await stage('they chase');
@@ -379,8 +387,8 @@ module.exports = async function run({ win, tracker, inbox, talk, moveToDisplay, 
 		close(cap9);
 		idle(...ALL);
 
-		// 4. And it is soft: a lift up, a shake, a flick, and onto the shelf.
-		const soft = await card({ title: 'soft.txt', text: 'and it is soft.', size: 150, w: 1000, h: 340, x: 60, y: 1900 });
+		// 4. And they are soft: a lift up, a shake, a flick, and onto the shelf.
+		const soft = await card({ title: 'thicc.txt', text: 'and they are thicc.', size: 150, w: 1000, h: 340, x: 60, y: 1900 });
 		const shelf = await card({ title: 'shelf.txt', text: 'a shelf', size: 80, w: 560, h: 200, x: 840, y: 700 });
 		await onCard('blaube', soft, 0.25); await onCard('api', soft, 0.5); await onCard('docs', soft, 0.75); await onFloor('website', 0.9);
 		await settled(ALL, 6000);
@@ -399,7 +407,7 @@ module.exports = async function run({ win, tracker, inbox, talk, moveToDisplay, 
 		close(soft, shelf);
 
 		// 5. The end.
-		const end = await card({ title: 'ceci est un blaube.txt', text: 'Ceci est un blaube.', size: 140, sub: 'github.com/syverlauritz/blaube', w: 1340, h: 460, y: 1150 });
+		const end = await card({ title: 'ceci est un blaube.txt', text: 'Ceci est un blaube.', size: 140, sub: 'github.com/syverlauritz/blaube', w: 1340, h: 460, y: 820 });
 		const mac = await card({ title: 'mac.txt', text: 'for Mac', size: 100, w: 560, h: 220, x: 60, y: 1900 });
 		const pc = await card({ title: 'windows.txt', text: 'and Windows', size: 100, w: 600, h: 220, x: 780, y: 1750 });
 		await onCard('blaube', end, 0.5);
