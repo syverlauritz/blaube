@@ -358,6 +358,16 @@ const SCENES = {
 		size: [800, 460],
 		motion: { frames: 20, every: 220, drop: 0, still: true, hopAt: [], jsAt: { 1: 'curse' } },
 	},
+	// Picked up by its side and held still: the cursor is a hinge, it swings
+	// round and hangs below the spot you hold. Then thrown along the floor:
+	// it skids on rather than stopping dead.
+	hinge: {
+		sessions: [session('h1', 'blaube', 'idle')],
+		config: { snackJar: 'Off', seasons: 0 },
+		wait: 3000,
+		size: [900, 560],
+		motion: { frames: 40, every: 60, drop: 22, side: true },
+	},
 	// Shaken around by the mouse, then dropped: do the looks stay on and
 	// swing smoothly?
 	shake: {
@@ -1181,6 +1191,10 @@ async function shootMotion(win, name, m) {
 		const j = await js(`(() => { const j = __blaube.jar(); return { x: j.x, y: j.y }; })()`);
 		start.x = j.x; start.y = j.y - 60;
 	}
+	if (m.side) {
+		const r = await js(`[...__blaube.buddies.values()][0].body.o.radius`);
+		start.x += r * 0.85; start.y += r * 0.1;
+	}
 	if (!m.orbit && !m.still) {
 		mouse('mouseMove', start.x, start.y);
 		mouse('mouseDown', start.x, start.y);
@@ -1262,6 +1276,10 @@ async function shootMotion(win, name, m) {
 			if (i === m.hopAt) win.webContents.send('fire', 'command', 'hop');
 		} else if (m.shove) {
 			if (i < m.frames) mouse('mouseMove', start.x + Math.min(1, i / (m.frames * 0.5)) * (win.getContentSize()[0] * 0.55 - start.x), start.y + 10);
+		} else if (m.side) {
+			// Lifted slowly, held still, then swung and let go low and fast.
+			if (i < 10) mouse('mouseMove', start.x, start.y - i * 22);
+			else if (i >= 32 && i < m.frames) mouse('mouseMove', start.x + (i - 32) * 70, start.y - 200 + (i - 32) * 22);
 		} else if (m.jarShake) {
 			if (i < m.frames) mouse('mouseMove', start.x + Math.sin(i * 1.5) * 150, start.y - 90 + Math.cos(i * 1.9) * 40);
 		} else if (m.hard) {
@@ -1272,6 +1290,7 @@ async function shootMotion(win, name, m) {
 		if (!m.orbit && !m.still && i === m.frames) mouse('mouseUp', start.x, start.y - 60 - i * 6);
 		await sleep(m.every);
 		frames.push((await win.webContents.capturePage()).toDataURL());
+		if (m.side) console.log(`frame ${i + 1}: angle ` + await js(`(() => { const b = [...__blaube.buddies.values()][0].body; return (b.angle * 180 / Math.PI).toFixed(0) + '°, skin from cursor ' + (b.grab ? Math.round(Math.hypot(b.grabAnchor().x - b.grab.x, b.grabAnchor().y - b.grab.y)) : '-') + ' px'; })()`));
 		if (m.crowd) console.log(`frame ${i + 1}: ` + await js(`(() => { const l = [...__blaube.buddies.values()], c = l.map((b) => b.crowd || 0); return 'mean crowding ' + (c.reduce((a, v) => a + v, 0) / c.length).toFixed(2) + ', ' + c.filter((v) => v > 1.6).length + ' crowded, ' + l.filter((b) => b.body.onLedge).length + ' on window tops'; })()`));
 		track.push(await looks());
 		spots.push(await drawn());

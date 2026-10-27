@@ -286,7 +286,8 @@
 
     // Grabs the body at (x, y). The grabbed spot is remembered in the body's
     // own frame, and a damped spring pulls it toward the cursor: the force is
-    // spread over the skin near that spot, so the rest dangles and swings.
+    // spread over the skin near that spot (barely any on the rest), so the
+    // cursor is a hinge: the rest hangs from it, dangles and swings.
     startGrab(x, y) {
       const n = this.n;
       const sigma = this.o.radius * this.o.grabRadius;
@@ -294,7 +295,7 @@
       let sum = 0;
       for (let i = 0; i < n; i++) {
         const ex = this.px[i] - x, ey = this.py[i] - y;
-        w[i] = Math.exp(-(ex * ex + ey * ey) / (sigma * sigma)) + 0.02;
+        w[i] = Math.exp(-(ex * ex + ey * ey) / (sigma * sigma)) + 0.002; // (a trace on the rest, so a tiny grab spot still holds)
         sum += w[i];
       }
       for (let i = 0; i < n; i++) w[i] /= sum;
@@ -351,6 +352,8 @@
 
     step(dt) {
       const o = this.o, n = this.n;
+      if (!this.touched || this.touched.length !== n) this.touched = new Int32Array(n).fill(-1);
+      this.stepNo = (this.stepNo || 0) + 1;
       const g = o.gravity * dt * dt * (this.grab ? o.grabGravity : 1);
       const vmax = o.maxSpeed * dt;
       if (this.grab) this.applyGrab(dt);
@@ -445,9 +448,9 @@
       }
       this.angle = Math.atan2(cross, dot);
       // Aim slightly closer to upright than the current pose, so Blaube
-      // rolls but rights itself like a weighted toy. Held, it rights itself
-      // harder, so it dangles face-up instead of lying on its side.
-      const goal = this.angle * (1 - this.o.upright * (this.grab ? 4 : 1));
+      // rolls but rights itself like a weighted toy. Held, it doesn't: the
+      // cursor is a hinge, and it hangs and swings from wherever you hold it.
+      const goal = this.grab ? this.angle : this.angle * (1 - this.o.upright);
       const cs = Math.cos(goal), sn = Math.sin(goal);
       const s = this.o.shapeStiffness;
       for (let i = 0; i < n; i++) {
@@ -455,23 +458,6 @@
         const gy = c.y + rx[i] * sn + ry[i] * cs;
         px[i] += (gx - px[i]) * s;
         py[i] += (gy - py[i]) * s;
-      }
-      // Held: turn the whole body back toward upright a little every step,
-      // so it leans with the drag but can't swing round like a pendulum.
-      // Both the points and their previous positions turn together, so this
-      // only re-orients the body and adds no speed (turning the points alone
-      // pumped energy in every step and made held slimes shake).
-      if (this.grab && Math.abs(this.angle) > 0.12) {
-        const turn = -(this.angle - Math.sign(this.angle) * 0.12) * 0.03;
-        const tc = Math.cos(turn), ts = Math.sin(turn);
-        for (let i = 0; i < n; i++) {
-          const qx = px[i] - c.x, qy = py[i] - c.y;
-          px[i] = c.x + qx * tc - qy * ts;
-          py[i] = c.y + qx * ts + qy * tc;
-          const ux = ox[i] - c.x, uy = oy[i] - c.y;
-          ox[i] = c.x + ux * tc - uy * ts;
-          oy[i] = c.y + ux * ts + uy * tc;
-        }
       }
     }
 
@@ -525,14 +511,20 @@
     }
 
     // Puts a point back on the wall, reflects its normal velocity with some
-    // bounce, and bleeds off some tangential velocity as friction.
+    // bounce, and bleeds off some tangential velocity as friction. The
+    // velocity changes happen once per point per step, however many solver
+    // passes find it touching: done every pass, friction compounded (a
+    // twelfth of the speed twelve times over) into a sudden stop.
     hit(i, axis, wall, first, dt) {
       const o = this.o;
       const P = axis === 'y' ? this.py : this.px, O = axis === 'y' ? this.oy : this.ox;
       const T = axis === 'y' ? this.px : this.py, OT = axis === 'y' ? this.ox : this.oy;
       const vn = P[i] - O[i];
       if (first) this.lastImpact = Math.max(this.lastImpact, Math.abs(vn) / dt);
+      const fresh = this.touched[i] !== this.stepNo;
+      this.touched[i] = this.stepNo;
       P[i] = wall;
+      if (!fresh) return; // (pushed back in by a later pass: only its place is put right)
       O[i] = wall + vn * o.bounce;
       const vt = T[i] - OT[i];
       OT[i] = T[i] - vt * (1 - o.friction);

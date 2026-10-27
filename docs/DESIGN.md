@@ -117,6 +117,10 @@ ships that breaks a "must".
   tipped or dropped and settle into a new pile.
 - The app icon is today's blob (a dome, bead eyes, blush, small smile) on a
   dark rounded square, drawn by the app's own code (scripts/make-icons.js).
+- Held, the cursor is a hinge: picked up by its side, a blob swings round
+  and hangs from that spot (its face and what it wears stay upright).
+  Landings and skids are physics: no hidden braking; it only plants its
+  feet once it's nearly still.
 - Choir mode: every blob sings in parts, fuller with more blobs, eyes
   shut, swaying, notes floating up. Songs are public domain only.
 - A full context makes a blob round and taut, not just bigger.

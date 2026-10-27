@@ -1913,6 +1913,15 @@
     return null;
   }
 
+  // Its bottom gripping the floor while it stands about (leaning, shuffling,
+  // playing): takes out a share k of its sideways drift each step. Only
+  // when it's nearly still: one skidding along after a throw or a landing
+  // slides on under its own physics (the floor's friction) and isn't braked.
+  function grip(body, k) {
+    const vx = body.velocity(DT).x, slow = Math.max(0, 1 - Math.abs(vx) / 220);
+    if (slow > 0) body.impulse(-vx * k * slow, 0, DT);
+  }
+
   // Extra high effort, while it works: it floats above the ground.
   const meditating = (b) => b.effort === 'xhigh' && b.state === 'working' && b.kind !== 'home' && !b.body.grab && !b.merging && !b.splitting && !b.dying;
 
@@ -2088,7 +2097,7 @@
         if (k.mother !== b || !k.merging || k.dying) continue;
         const kc = k.body.centroid(), kx = kc.x - c.x;
         const close = 1 - ramp(Math.hypot(kx, kc.y - c.y), r * 1.5, r * 4);
-        if (close > 0) { body.lean(Math.sign(kx) * close * CFG.socialize * r * 20 * DT, DT); body.impulse(-body.velocity(DT).x * 0.15, 0, DT); return; }
+        if (close > 0) { body.lean(Math.sign(kx) * close * CFG.socialize * r * 20 * DT, DT); grip(body, 0.15); return; }
       }
     }
     strain(b, r);
@@ -2123,7 +2132,7 @@
       const side = Math.max(-1, Math.min(1, dx / r)) * (mood < -0.3 ? -0.6 : 1 + 0.6 * Math.max(0, mood));
       body.lean(side * near * CFG.leanToCursor * trait(b, 'curious') * r * 25 * DT, DT);
       // Its bottom grips the floor, so leaning doesn't scoot it along.
-      body.impulse(-body.velocity(DT).x * 0.15, 0, DT);
+      grip(body, 0.15);
       // Above it: it reaches up a little, too.
       if (dy < -r) body.squashTop(-near * CFG.leanToCursor * r * 14 * DT, DT);
       return;
@@ -2148,7 +2157,7 @@
       const speaker = Math.floor((time - ch.from) / ch.turn) % 2 === (ch.a === b ? 0 : 1);
       const k = CFG.socialize * r * DT;
       b.body.lean(side * (speaker ? 14 : 6) * k, DT);
-      b.body.impulse(-b.body.velocity(DT).x * 0.15, 0, DT); // feet planted
+      grip(b.body, 0.15); // feet planted
       if (speaker) b.body.squashTop(Math.sin((time - ch.from) * 14) * 18 * k, DT);
       b.glanceAt = o;
       b.glanceUntil = time + 0.2;
@@ -3220,7 +3229,7 @@
       if (body.onFloor()) {
         body.squashTop(r * 0.3 * 60 * DT, DT);
         body.lean(Math.sign(dx) * r * 8 * DT, DT);
-        body.impulse(-body.velocity(DT).x * 0.3, 0, DT);
+        grip(body, 0.3);
       }
       if (d < (r + f.body.o.radius) * 1.08) {
         // Caught: most of its speed goes into a squish, a little into a
@@ -3677,7 +3686,7 @@
       if (d > (r + o.body.o.radius) * 1.8) { if (time - g.at > 2) b.comforting = null; return; }
       // Leaning in against it, a gentle push.
       b.body.lean(Math.sign(oc.x - c.x) * r * 1.4 * Math.min(1.5, CFG.comfort), DT);
-      b.body.impulse(-b.body.velocity(DT).x * 0.2, 0, DT);
+      grip(b.body, 0.2);
       b.glanceAt = o; b.glanceUntil = time + 0.3;
       if (!g.said) {
         g.said = true;
@@ -3918,7 +3927,7 @@
         const tc = top.body.centroid(), uc = under.body.centroid();
         if (time - g.jumped > 0.3 && tc.y < uc.y - under.body.o.radius * 0.4 && Math.abs(tc.x - uc.x) < (top.body.o.radius + under.body.o.radius) * 0.8) {
           top.body.impulse(((uc.x - tc.x) * 4 - top.body.velocity(DT).x) * 0.3, 0, DT);
-          under.body.impulse(-under.body.velocity(DT).x * 0.2, 0, DT);
+          grip(under.body, 0.2);
         }
         if (under.stackedBy === top && time - g.jumped > 0.5) {
           // Up! It stands tall and finds its balance.
@@ -3941,7 +3950,7 @@
       top.body.lean(Math.max(-1, Math.min(1, (uc.x - tc.x) / tr)) * tr * 6 * DT, DT);
       top.body.impulse(((uc.x - tc.x) * 4 - top.body.velocity(DT).x) * 0.3, 0, DT);
       under.body.squashTop(k * under.body.o.radius * 0.25 * 60 * DT, DT); // (a flat seat for it)
-      for (const o of g.line) if (o !== top && o.body.onFloor()) o.body.impulse(-o.body.velocity(DT).x * 0.2, 0, DT); // (feet planted)
+      for (const o of g.line) if (o !== top && o.body.onFloor()) grip(o.body, 0.2); // (feet planted)
       if (t > 0.6 && !g.tada) { g.tada = true; quip(top, 'ta-da!', 1.2); top.cheerUntil = time + 1.2; }
       if (t > 3.4) {
         // Down it comes: a hop off to the roomier side.
@@ -3980,7 +3989,7 @@
         const r = o.body.o.radius, s = o === g.p ? -side : side;
         if (o.body.onFloor()) {
           o.body.squashTop(-k * r * up * (o.reach || 1) * 2.2 * 60 * DT, DT);
-          o.body.impulse(-o.body.velocity(DT).x * 0.2, 0, DT);
+          grip(o.body, 0.2);
         } else o.body.impulse(0, Math.max(0, -o.body.velocity(DT).y) * 0.3, DT); // (feet stay down: no hopping to look taller)
         if (t < 3.2) { o.glanceAt = { spot: { x: o.body.centroid().x + s * r, y: o.body.bbox().minY - r } }; o.glanceUntil = time + 0.2; }
       }
@@ -4065,7 +4074,7 @@
         // The holders swing it round: a little lean in time with it.
         for (const [o, s] of [[g.l, 1], [g.r, -1]]) {
           o.body.lean(s * Math.cos(g.phase) * o.body.o.radius * 12 * k * DT, DT);
-          o.body.impulse(-o.body.velocity(DT).x * 0.2, 0, DT);
+          grip(o.body, 0.2);
           o.glanceAt = g.j; o.glanceUntil = time + 0.2;
           o.cheerUntil = time + 0.2;
         }
@@ -4196,7 +4205,7 @@
       // Hiding: crouched down low, peeking.
       for (const o of g.hiders) if (!o.found && o.body.onFloor() && !o.pendingHop) {
         o.body.squashTop(o.body.o.radius * 0.35 * 60 * DT, DT);
-        o.body.impulse(-o.body.velocity(DT).x * 0.3, 0, DT);
+        grip(o.body, 0.3);
         o.hiding = time + 0.2;
         o.glanceAt = g.s; o.glanceUntil = time + 0.2;
       }
@@ -4276,7 +4285,7 @@
         g.bottom.body.squashTop(g.bottom.body.o.radius * (0.2 + 0.12 * onPile.length) * DT * 60 * Math.min(1, CFG.dogpile), DT);
         g.bottom.cheerUntil = time + 0.2;
       }
-      g.bottom.body.impulse(-g.bottom.body.velocity(DT).x * 0.5, 0, DT); // (feet planted)
+      grip(g.bottom.body, 0.5); // (feet planted)
       // Each one up there (or coming down onto it) keeps itself over the
       // one below.
       for (const o of g.climbers) {
@@ -4781,7 +4790,7 @@
       b.shapeAmt = amt * k;
       if (amt > 0 && body.onFloor()) {
         // Balancing on its point: it keeps itself upright and in place.
-        body.impulse(-body.velocity(DT).x * 0.3, 0, DT);
+        grip(body, 0.3);
         body.spin((-body.angle * 4 - body.angularVelocity(DT)) * 0.3 * amt, DT);
       }
       if (t > 0.7 && !g.said && !g.quiet) { g.said = true; quip(b, 'ta-da!', 1.2); b.happyUntil = time + 2; spawnHeart({ x: body.centroid().x, y: body.bbox().minY - 8, vx: 0, born: time, size: 12 }); }
@@ -4815,7 +4824,7 @@
 				b.cheekPuff = level;
 				b.gulping = into < 0.55;
 				if (into < 0.05 && g.gulp !== gulp) { g.gulp = gulp; body.squashTop(-r * 3, DT); } // (a little heave with each)
-				if (body.onFloor()) body.impulse(-body.velocity(DT).x * 0.2, 0, DT);
+				if (body.onFloor()) grip(body, 0.2);
 				if (t > 1.26) { g.stage = 'full'; g.at = time; b.gulping = false; }
 				return;
 			}
@@ -4824,7 +4833,7 @@
 				const ease = Math.min(1, t / 0.15);
 				b.puff = full * (1 + 0.035 * Math.sin(t * 38) * ease); b.taut = 1; b.cheekPuff = 1;
 				b.cheekStrain = 0.3 * ease;
-				if (body.onFloor()) body.impulse(-body.velocity(DT).x * 0.2, 0, DT);
+				if (body.onFloor()) grip(body, 0.2);
 				if (t > 0.5) { g.stage = 'float'; g.at = time; g.floor = body.bbox().maxY; b.cheekStrain = 0; }
 				return;
 			}
