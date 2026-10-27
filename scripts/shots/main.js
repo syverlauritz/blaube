@@ -377,6 +377,15 @@ const SCENES = {
 		size: [900, 560],
 		motion: { frames: 64, every: 70, drop: 0, still: true, hopAt: [], jsAt: { 0: 'balloon' } },
 	},
+	// Calm blobs of every model, frame after frame: does anything flicker
+	// (the blush, the eyes)?
+	blushWatch: {
+		sessions: [session('w1', 'opus', 'idle', { info: { model: 'claude-opus-5-5' } }), session('w2', 'sonnet', 'working', { info: { model: 'claude-sonnet-5-5' } }), session('w3', 'haiku', 'idle', { info: { model: 'claude-haiku-5-5' } }), session('w4', 'fable', 'done', { info: { model: 'claude-fable-5-1' } })],
+		config: { snackJar: 'Off', seasons: 0 },
+		wait: 3000,
+		size: [1200, 460],
+		motion: { frames: 50, every: 40, drop: 0, still: true, hopAt: [] },
+	},
 	// Shaken around by the mouse, then dropped: do the looks stay on and
 	// swing smoothly?
 	shake: {

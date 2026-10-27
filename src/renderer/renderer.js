@@ -6442,11 +6442,15 @@
   // blush (all eyes stay black). Opus is the original look; a helper looks
   // like its mother.
   const MODEL_LOOKS = { opus: {}, sonnet: { eyeKind: 'tall', cheekKind: 'lines' }, haiku: { eyeKind: 'small', cheekKind: 'freckles' }, fable: { eyeKind: 'wide', cheekKind: 'hearts' } };
+  // (Kept once known: an update that doesn't say which model leaves the
+  // face as it was, rather than flicking it back to the plain one.)
   function modelLook(b) {
     const m = b.kind === 'child' ? b.mother : b;
-    const id = (m && m.session && m.session.info && m.session.info.model) || '';
+    if (!m) return {};
+    const id = (m.session && m.session.info && m.session.info.model) || '';
     const fam = (/^claude-([a-z]+)/.exec(String(id)) || [])[1];
-    return MODEL_LOOKS[fam] || {};
+    if (fam && MODEL_LOOKS[fam]) m.modelFam = fam;
+    return MODEL_LOOKS[m.modelFam] || {};
   }
   function modelName(id) {
     const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(String(id || ''));
