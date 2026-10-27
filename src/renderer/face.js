@@ -314,7 +314,7 @@
 		if (s.cheeks > 0 || puffed > 0) {
       ctx.save();
       const warm = isWarm(face.bodyColor);
-			ctx.globalAlpha = Math.max(warm ? s.cheeks : Math.max(s.cheeks, 0.7), 0.5 * puffed);
+			ctx.globalAlpha = Math.max(warm ? s.cheeks : Math.max(s.cheeks, 0.7), 0.55 * puffed);
       ctx.fillStyle = warm ? s.cheekColor : '#ff86a6';
       // Cheeks sit on a round head, so they turn on a ball instead of
       // sliding with the rest of the face: one turning toward the edge moves
@@ -327,11 +327,11 @@
       const angleOf = (v) => Math.asin(Math.max(-0.99, Math.min(0.99, v / R)));
       const yaw = angleOf(turnX), pitch = angleOf(turnY);
       for (const side of [-1, 1]) {
-				const ax = angleOf(side * r * (0.55 + 0.08 * puffed) * s.eyeSpacing), ay = angleOf(r * (0.14 + 0.06 * puffed));
+				const ax = angleOf(side * r * (0.55 + 0.14 * puffed) * s.eyeSpacing), ay = angleOf(r * (0.14 + 0.1 * puffed));
         const tx = ax + yaw, ty = ay + pitch;
         if (Math.abs(tx) > Math.PI / 2) continue; // turned out of sight
         const w = Math.min(1.1, Math.cos(tx) / Math.cos(ax)), h = Math.min(1.1, Math.cos(ty) / Math.cos(ay));
-        const cx = R * Math.sin(tx), cy = R * Math.sin(ty), cw = r * (0.12 + 0.07 * puffed) * w, ch = r * (0.07 + 0.09 * puffed) * h;
+        const cx = R * Math.sin(tx), cy = R * Math.sin(ty), cw = r * (0.12 + 0.11 * puffed) * w, ch = r * (0.07 + 0.15 * puffed) * h; // (full of air: big round cheeks)
         // face.cheekKind picks a blush (to tell models apart): soft 'oval's,
         // three slanted 'lines', 'freckles', or little 'hearts'.
         const ck = puffed > 0.3 ? 'oval' : face.cheekKind || 'oval';

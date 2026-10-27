@@ -4823,6 +4823,7 @@
 				const level = (gulp + suck * suck * (3 - 2 * suck)) / 3;
 				b.puff = full * level; b.taut = level;
 				b.cheekPuff = level;
+				bulgeCheeks(b, level);
 				b.gulping = into < 0.55;
 				if (into < 0.05 && g.gulp !== gulp) { g.gulp = gulp; body.squashTop(-r * 3, DT); } // (a little heave with each)
 				if (body.onFloor()) grip(body, 0.2);
@@ -4833,6 +4834,7 @@
 				// Full to bursting: it quivers with the strain, then lifts off.
 				const ease = Math.min(1, t / 0.15);
 				b.puff = full * (1 + 0.035 * Math.sin(t * 38) * ease); b.taut = 1; b.cheekPuff = 1;
+				bulgeCheeks(b, 1);
 				b.cheekStrain = 0.3 * ease;
 				if (body.onFloor()) grip(body, 0.2);
 				if (t > 0.5) { g.stage = 'float'; g.at = time; g.floor = body.bbox().maxY; b.cheekStrain = 0; }
@@ -4841,6 +4843,7 @@
 			if (g.stage === 'float') {
 				// Lighter than air: it lifts off gently and bobs, drifting a little.
 				b.puff = full; b.taut = 1; b.cheekPuff = 1;
+				bulgeCheeks(b, 1);
 				const lift = r * 2.2 * Math.min(1, t / 1.4) * (2 - Math.min(1, t / 1.4)) + Math.sin(t * 3.4) * r * 0.12;
 				const up = g.floor - body.bbox().maxY, v = body.velocity(DT);
 				body.impulse((Math.sin(t * 2.2) * 30 - v.x) * 0.08, (-(lift - up) * 4 - v.y) * 0.2, DT);
@@ -4895,6 +4898,21 @@
 	}
 	function balloonNow(b) {
 		b.balloon = { at: time, stage: 'breathe', gulp: -1 };
+	}
+	// Cheeks full of air: the skin at cheek height on both sides bulges out
+	// (each point eased outward, its last place with it, so it adds no speed).
+	function bulgeCheeks(b, k) {
+		const body = b.body, c = body.centroid(), r = body.o.radius, up = body.angle - Math.PI / 2;
+		for (let i = 0; i < body.n; i++) {
+			const dx = body.px[i] - c.x, dy = body.py[i] - c.y, d = Math.hypot(dx, dy) || 1;
+			const a = Math.atan2(dy, dx) - body.angle; // (0: its right, π/2: its bottom)
+			const side = Math.abs(Math.cos(a)), low = Math.sin(a);
+			const w = Math.max(0, side - 0.55) / 0.45 * Math.max(0, Math.min(1, (low + 0.15) / 0.5)); // (the sides, a little below the middle)
+			if (w <= 0) continue;
+			const push = r * 0.012 * k * w;
+			body.px[i] += (dx / d) * push; body.py[i] += (dy / d) * push;
+			body.ox[i] += (dx / d) * push; body.oy[i] += (dy / d) * push;
+		}
 	}
 	// Done (or picked up partway): all the air out, and back to its own size and firmness.
 	function unballoon(b) {
@@ -6079,7 +6097,7 @@
     else if (time < (b.raspUntil || 0) && !body.grab) { expression = 'annoyed'; mouth = 'raspberry'; } // (pbbbt!)
     else if (b.balloon && b.balloon.stage === 'zip') { expression = 'happy'; mouth = 'raspberry'; } // (the air rushing out)
 		else if (b.balloon && b.gulping) { expression = 'concentrate'; mouth = 'o'; } // (gulping air in)
-    else if (b.balloon && b.balloon.stage !== 'land') { expression = 'normal'; mouth = 'puffed'; } // (cheeks full, holding it)
+    else if (b.balloon && b.balloon.stage !== 'land') { expression = 'pained'; mouth = 'puffed'; } // (cheeks full, eyes squeezed tight, holding it)
     else if (time < (b.annoyedUntil || 0) && b.annoyedAt && !b.annoyedAt.dying && !body.grab && !homeward(b)) { expression = 'annoyed'; mouth = 'flat'; }
     else if (time < (b.yawnUntil || 0)) { expression = 'sleepy'; mouth = 'yawn'; }
     else if (time < (b.napUntil || 0) && !body.grab) { expression = 'sleepy'; mouth = 'flat'; } // (a quick nap, for show)
@@ -6532,7 +6550,9 @@
       D.drawBody(ctx, b.body, b.color);
       Looks.drawLook(ctx, b, 'front', b.color);
       drawSick(b);
-      D.drawFlush(ctx, b.body, ramp(b.fill || 0, CFG.redAt, 1), CFG, b.faceTurn);
+      // (Red with a full context, or holding its breath, blown up like a balloon.)
+      const holding = b.balloon && (b.balloon.stage === 'breathe' || b.balloon.stage === 'full' || b.balloon.stage === 'float') ? 0.9 * (b.taut || 0) : 0;
+      D.drawFlush(ctx, b.body, Math.max(ramp(b.fill || 0, CFG.redAt, 1), holding), CFG, b.faceTurn);
       drawSplats(b);
       const face = faceFor(b);
       if (b.body.o.radius > 12) D.drawFace(ctx, b.body, face);
