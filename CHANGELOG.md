@@ -8,6 +8,8 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 - The cookies in the jar tumble about when you shake, tip or drop it.
 - Shake a blob too hard and it turns green, swells up and barfs; blobs it lands on aren't pleased.
 - A new app icon that looks like today's blobs.
+- Swear at a blob and it's scared and sad; talk-box messages now count for its feelings too.
+- Messages from the talk box reach Claude at its next step again, and survive Blaube restarting.
 
 ## [0.2.0] - 2026-10-27
 

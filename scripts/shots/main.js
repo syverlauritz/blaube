@@ -350,6 +350,14 @@ const SCENES = {
 		size: [1100, 560],
 		motion: { frames: 16, every: 160, drop: 0, still: true, hopAt: [], jsAt: { 0: 'sick' } },
 	},
+	// Sworn at in a prompt: scared and sad, small and trembling, then over it.
+	cursed: {
+		sessions: [session('c1', 'blaube', 'idle'), session('c2', 'kalkis', 'idle', { color: '#5B8DEF' })],
+		config: { snackJar: 'Off', seasons: 0 },
+		wait: 3000,
+		size: [800, 460],
+		motion: { frames: 20, every: 220, drop: 0, still: true, hopAt: [], jsAt: { 1: 'curse' } },
+	},
 	// Shaken around by the mouse, then dropped: do the looks stay on and
 	// swing smoothly?
 	shake: {
@@ -1224,6 +1232,7 @@ async function shootMotion(win, name, m) {
 			// (a cookie's worth more of your usage used: 62% to 67%, one cookie out)
 			if (m.jsAt && m.jsAt[i] === 'cookie') win.webContents.send('fire', 'limits', usage(0.67, 0.41));
 			if (m.jsAt && m.jsAt[i] === 'sick') await js(`(() => { for (const b of __blaube.buddies.values()) { b.queasy = 0.95; b.shookAt = 1e9; } setTimeout(() => { for (const b of __blaube.buddies.values()) b.shookAt = 0; }, 1500); })()`);
+			if (m.jsAt && m.jsAt[i] === 'curse') win.webContents.send('fire', 'react', { id: 'c1', kind: 'curse' });
 			if (m.jsAt && m.jsAt[i] === 'giveUp') await js(`(() => { const k = [...__blaube.buddies.values()].find((b) => b.kind === 'child'); k.tries = { key: 'shot', n: 9 }; })()`);
 			if (m.jsAt && m.jsAt[i] === 'ghost') await js(`(() => { const l = [...__blaube.buddies.values()]; __blaube.ghost(l[0], l[1]); })()`);
 			if (m.mouseAt && m.mouseAt[i]) {

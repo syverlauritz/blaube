@@ -2212,7 +2212,8 @@ app.whenReady().then(async () => {
     lastPrompt.set(s.id, { text: words, typed });
     if (!win) return;
     win.webContents.send('nod', s.id, { prompt: true, typed });
-    // Thanked or told off: the slime blushes, or looks sheepish.
+    // Thanked, told off or sworn at: the slime blushes, looks sheepish, or
+    // is scared.
     const tone = toneOf(text);
     if (tone) win.webContents.send('react', { id: s.id, kind: tone });
   });
@@ -3340,6 +3341,9 @@ app.whenReady().then(async () => {
       });
       return;
     }
+    // (Thanked, told off or sworn at from the talk box: it feels it too.)
+    const tone = toneOf(text);
+    if (tone && win) win.webContents.send('react', { id, kind: tone });
     const how = inbox.send(id, withWhatYouRan(id, text));
     log(`message for ${tracker.sessions.get(id).project}: ${how} (inbox ${inbox.view(id).inbox})`);
     setTimeout(() => typeQueued(id), 1500); // a moment for its inbox hook to ask first

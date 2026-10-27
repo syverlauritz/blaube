@@ -1762,6 +1762,9 @@
       if (b.puff) body.areaScale *= 1 + b.puff; // (puffed up like a balloon)
       queasyStep(b);
       if (b.sick) body.areaScale *= 1 + 0.2 * b.sick; // (green, cheeks full, holding it in: swollen)
+      // Sworn at: it shrinks a little into itself, trembling.
+      b.cower = (b.cower || 0) + ((time < (b.scaredUntil || 0) ? 1 : 0) - (b.cower || 0)) * Math.min(1, DT * 5);
+      if (b.cower > 0.01) { body.areaScale *= 1 - 0.1 * b.cower; if (body.onFloor() && !body.grab) body.lean(Math.sin(time * 55) * body.o.radius * 0.5 * b.cower, DT); }
       if (b.gulpAt && time - b.gulpAt < 1.2) { const t = time - b.gulpAt; body.areaScale *= 1 + 0.1 * CFG.gulp * Math.sin(t * 9) * Math.exp(-t * 3); }
       body.o.pressure = Math.min(0.85, CFG.pressure * trait(b, 'firm') * (1 + CFG.contextTighten * b.fill)) * (1 - 0.5 * b.droop) * (1 - 2 * CFG.sleepSlump * b.sleep);
       if (sys.low > 0) { body.areaScale *= 1 - 0.06 * sys.low; body.o.pressure *= 1 - 0.35 * sys.low; }
@@ -6088,6 +6091,7 @@
     else if (time < (b.petWorryUntil || 0)) { expression = 'worried'; mouth = 'o'; }
     else if (b.teeter && !body.grab) { expression = 'worried'; mouth = 'o'; } // (on the brink)
     else if (time < (b.sheepishUntil || 0)) { expression = 'worried'; mouth = 'wobble'; } // (told off)
+    else if (time < (b.scaredUntil || 0)) { expression = 'sad'; mouth = 'wobble'; } // (sworn at: scared, sad)
     else if (time < (b.squirmUntil || 0)) { expression = 'happy'; mouth = 'grin'; }
     else if (time < (b.wantsPetsUntil || 0) && time > (b.pettedUntil || 0)) { expression = 'normal'; mouth = 'smile'; }
     else if (time - (b.sneezedAt ?? -9) < 0.5) { expression = 'happy'; mouth = 'flat'; }
@@ -6326,7 +6330,7 @@
 	} else if (!b.eyesUp) { b.eyesUp = true; b.eyesAt = time; }
     // Startled (poked, flinching): eyes go wide for a moment.
     const wide = CFG.eyeLife * Math.max(wideBy, wideSeen, over ? 0.5 : 0, Math.min(1, ((b.startleUntil || 0) - time) / 0.3));
-    return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, b.cheekStrain || 0, time < (b.strainUntil || 0) ? 0.35 * Math.min(1, CFG.strain) : 0), puffed: b.cheekPuff || 0, nod: nodOf(b), scale: CFG.faceScale, style: b.blush > 0 ? { ...CFG, cheeks: Math.min(0.95, CFG.cheeks + b.blush * 0.55) } : CFG, bodyColor: b.color,
+    return { expression, mouth, talk, blink: b.blink, wide, look: b.gaze || mouse, lookAmount: b.lookAmount, furrow: b.furrow, raise: b.raise, shake: Math.max(b.pain || 0, b.cheekStrain || 0, time < (b.scaredUntil || 0) ? 0.45 : 0, time < (b.strainUntil || 0) ? 0.35 * Math.min(1, CFG.strain) : 0), puffed: b.cheekPuff || 0, nod: nodOf(b), scale: CFG.faceScale, style: b.blush > 0 ? { ...CFG, cheeks: Math.min(0.95, CFG.cheeks + b.blush * 0.55) } : CFG, bodyColor: b.color,
       effort, drool, glasses: effort === 'high' && !b.glasses, squint: effort === 'high' && !!b.glasses && expression === 'normal' && !b.peek && !watching, peek: b.peek,
       fullTurn: (body.fullTurn = !!((b.flip && b.flip.spun) || b.tumble || b.roll)), // (mid-somersault the face, and what it wears, go all the way round)
     };
@@ -7331,6 +7335,18 @@
       return;
     }
     if (m.kind === 'commit' && once('commit', 20)) { b.nodAt = time; b.nodQuiet = true; return; }
+    // Sworn at: it's scared and sad. It flinches down small, trembles,
+    // looks up at you with a wobbly mouth, and says sorry in a small voice.
+    if (m.kind === 'curse') {
+      if (CFG.feelings <= 0 || !once('tone', 4)) return;
+      const pick = (a) => a[Math.floor(Math.random() * a.length)];
+      b.scaredUntil = time + 4 * Math.min(1.5, Math.max(0.5, CFG.feelings));
+      b.startleUntil = time + 0.4; b.surpriseUntil = time + 0.35;
+      b.droopUntil = time + 4;
+      if (grounded) { b.body.squashTop(b.body.o.radius * 10, DT); b.body.impulse(0, 160, DT); }
+      quipBack(b, pick(['eep!', 's-sorry…', 'sorry!!', 'eek…', 'I’ll fix it…']), 2);
+      return;
+    }
     // You thanked it, or told it off, in a prompt.
     if (m.kind === 'praise' || m.kind === 'scold') {
       if (CFG.feelings <= 0 || !once('tone', 8)) return;
