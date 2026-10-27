@@ -401,8 +401,11 @@
         break;
       }
       case 'raspberry': {
-        // Pursed lips with the tongue stuck out, fluttering.
-        const flap = Math.sin((face.t ?? performance.now() / 1000) * 70) * r * 0.012;
+        // Pursed lips with the tongue stuck out, fluttering; blowing the air
+        // out of a balloon, it flaps about wildly (face.blow).
+        const blow = face.blow ? 1 : 0;
+        const flap = Math.sin((face.t ?? performance.now() / 1000) * 70) * r * 0.012 + blow * (Math.random() - 0.5) * r * 0.07;
+        if (blow) ctx.translate((Math.random() - 0.5) * r * 0.035, (Math.random() - 0.5) * r * 0.02);
         ctx.moveTo(-r * 0.1, my); ctx.lineTo(r * 0.1, my);
         ctx.stroke();
         ctx.fillStyle = '#e86a82';

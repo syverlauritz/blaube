@@ -999,6 +999,7 @@
 			d.vy += CFG.gravity * DT; d.vx *= 0.995;
 			d.x += d.vx * DT; d.y += d.vy * DT;
 			// (Onto another blob: it sticks there a while, and that blob's not pleased.)
+			if (d.spit && (time - d.born > 0.9 || d.y > floorAt(d.x, d.y))) { barfs.splice(i, 1); continue; }
 			const hit = d.from && time - d.born > 0.05 && [...buddies.values()].find((o) => o !== d.from && !o.dying && o.kind !== 'home' && o.body.contains(d.x, d.y));
 			if (hit) {
 				const c = hit.body.centroid();
@@ -4867,6 +4868,11 @@
 					g.dir += Math.atan2(Math.sin(back - g.dir), Math.cos(back - g.dir)) * Math.min(1, 12 * Math.min(1, wall) * DT);
 				}
 				g.dir += g.turn * DT + (Math.random() - 0.5) * 6 * DT;
+				// Spit spraying out with the air, back the way it's not going.
+				if (Math.random() < DT * 40 * (0.3 + left) && barfs.length < 160) {
+					const m = mouthAt(b), out = g.dir + Math.PI + (Math.random() - 0.5) * 0.9, sp = 250 + Math.random() * 300;
+					barfs.push({ x: m.x, y: m.y, vx: Math.cos(out) * sp + v.x * 0.3, vy: Math.sin(out) * sp + v.y * 0.3, r: r * (0.015 + Math.random() * 0.02), color: 'rgba(225, 238, 255, 0.85)', born: time, landed: 0, spit: true, from: b });
+				}
 				const speed = 1300 * Math.sqrt(k) * (0.5 + 0.5 * left), grip = 0.12 * Math.min(1, left * 4);
 				body.impulse((Math.cos(g.dir) * speed - v.x) * grip, (Math.sin(g.dir) * speed - v.y) * grip, DT);
 				body.spin((g.turn * 0.5 - body.angularVelocity(DT)) * 0.1 * left, DT);
@@ -6344,6 +6350,7 @@
       fullTurn: (body.fullTurn = !!((b.flip && b.flip.spun) || b.tumble || b.roll)), // (mid-somersault the face, and what it wears, go all the way round)
       // Held, the face (and what it wears) turns with the body as it hangs
       // and swings from the cursor; let go, it eases back upright.
+      blow: !!(b.balloon && b.balloon.stage === 'zip'), // (the air rushing out past its tongue)
       turnAmt: (body.turnAmt = (body.turnAmt || 0) + ((body.grab ? 1 : 0) - (body.turnAmt || 0)) * ease(body.grab ? 0.04 : 0.025)),
     };
   }
