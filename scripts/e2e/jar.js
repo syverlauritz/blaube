@@ -140,9 +140,9 @@ module.exports = async function run({ app, win, tracker }) {
 	check((await js(`__blaube.jarLines()[1].text`)).startsWith('5 hours: limit reached'), 'its bubble says the limit is reached');
 	// The limit resets: it fills up again, cookies tumbling in.
 	global.__blaubeSetLimits(usage(0, 0.1));
-	check(await until(async () => Math.abs((await jar()).level - 0.9) < 0.01, 2000), 'reset: it fills up again (to the week’s 90% left)');
+	check(await until(async () => (await jar()).level === 1, 2000), 'reset: it fills up again (a fresh session; the week’s 10% doesn’t show)');
 	check(await js(`__blaube.jar().refillUntil > __blaube.now()`), 'cookies tumble in');
-	check(await until(async () => (await jar()).count === 18, 8000), 'one by one, to 18 (90% left)');
+	check(await until(async () => (await jar()).count === 20, 10000), 'one by one, to all 20');
 	check((await jar()).thrown === 8, 'none thrown for a refill');
 	check(await js(`__blaube.buddies.get('j1').happyUntil > __blaube.now()`), 'and the slime perks up');
 

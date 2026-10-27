@@ -25,15 +25,18 @@ test('nothing known: no level', () => {
 	assert.equal(snack.pick(null, NOW), null);
 });
 
-test('the 5-hour limit, unless the week is closer to running out', () => {
+test('the 5-hour limit, unless the week is nearly used up and closer to running out', () => {
 	assert.equal(snack.pick(lim(0.4, 0.2), NOW).kind, 'five_hour');
 	assert.equal(snack.pick(lim(0.4, 0.4), NOW).kind, 'five_hour'); // (a tie: the 5-hour one)
+	assert.equal(snack.pick(lim(0.04, 0.33), NOW).kind, 'five_hour'); // (a third of the week gone, a fresh session: the session)
+	assert.equal(snack.level(lim(0.04, 0.33), NOW).toFixed(2), '0.96');
+	assert.equal(snack.pick(lim(0.8, 0.76), NOW).kind, 'five_hour');
 	assert.equal(snack.pick(lim(0.3, 0.85), NOW).kind, 'seven_day');
 	assert.equal(snack.level(lim(0.3, 0.85), NOW).toFixed(2), '0.15');
 	assert.equal(snack.pick(lim(null, 0.5), NOW).kind, 'seven_day');
 	// A per-model week only limits that model: not the jar.
 	const opus = lim(0.2, 0.3, { models: [{ kind: 'seven_day_opus', used: 0.95, resetsAt: NOW + 3 * 24 * H, status: 'allowed' }] });
-	assert.equal(snack.pick(opus, NOW).kind, 'seven_day');
+	assert.equal(snack.pick(opus, NOW).kind, 'five_hour');
 	// Limited outright wins over a fuller number.
 	const out = { windows: [{ kind: 'five_hour', used: 0.97, resetsAt: NOW + H, status: 'rejected' }, { kind: 'seven_day', used: 0.99, resetsAt: NOW + 50 * H, status: 'allowed' }] };
 	assert.equal(snack.pick(out, NOW).kind, 'five_hour');
@@ -43,7 +46,8 @@ test('the 5-hour limit, unless the week is closer to running out', () => {
 test('past its reset a window is fresh again, before anyone says so', () => {
 	const l = lim(1, 0.3);
 	assert.equal(snack.level(l, NOW), 0);
-	assert.equal(snack.level(l, NOW + 2 * H + 1).toFixed(2), '0.70'); // (the week's 30% shows now)
+	assert.equal(snack.level(l, NOW + 2 * H + 1), 1); // (a fresh session; the week's 30% doesn't show)
+	assert.equal(snack.level(lim(1, 0.8), NOW + 2 * H + 1).toFixed(2), '0.20'); // (but its 80% does)
 	assert.equal(snack.level(lim(1, null), NOW + 3 * H), 1);
 	assert.equal(snack.change(0, snack.level(lim(1, null), NOW + 3 * H)), 'refill');
 });

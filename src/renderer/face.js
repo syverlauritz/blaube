@@ -1406,5 +1406,5 @@
     ctx.closePath();
   }
 
-  root.BlaubeDraw = { setFont, setCrowd, drawHeart, drawBrokenHeart, drawNote, drawShadow, drawBody, vary, drawFace, drawGlasses, drawDots, drawThinking, drawDream, drawZzz, drawFlush, drawSweat, drawPet, drawExclaim, drawLabel, drawBubble, drawThought, drawHelperThought, STATE_COLORS };
+  root.BlaubeDraw = { bodyPath, setFont, setCrowd, drawHeart, drawBrokenHeart, drawNote, drawShadow, drawBody, vary, drawFace, drawGlasses, drawDots, drawThinking, drawDream, drawZzz, drawFlush, drawSweat, drawPet, drawExclaim, drawLabel, drawBubble, drawThought, drawHelperThought, STATE_COLORS };
 })(globalThis);

@@ -112,6 +112,7 @@
       ['wriggle', 1, 0, 3, 0.05, 'Wriggle when held still'],
       ['wriggleAfter', 1.4, 0.3, 5, 0.1, 'Starts wriggling after held still (s)'],
       ['shakeDizzy', 5, 0, 12, 1, 'Shakes that make it dizzy (0 = never)'],
+      ['queasy', 1, 0, 2, 0.05, 'Keep shaking a held blob and it swells up and turns green, then barfs (0 = never)'],
       ['shy', 1, 0, 1, 0.05, 'Rest the cursor on its face and it looks right at you, then giggles and squirms'],
       ['feelings', 1, 0, 2, 0.05, 'Thank it in a prompt and it blushes and squirms; tell it off and it looks sheepish'],
       ['scrollSquish', 1, 0, 3, 0.05, 'Scroll over a blob to squish it flat or pull it tall'],

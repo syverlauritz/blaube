@@ -106,6 +106,16 @@ ships that breaks a "must".
   per wait. Bigger is deeper, helpers are higher. The talking
   mouth: shut, it's the blob's own mouth; open, a dark oval that drops
   from the top lip, never bigger than a yawn, a pink tongue when wide.
+- Shaken hard while held, a blob gets dizzy, then swells up and turns green
+  (its hue turns to leafy green, through yellow, never brown), cheeks full,
+  then barfs: heaves, "bleh!", a green stream from its mouth pouring out and
+  down, puddles on the floor that fade. A blob it lands on gets splats and
+  the zigzag mouth with squeezed eyes ("eww!"). This is wanted (it isn't
+  the removed goo).
+- The cookies in the snack jar are physical: they tumble when it's shaken,
+  tipped or dropped and settle into a new pile.
+- The app icon is today's blob (a dome, bead eyes, blush, small smile) on a
+  dark rounded square, drawn by the app's own code (scripts/make-icons.js).
 - Choir mode: every blob sings in parts, fuller with more blobs, eyes
   shut, swaying, notes floating up. Songs are public domain only.
 - A full context makes a blob round and taut, not just bigger.

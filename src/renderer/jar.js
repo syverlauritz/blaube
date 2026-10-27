@@ -82,6 +82,77 @@
 		return out;
 	}
 
+	// The cookies as things that move: shake the jar, tip it or drop it and
+	// they tumble about inside the glass, knock into each other and roll,
+	// then settle into a new pile. Each is { x, y, ox, oy (where it was a
+	// step ago: Verlet), a (its turn), tone } in the jar's own frame (its
+	// bottom middle at 0, 0, y up negative), so they ride along with it.
+	// Twenty when full, the same ones the still pile has.
+	function bitsFor(w, h, n) {
+		const p = pile(w, h);
+		return p.at.slice(0, Math.max(0, Math.min(CAP, n))).map((c) => ({ x: c.x, y: c.y, ox: c.x, oy: c.y, a: c.a, tone: c.tone }));
+	}
+	// One step of dt for cookies in a jar w by h, pulled by (gx, gy): gravity
+	// less the jar's own acceleration, turned into its frame (so a jar
+	// yanked to the right throws them to its left wall). Returns how fast the
+	// fastest one is going (px/s), to know when they've settled.
+	function stepBits(bits, w, h, gx, gy, dt) {
+		const r = pile(w, h).r, inn = shape(w, h).inside, d2 = r * 2.04;
+		let fastest = 0;
+		for (const b of bits) {
+			const vx = (b.x - b.ox) * 0.996, vy = (b.y - b.oy) * 0.996;
+			b.ox = b.x; b.oy = b.y;
+			b.x += vx + gx * dt * dt;
+			b.y += vy + gy * dt * dt;
+		}
+		// Where a middle can be: the inside less a cookie's radius, its
+		// corners rounded to match the glass.
+		const x0 = inn.x + r, x1 = inn.x + inn.w - r, y0 = inn.y + r, y1 = inn.y + inn.h - r, rc = Math.max(0, inn.r - r);
+		for (let it = 0; it < 5; it++) {
+			for (let i = 0; i < bits.length; i++) {
+				const a = bits[i];
+				for (let k = i + 1; k < bits.length; k++) {
+					const b = bits[k], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+					if (d >= d2 || d < 1e-6) continue;
+					const push = (d2 - d) / d / 2;
+					a.x -= dx * push; a.y -= dy * push; b.x += dx * push; b.y += dy * push;
+				}
+			}
+			for (const b of bits) {
+				const cx = Math.max(x0 + rc, Math.min(x1 - rc, b.x)), cy = Math.max(y0 + rc, Math.min(y1 - rc, b.y));
+				const dx = b.x - cx, dy = b.y - cy, d = Math.hypot(dx, dy);
+				if (d <= rc) continue;
+				b.x = cx + (dx / d) * rc; b.y = cy + (dy / d) * rc;
+				// Against the glass it drags (so a pile comes to rest) and rolls.
+				const vx = b.x - b.ox, vy = b.y - b.oy, nx = dx / d, ny = dy / d, along = vx * -ny + vy * nx;
+				b.ox += (vx - (vx * nx + vy * ny) * nx) * 0.12; b.oy += (vy - (vx * nx + vy * ny) * ny) * 0.12;
+				b.a += (along / r) * 0.5;
+			}
+		}
+		for (const b of bits) fastest = Math.max(fastest, Math.hypot(b.x - b.ox, b.y - b.oy) / dt);
+		return fastest;
+	}
+	// Stopped: no drift left in them (a still pile stays exactly still).
+	function stillBits(bits) {
+		for (const b of bits) { b.ox = b.x; b.oy = b.y; }
+	}
+	// The top one (the one that leaves next): the highest in the jar.
+	function topBit(bits) {
+		let top = -1;
+		for (let i = 0; i < bits.length; i++) if (top < 0 || bits[i].y < bits[top].y) top = i;
+		return top;
+	}
+	// A point in the jar's frame on the screen (the jar tilted as it is).
+	function toWorld(j, p) {
+		const a = j.angle || 0, cos = Math.cos(a), sin = Math.sin(a);
+		return { x: j.x + p.x * cos - p.y * sin, y: j.y + p.x * sin + p.y * cos };
+	}
+	// And back: a point on the screen in the jar's frame.
+	function toJar(j, p) {
+		const a = -(j.angle || 0), cos = Math.cos(a), sin = Math.sin(a), dx = p.x - j.x, dy = p.y - j.y;
+		return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+	}
+
 	// A cookie: a golden round with a few chips.
 	function drawCookie(ctx, x, y, r, a, tone) {
 		ctx.save();
@@ -116,9 +187,10 @@
 	};
 
 	// j: { x, y (its bottom middle), w, h, angle (a wobble, rocking on its
-	// bottom), count (cookies in it, 0..20; or level 0..1, null: unknown,
-	// drawn full), lid (0 shut .. 1 popped right up), rattle 0..1, t
-	// (seconds, for the rattle) }.
+	// bottom), bits (the cookies where they've tumbled to, see stepBits) or
+	// else count (cookies in it, 0..20; or level 0..1, null: unknown, drawn
+	// full, in their still pile), lid (0 shut .. 1 popped right up), rattle
+	// 0..1, t (seconds, for the rattle) }.
 	function drawJar(ctx, j) {
 		const s = shape(j.w, j.h), inn = s.inside;
 		const x0 = -s.w / 2, bodyTop = -s.bodyH;
@@ -135,7 +207,8 @@
 		roundRect(ctx, inn.x, inn.y, inn.w, inn.h, inn.r);
 		ctx.clip();
 		const p = pile(s.w, s.h);
-		for (let i = 0; i < n; i++) {
+		if (j.bits) for (const c of j.bits) drawCookie(ctx, c.x, c.y, p.r, c.a, c.tone);
+		else for (let i = 0; i < n; i++) {
 			const c = p.at[i], g = jig(j, i);
 			drawCookie(ctx, c.x + g.dx, c.y + g.dy, p.r, c.a + g.da, c.tone);
 		}
@@ -159,6 +232,7 @@
 		ctx.restore();
 	}
 	function countOf(j) {
+		if (j.bits) return j.bits.length;
 		if (Number.isFinite(j.count)) return Math.max(0, Math.min(CAP, Math.round(j.count)));
 		return j.level == null ? CAP : Math.max(0, Math.min(CAP, Math.round(j.level * CAP)));
 	}
@@ -175,5 +249,5 @@
 		return { x: j.x + c.x * cos - c.y * sin, y: j.y + c.x * sin + c.y * cos, r: p.r, a: c.a + a, tone: c.tone };
 	}
 
-	root.BlaubeJar = { drawJar, drawCookie, drawCrumb, mouthOf, cookieAt, shape, pile, CAP };
+	root.BlaubeJar = { drawJar, drawCookie, drawCrumb, mouthOf, cookieAt, shape, pile, bitsFor, stepBits, stillBits, topBit, toWorld, toJar, CAP };
 })(globalThis);

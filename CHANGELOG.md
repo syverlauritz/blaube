@@ -4,6 +4,11 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+- The snack jar shows your 5-hour session again, not the week (the week only takes over once it's over 75% used).
+- The cookies in the jar tumble about when you shake, tip or drop it.
+- Shake a blob too hard and it turns green, swells up and barfs; blobs it lands on aren't pleased.
+- A new app icon that looks like today's blobs.
+
 ## [0.2.0] - 2026-10-27
 
 The first release.

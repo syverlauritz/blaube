@@ -2,7 +2,7 @@
 // stage. Twenty cookies when a limit window is fresh, one fewer for each 5%
 // you use (each one flies out to a slime as it goes), empty with crumbs once
 // the limit is hit; it fills up again when it resets. What the jar shows
-// (the 5-hour limit, or the week when that's closer to running out), how
+// (the 5-hour limit, or the week once that's nearly used up), how
 // many cookies that is, and what its hover bubble says.
 // The limits are main/limits.js's: { status, windows: [{ kind, used 0..1,
 // resetsAt ms, status }] }.
@@ -13,6 +13,9 @@
 	const ORDER = ['five_hour', 'seven_day', 'seven_day_opus', 'seven_day_sonnet'];
 	// Nearly empty from here (blobs near it glance at it, worried).
 	const LOW = 0.15;
+	// The week takes over the jar only once this much of it is used (and
+	// more than of the 5 hours): before that the week isn't what stops you.
+	const WEEK_SHOWS = 0.75;
 
 	// Each window as it is now: one whose reset has passed is fresh again
 	// (nothing used), even before anyone has said so.
@@ -25,12 +28,15 @@
 	}
 	const rank = (kind) => (ORDER.includes(kind) ? ORDER.indexOf(kind) : ORDER.length);
 
-	// The window the jar shows: the 5-hour one, unless the week's is closer
-	// to running out (per-model weeks only limit that model: hover only).
+	// The window the jar shows: the 5-hour one (your session), unless the
+	// week is nearly used up and closer to running out, or out (per-model
+	// weeks only limit that model: hover only).
 	function pick(lim, now = Date.now()) {
-		const ws = windows(lim, now).filter((w) => w.kind === 'five_hour' || w.kind === 'seven_day');
-		if (!ws.length) return null;
-		return ws.reduce((a, w) => (w.out && !a.out) || (w.out === a.out && w.used > a.used) ? w : a);
+		const ws = windows(lim, now);
+		const five = ws.find((w) => w.kind === 'five_hour'), week = ws.find((w) => w.kind === 'seven_day');
+		if (!five || !week) return five || week || null;
+		if (five.out || week.out) return five.out ? five : week;
+		return week.used >= WEEK_SHOWS && week.used > five.used ? week : five;
 	}
 
 	// How full the jar is, 0..1 (null: nothing known, see lines).
@@ -66,7 +72,7 @@
 		const w = pick(lim, now);
 		if (!w && why.checking) return [{ text: 'Snack jar' }, { text: 'Checking usage…' }];
 		if (!w) return [{ text: 'Snack jar' }, { text: 'Couldn’t check usage' }, { text: why.noPlan ? 'With an API key there are no plan limits' : 'Claude Code didn’t answer; it tries again soon', dim: true }];
-		const out = [{ text: `Snack jar · ${w.kind === 'five_hour' ? '5-hour limit' : 'weekly limit (closer to running out)'}` }];
+		const out = [{ text: `Snack jar · ${w.kind === 'five_hour' ? '5-hour limit' : 'weekly limit (nearly used up)'}` }];
 		for (const x of windows(lim, now)) {
 			const name = NAMES[x.kind] || (x.model ? `${x.model} this week` : x.kind.replace(/_/g, ' '));
 			const resets = x.resetsAt ? ` · resets ${clock(x.resetsAt, now)}` : '';
@@ -103,7 +109,7 @@
 		return out;
 	}
 
-	const api = { LOW, CAP, MAX_THROWS, windows, pick, level, change, clock, lines, cookies, plan };
+	const api = { LOW, WEEK_SHOWS, CAP, MAX_THROWS, windows, pick, level, change, clock, lines, cookies, plan };
 	if (typeof module !== 'undefined' && module.exports) module.exports = api;
 	else root.BlaubeSnack = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

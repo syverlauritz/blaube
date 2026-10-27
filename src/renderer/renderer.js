@@ -922,6 +922,140 @@
     }
   }
 
+	// --- Shaken too much ------------------------------------------------------
+	// Hold a blob up and shake it hard: a few shakes make it dizzy (held());
+	// keep going and it gets queasy: it swells up, cheeks full, holding it
+	// in, and turns green. Keep going still and it barfs: a few heaves and
+	// out it comes in a green splash, which lands as splats on the floor and
+	// fades. A blob it lands on gets splats on it too, and pulls a face
+	// (the zigzag mouth): "eww!". Then it's a bit dizzy and slowly gets its colour back. b.queasy
+	// rises with each shake (held()) and wears off by itself; b.sick (0..1,
+	// how green and swollen) follows it.
+	const barfs = [];
+	const SICK_HUE = 105, BARF = ['#6FAE3E', '#5E9C33', '#80BD4B'];
+	function queasyStep(b) {
+		if (!b.queasy && !b.sick) return;
+		// (Wears off: fast once it's down, slowly while still held and shaken now and then.)
+		const shaken = b.body.grab && time - (b.shookAt || 0) < 0.6;
+		if (!shaken) b.queasy = Math.max(0, (b.queasy || 0) - DT * (time - (b.relief ?? -9) < 4 ? 0.14 : b.body.grab ? 0.06 : 0.11));
+		const want = Math.max(0, Math.min(1, ((b.queasy || 0) - 0.3) / 0.45));
+		b.sick = (b.sick || 0) + (want * want * (3 - 2 * want) - (b.sick || 0)) * Math.min(1, DT * 4);
+		if (b.sick < 0.002 && !b.queasy) b.sick = 0;
+	}
+	// Its body colour, gone green as it's sick: its hue turned round to a
+	// leafy green (through yellow, never through brown), as bright as it was.
+	function sickColor(b) {
+		const k = Math.min(1, b.sick || 0);
+		if (k <= 0.002) return b.color;
+		const n = parseInt(String(b.color || '#D97757').slice(1), 16);
+		const [h, sat, l] = toHsl((n >> 16) & 255, (n >> 8) & 255, n & 255);
+		let dh = SICK_HUE - h;
+		if (dh > 180) dh -= 360; if (dh < -180) dh += 360;
+		return `hsl(${(h + dh * k).toFixed(1)}, ${(sat + (0.46 - sat) * k) * 100}%, ${(l + (0.56 - l) * k) * 100}%)`;
+	}
+	function toHsl(r, g, b) {
+		r /= 255; g /= 255; b /= 255;
+		const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+		if (!d) return [0, 0, l];
+		const s = d / (1 - Math.abs(2 * l - 1));
+		const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+		return [(h * 60 + 360) % 360, s, l];
+	}
+	function barfNow(b) {
+		const c = b.body.centroid(), e = b.body.bounds, t = b.faceTurn || { x: 0 };
+		// (Out the way its face is turned, or else toward the side with more room.)
+		const side = Math.abs(t.x) > 2 ? Math.sign(t.x) : c.x < (e.left + e.right) / 2 ? 1 : -1;
+		b.barf = { at: time, side, open: false };
+		b.barfAgain = time + 2.5;
+	}
+	function stepBarf() {
+		for (const b of buddies.values()) {
+			const g = b.barf;
+			if (!g) continue;
+			const t = time - g.at, r = b.body.o.radius;
+			if (b.dying || b.removed) { b.barf = null; continue; }
+			// Two heaves, held in...
+			if (t < 0.55) {
+				if (Math.abs(t - 0.05) < DT || Math.abs(t - 0.32) < DT) { b.body.squashTop(r * 6, DT); b.body.lean(-g.side * r * 1.5, DT); }
+				continue;
+			}
+			// ...then out it comes, in a gush that tails off.
+			if (!g.open) { g.open = true; quipBack(b, 'bleh!', 1.2); b.body.squashTop(r * 8, DT); b.body.impulse(-g.side * 60, -40, DT); }
+			const out = t - 0.55;
+			if (out < 0.75) {
+				const rate = 70 * (1 - out / 0.75) + 12;
+				// (A stream out of its mouth, out to the side and pouring down:
+				// a gush of big drops first, smaller ones as it tails off.)
+				const left = 1 - out / 0.75;
+				for (let n = Math.floor(rate * DT + Math.random()); n > 0 && barfs.length < 160; n--) {
+					const m = mouthAt(b), sp = 110 + Math.random() * 110 + 170 * left;
+					const a = 0.55 + Math.random() * 0.6; // (out and down: 30° to 65° below level)
+					barfs.push({ x: m.x, y: m.y + r * 0.04, vx: g.side * Math.cos(a) * sp, vy: Math.sin(a) * sp, r: r * (0.03 + (0.03 + Math.random() * 0.035) * left), color: BARF[Math.floor(Math.random() * BARF.length)], born: time, landed: 0, from: b });
+				}
+				continue;
+			}
+			// Done: much lighter, a bit dizzy, still green for a while.
+			b.barf = null;
+			b.queasy = Math.min(b.queasy || 0, 0.5); // (much better: it'll be its own colour again in a couple of seconds)
+			b.relief = time;
+			b.dizzyUntil = time + 1.6;
+			feel(b, -0.2);
+		}
+		for (let i = barfs.length - 1; i >= 0; i--) {
+			const d = barfs[i];
+			if (d.landed) { if (time - d.landed > 2.6) barfs.splice(i, 1); continue; }
+			d.vy += CFG.gravity * DT; d.vx *= 0.995;
+			d.x += d.vx * DT; d.y += d.vy * DT;
+			// (Onto another blob: it sticks there a while, and that blob's not pleased.)
+			const hit = d.from && time - d.born > 0.05 && [...buddies.values()].find((o) => o !== d.from && !o.dying && o.kind !== 'home' && o.body.contains(d.x, d.y));
+			if (hit) {
+				const c = hit.body.centroid();
+				(hit.splats || (hit.splats = [])).push({ dx: d.x - c.x, dy: d.y - c.y, r: d.r * 1.3, color: d.color, at: time });
+				if (hit.splats.length > 14) hit.splats.shift();
+				if (time > (hit.ewwUntil || 0)) quipBack(hit, 'eww!', 1.2);
+				hit.ewwUntil = time + 2.2;
+				barfs.splice(i, 1);
+				continue;
+			}
+			const f = floorAt(d.x, d.y);
+			if (d.vy > 0 && d.y >= f - d.r * 0.3) { d.y = f; d.landed = time; d.w = d.r * (1.8 + Math.min(1.2, Math.abs(d.vx) / 400)); }
+			else if (d.y > H + 50 || d.x < -50 || d.x > W + 50) barfs.splice(i, 1);
+		}
+	}
+	// Barf that landed on a blob: splats on its body (clipped to it), riding
+	// along and fading away.
+	function drawSplats(b) {
+		if (!b.splats || !b.splats.length) return;
+		b.splats = b.splats.filter((p) => time - p.at < 3);
+		const c = b.body.centroid();
+		ctx.save();
+		D.bodyPath(ctx, b.body);
+		ctx.clip();
+		for (const p of b.splats) {
+			ctx.globalAlpha = Math.min(1, (3 - (time - p.at)) / 0.8);
+			ctx.fillStyle = p.color;
+			ctx.beginPath();
+			ctx.ellipse(c.x + p.dx, c.y + p.dy, p.r * 1.2, p.r, 0, 0, Math.PI * 2);
+			ctx.fill();
+		}
+		ctx.restore();
+	}
+	// Flying: round drops. Landed: flat splats that shrink away.
+	function drawBarf() {
+		for (const d of barfs) {
+			if (!d.landed && d.from && time - d.born < 0.3 && d.from.body.contains(d.x, d.y)) continue; // (still coming out of its mouth)
+			ctx.fillStyle = d.color;
+			ctx.beginPath();
+			if (!d.landed) ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+			else {
+				const k = Math.max(0, Math.min(1, (2.6 - (time - d.landed)) / 0.8));
+				// (a puddle: a low dome on the floor, flat side down)
+				ctx.ellipse(d.x, d.y, d.w * k, d.r * 0.75 * k + 0.5, 0, Math.PI, Math.PI * 2);
+			}
+			ctx.fill();
+		}
+	}
+
 	// --- Snack jar: your usage limits ----------------------------------------
 	// A glass cookie jar on the floor with as many cookies as what's left of
 	// your usage limit (twenty when it's fresh, one fewer for each 5% used:
@@ -933,7 +1067,7 @@
 	// worried; empty (the limit hit), they look hungry or nap until it
 	// resets, and it fills up again with cookies tumbling in.
 	const Snack = globalThis.BlaubeSnack, Jar = globalThis.BlaubeJar;
-	const jar = { x: 0, y: 0, vx: 0, vy: 0, angle: 0, va: 0, held: null, placed: false, spot: null, lim: null, noPlan: false, checking: true, level: null, shown: 1, lid: 0, lidV: 0, lidOpenUntil: 0, rattle: 0, count: null, owed: 0, owedSince: 0, nextThrow: 0, thrown: 0, checkAt: 0, refillUntil: 0, ledge: null, still: 0, saved: null, hoverSeen: -9, body: null };
+	const jar = { x: 0, y: 0, vx: 0, vy: 0, angle: 0, va: 0, held: null, placed: false, spot: null, lim: null, noPlan: false, checking: true, level: null, shown: 1, lid: 0, lidV: 0, lidOpenUntil: 0, rattle: 0, count: null, bits: null, ax: 0, ay: 0, pvx: 0, pvy: 0, bitsAwake: 0, bitsSpeed: 0, owed: 0, owedSince: 0, nextThrow: 0, thrown: 0, checkAt: 0, refillUntil: 0, ledge: null, still: 0, saved: null, hoverSeen: -9, body: null };
 	const cookies = [], crumbs = [], tumbles = [];
 	const jarOn = () => CFG.snackJar !== 'Off';
 	const jarH = () => 150 * CFG.size, jarW = () => jarH() * 0.78;
@@ -973,7 +1107,7 @@
 	function stepJar() {
 		if (!jarOn() || !W) {
 			// (Hidden: it keeps count quietly, nothing thrown.)
-			cookies.length = 0; tumbles.length = 0; jar.owed = 0;
+			cookies.length = 0; tumbles.length = 0; jar.owed = 0; jar.bits = null;
 			jar.level = Snack.level(jar.lim, Date.now());
 			if (jar.level != null) jar.count = Snack.cookies(jar.level);
 			return;
@@ -1041,8 +1175,34 @@
 			jar.saved = { x: Math.round(jar.x), y: Math.round(jar.y) };
 			if (api.setJarSpot) api.setJarSpot(jar.saved);
 		}
+		stepBits();
 		stepCookies();
 		stepJarLife();
+	}
+
+	// The cookies inside, tumbling (jar.js's stepBits): pulled by gravity
+	// less the jar's own acceleration, so shaking it, tipping it or a hard
+	// landing sends them about; awake only for a moment after it moves, so a
+	// still jar's pile stays exactly still.
+	function stepBits() {
+		const n = jar.count == null ? Snack.CAP : jar.count, w = jarW(), h = jarH();
+		if (!jar.bits) jar.bits = Jar.bitsFor(w, h, n);
+		// (Kept to the count: one gone (thrown, or a drop) is the top one; one
+		// more without tumbling in, at the top.)
+		while (jar.bits.length > n) jar.bits.splice(Jar.topBit(jar.bits), 1);
+		if (jar.bits.length < n) { const fill = Jar.bitsFor(w, h, n); jar.bits.push(...fill.slice(jar.bits.length)); }
+		// Its acceleration, smoothed a little (a held jar follows the cursor in
+		// steps), and how hard that is shaking them, beyond plain gravity.
+		const ax = (jar.vx - jar.pvx) / DT, ay = (jar.vy - jar.pvy) / DT;
+		jar.pvx = jar.vx; jar.pvy = jar.vy;
+		const lim = CFG.gravity * 6, k = Math.min(1, DT * 30);
+		jar.ax += (Math.max(-lim, Math.min(lim, ax)) - jar.ax) * k;
+		jar.ay += (Math.max(-lim, Math.min(lim, ay)) - jar.ay) * k;
+		if (Math.hypot(jar.ax, jar.ay) > CFG.gravity * 0.25 || Math.abs(jar.va) > 0.6 || tumbles.length) jar.bitsAwake = time + 1.2;
+		if (time > jar.bitsAwake) { if (jar.bitsSpeed) { Jar.stillBits(jar.bits); jar.bitsSpeed = 0; } return; }
+		const gx = -jar.ax, gy = CFG.gravity - jar.ay, a = -jar.angle, cos = Math.cos(a), sin = Math.sin(a);
+		jar.bitsSpeed = Jar.stepBits(jar.bits, w, h, gx * cos - gy * sin, gx * sin + gy * cos, DT);
+		if (jar.bitsSpeed > 40) jar.bitsAwake = Math.max(jar.bitsAwake, time + 0.3);
 	}
 
 	// A refill, the limit hit, or nearly empty.
@@ -1127,7 +1287,9 @@
 		const have = jar.count == null ? Snack.CAP : jar.count;
 		if ((!to && !toss) || jar.held || !jarOn() || have <= 0) return false;
 		const j = { x: jar.x, y: jar.y, w: jarW(), h: jarH(), angle: jar.angle };
-		const top = Jar.cookieAt(j, have - 1), from = Jar.mouthOf(j);
+		const i = jar.bits && jar.bits.length ? Jar.topBit(jar.bits) : -1, bit = i >= 0 ? jar.bits[i] : null;
+		const top = bit ? Object.assign(Jar.toWorld(j, bit), { r: Jar.pile(j.w, j.h).r, a: bit.a + jar.angle, tone: bit.tone }) : Jar.cookieAt(j, have - 1), from = Jar.mouthOf(j);
+		if (bit) jar.bits.splice(i, 1);
 		from.y -= top.r;
 		const m = to ? mouthAt(to) : { x: jar.x + (Math.random() < 0.5 ? -1 : 1) * jarW() * (1 + Math.random()), y: jar.y - 10 };
 		const T = 0.85 + Math.min(0.5, Math.hypot(m.x - from.x, m.y - from.y) / 1600);
@@ -1205,11 +1367,20 @@
 			const c = tumbles[i];
 			if (time < c.at) continue;
 			c.vy += CFG.gravity * 0.6 * DT; c.y += c.vy * DT; c.a += c.va * DT;
-			// (each one lands on the pile, where the next one goes)
-			const spot = Jar.cookieAt({ x: jar.x, y: jar.y, w: jarW(), h: jarH(), angle: jar.angle }, jar.count == null ? Snack.CAP : jar.count);
-			const inside = c.y > jar.y - jarH() * 0.85; // (in over the top, then onto its place)
-			c.x += ((inside ? spot.x : jar.x) - c.x) * Math.min(1, DT * (inside ? 14 : 4));
-			if (c.y > spot.y) { tumbles.splice(i, 1); jar.count = Math.min(Snack.CAP, (jar.count || 0) + 1); jar.rattle = Math.max(jar.rattle, 0.25); }
+			// (in over the top: from there it's one of the cookies inside, and
+			// drops onto the pile itself)
+			const j = { x: jar.x, y: jar.y, w: jarW(), h: jarH(), angle: jar.angle }, mouth = Jar.mouthOf(j);
+			c.x += (jar.x - c.x) * Math.min(1, DT * 4);
+			if (c.y > mouth.y + jarH() * 0.12) {
+				tumbles.splice(i, 1);
+				jar.count = Math.min(Snack.CAP, (jar.count || 0) + 1);
+				if (jar.bits && jar.bits.length < jar.count) {
+					const r = Jar.pile(j.w, j.h).r, at = Jar.toJar(j, c), inn = Jar.shape(j.w, j.h).inside;
+					const y = Math.max(inn.y + r, at.y), x = Math.max(inn.x + r, Math.min(inn.x + inn.w - r, at.x));
+					jar.bits.push({ x, y, ox: x, oy: y - c.vy * DT, a: c.a, tone: ['#DDA35F', '#D39752', '#E4AE6C'][jar.count % 3] });
+					jar.bitsAwake = time + 1.2;
+				}
+			}
 		}
 	}
 	function crumble(x, y, n) {
@@ -1218,7 +1389,7 @@
 
 	function drawJar() {
 		if (!jarOn() || !jar.placed) return;
-		Jar.drawJar(ctx, { x: jar.x, y: jar.y, w: jarW(), h: jarH(), angle: jar.angle, count: jar.count == null ? Snack.CAP : jar.count, lid: jar.lid, rattle: jar.rattle, t: time });
+		Jar.drawJar(ctx, { x: jar.x, y: jar.y, w: jarW(), h: jarH(), angle: jar.angle, bits: jar.bits, count: jar.count == null ? Snack.CAP : jar.count, lid: jar.lid, rattle: jar.rattle, t: time });
 	}
 	// In front of the slimes: what's flying.
 	function drawSnacks() {
@@ -1552,6 +1723,7 @@
     glideLedges();
     stepPets();
 		stepJar();
+		stepBarf();
     stepBattery();
     stepChoir();
     for (const b of [...buddies.values()]) {
@@ -1596,6 +1768,8 @@
       body.areaScale *= 1 - CFG.sleepSlump * b.sleep;
       // Just gulped a helper back in: a swell that wobbles down.
       if (b.puff) body.areaScale *= 1 + b.puff; // (puffed up like a balloon)
+      queasyStep(b);
+      if (b.sick) body.areaScale *= 1 + 0.2 * b.sick; // (green, cheeks full, holding it in: swollen)
       if (b.gulpAt && time - b.gulpAt < 1.2) { const t = time - b.gulpAt; body.areaScale *= 1 + 0.1 * CFG.gulp * Math.sin(t * 9) * Math.exp(-t * 3); }
       body.o.pressure = Math.min(0.85, CFG.pressure * trait(b, 'firm') * (1 + CFG.contextTighten * b.fill)) * (1 - 0.5 * b.droop) * (1 - 2 * CFG.sleepSlump * b.sleep);
       if (sys.low > 0) { body.areaScale *= 1 - 0.06 * sys.low; body.o.pressure *= 1 - 0.35 * sys.low; }
@@ -1606,6 +1780,7 @@
       body.o.edgeStiffness = CFG.edgeStiffness + 0.4 * firm;
 			// Blown up like a balloon: taut as a drum, round, no sag or wobble.
 			if (b.taut) { body.o.pressure = Math.max(body.o.pressure, 0.75 * b.taut); body.o.shapeStiffness += 0.05 * b.taut; }
+			if (b.sick) body.o.pressure = Math.max(body.o.pressure, 0.6 * b.sick);
       liven(b);
       const pre = body.velocity(DT);
       b.vel = pre; // (others watch it fly; see spectate)
@@ -2975,11 +3150,12 @@
     for (const [axis, v] of [['x', g.vx], ['y', g.vy]]) {
       if (Math.abs(v) < 600) continue;
       const dir = Math.sign(v), key = 'shake' + axis;
-      if (b[key] && b[key] !== dir) flips.push(time);
+      if (b[key] && b[key] !== dir) { flips.push(time); b.queasy = Math.min(1.2, (b.queasy || 0) + 0.05 * CFG.queasy); b.shookAt = time; }
       b[key] = dir;
     }
     while (flips.length && time - flips[0] > 1.5) flips.shift();
     if (CFG.shakeDizzy > 0 && flips.length >= CFG.shakeDizzy) { b.dizzyUntil = time + 1.8; flips.length = 0; feel(b, -0.35); }
+    if (b.queasy >= 1 && !b.barf && time > (b.barfAgain || 0)) barfNow(b);
     // Swung gently from side to side, though, it loves it: "wheee!"
     if (CFG.swing > 0 && Math.abs(g.vx) > 150 && Math.abs(g.vx) < 600) {
       const dir = Math.sign(g.vx), sw = b.swings || (b.swings = []);
@@ -5886,7 +6062,10 @@
     const speed = Math.hypot(v.x, v.y);
     let expression = 'normal', mouth = 'smile';
     let calmWork = false; // (its everyday working face: see peeking, below)
-    if (time < b.dizzyUntil) { expression = 'dizzy'; mouth = 'flat'; }
+    if (b.barf) { expression = 'pained'; mouth = b.barf.open ? 'yawn' : 'puffed'; } // (heaving, then out it comes)
+    else if ((b.sick || 0) > 0.4) { expression = 'dizzy'; mouth = 'puffed'; } // (green, holding it in)
+    else if (time < (b.ewwUntil || 0)) { expression = 'pained'; mouth = 'wobble'; } // (barfed on)
+    else if (time < b.dizzyUntil) { expression = 'dizzy'; mouth = 'flat'; }
     else if (time < (b.raspUntil || 0) && !body.grab) { expression = 'annoyed'; mouth = 'raspberry'; } // (pbbbt!)
     else if (b.balloon && b.balloon.stage === 'zip') { expression = 'happy'; mouth = 'raspberry'; } // (the air rushing out)
 		else if (b.balloon && b.gulping) { expression = 'concentrate'; mouth = 'o'; } // (gulping air in)
@@ -6319,10 +6498,12 @@
     drawSeason(true);
 		if (!jar.held) drawJar(); // (on the floor, behind the slimes)
     for (const b of list) {
-      Looks.drawLook(ctx, b, 'back', b.color);
-      D.drawBody(ctx, b.body, b.color);
-      Looks.drawLook(ctx, b, 'front', b.color);
+      const color = sickColor(b);
+      Looks.drawLook(ctx, b, 'back', color);
+      D.drawBody(ctx, b.body, color);
+      Looks.drawLook(ctx, b, 'front', color);
       D.drawFlush(ctx, b.body, ramp(b.fill || 0, CFG.redAt, 1), CFG, b.faceTurn);
+      drawSplats(b);
       const face = faceFor(b);
       if (b.body.o.radius > 12) D.drawFace(ctx, b.body, face);
       b.faceTurn = { x: face.turnX || 0, y: face.turnY || 0 };
@@ -6354,6 +6535,7 @@
     drawPets();
 		if (jar.held) drawJar(); // (carried: in front)
 		drawSnacks();
+		drawBarf();
     drawBubbles();
     drawHearts();
     for (const b of list) if (b.glasses) D.drawGlasses(ctx, b.glasses.x, b.glasses.y, b.glasses.r, b.glasses.a, CFG);
@@ -6701,7 +6883,7 @@
   // slime, most of its skin, not the odd quick bit of it).
   let skin = new Float64Array(64);
   function stageSpeed() {
-    if (drag || pet.target || rockets.length || sparks.length || snowballs.length || cookies.length || tumbles.length || (crumbs.length && crumbs.some((c) => !c.landed))) return Infinity;
+    if (drag || pet.target || barfs.some((d) => !d.landed) || rockets.length || sparks.length || snowballs.length || cookies.length || tumbles.length || (crumbs.length && crumbs.some((c) => !c.landed))) return Infinity;
     const near = Math.hypot(mouse.vx, mouse.vy) > 60; // (the cursor moving: near a slime, see below)
     let speed = 0;
     const dt = Math.max(1 / 240, vsync);
@@ -6710,7 +6892,7 @@
       p.calmX = p.x; p.calmY = p.y;
     }
     for (const u of flutters) speed = Math.max(speed, Math.hypot(u.vx, u.vy));
-		speed = Math.max(speed, Math.hypot(jar.vx, jar.vy), Math.abs(jar.va) * 60, Math.abs(jar.lidV) * 40, jar.rattle > 0.05 ? Infinity : 0);
+		speed = Math.max(speed, Math.hypot(jar.vx, jar.vy), Math.abs(jar.va) * 60, Math.abs(jar.lidV) * 40, jar.bitsSpeed, jar.rattle > 0.05 && !jar.bits ? Infinity : 0);
     for (const b of buddies.values()) {
       const s = b.body;
       if (s.grab || b.splitting || b.dying) return Infinity;
@@ -6759,6 +6941,8 @@
 		fn(jar, TW_PET);
 		for (const k of cookies) fn(k, TW_XYA);
 		for (const c of tumbles) fn(c, TW_XYA);
+		if (jar.bits) for (const c of jar.bits) fn(c, TW_XYA);
+		for (const d of barfs) if (!d.landed) fn(d, TW_XY);
     for (const u of bubbles) fn(u, TW_BUBBLE);
     for (const f of flakes) fn(f, TW_XYA);
     for (const u of flutters) fn(u, TW_FLUTTER);

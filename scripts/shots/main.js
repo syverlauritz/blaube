@@ -325,6 +325,22 @@ const SCENES = {
 		size: [900, 560],
 		motion: { frames: 28, every: 50, drop: 0, orbit: true, hopAt: 14 },
 	},
+	// Held up and shaken hard for a while, then held still: dizzy, then
+	// swollen and green, then it barfs.
+	queasy: {
+		sessions: [session('q1', 'blaube', 'idle')],
+		wait: 3000,
+		size: [900, 560],
+		motion: { frames: 90, every: 45, drop: 8, hard: 52 },
+	},
+	// The same with others standing by, to get some on them.
+	queasyCrowd: {
+		sessions: [session('q1', 'kalkis', 'idle', { color: '#5B8DEF' }), session('q2', 'blaube', 'idle'), session('q3', 'web', 'idle', { color: '#B07CE8' })],
+		config: { snackJar: 'Off' },
+		wait: 3000,
+		size: [900, 560],
+		motion: { frames: 85, every: 45, drop: 6, hard: 52 },
+	},
 	// Shaken around by the mouse, then dropped: do the looks stay on and
 	// swing smoothly?
 	shake: {
@@ -879,6 +895,9 @@ SCENES.jarHover = jarScene(usage(0.62, 0.41, [['seven_day_opus', 0.12]]), { mous
 SCENES.jarUnknown = jarScene(null, { mouse: [770, 470] });
 SCENES.jarCookie = jarScene(usage(0.62, 0.41), { sessions: [session('a', 'blaube', 'working')], jar: { x: 700, y: 516 }, motion: { frames: 36, every: 60, drop: 0, still: true, hopAt: [], jsAt: { 0: 'cookieFar', 1: 'cookie' } } });
 SCENES.jarClose = jarScene(usage(0.45, 0.2), { config: { size: 2 }, jar: { x: 1050, y: 516 }, size: [1200, 560] });
+// Picked up and shaken hard, then put down: the cookies tumble about inside
+// and settle into a new pile.
+SCENES.jarShake = jarScene(usage(0.3, 0.2), { sessions: [session('a', 'blaube', 'idle')], jar: { x: 700, y: 516 }, motion: { frames: 22, every: 45, drop: 14, jarShake: true } });
 SCENES.jarLedge = jarScene(usage(0.3, 0.2), { window: [420, 300], jar: { x: 700, y: 300 } });
 
 // The Blobs overview by itself, with a made-up state (scene.blobs).
@@ -1141,6 +1160,10 @@ async function shootMotion(win, name, m) {
 	const rest = Math.min(...(await dents()));
 	const looks = () => js(`[...__blaube.buddies.values()].filter((b) => b.lookState).map((b) => ({ look: b.look, a: b.lookState.a, t: b.lookState.t, off: BlaubeLooks.offTop(b) }))`);
 	const drawn = () => js(`[...__blaube.buddies.values()].filter((b) => b.lookDrawn).map((b) => Object.assign({ look: b.look }, b.lookDrawn))`);
+	if (m.jarShake) {
+		const j = await js(`(() => { const j = __blaube.jar(); return { x: j.x, y: j.y }; })()`);
+		start.x = j.x; start.y = j.y - 60;
+	}
 	if (!m.orbit && !m.still) {
 		mouse('mouseMove', start.x, start.y);
 		mouse('mouseDown', start.x, start.y);
@@ -1220,6 +1243,12 @@ async function shootMotion(win, name, m) {
 			if (i === m.hopAt) win.webContents.send('fire', 'command', 'hop');
 		} else if (m.shove) {
 			if (i < m.frames) mouse('mouseMove', start.x + Math.min(1, i / (m.frames * 0.5)) * (win.getContentSize()[0] * 0.55 - start.x), start.y + 10);
+		} else if (m.jarShake) {
+			if (i < m.frames) mouse('mouseMove', start.x + Math.sin(i * 1.5) * 150, start.y - 90 + Math.cos(i * 1.9) * 40);
+		} else if (m.hard) {
+			// Hard back and forth (a shake a beat), then held still up there.
+			if (i < m.hard) mouse('mouseMove', start.x + ((i >> 1) % 2 ? -150 : 150), start.y - 160);
+			else if (i === m.hard) mouse('mouseMove', start.x, start.y - 160);
 		} else if (i < m.frames) mouse('mouseMove', start.x + Math.sin(i * 0.6) * 170, start.y - 50 - i * 5); // about as fast as a hand
 		if (!m.orbit && !m.still && i === m.frames) mouse('mouseUp', start.x, start.y - 60 - i * 6);
 		await sleep(m.every);
