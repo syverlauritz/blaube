@@ -122,6 +122,11 @@ ships that breaks a "must".
   (the creative director's call, over Must 6); let go, they ease back upright.
   Landings and skids are physics: no hidden braking; it only plants its
   feet once it's nearly still.
+- The model shows in the face, never in the body: eyes are always solid
+  black, only their shape changes, and each model has its own blush. Opus
+  is the original look (round dots, soft oval blush); Sonnet tall eyes and
+  three slanted blush lines; Haiku small eyes and freckles; Fable wide eyes
+  and little hearts. Helpers look like their mother.
 - Choir mode: every blob sings in parts, fuller with more blobs, eyes
   shut, swaying, notes floating up. Songs are public domain only.
 - A full context makes a blob round and taut, not just bigger.

@@ -253,26 +253,14 @@
           }
           if (!s.eyeWhites) {
             // Solid eyes; the whole face turns to look around instead.
-            // face.eyeKind picks a style (to tell models apart): 'tall'
-            // ovals, a white 'glint', a 'sparkle' (a big glint and a small
-            // one), or plain dots.
+            // face.eyeKind picks a shape (to tell models apart), always
+            // solid ink: round 'dot's, 'tall' ovals, 'wide' ones, or 'small'.
             const kind = face.eyeKind || 'dot';
-            const tall = kind === 'tall' ? 1.45 : 1, narrow = kind === 'tall' ? 0.8 : 1;
+            const [kw, kh] = { tall: [0.8, 1.45], wide: [1.35, 0.75], small: [0.72, 0.72] }[kind] || [1, 1];
             ctx.fillStyle = ink;
             ctx.beginPath();
-            ctx.ellipse(x, y, ew * 0.8 * narrow, eh * 0.8 * tall * open, 0, 0, Math.PI * 2);
+            ctx.ellipse(x, y, ew * 0.8 * kw, eh * 0.8 * kh * open, 0, 0, Math.PI * 2);
             ctx.fill();
-            if ((kind === 'glint' || kind === 'sparkle') && open > 0.3) {
-              ctx.fillStyle = '#fff';
-              ctx.beginPath();
-              ctx.arc(x - ew * 0.22, y - eh * 0.28 * open, ew * (kind === 'sparkle' ? 0.3 : 0.24), 0, Math.PI * 2);
-              ctx.fill();
-              if (kind === 'sparkle') {
-                ctx.beginPath();
-                ctx.arc(x + ew * 0.28, y + eh * 0.3 * open, ew * 0.13, 0, Math.PI * 2);
-                ctx.fill();
-              }
-            }
             if (s.eyeShine && open > 0.3 && kind === 'dot') {
               ctx.fillStyle = '#fff';
               ctx.beginPath();

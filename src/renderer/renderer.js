@@ -6351,6 +6351,7 @@
       // Held, the face (and what it wears) turns with the body as it hangs
       // and swings from the cursor; let go, it eases back upright.
       blow: !!(b.balloon && b.balloon.stage === 'zip'), // (the air rushing out past its tongue)
+      ...modelLook(b),
       turnAmt: (body.turnAmt = (body.turnAmt || 0) + ((body.grab ? 1 : 0) - (body.turnAmt || 0)) * ease(body.grab ? 0.04 : 0.025)),
     };
   }
@@ -6437,6 +6438,16 @@
   }
 
   // "claude-opus-5-5" -> "Opus 5.5", "claude-haiku-4-5-20251001" -> "Haiku 4.5".
+  // Which model a session runs on shows in its face: its eye shape and its
+  // blush (all eyes stay black). Opus is the original look; a helper looks
+  // like its mother.
+  const MODEL_LOOKS = { opus: {}, sonnet: { eyeKind: 'tall', cheekKind: 'lines' }, haiku: { eyeKind: 'small', cheekKind: 'freckles' }, fable: { eyeKind: 'wide', cheekKind: 'hearts' } };
+  function modelLook(b) {
+    const m = b.kind === 'child' ? b.mother : b;
+    const id = (m && m.session && m.session.info && m.session.info.model) || '';
+    const fam = (/^claude-([a-z]+)/.exec(String(id)) || [])[1];
+    return MODEL_LOOKS[fam] || {};
+  }
   function modelName(id) {
     const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(String(id || ''));
     if (!m) return '';

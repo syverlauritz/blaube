@@ -21,8 +21,7 @@ app.whenReady().then(async () => {
 function draw() {
   const CFG = Object.assign({}, BlaubeConfig.DEFAULTS);
   const rows = [
-    ['Eyes', [['dot', 'oval', 'dots (now)'], ['glint', 'oval', 'glint'], ['sparkle', 'oval', 'sparkle'], ['tall', 'oval', 'tall']]],
-    ['Blush', [['dot', 'oval', 'ovals (now)'], ['dot', 'lines', 'lines'], ['dot', 'freckles', 'freckles'], ['dot', 'hearts', 'hearts']]],
+    ['', [['dot', 'oval', 'Opus'], ['tall', 'lines', 'Sonnet'], ['small', 'freckles', 'Haiku'], ['wide', 'hearts', 'Fable']]],
   ];
   const cw = 300, rh = 300, c = document.createElement('canvas');
   c.width = cw * 4; c.height = rh * rows.length;
@@ -38,7 +37,7 @@ function draw() {
     BlaubeDraw.drawBody(ctx, body, CFG.color);
     BlaubeDraw.drawFace(ctx, body, { expression: 'normal', mouth: 'smile', blink: 0, look: { x: x0 + cw / 2, y: floor + 400 }, lookAmount: 0, scale: CFG.faceScale, style: CFG, bodyColor: CFG.color, eyeKind, cheekKind });
     ctx.fillStyle = '#e8e8ea'; ctx.font = '600 20px -apple-system, sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(`${title}: ${label}`, x0 + cw / 2, floor + 45);
+    ctx.fillText(title ? `${title}: ${label}` : label, x0 + cw / 2, floor + 45);
   }));
   return c.toDataURL('image/png');
 }
