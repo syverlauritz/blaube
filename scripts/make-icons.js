@@ -43,7 +43,10 @@ function draw(size, mode) {
   for (let i = 0; i < 1200; i++) body.step(1 / 120);
   // Made exactly symmetric (the skin settles a touch to one side): each
   // point and its mirror image across the middle, averaged.
-  const mid = body.centroid().x, xs = Array.from(body.px), ys = Array.from(body.py);
+  // (Soft as it is, it may have rolled off to one side: back to the middle.)
+  const off = size / 2 - body.centroid().x;
+  for (let i = 0; i < body.n; i++) body.px[i] += off;
+  const mid = size / 2, xs = Array.from(body.px), ys = Array.from(body.py);
   const ang = (i) => Math.atan2(ys[i] - (floor - r), xs[i] - mid);
   for (let i = 0; i < body.n; i++) {
     const want = Math.PI - ang(i);
