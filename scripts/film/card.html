@@ -1,0 +1,25 @@
+<!doctype html>
+<!-- A title card for the film: cream paper, a line in Magritte's hand, and
+     maybe a small plain line under it. ?text=…&size=…&sub=… -->
+<html><head><meta charset="utf-8">
+<style>
+	@font-face { font-family: 'Aurore'; src: url('LaBelleAurore.ttf'); }
+	html, body { margin: 0; height: 100%; background: #efe4cc; overflow: hidden; user-select: none; cursor: default; }
+	body { display: flex; flex-direction: column; align-items: center; justify-content: center; color: #141414; }
+	#t { font-family: 'Aurore', cursive; white-space: nowrap; line-height: 1.1; padding-top: 0.12em; }
+	#s { font-family: 'Segoe UI', sans-serif; font-size: 34px; color: #3a3a3a; margin-top: 8px; white-space: pre-line; text-align: center; line-height: 1.4; }
+</style></head>
+<body><div id="t"></div><div id="s"></div>
+<script>
+	const q = new URLSearchParams(location.search);
+	const t = document.getElementById('t'), s = document.getElementById('s');
+	t.textContent = q.get('text') || '';
+	t.style.fontSize = (q.get('size') || 90) + 'px';
+	s.textContent = q.get('sub') || '';
+	if (!s.textContent) s.remove();
+	// (too wide for the card: smaller, once the font is in)
+	document.fonts.ready.then(() => {
+		let px = parseFloat(t.style.fontSize);
+		while (t.scrollWidth > innerWidth * 0.9 && px > 20) t.style.fontSize = (px -= 2) + 'px';
+	});
+</script></body></html>

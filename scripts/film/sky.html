@@ -1,0 +1,47 @@
+﻿<!doctype html>
+<!-- The wallpaper for the film: a soft Magritte sky, 1440x2560. Rendered to
+     sky.png with headless Chrome (see scripts/film/README.md). -->
+<html><head><meta charset="utf-8">
+<style>html, body { margin: 0; background: #7fa9d6; } canvas { display: block; }</style>
+</head><body><canvas id="c" width="1440" height="2560"></canvas>
+<script>
+	const c = document.getElementById('c'), g = c.getContext('2d'), W = c.width, H = c.height;
+	// (the same clouds every time)
+	let seed = 7;
+	const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+	const sky = g.createLinearGradient(0, 0, 0, H);
+	sky.addColorStop(0, '#5f8fc6');
+	sky.addColorStop(0.55, '#8fb6dd');
+	sky.addColorStop(1, '#cfe0ee');
+	g.fillStyle = sky;
+	g.fillRect(0, 0, W, H);
+	// A cloud: one soft white heap of puffs (bigger in the middle, a flat
+	// base), drawn as one shape so the puffs melt together, then a touch of
+	// grey-blue on its underside, as Magritte paints them.
+	function cloud(cx, cy, w, h) {
+		const o = document.createElement('canvas'); o.width = W; o.height = H;
+		const q = o.getContext('2d');
+		q.fillStyle = '#fff';
+		const n = Math.round(w / 40);
+		for (let i = 0; i < n; i++) {
+			const t = rnd(), x = cx - w / 2 + t * w, hump = Math.sin(t * Math.PI);
+			const r = h * (0.25 + 0.4 * hump) * (0.75 + rnd() * 0.5);
+			const y = Math.min(cy - r * 0.4, cy - hump * h * 0.45 * rnd());
+			q.beginPath(); q.arc(x, y, r, 0, Math.PI * 2); q.fill();
+		}
+		q.fillRect(cx - w * 0.42, cy - h * 0.25, w * 0.84, h * 0.25); // (the flat base)
+		q.globalCompositeOperation = 'source-atop';
+		const shade = q.createLinearGradient(0, cy - h * 0.9, 0, cy + h * 0.2);
+		shade.addColorStop(0, 'rgba(255,255,255,0)');
+		shade.addColorStop(0.55, 'rgba(232,238,246,1)');
+		shade.addColorStop(1, 'rgba(192,206,226,1)');
+		q.fillStyle = shade; q.fillRect(0, cy - h * 1.2, W, h * 2.6);
+		g.save(); g.filter = 'blur(7px)'; g.drawImage(o, 0, 0); g.restore();
+	}
+	cloud(330, 420, 520, 210);
+	cloud(1180, 860, 460, 170);
+	cloud(260, 1420, 380, 140);
+	cloud(1080, 1820, 600, 220);
+	cloud(420, 2280, 420, 150);
+	document.title = 'done';
+</script></body></html>

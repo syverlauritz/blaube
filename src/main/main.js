@@ -78,7 +78,10 @@ const PORT = Number(process.env.BLAUBE_PORT) || DEFAULT_PORT;
 // window fully transparent), never catching the real mouse or taking focus,
 // with no tray icon, its own data folder, and none of your real sessions.
 // The script is run with the app's insides once it's up (scripts/e2e).
-const TEST = process.env.BLAUBE_TEST || '';
+// Film mode (BLAUBE_FILM=<script>) is test mode that can be seen and heard,
+// for recording a demo (scripts/film).
+const FILM = process.env.BLAUBE_FILM || '';
+const TEST = process.env.BLAUBE_TEST || FILM;
 // A slip somewhere (a helper program that won't start, say) is logged, not
 // thrown in your face as an error box; Blaube carries on.
 process.on('uncaughtException', (e) => console.error('[blaube] uncaught:', e && e.stack || e));
@@ -643,7 +646,7 @@ function hideTalk(switching = false) {
 function lightTalk(id, drawn) {
   clearTimeout(talkLight);
   if (!talkWin || talkWin.isDestroyed() || !talkWin.isVisible() || talkId !== id) return;
-  if (TEST) { // (tests are never seen: they note it instead)
+  if (TEST && !FILM) { // (tests are never seen: they note it instead)
     if (!global.__blaubeTalkLit && global.__blaubeTalkFade) global.__blaubeTalkFade.push({ id, after: Date.now() - talkShownAt, drawn });
     global.__blaubeTalkLit = true;
   } else talkWin.setOpacity(1);
@@ -1155,7 +1158,7 @@ function createWindow() {
   applyOnTop();
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.setIgnoreMouseEvents(true, { forward: true });
-  if (TEST) { win.setOpacity(0); win.webContents.setAudioMuted(true); } // tests are neither seen nor heard
+  if (TEST && !FILM) { win.setOpacity(0); win.webContents.setAudioMuted(true); } // tests are neither seen nor heard
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'), TEST ? { query: { debug: '1' } } : undefined);
 
   // The screen changed shape (the Dock, a resolution): the box stays where it
@@ -4080,7 +4083,10 @@ app.whenReady().then(async () => {
   if (process.env.BLAUBE_DEMO) runDemo();
   if (TEST) {
     const run = require(path.resolve(TEST));
-    Promise.resolve(run({ app, win, tracker, inbox, owned, startSession, PORT, talk: () => talkWin, talkId: () => talkId, pinned: () => pinnedTalks, log }))
+    Promise.resolve(run({ app, win, tracker, inbox, owned, startSession, PORT, talk: () => talkWin, talkId: () => talkId, pinned: () => pinnedTalks, log,
+			// (film: which screen, the windows it puts up as ledges, made-up usage and sizes)
+			moveToDisplay, otherWindows: (list) => { otherWindows = { list, at: Date.now() }; sendLedges(); }, demoTokens, demoEfforts, pickedModel, pushState,
+			talkSize: (w, h) => { prefs.talkSizes = Object.assign({}, prefs.talkSizes, { [talkSizeKey(currentDisplay().workArea)]: { w, h } }); } }))
       .then((code) => app.exit(code || 0), (e) => { console.error(e); app.exit(1); });
   }
 });

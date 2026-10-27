@@ -690,7 +690,9 @@
 
   // The shots script (scripts/shots) opens the window with ?debug to look
   // inside while it plays a scene.
-  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, hearts: () => hearts, now: () => time, sys, spoken, input: { down: (e) => onDown(e), move: (e) => onMove(e), up: (e) => onUp(e) }, ownMouse: false, ghost: (b, o) => ghostNow(b, o), ledges: () => ledges, roomFor: (b) => roomFor(b), mover: () => mover, jar: () => jar, cookies: () => cookies, throwCookie: (key) => throwCookie(key ? buddies.get(key) : undefined), jarLines: () => Snack.lines(jar.lim, Date.now(), jar), jarOn: () => jarOn(), mouthAt: (b) => mouthAt(b), flutter: (bat) => addFlutter(bat), flutters: () => flutters };
+  if (new URLSearchParams(location.search).has('debug')) globalThis.__blaube = { buddies, pets, hearts: () => hearts, now: () => time, sys, spoken, input: { down: (e) => onDown(e), move: (e) => onMove(e), up: (e) => onUp(e) }, ownMouse: false, ghost: (b, o) => ghostNow(b, o), ledges: () => ledges, roomFor: (b) => roomFor(b), mover: () => mover, jar: () => jar, cookies: () => cookies, throwCookie: (key) => throwCookie(key ? buddies.get(key) : undefined), jarLines: () => Snack.lines(jar.lim, Date.now(), jar), jarOn: () => jarOn(), mouthAt: (b) => mouthAt(b), flutter: (bat) => addFlutter(bat), flutters: () => flutters,
+		// (film: the games and tricks on cue, as Show off starts them)
+		play: { trick: (b, copied) => startTrick(b, copied), flip: (b) => { b.forceFlip = true; startTrick(b, false); }, tower: (b, o) => towerNow(b, o), frog: (b, o) => frogNow(b, o), rope: (j, p, q) => ropeNow(j, p, q), pile: (b, others) => pileNow(b, others), tag: (b, o) => tagNow(b, o), balloon: (b) => balloonNow(b), roll: (b) => rollNow(b), heart: (b) => { b.shape = { at: time }; }, spin: (b) => throwSpin(b), season: (k) => { seasonOverride = k; } } };
   const petSize = () => 34 * CFG.size;
 
   function syncPets(sessions) {
