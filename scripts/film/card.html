@@ -16,6 +16,7 @@
 	t.textContent = q.get('text') || '';
 	t.style.fontSize = (q.get('size') || 90) + 'px';
 	s.textContent = q.get('sub') || '';
+	s.style.fontSize = (q.get('subSize') || 34) + 'px';
 	if (!s.textContent) s.remove();
 	// (too wide for the card: smaller, once the font is in)
 	document.fonts.ready.then(() => {

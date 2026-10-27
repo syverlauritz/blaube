@@ -71,6 +71,18 @@
         F4:1:How F4:1:I E4:1:won E4:1:der D4:1:what D4:1:you C4:2:are`,
       chords: 'C:4 F:2 C:2 F:2 C:2 G:2 C:2 C:2 F:2 C:2 G:2 C:2 F:2 C:2 G:2 C:4 F:2 C:2 F:2 C:2 G:2 C:2',
     },
+		{
+			id: 'can-can',
+			title: 'Can-can (Offenbach)',
+			bpm: 150,
+			// Jacques Offenbach, the Infernal Galop from Orpheus in the Underworld, 1858. Sung on "la".
+			notes: `
+				C4:1:la C4:.5:la D4:.5:la F4:.5:la E4:.5:la D4:.5:la G4:.5:la G4:1:la G4:.5:la A4:.5:la E4:.5:la F4:.5:la D4:.5:la
+				D4:1:la D4:.5:la F4:.5:la E4:.5:la D4:.5:la C4:.5:la C5:.5:la B4:.5:la A4:.5:la G4:.5:la F4:.5:la E4:.5:la D4:.5:la C4:1.5:la
+				C4:1:la C4:.5:la D4:.5:la F4:.5:la E4:.5:la D4:.5:la G4:.5:la G4:1:la G4:.5:la A4:.5:la E4:.5:la F4:.5:la D4:.5:la
+				D4:1:la D4:.5:la F4:.5:la E4:.5:la D4:.5:la C4:.5:la G4:.5:la D4:.5:la E4:.5:la C4:3.5:la`,
+			chords: 'C:4 G:4 G:2 C:2 G:2 C:2 C:4 G:4 G:2 C:2 G:2 C:2',
+		},
   ];
 
   const api = { SONGS };
