@@ -209,7 +209,9 @@
   // A list in place of min means "pick one of these".
   const FONTS = ['System', 'Coiny', 'Concert One', 'DynaPuff', 'Rubik Spray Paint'];
   const SETTINGS = [
-    ['size', 0.75, 0.5, 2, 0.05, 'Size'],
+    ['size', 0.75, 0.3, 2, 0.05, 'Size'],
+    // (Scales everything they get up to at once: see LIVELY.)
+    ['liveliness', 1, 0, 2, 0.05, 'Liveliness (how much they get up to)'],
     // (0: no limit. Past it, the least relevant blobs are put away; one that
     // needs you always shows. See main/visibility.js.)
     ['maxBlobs', 0, 0, 20, 1, 'Max blobs on screen (ones that need you always show)'],
@@ -284,7 +286,15 @@
     return top <= room ? want : want.map((r) => r * room / top);
   }
 
-  const api = { GROUPS, SETTINGS, DEFAULTS, PALETTE, sanitize, tokenGrowth, motherRadius, childRadii, MOTHER_STEP };
+  // What the Liveliness setting scales: every strength of what they do in
+  // the Behaviour and Life sections (their tricks, games, reactions,
+  // fidgets, moods), but not what tells you something (how full a context
+  // looks, the plan beads, the full-context warning).
+  const INFO = new Set(['contextInflate', 'contextFirm', 'flushGrow', 'flushCore', 'fullWarning', 'planBeads']);
+  const LIVELY = GROUPS.filter(([g]) => /^Life|^Behaviour/.test(g)).flatMap(([, list]) => list)
+    .filter(([k, d, min, max]) => typeof d === 'number' && min === 0 && d >= 0.5 && d <= 1.5 && max >= 1 && !INFO.has(k)).map(([k]) => k);
+
+  const api = { GROUPS, SETTINGS, DEFAULTS, LIVELY, PALETTE, sanitize, tokenGrowth, motherRadius, childRadii, MOTHER_STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.BlaubeConfig = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

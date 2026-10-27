@@ -4,6 +4,8 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+- Settings: Size goes smaller (down to 0.3), and a new Liveliness slider turns everything they get up to down to calm or up to twice as lively.
+
 - The snack jar shows your 5-hour session again, not the week (the week only takes over once it's over 75% used).
 - The cookies in the jar tumble about when you shake, tip or drop it.
 - Shake a blob too hard and it turns green, swells up and barfs; blobs it lands on aren't pleased.

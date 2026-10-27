@@ -306,6 +306,8 @@
     D.setFont(CFG.font); // (and loads it, and the plain one, before any text is drawn)
     // The Size setting scales every slime (and pet) at once.
     for (const k of ['mainRadius', 'childRadius']) CFG[k] *= CFG.size;
+    // And Liveliness everything they get up to (0: calm, 2: twice as much).
+    for (const k of BlaubeConfig.LIVELY) CFG[k] *= CFG.liveliness ?? 1;
     for (const b of buddies.values()) {
       const want = b.big ? CFG.mainPoints : CFG.childPoints;
       if (b.body.n !== want) {
