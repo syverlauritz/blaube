@@ -925,6 +925,7 @@ if (TEST) global.__blaubeSweep = sweep;
 
 // Starts Claude Code in `cwd`, with no terminal: its slime pops out with
 // its talk box open, ready for your first message.
+const startedAt = new Map(); // session id -> when Blaube started it (see owned's 'exit')
 function startSession(cwd, extra = [], resume = '', fork = '') {
   if (!cwd) return null;
   // (Its own worktree needs a git repository to make one in.)
@@ -940,6 +941,7 @@ function startSession(cwd, extra = [], resume = '', fork = '') {
     settings.hooks.Stop = settings.hooks.Stop.filter((g) => !g.hooks.some((h) => h.asyncRewake));
   }
   const id = owned.start(cwd, ['--append-system-prompt', STYLE, ...extra], settings, resume, fork);
+  startedAt.set(id, Date.now());
   prefs.recentFolders = [cwd, ...(prefs.recentFolders || []).filter((f) => f !== cwd)].slice(0, 5);
   savePrefs();
   log(`started a session in ${cwd}: ${id}`);
@@ -2161,6 +2163,16 @@ app.whenReady().then(async () => {
   // installer's, or this Electron's own when run from the source folder.
   if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? 'app.blaube.desktop' : process.execPath);
 
+  // Blaube has no Dock icon, so it's never the app in front: a dialog it
+  // opened (New session's folder picker, a question) could come up behind
+  // your windows and look like nothing happened. Each one brings it forward.
+  if (process.platform === 'darwin') {
+    for (const k of ['showOpenDialog', 'showMessageBox', 'showSaveDialog']) {
+      const show = dialog[k].bind(dialog);
+      dialog[k] = (...a) => { app.focus({ steal: true }); return show(...a); };
+    }
+  }
+
   loadPrefs();
   loadQueue(); // (before the hook server starts, so a session's first step finds its messages)
   // Connected by an older Blaube: its hooks are brought up to date by
@@ -2588,13 +2600,17 @@ app.whenReady().then(async () => {
   owned.on('exit', (id, code, err, signal) => {
     const s = tracker.sessions.get(id);
     log(`session ${id} ended (${signal || code})${err ? ': ' + err.slice(0, 300) : ''}`);
-    // It stopped with an error before you could say anything: say why.
-    if ((code || signal) && s && !TEST && inbox.log(id).length === 0) {
+    // It stopped with an error before you could say anything (right after
+    // starting, or before its first turn): say why.
+    const quick = Date.now() - (startedAt.get(id) || 0) < 15000;
+    startedAt.delete(id);
+    if ((code || signal) && !TEST && (quick || inbox.log(id).length === 0)) {
       if (/ENOENT|not found/i.test(err) && !claudeFound()) {
         dialog.showMessageBox({ type: 'warning', buttons: ['Install Claude Code…', 'OK'], defaultId: 0, cancelId: 1, message: 'Blaube can’t find Claude Code on this computer.', detail: 'Install it, then try New session again.' })
           .then(({ response }) => { if (response === 0) installClaude(); });
       } else {
-        dialog.showMessageBox({ type: 'warning', message: 'Claude Code couldn’t start there.', detail: err || `It stopped right away (${signal || `exit code ${code}`}).` });
+        const gone = /No conversation found/i.test(err);
+        dialog.showMessageBox({ type: 'warning', message: gone ? 'Claude Code can’t find that conversation any more.' : 'Claude Code couldn’t start there.', detail: gone ? 'It may have been moved or cleaned up. Start a new session instead.' : err || `It stopped right away (${signal || `exit code ${code}`}).` });
       }
     }
     tracker.handle({ session_id: id, hook_event_name: 'SessionEnd' }, 'blaube');
