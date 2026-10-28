@@ -218,10 +218,10 @@
       ensureAudio();
       const parts = BlaubeChoir.arrange(song, singers.length);
       const at = audio.ctx.currentTime + 0.8; // a breath in first
-      const volume = CFG.voiceVolume * 1.4 / Math.sqrt(singers.length);
+      const volume = CFG.voiceVolume * CFG.singVolume / Math.sqrt(singers.length);
       singers.forEach((b, i) => {
         if (b.speech) b.speech.line.stop();
-        const line = BlaubeVoice.sing(audio.ctx, parts[i].notes, { at, out: audio.out, seed: BlaubeVoice.hash(b.key), volume, wah: CFG.voiceWah, vibrato: 28 });
+        const line = BlaubeVoice.sing(audio.ctx, parts[i].notes, { at, out: audio.out, seed: BlaubeVoice.hash(b.key), volume, wah: CFG.voiceWah, vibrato: CFG.singVibrato, attack: CFG.singAttack, soft: CFG.singSoft, loose: CFG.singLoose, consonants: CFG.singConsonants });
         b.speech = { line, at };
         b.singing = parts[i].role;
       });
@@ -308,6 +308,8 @@
     for (const k of ['mainRadius', 'childRadius']) CFG[k] *= CFG.size;
     // And Liveliness everything they get up to (0: calm, 2: twice as much).
     for (const k of BlaubeConfig.LIVELY) CFG[k] *= CFG.liveliness ?? 1;
+    // Seasons and weather off: no leaves, snow, petals, butterflies, bats, ghosts or fireworks.
+    if (CFG.weather === 'Off') CFG.seasons = 0;
     for (const b of buddies.values()) {
       const want = b.big ? CFG.mainPoints : CFG.childPoints;
       if (b.body.n !== want) {
@@ -4939,6 +4941,60 @@
 	function unballoon(b) {
 		b.balloon = null; b.puff = 0; b.taut = 0; b.cheekPuff = 0; b.cheekStrain = 0; b.gulping = false;
 	}
+	// Switched to "Don't ask" (it won't ask you before it does things any
+	// more): free! "Wohooo!", and off it goes like a ping-pong ball, bouncing
+	// off the floor, the walls and the window tops, a bit lower each time,
+	// until it runs out of bounce and settles wherever it ends up.
+	// (The air doesn't slow it while it bounces, and each bounce gives back
+	// most of what hit, so it keeps going far longer than a throw would.)
+	function kevinNow(b) {
+		const body = b.body;
+		if (b.dying || body.grab) return;
+		if (b.balloon) unballoon(b);
+		const c = body.centroid(), away = c.x < W / 2 ? 1 : -1; // (off toward the side with more room)
+		b.kevin = { at: time, vx: away * (500 + Math.random() * 250), vy: -1350, hits: 0 };
+		const v = body.velocity(DT);
+		body.squashTop(-body.o.radius * 18, DT); // (a spring off its toes)
+		body.impulse(b.kevin.vx - v.x, b.kevin.vy - v.y, DT);
+	}
+	// Flattens a body along (nx, ny) by a share k, moving each point and its
+	// last place alike (a squash, no added speed): the skin, pressure and
+	// shape springs push it back out.
+	function squashAlong(body, nx, ny, k) {
+		const c = body.centroid();
+		for (let i = 0; i < body.n; i++) {
+			const d = ((body.px[i] - c.x) * nx + (body.py[i] - c.y) * ny) * k;
+			body.px[i] -= nx * d; body.py[i] -= ny * d;
+			body.ox[i] -= nx * d; body.oy[i] -= ny * d;
+		}
+	}
+	function kevin(b) {
+		const k = b.kevin;
+		if (!k) return;
+		const body = b.body, t = time - k.at;
+		if (body.grab || b.dying || t > 4) { b.kevin = null; return; } // (and the last of it runs out on its own)
+		b.nextHop = time + 1;
+		const v = body.velocity(DT), c = body.contact;
+		// Bounced off something (moving into it a step ago): back off it with
+		// most of the speed it came in with.
+		let vx = v.x, vy = v.y, hit = false;
+		if (c.bottom && k.vy > 220) { vy = -0.75 * k.vy; vx = k.vx; hit = true; }
+		else if (c.top && k.vy < -220) { vy = -0.8 * k.vy; vx = k.vx; hit = true; }
+		if (c.left && k.vx < -150) { vx = -0.9 * k.vx; vy = hit ? vy : k.vy; hit = true; }
+		else if (c.right && k.vx > 150) { vx = -0.9 * k.vx; vy = hit ? vy : k.vy; hit = true; }
+		if (hit) {
+			k.hits++;
+			body.impulse(vx - v.x, vy - v.y, DT);
+			// Squashed flat against what it hit, harder the faster it came in;
+			// it springs back round by itself, overshooting a little.
+			const n = c.bottom || c.top ? [0, 1] : [1, 0], into = Math.abs(n[0] ? v.x : v.y);
+			squashAlong(body, n[0], n[1], Math.min(0.3, into / 1400 * 0.3));
+		}
+		else body.impulse(v.x * 0.004, v.y * 0.004, DT); // (no air drag)
+		k.vx = vx; k.vy = vy;
+		// Too little left to bounce: it's done, and lands like anything else.
+		if (hit && c.bottom && -vy < 300) b.kevin = null;
+	}
   // A real fright: it bristles all over for a moment, like a startled cat.
   function bristle(b) {
     if (CFG.shapes <= 0 || b.shape || b.dying) return;
@@ -5924,6 +5980,7 @@
     skate(b);
     shapeShift(b);
     balloon(b);
+    kevin(b);
     if (b.bounceAt && time > b.bounceAt) { // (sprung off a trampoline, see stackPlay)
       b.bounceAt = 0;
       if (!b.body.grab) { const v = b.body.velocity(DT); b.body.impulse((Math.random() - 0.5) * 120 - v.x * 0.5, -b.bounceV - v.y, DT); }
@@ -6017,6 +6074,8 @@
       return;
     }
     if (!wantsAttention(b)) return;
+    // You're reaching for it: it holds still to be clicked (and watches you).
+    if (reachingFor(b)) { b.nextHop = time + 0.3; return; }
     if (b.state === 'waiting') {
       // Waiting a while and you haven't come: it comes to you, hopping
       // over toward your cursor (and stops once it's close).
@@ -6113,6 +6172,7 @@
     if (b.barf) { expression = 'pained'; mouth = b.barf.open ? 'yawn' : 'puffed'; } // (heaving, then out it comes)
     else if ((b.sick || 0) > 0.4) { expression = 'dizzy'; mouth = 'puffed'; } // (green, holding it in)
     else if (time < (b.ewwUntil || 0)) { expression = 'pained'; mouth = 'wobble'; } // (barfed on)
+    else if (b.kevin) { expression = 'happy'; mouth = 'grin'; } // (wohooo!)
     else if (time < b.dizzyUntil) { expression = 'dizzy'; mouth = 'flat'; }
     else if (time < (b.raspUntil || 0) && !body.grab) { expression = 'annoyed'; mouth = 'raspberry'; } // (pbbbt!)
     else if (b.balloon && b.balloon.stage === 'zip') { expression = 'happy'; mouth = 'raspberry'; } // (the air rushing out)
@@ -6362,7 +6422,7 @@
 	if (watching && time < (b.oohUntil || 0)) wideBy = Math.max(wideBy, 0.35); // (ooh!)
 		if (b.balloon && !b.gulping && (b.balloon.stage === 'full' || b.balloon.stage === 'float')) wideBy = 0.45; // (full to bursting: round eyes)
     if (CFG.eyeLife > 0 && !body.grab && !meditating(b) && expression !== 'dizzy') {
-      if (v.y < -900 && !body.onFloor() && !b.balloon) b.tossUp = time;
+      if (v.y < -900 && !body.onFloor() && !b.balloon && !b.kevin) b.tossUp = time; // (bouncing for joy isn't a toss)
       if (b.tossUp && time - b.tossUp < 2 && !body.onFloor() && v.y > 0) {
         const box = body.bbox(), below = floorAt(body.centroid().x, box.maxY) - box.maxY;
         if (below < body.o.radius * 0.9 && v.y > 600) { expression = 'pained'; mouth = 'flat'; }
@@ -7142,6 +7202,24 @@
     return null;
   }
 
+  // The cursor's close by: one hopping for your attention stays put for it.
+  function reachingFor(b) {
+    const c = b.body.centroid();
+    return Math.hypot(mouse.x - c.x, mouse.y - c.y) < b.body.o.radius * 2.5;
+  }
+
+  // A press just off one wanting your attention still catches it (it's
+  // bouncing; you were aiming for it).
+  function attentionNear(x, y) {
+    let best = null, bestD = Infinity;
+    for (const b of buddies.values()) {
+      if (b.dying || !wantsAttention(b)) continue;
+      const c = b.body.centroid(), d = Math.hypot(x - c.x, y - c.y);
+      if (d < b.body.o.radius * 1.5 && d < bestD) { best = b; bestD = d; }
+    }
+    return best;
+  }
+
   // The session a slime belongs to: its own, or its mother's.
   function sessionOf(b) {
     const m = b.kind === 'child' ? b.mother : b;
@@ -7159,8 +7237,8 @@
     const rects = [];
     for (const b of buddies.values()) {
       if (b.dying) continue;
-      const box = b.body.bbox();
-      rects.push([box.minX, box.minY, box.maxX, box.maxY]);
+      const box = b.body.bbox(), pad = wantsAttention(b) ? b.body.o.radius * 0.5 : 0; // (see attentionNear)
+      rects.push([box.minX - pad, box.minY - pad, box.maxX + pad, box.maxY + pad]);
     }
     const h = petSize() * 0.7;
     for (const p of pets.values()) if (!p.dying) rects.push([p.x - h, p.y - h, p.x + h, p.y + h]);
@@ -7204,7 +7282,7 @@
       drag = { pet: p, x0: e.clientX, y0: e.clientY, t0: time, moved: false };
       return;
     }
-    const b = buddyAt(e.clientX, e.clientY);
+    const b = buddyAt(e.clientX, e.clientY) || attentionNear(e.clientX, e.clientY);
 		if (!b && jarAt(e.clientX, e.clientY)) {
 			// Pick up the snack jar.
 			jar.held = { dx: e.clientX - jar.x, dy: e.clientY - jar.y };
@@ -7379,6 +7457,14 @@
     if (m.kind === 'brace') {
       b.winceUntil = time + 0.6;
       if (grounded) b.body.impulse(0, 320, DT);
+      return;
+    }
+    // Switched into "Don't ask": wohooo, off it bounces (see kevin).
+    if (m.kind === 'kevin') {
+      if (!once('kevin', 3) || b.kevin) return;
+      kevinNow(b);
+      // (Always said, over a passing "hi!": you did this, it isn't chatter.)
+      if (b.kevin && !(b.bubble && b.bubble.sticky)) { spoken.react = time; b.say([{ text: 'wohooo!' }], 3.4, false, { minor: true }); }
       return;
     }
     if (m.kind === 'push' && once('push', 30)) {

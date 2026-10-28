@@ -8,4 +8,5 @@ contextBridge.exposeInMainWorld('blaubeTuning', {
   onChange: (f) => ipcRenderer.on('config', (_e, cfg) => f(cfg)),
   demo: () => ipcRenderer.send('demo'),
   lifeDemo: () => ipcRenderer.send('life-demo'),
+  sing: (on) => ipcRenderer.send('tuning-sing', on),
 });

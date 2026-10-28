@@ -92,14 +92,14 @@ module.exports = async function run({ win, tracker, talk, talkId }) {
 	check(await until(async () => (await row(h1)).byParent && (await row(h2)).byParent && /hidden with it/.test((await row(h2)).how)), 'its helpers’ eyes say hidden with it, dimmed');
 	ev(0, 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' } });
 	check(!onStage().includes(ids[0]), 'it stays hidden as its session works on');
-	check(global.__blaubeSessionMenu(ids[0]).items.slice(-1)[0].label === 'Show', 'its menu says Show');
+	check(global.__blaubeSessionMenu(ids[0]).items.some((i) => i.label === 'Show'), 'its menu says Show');
 	await eye(ids[0]);
 	check(await until(() => onStage().includes(ids[0])), 'opening its eye puts it back');
 	check(await until(async () => (await buddies()).includes(ids[0]), 8000), 'its slime comes out again');
 	check(await until(async () => (await buddies()).includes(h2) && !(await buddies()).includes(h1) && !(await row(h1)).open && (await row(h2)).open, 8000), 'its helpers as you left them: the one you hid stays hidden');
 	await eye(h1);
 	await until(() => agentsOut(0).includes('h1'));
-	check(global.__blaubeSessionMenu(ids[0]).items.slice(-1)[0].label === 'Hide', 'its menu says Hide');
+	check(global.__blaubeSessionMenu(ids[0]).items.some((i) => i.label === 'Hide'), 'its menu says Hide');
 
 	// Max blobs: 3. Two working ones stay; then the latest idle/done one.
 	check(await box(`document.getElementById('noLimit').classList.contains('on') && document.getElementById('max').value === '' && document.getElementById('less').disabled`), 'Max blobs starts at No limit (lit), − can’t go lower');

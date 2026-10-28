@@ -1,10 +1,9 @@
 // The sound settings, right in the right-click menus: voices on or off, how
-// loud, how much wah, and the choir. They change the same settings as the
-// Settings window (voice, voiceVolume, voiceWah in shared/config.js).
+// loud, and the choir. They change the same settings as the Settings window
+// (voice, voiceVolume in shared/config.js).
 // A plain template, so it's tested without Electron.
 
 const VOLUMES = [0.1, 0.25, 0.5, 0.75, 1];
-const WAHS = [0, 0.25, 0.5, 0.8, 1];
 const pct = (v) => `${Math.round(v * 100)}%`;
 const near = (a, b) => Math.abs(a - b) < 0.001;
 
@@ -29,7 +28,6 @@ function soundMenu(config, set, { songs, sing, stopSinging } = {}) {
   return [
     { label: 'Sound', type: 'checkbox', checked: on, toolTip: 'They say what’s in their bubbles out loud', click: (i) => set({ voice: i.checked ? 'On' : 'Off' }) },
     { label: 'Volume', submenu: levels(VOLUMES, config.voiceVolume, 'voiceVolume', set) },
-    { label: 'Wah at the start of each note', submenu: levels(WAHS, config.voiceWah, 'voiceWah', set, (v) => (v === 0 ? 'None' : pct(v))) },
     // Everyone sings, in parts: the more slimes, the fuller. (Not with the
     // sound off: they'd only mouth it.)
     ...(songs ? [{ label: 'Sing together', enabled: on, submenu: [
@@ -40,4 +38,4 @@ function soundMenu(config, set, { songs, sing, stopSinging } = {}) {
   ];
 }
 
-module.exports = { soundMenu, VOLUMES, WAHS };
+module.exports = { soundMenu, VOLUMES };

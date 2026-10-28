@@ -98,6 +98,9 @@
   });
   document.getElementById('demo').addEventListener('click', () => api.demo());
   document.getElementById('lifeDemo').addEventListener('click', () => api.lifeDemo && api.lifeDemo());
+  // (Singing knobs apply from the next song: press Sing again to hear a change.)
+  document.getElementById('sing').addEventListener('click', () => api.sing(true));
+  document.getElementById('singStop').addEventListener('click', () => api.sing(false));
 
   build();
   api.get().then((c) => { cfg = c; render(); });

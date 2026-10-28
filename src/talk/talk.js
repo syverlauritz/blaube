@@ -2255,8 +2255,8 @@
 	document.addEventListener('selectionchange', () => { if (document.activeElement === text) caretMoved(); });
   // Its permission mode under the field, as the terminal shows it; ⇧⇥ (or
   // a tap) changes it in a session Blaube started.
-  const MODES = { default: 'Asks before edits', acceptEdits: 'Accepting edits', plan: 'Plan first', bypassPermissions: 'Bypassing permissions', dontAsk: 'Not asking first', auto: 'Auto mode' };
-  const CYCLE = ['default', 'acceptEdits', 'plan'];
+  const MODES = { default: 'Asks before edits', acceptEdits: 'Accepting edits', plan: 'Plan first', bypassPermissions: 'Don’t ask (anything goes)', dontAsk: 'Not asking first', auto: 'Auto mode' };
+  const CYCLE = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
   function renderMode(s) {
     const m = $('mode'), mode = s.mode || 'default';
     const shown = s.canMode || mode !== 'default';

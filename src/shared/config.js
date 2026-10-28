@@ -203,6 +203,16 @@
       ['debugOverlay', false, 0, 0, 0, 'Show physics debug overlay'],
       ['pollClaudeAgents', true, 0, 0, 0, 'Also watch `claude agents` (no hooks needed)'],
     ]],
+    // The choir (Play > Choir). A change is heard from the next song on.
+    ['Singing', [
+      ['singVolume', 1.4, 0, 3, 0.05, 'Choir loudness (× voice volume)'],
+      ['singAttack', 0.09, 0.002, 0.3, 0.002, 'How slowly a note comes in (s; small is a hard attack)'],
+      ['singVibrato', 20, 0, 60, 1, 'Vibrato depth (cents; it grows on held notes)'],
+      ['singSoft', 0.6, 0, 1, 0.05, 'Softness (rounder, darker, less buzz)'],
+      ['singLoose', 1, 0, 2, 0.05, 'Each singer its own (a touch early or late, a few cents off, some notes louder)'],
+      ['singConsonants', 0, 0, 1, 0.05, 'Consonant ticks ("t", "s", "d"; heard as little clicks)'],
+      ['voiceWah', 0.8, 0, 1, 0.05, 'Wah at the start of each note (talking too)'],
+    ]],
   ];
 
   // Settings for everyone, in the Settings window (not the tuning panel).
@@ -218,6 +228,8 @@
     ['font', 'Coiny', FONTS, 0, 0, 'Speech bubble font'],
     ['statusBubbles', 'On hover', ['On hover', 'Always'], 0, 0, 'Status bubbles'],
     ['looks', 'On', ['On', 'Off'], 0, 0, 'Fun looks (bows, ears, antennas...)'],
+    // (Off: none of what CFG.seasons brings, see renderer.js applyConfig.)
+    ['weather', 'On', ['On', 'Off'], 0, 0, 'Seasons and weather (leaves, snow, butterflies, bats...)'],
     ['windowLedges', 'On', ['On', 'Off'], 0, 0, 'Land on top of other windows'],
     ['snackJar', 'On', ['On', 'Off'], 0, 0, 'Snack jar (your usage limits)'],
     ['onTop', 'On', ['On', 'Off'], 0, 0, 'Stay in front of other windows'],
@@ -226,7 +238,6 @@
     ['talkKey', 'Ctrl/⌘+Alt+B', ['Ctrl/⌘+Alt+B', 'Alt+Shift+B', 'Off'], 0, 0, 'Talk shortcut (from any app)'],
     ['voice', 'On', ['On', 'Off'], 0, 0, 'Say it out loud when they talk'],
     ['voiceVolume', 0.5, 0, 1, 0.05, 'Voice volume'],
-    ['voiceWah', 0.8, 0, 1, 0.05, 'Wah at the start of each note'],
   ];
 
   // Colours you can pick for a Blaube from its right-click menu.
