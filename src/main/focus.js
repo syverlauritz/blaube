@@ -46,7 +46,30 @@ const cleanTitle = (t) => String(t || '').replace(/^[^\p{L}\p{N}]+/u, '').trim()
 function transcriptPath(s) {
 	if (s.transcript) return s.transcript;
 	if (!s.cwd) return '';
-	return path.join(os.homedir(), '.claude', 'projects', s.cwd.replace(/[^A-Za-z0-9]/g, '-'), `${s.id}.jsonl`);
+	const guess = path.join(os.homedir(), '.claude', 'projects', s.cwd.replace(/[^A-Za-z0-9]/g, '-'), `${s.id}.jsonl`);
+	if (fs.existsSync(guess)) return guess;
+	// Not there: it started in another folder (and was picked up here), or
+	// it's another config folder's (~/.claude-work). Looked for once, by its
+	// id, before any hook has said where it is (after a restart).
+	const found = findTranscript(s.id);
+	if (found) s.transcript = found;
+	return found || guess;
+}
+const looked = new Map(); // session id -> when it was last looked for (not found)
+function findTranscript(id, home = os.homedir()) {
+	if (!id || Date.now() - (looked.get(id) || 0) < 30e3) return '';
+	looked.set(id, Date.now());
+	let roots = [];
+	try { roots = fs.readdirSync(home).filter((n) => n === '.claude' || /^\.claude-./.test(n)).map((n) => path.join(home, n, 'projects')); } catch { return ''; }
+	for (const root of roots) {
+		let dirs = [];
+		try { dirs = fs.readdirSync(root); } catch { continue; }
+		for (const d of dirs) {
+			const f = path.join(root, d, `${id}.jsonl`);
+			if (fs.existsSync(f)) { looked.delete(id); return f; }
+		}
+	}
+	return '';
 }
 
 // The session's title, as Claude Code shows it: a /rename title if there is
