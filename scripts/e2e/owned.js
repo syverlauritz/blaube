@@ -113,6 +113,8 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await box(`document.getElementById('mode').click()`);
 	check(await until(async () => /plan can \| Plan first/.test(await mode())), 'a tap, to planning first');
 	await shiftTab();
+	check(await until(async () => /bypassPermissions can \| Don’t ask/.test(await mode())), 'then to not asking at all');
+	await shiftTab();
 	check(await until(async () => /^mode default/.test(await mode())), 'and round again');
 	await type('/plan');
 	check(await until(async () => /Plan mode: it shows you a plan/.test(await said()) && /^mode plan/.test(await mode())), '/plan puts it in plan mode');

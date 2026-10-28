@@ -3870,12 +3870,26 @@ app.whenReady().then(async () => {
     } catch { return null; } finally { if (fd != null) fs.closeSync(fd); }
   });
   // How a session Blaube started asks before it acts (⇧⇥ in its box).
-  const MODES = new Set(['default', 'acceptEdits', 'plan']);
-  ipcMain.on('talk-mode', (_e, id, mode) => {
+  const MODES = new Set(['default', 'acceptEdits', 'plan', 'bypassPermissions']);
+  ipcMain.on('talk-mode', async (_e, id, mode) => {
     if (!id || !isOpen(id) || !owned.has(id) || !MODES.has(mode)) return;
+    // "Don't ask" runs anything without asking, so it says so first (until
+    // you tell it you know).
+    if (mode === 'bypassPermissions' && !prefs.bypassOk && !TEST) {
+      const { response, checkboxChecked } = await dialog.showMessageBox(talkWin && !talkWin.isDestroyed() ? talkWin : null, {
+        type: 'warning', buttons: ['Don’t ask', 'Cancel'], defaultId: 1, cancelId: 1,
+        message: 'Let it do anything without asking?',
+        detail: 'In “Don’t ask” it runs commands, edits and deletes files, and uses the internet without checking with you first, like claude --dangerously-skip-permissions. Shift+Tab takes it back to asking.',
+        checkboxLabel: 'Don’t warn me again',
+      });
+      if (response !== 0) return;
+      if (checkboxChecked) { prefs.bypassOk = true; savePrefs(); }
+    }
     owned.control(id, { subtype: 'set_permission_mode', mode }, (ok, r) => {
       if (!ok) { inbox.add(id, { who: 'note', text: `Couldn’t change how it asks: ${r}` }); return; }
-      tracker.setMode(id, r.mode || mode); // (shown under its field)
+      const now = r.mode || mode;
+      tracker.setMode(id, now); // (shown under its field)
+      if (now === 'bypassPermissions' && win) win.webContents.send('react', { id, kind: 'kevin' }); // (free! wohooo)
     });
   });
   // "@" and "/" in the box: the session's files, and the commands you could type.

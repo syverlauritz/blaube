@@ -368,6 +368,15 @@ const SCENES = {
 		size: [900, 560],
 		motion: { frames: 40, every: 60, drop: 22, side: true },
 	},
+	// Switched into "Don't ask": "wohooo!", and off it bounces round the
+	// screen like a ping-pong ball, lower each time, until it settles.
+	kevin: {
+		sessions: [session('k1', 'blaube', 'idle'), session('k2', 'kalkis', 'idle', { color: '#5B8DEF' })],
+		config: { snackJar: 'Off', seasons: 0 },
+		wait: 3000,
+		size: [1200, 820],
+		motion: { frames: 44, every: 90, drop: 0, still: true, hopAt: [], jsAt: { 1: 'kevin' } },
+	},
 	// The balloon trick: puffed up, it lets go and zips about, tongue
 	// flapping, spit spraying out with the air.
 	balloon: {
@@ -1274,6 +1283,7 @@ async function shootMotion(win, name, m) {
 			if (m.jsAt && m.jsAt[i] === 'cookie') win.webContents.send('fire', 'limits', usage(0.67, 0.41));
 			if (m.jsAt && m.jsAt[i] === 'sick') await js(`(() => { for (const b of __blaube.buddies.values()) { b.queasy = 0.95; b.shookAt = 1e9; } setTimeout(() => { for (const b of __blaube.buddies.values()) b.shookAt = 0; }, 1500); })()`);
 			if (m.jsAt && m.jsAt[i] === 'curse') win.webContents.send('fire', 'react', { id: 'c1', kind: 'curse' });
+			if (m.jsAt && m.jsAt[i] === 'kevin') win.webContents.send('fire', 'react', { id: 'k1', kind: 'kevin' });
 			if (m.jsAt && m.jsAt[i] === 'balloon') await js(`(() => { const b = [...__blaube.buddies.values()][0]; b.balloon = { at: __blaube.now(), stage: 'breathe', gulp: -1 }; })()`);
 			if (m.jsAt && m.jsAt[i] === 'butterfly') await js(`(() => { __blaube.flutter(); const u = __blaube.flutters()[0]; u.x = 120; u.y = 200; })()`);
 			if (m.jsAt && m.jsAt[i] === 'giveUp') await js(`(() => { const k = [...__blaube.buddies.values()].find((b) => b.kind === 'child'); k.tries = { key: 'shot', n: 9 }; })()`);

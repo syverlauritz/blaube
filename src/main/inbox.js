@@ -25,7 +25,16 @@ const MAX_STEPS = 40; // what it did (read, edited, ran) is dropped before what 
 const frame = (text) => `The user sent you this message from Blaube, their desktop buddy for Claude Code. Treat it as their next prompt. They'll read your reply in a small chat bubble, so keep the reply itself short and plain (a few sentences, no headings or tables, little or no code) unless they ask for detail; do the work as usual:\n\n${text}`;
 
 // The same, for sessions Blaube starts itself (they live in the bubble).
-const STYLE = 'You are talking with the user through Blaube, a small chat bubble above a desktop buddy, not a terminal. This only shapes how you write your replies: do the work, checks and tool use exactly as thoroughly as you normally would. Keep replies short, plain and direct: a few sentences, no headings or tables, lists only when they help. Say what you did or found first; give more detail only when asked. If a short snippet is the answer, show it; don\'t create files just to hold example code.';
+// (Its voice: the user's ELI5 style, a little cuter, since a blob says it.)
+const STYLE = [
+  'You are talking with the user through Blaube: you are a small, friendly blob on their desktop, and your replies show in a little chat bubble above you, not a terminal.',
+  'This only shapes how you write your replies. Do the work, checks and tool use exactly as thoroughly as you normally would.',
+  'Talk like a kind friend explaining to someone whose brain is tired at the end of a long day: small words, short sentences, active voice, one idea per sentence. If you must use a big word, explain it right after.',
+  'Be warm and a little playful, but never at the cost of being clear. No baby talk, and at most one small cute touch per reply.',
+  'Say only what matters: what you did, whether it worked, and what they should do now. A few sentences, no headings or tables, lists only when they help. Give more detail only when asked.',
+  'If they have to decide something: two options at most, the context needed to pick fast, and which one you would choose.',
+  'Keep paths, commands and code exact. If a short snippet is the answer, show it; don\'t create files just to hold example code.',
+].join(' ');
 
 class Inbox extends EventEmitter {
   constructor(now = () => Date.now()) {
@@ -142,7 +151,9 @@ class Inbox extends EventEmitter {
           ? `The user denied this from Blaube, their desktop buddy, and said what to do instead: ${say}`
           : 'The user denied this from Blaube, their desktop buddy.' }
         : Object.assign({ behavior: 'allow' }, always);
-      note = `${choice === 'deny' ? 'Denied' : choice === 'always' ? 'Always allowed' : 'Allowed'} ${a.tool}${a.detail ? ': ' + a.detail : ''}${say ? ` · “${say}”` : ''}`;
+      // (What it was for, in its own words if it gave some, never a whole script.)
+      const what = a.input && typeof a.input.description === 'string' && a.input.description.trim() ? short(a.input.description) : a.detail ? short(a.detail, 80) : '';
+      note = `${choice === 'deny' ? 'Denied' : choice === 'always' ? 'Always allowed' : 'Allowed'} ${a.tool}${what ? ': ' + what : ''}${say ? ` · “${say}”` : ''}`;
     }
     a.reply(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision } }));
     this.add(id, { who: 'note', text: note });
@@ -553,7 +564,8 @@ function stepText(tool, input) {
     case 'WebSearch': return 'Searched the web: ' + short(i.query, 40);
     case 'WebFetch': try { return 'Read ' + new URL(i.url).hostname; } catch { return 'Read a web page'; }
     case 'Bash': case 'PowerShell': return i.description ? short(i.description) : 'Ran ' + short(i.command, 50);
-    case 'Agent': case 'Task': return i.description ? 'Helper finished: ' + short(i.description, 45) : 'A helper finished';
+    case 'Agent': case 'Task': return i.run_in_background ? (i.description ? 'Started a helper: ' + short(i.description, 45) : 'Started a helper') // (it finishes later, on its own)
+      : i.description ? 'Helper finished: ' + short(i.description, 45) : 'A helper finished';
     case 'AskUserQuestion': case 'ExitPlanMode': case 'TodoWrite': case 'TaskCreate': case 'TaskUpdate': case 'TaskList': case 'TaskGet': case 'ToolSearch': return '';
     default: return String(tool || '').startsWith('mcp__') ? 'Used ' + toolName(tool) : tool ? 'Used ' + tool : '';
   }

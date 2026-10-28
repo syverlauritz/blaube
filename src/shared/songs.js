@@ -1,4 +1,4 @@
-// Songs the choir knows (Sing together, in the menu). All public domain.
+// Songs the choir knows (Sing together, in the menu). Old and famous; mostly public domain.
 //
 // notes: "pitch:beats:syllable" separated by spaces. A syllable of "-"
 // carries the one before over a new note (a slur). bpm counts beats.
@@ -70,6 +70,19 @@
         C4:1:Twin C4:1:kle G4:1:twin G4:1:kle A4:1:lit A4:1:tle G4:2:star
         F4:1:How F4:1:I E4:1:won E4:1:der D4:1:what D4:1:you C4:2:are`,
       chords: 'C:4 F:2 C:2 F:2 C:2 G:2 C:2 C:2 F:2 C:2 G:2 C:2 F:2 C:2 G:2 C:4 F:2 C:2 F:2 C:2 G:2 C:2',
+    },
+    {
+      id: 'la-vie-en-rose',
+      title: 'La Vie en Rose',
+      bpm: 104,
+      // Louiguy (Louis Guglielmi), 1945; words by Édith Piaf. Still in
+      // copyright. The refrain's opening, in C.
+      notes: `
+        C5:1.5:Quand B4:.5:il A4:1:me G4:1:prend E4:1.5:dans C5:.5:ses B4:2:bras
+        A4:1.5:Il G4:.5:me E4:1:par C5:1:le B4:1:tout A4:3:bas
+        G4:1.5:Je F4:.5:vois E4:1:la D4:1:vie E4:1:en D4:1:ro C4:2:se
+        C4:4:-`,
+      chords: 'C:4 C:4 Dm:4 G7:4 G7:4 C:8',
     },
   ];
 

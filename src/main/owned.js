@@ -62,7 +62,8 @@ class Owned extends EventEmitter {
     const id = (!fork && resume) || crypto.randomUUID();
     const bin = this.findClaude() || shellClaude || 'claude';
     const from = fork ? ['--resume', fork, '--fork-session', '--session-id', id] : resume ? ['--resume', id] : ['--session-id', id];
-    const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', ...from, ...extra, ...once];
+    // (--allow-dangerously-skip-permissions only lets "Don't ask" be picked later, from its box; it starts as it always does.)
+    const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--allow-dangerously-skip-permissions', ...from, ...extra, ...once];
     let settingsFile = '';
     if (settings) {
       settingsFile = path.join(os.tmpdir(), `blaube-session-${id}.json`);
