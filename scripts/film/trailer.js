@@ -22,7 +22,9 @@ const { DEFAULTS } = require('../../src/shared/config');
 
 const HERE = __dirname;
 const OUT = path.join(HERE, 'out');
-const SONG = process.env.FILM_SONG || 'mountain-king';
+const SONG = process.env.FILM_SONG || 'la-vie-en-rose';
+// FILM_ONLY=sings films just the choir: the four on a card singing the whole song.
+const ONLY = process.env.FILM_ONLY || '';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // The cast: one of each model, effort and look.
@@ -183,6 +185,27 @@ module.exports = async function run({ win, tracker, inbox, talk, moveToDisplay, 
 	const stage = (text) => card({ title: 'readme.txt', text, size: 120, w: 1400, h: 300, x: 20, y: 1500 });
 
 	try {
+		film: {
+		if (ONLY === 'sings') {
+			for (const id of Object.keys(CAST)) await arrive(id);
+			const ALL = Object.keys(CAST);
+			await sleep(2500);
+			const cap = await stage('they sing');
+			for (const [i, id] of ALL.entries()) await onCard(id, cap, 0.14 + i * 0.24);
+			await settled(ALL, 6000);
+			idle(...ALL);
+			await sleep(1500);
+			const seconds = await js(`(() => { const s = BlaubeSongs.SONGS.find((x) => x.id === ${JSON.stringify(SONG)}); return s.notes.trim().split(/\\s+/).reduce((n, x) => n + Number(x.split(':')[1]), 0) * 60 / s.bpm; })()`);
+			console.log(`[film] ${SONG}: ${seconds.toFixed(1)} s`);
+			await scene('sings', async () => {
+				win.webContents.send('command', `choir:${SONG}`);
+				await sleep(seconds * 1000 + 1500);
+				win.webContents.send('command', 'choir-stop');
+				await sleep(800);
+			});
+			close(cap);
+			break film;
+		}
 		// 1. The painting: a blob sitting on "Ceci n'est pas un blob."
 		const painting = await card({ title: 'ceci n\'est pas un blob.txt', text: 'Ceci n\'est pas un blob.', size: 130, w: 1340, h: 380, y: 1450 });
 		await arrive('blaube');
@@ -419,6 +442,7 @@ module.exports = async function run({ win, tracker, inbox, talk, moveToDisplay, 
 			await sleep(3200);
 		});
 		close(end, mac, pc);
+		}
 	} finally {
 		clearInterval(ledgeTimer);
 		closeAll();
