@@ -275,3 +275,17 @@ test('a finished session picked up again stays done, still unread', () => {
   assert.equal(t.list()[0].state, 'done');
   assert.equal(t.list()[0].seen, false);
 });
+
+test('a helper asking in its own mode doesn’t change its mother’s mode', () => {
+  const t = new SessionTracker();
+  const modes = [];
+  t.on('mode', (m) => modes.push(`${m.from}>${m.session.mode}`));
+  t.handle(ev('UserPromptSubmit', { permission_mode: 'bypassPermissions' }));
+  t.handle(ev('PermissionRequest', { agent_id: 'h1', permission_mode: 'auto', tool_name: 'Bash' }));
+  t.handle(ev('Notification', { agent_id: 'h1', permission_mode: 'auto', message: 'Claude needs your permission to use Bash' }));
+  t.handle(ev('PreToolUse', { cwd: '/Users/me/code/blaube/.claude/worktrees/agent-h2', permission_mode: 'auto', tool_name: 'Read' }));
+  assert.equal(t.list()[0].mode, 'bypassPermissions');
+  t.handle(ev('PreToolUse', { permission_mode: 'acceptEdits', tool_name: 'Edit' })); // (her own change)
+  assert.equal(t.list()[0].mode, 'acceptEdits');
+  assert.deepEqual(modes, ['bypassPermissions>acceptEdits']);
+});

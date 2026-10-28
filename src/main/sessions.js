@@ -25,6 +25,12 @@ function worktreeAgentId(cwd) {
   return m ? m[1] : '';
 }
 
+// Sent from inside one of a session's helpers (its id, or its worktree).
+function fromHelper(p, session) {
+  const wt = worktreeAgentId(p.cwd);
+  return !!p.agent_id || (!!wt && wt !== worktreeAgentId(session && session.cwd));
+}
+
 class SessionTracker extends EventEmitter {
   constructor(now = () => Date.now()) {
     super();
@@ -69,7 +75,8 @@ class SessionTracker extends EventEmitter {
       pid: payload._pid || (prev && prev.pid) || 0,
       // Its permission mode, as Claude Code last said ('default',
       // 'acceptEdits', 'plan'...).
-      mode: typeof payload.permission_mode === 'string' ? payload.permission_mode : (prev && prev.mode) || '',
+      // (Its own: a helper's events carry the helper's mode, which isn't hers.)
+      mode: typeof payload.permission_mode === 'string' && !fromHelper(payload, prev) ? payload.permission_mode : (prev && prev.mode) || '',
       project: cwd ? path.basename(cwd.replace(/[\\/]+$/, '')) : 'Claude',
       state: next.state,
       // While working: 'thinking' (the model) or 'tool' (running a tool).
@@ -98,6 +105,7 @@ class SessionTracker extends EventEmitter {
       updatedAt: this.now(),
     };
     session.progress = progress(session.plan);
+    if (prev && prev.mode && session.mode !== prev.mode) this.emit('mode', { session, from: prev.mode, why: event });
     this.sessions.set(id, session);
     if (event === 'UserPromptSubmit') this.emit('prompt', session, payload.prompt, source);
     if (source === 'hook' && (event === 'PreToolUse' || event === 'Stop' || event === 'Notification')) this.emit('activity', { session, agentId: '', payload });
@@ -111,6 +119,7 @@ class SessionTracker extends EventEmitter {
   setMode(id, mode) {
     const s = this.sessions.get(id);
     if (!s || !mode || s.mode === mode) return;
+    if (s.mode) this.emit('mode', { session: s, from: s.mode, why: 'Blaube or Claude Code itself' });
     s.mode = mode;
     this.emit('change', { session: s, from: s.state, to: s.state });
   }

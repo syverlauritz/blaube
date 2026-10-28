@@ -2428,6 +2428,8 @@ app.whenReady().then(async () => {
     pushState();
   });
   owned.on('mode', (id, mode) => tracker.setMode(id, mode));
+  // (In the log, so a mode that changes by surprise can be traced.)
+  tracker.on('mode', ({ session: s, from, why }) => log(`${s.project} (${s.id}) mode ${from} -> ${s.mode}, from ${why}`));
   // Your usage limits, as Claude Code tells a session Blaube started.
   const setLimits = (l) => {
     if (!l) return;

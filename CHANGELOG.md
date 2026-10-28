@@ -4,6 +4,8 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+- A helper asking for permission no longer changes its mother's mode under her talk box (a "Don't ask" session showed "Auto mode"). Mode changes are logged in `blaube.log` with what caused them.
+
 ## [0.3.0] - 2026-10-28
 
 - Sessions you start in Blaube survive it restarting (an update, a crash): they come back with their conversation, and one that was mid-turn is told to carry on. Blaube never restarts on one that's still working, asking you something or waiting on its helpers, and one that finished while you were away comes back still done, saying what it did.
