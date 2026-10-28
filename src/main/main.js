@@ -2,7 +2,7 @@ const path = require('node:path');
 const os = require('node:os');
 const fs = require('node:fs');
 const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, shell, clipboard, globalShortcut, systemPreferences, powerMonitor } = require('electron');
-const { SessionTracker } = require('./sessions');
+const { SessionTracker, pidAlive } = require('./sessions');
 const { Inbox, STYLE } = require('./inbox');
 const { classify } = require('../shared/actions');
 const { SONGS } = require('../shared/songs');
@@ -1013,7 +1013,12 @@ function bringBackOwned() {
   let list = [];
   try { list = JSON.parse(fs.readFileSync(ownedFile(), 'utf8')); } catch { return; }
   for (const o of Array.isArray(list) ? list : []) {
-    if (!o || typeof o.id !== 'string' || typeof o.cwd !== 'string' || tracker.sessions.has(o.id) || owned.has(o.id)) continue;
+    if (!o || typeof o.id !== 'string' || typeof o.cwd !== 'string' || owned.has(o.id)) continue;
+    // (Running somewhere already, in a terminal say: left be. Just listed,
+    // by `claude agents` still naming the one stopped for the restart, or
+    // by an old hook: it comes back all the same.)
+    const there = tracker.sessions.get(o.id);
+    if (there && there.pid && pidAlive(there.pid)) continue;
     try { if (!fs.statSync(o.cwd).isDirectory()) continue; } catch { continue; }
     const mode = modeArgs(o.mode);
     revived.add(o.id);

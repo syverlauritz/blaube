@@ -362,4 +362,4 @@ function nextState(current, p) {
   }
 }
 
-module.exports = { SessionTracker, nextState, worktreeAgentId, todayAfter };
+module.exports = { pidAlive, SessionTracker, nextState, worktreeAgentId, todayAfter };
