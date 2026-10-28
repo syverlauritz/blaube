@@ -27,7 +27,7 @@ function prompt(e) {
 
 // The log entries a run of transcript lines ([{ off, e }], oldest first)
 // comes to. A turn's reply is the last thing Claude said in it, after its
-// last step (what it said on the way isn't kept, as in the live log).
+// last step; what it said on the way is kept too (live), as in the live log.
 // Thinking isn't shown; neither are helpers' own lines (a helper is a step).
 function entries(lines) {
 	const out = [];
@@ -67,7 +67,9 @@ function entries(lines) {
 					else said = { text: b.text.trim(), at, n: n(), mid: e.message.id };
 				} else if (b.type === 'tool_use' && b.id) {
 					uses.set(b.id, { name: b.name, input: b.input && typeof b.input === 'object' ? b.input : {} });
-					said = null; // (it carried on after saying that)
+					// (It carried on after saying that: a line on the way, as the live log shows it.)
+					if (said) out.push({ who: 'claude', text: said.text, at: said.at, n: said.n, live: true });
+					said = null;
 				}
 			}
 			continue;

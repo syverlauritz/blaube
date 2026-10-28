@@ -302,10 +302,11 @@ test('a message from the slime goes in at the next step, if the hooks can hand i
   assert.equal(inbox.step(post, false), '');
   assert.equal(inbox.view('s1').queued, 1);
   assert.equal(inbox.view('s1').stoppable, false);
-  // Ones that can: it goes in with the next tool result, and nods.
-  assert.equal(inbox.step({ ...post, hook_event_name: 'PreToolUse' }, true), '');
-  const out = JSON.parse(inbox.step(post, true));
-  assert.equal(out.hookSpecificOutput.hookEventName, 'PostToolUse');
+  // Ones that can: it goes in at the next tool hook (here a PreToolUse),
+  // to be read with that tool's result, and nods.
+  const out = JSON.parse(inbox.step({ ...post, hook_event_name: 'PreToolUse' }, true));
+  assert.equal(out.hookSpecificOutput.hookEventName, 'PreToolUse');
+  assert.equal(out.hookSpecificOutput.permissionDecision, undefined, 'it decides nothing about the tool');
   assert.match(out.hookSpecificOutput.additionalContext, /Blaube[\s\S]*also the tests$/);
   assert.equal(inbox.view('s1').queued, 0);
   assert.equal(inbox.log('s1')[0].status, 'sent');
@@ -335,6 +336,10 @@ test('Stop turns down every tool until the turn ends, and only for hooks that ca
   assert.equal(inbox.step({ ...pre, hook_event_name: 'PostToolUse' }, true), '');
   inbox.observe({ session_id: 's1', hook_event_name: 'Stop', last_assistant_message: 'Stopped after reading.' });
   assert.equal(inbox.view('s1').stopping, false);
+  // (Tools go ahead again; what waited goes in at the next step.)
+  const after = JSON.parse(inbox.step(pre, true)).hookSpecificOutput;
+  assert.equal(after.permissionDecision, undefined);
+  assert.match(after.additionalContext, /next$/);
   assert.equal(inbox.step(pre, true), '');
   assert.ok(inbox.log('s1').some((e) => e.who === 'note' && /stop/.test(e.text)));
 });

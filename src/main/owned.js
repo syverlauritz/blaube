@@ -147,6 +147,12 @@ class Owned extends EventEmitter {
       const c = m.message.content;
       s.said = Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text).join('\n') : String(c || '');
     }
+    // What Claude writes as it works ("Now the tests."), as it's written:
+    // its own words, not a helper's (those carry the helper's call id).
+    if (m.type === 'assistant' && m.message && m.message.model !== '<synthetic>' && !m.parent_tool_use_id && !m.isSidechain && Array.isArray(m.message.content)) {
+      const words = m.message.content.filter((b) => b && b.type === 'text' && typeof b.text === 'string').map((b) => b.text).join('\n\n').trim();
+      if (words) this.emit('said', id, words, String(m.message.id || ''));
+    }
     if (m.type === 'control_response' && m.response && s) {
       const answer = s.pending.get(m.response.request_id);
       if (!answer) return;

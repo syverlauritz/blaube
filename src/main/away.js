@@ -11,7 +11,7 @@ function recap(sessions, logs, since) {
   let replies = 0;
   const files = new Set();
   for (const s of real) {
-    const fresh = (logs.get(s.id) || []).filter((e) => e.who === 'claude' && e.at >= since);
+    const fresh = (logs.get(s.id) || []).filter((e) => e.who === 'claude' && !e.live && e.at >= since); // (replies, not what it wrote on the way)
     replies += fresh.length;
     for (const e of fresh) for (const f of (e.turn && e.turn.files) || []) files.add(`${s.id}/${f}`);
     if (s.state === 'waiting') need.push(name(s));

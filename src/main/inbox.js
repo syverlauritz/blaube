@@ -2,7 +2,8 @@
 // background Stop hook (asyncRewake) asks Blaube's server for a message and
 // waits. Sending one answers that waiting request; the hook hands the text to
 // Claude and wakes the session, even when nobody is at the terminal. While
-// Claude is busy nobody is waiting, so messages queue until the turn ends.
+// Claude is busy nobody is waiting, so messages queue until its next step
+// (see step) or, if its tool hooks can't hand them over, the turn's end.
 //
 // Permission prompts come in the same way: a PermissionRequest hook asks
 // and waits, and Allow or Deny on the slime answers it. So do Claude's
@@ -10,19 +11,29 @@
 // in plan mode (approved, or sent back to keep planning).
 //
 // It also keeps a short log of each session's conversation since Blaube
-// started (prompts typed in the terminal, messages sent from the slime and
-// Claude's replies), for the talk box.
+// started (prompts typed in the terminal, messages sent from the slime, what
+// Claude writes as it works, and its replies), for the talk box.
+const fs = require('node:fs');
 const { EventEmitter } = require('node:events');
 const { testCounts, words: countWords } = require('./testCounts');
 const { classify } = require('../shared/actions');
 
 const MAX_LOG = 60;
 const MAX_STEPS = 40; // what it did (read, edited, ran) is dropped before what was said
+const POLL = 1000; // how often a working session's transcript is looked at for what it wrote
+const TAIL = 4 << 20; // the most of a transcript read at once (only its new end is read)
+const FIRST = 256 << 10; // how far back a transcript first seen mid-turn is read
+const QUIET = 30 * 60e3; // a turn heard nothing from for this long has stopped (it crashed, say)
 
 // How a message from the slime reaches Claude: as a system reminder, so it
 // says plainly that it's the user talking, and that the answer will be read
 // in a small bubble (so: short and plain).
 const frame = (text) => `The user sent you this message from Blaube, their desktop buddy for Claude Code. Treat it as their next prompt. They'll read your reply in a small chat bubble, so keep the reply itself short and plain (a few sentences, no headings or tables, little or no code) unless they ask for detail; do the work as usual:\n\n${text}`;
+
+// The same, for a message that goes in while Claude works (at its next
+// step): as with something typed in the terminal then, it answers right
+// away, in a line or two, and carries on.
+const midFrame = (text) => `The user sent you this message from Blaube, their desktop buddy for Claude Code, while you were working, just as if they had typed it in the terminal. Reply to it right away: in your very next text, before any more tool calls, answer it briefly (one or two short sentences: acknowledge it, answer it, or say how it changes your plan). Then carry on with the work, folding in any change they asked for. They read your replies in a small chat bubble, so keep them short and plain (no headings or tables, little or no code) unless they ask for detail:\n\n${text}`;
 
 // The same, for sessions Blaube starts itself (they live in the bubble).
 // (Its voice: the user's ELI5 style, a little cuter, since a blob says it.)
@@ -34,12 +45,18 @@ const STYLE = [
   'Say only what matters: what you did, whether it worked, and what they should do now. A few sentences, no headings or tables, lists only when they help. Give more detail only when asked.',
   'If they have to decide something: two options at most, the context needed to pick fast, and which one you would choose.',
   'Keep paths, commands and code exact. If a short snippet is the answer, show it; don\'t create files just to hold example code.',
+  'If the user sends you a message while you are working, reply to it right away in your very next text (a sentence or two: acknowledge it, answer it, or say how it changes the plan), then carry on with the work, folding in any change they asked for.',
 ].join(' ');
 
 class Inbox extends EventEmitter {
-  constructor(now = () => Date.now()) {
+  // poll: how often (ms) a working session's transcript is looked at for
+  // what Claude wrote (0: only on its hooks).
+  constructor(now = () => Date.now(), { poll = POLL } = {}) {
     super();
     this.now = now;
+    this.pollEvery = poll;
+    this.poller = null;
+    this.tails = new Map(); // session id -> { file, off, running, heard }: its transcript, read up to off
     this.waiters = new Map(); // session id -> the hook's waiting response
     this.queue = new Map(); // session id -> [log entry]
     this.logs = new Map(); // session id -> [{ who: 'you' | 'claude', text, via, at, status }]
@@ -64,7 +81,9 @@ class Inbox extends EventEmitter {
   //   you asked it to stop, so it wraps up and its Stop hook still runs
   //   (and it can still hear you afterwards).
   // - Messages from the slime go in at the next step, as Claude Code does
-  //   with what you type while it works, instead of after the turn.
+  //   with what you type while it works, instead of after the turn: handed
+  //   over by whichever tool hook comes first (Claude reads it with that
+  //   tool's result), and it's asked to answer them straight away.
   step(payload, talksBack) {
     const id = String(payload.session_id || '');
     if (!id) return '';
@@ -75,14 +94,14 @@ class Inbox extends EventEmitter {
       return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'The user pressed Stop in Blaube, their desktop buddy. Stop now: don\'t use any more tools. In one short sentence, say where you got to.' } });
     }
     if (payload.agent_id || this.stops.has(id) || this.owned.has(id)) return '';
-    if (event !== 'PostToolUse') return '';
+    if (event !== 'PreToolUse' && event !== 'PostToolUse' && event !== 'PostToolUseFailure') return '';
     const q = this.queue.get(id);
     if (!q || !q.length) return '';
     this.queue.delete(id);
     for (const e of q) { e.status = 'sent'; e.sentAt = this.now(); e.midTurn = true; } // (part of the turn it's in, not a new one)
     this.emit('heard', id);
     this.emit('change', id);
-    return JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: frame(q.map((e) => e.text).join('\n\n')) } });
+    return JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: midFrame(q.map((e) => e.text).join('\n\n')) } });
   }
 
   // Stop button: it stops before its next step. False if it can't.
@@ -257,9 +276,108 @@ class Inbox extends EventEmitter {
   // A reply from a session Blaube started (from its own output).
   replied(id, text) {
     if (!String(text || '').trim()) return;
+    this.unsaid(id, text);
     const turn = turnOf(this.log(id), this.now());
     const entry = this.add(id, Object.assign({ who: 'claude', text: String(text) }, turn ? { turn } : {}));
     this.emit('reply', id, entry);
+  }
+
+  // Something Claude wrote while it works ("Now the tests."), as the
+  // terminal shows it: in the log as it's written, between its steps.
+  // `mid`: its message's id (one message in a few pieces is one entry).
+  said(id, text, mid = '') {
+    text = String(text || '').trim();
+    if (!text) return;
+    const log = this.log(id), last = log[log.length - 1];
+    if (mid && last && last.who === 'claude' && last.live && last.mid === mid) {
+      last.text += '\n\n' + text;
+      this.emit('change', id);
+      return;
+    }
+    this.add(id, Object.assign({ who: 'claude', text, live: true }, mid ? { mid } : {}));
+    this.emit('said', id);
+  }
+
+  // The turn's reply is in: if it was shown already as it was written,
+  // that entry goes (the reply takes its place, with what the turn came to).
+  unsaid(id, text) {
+    const log = this.log(id), same = (a, b) => String(a).replace(/\s+/g, ' ').trim() === String(b).replace(/\s+/g, ' ').trim();
+    for (let i = log.length - 1; i >= 0; i--) {
+      if (log[i].who !== 'claude') continue;
+      if (log[i].live && same(log[i].text, text)) { log.splice(i, 1); return true; }
+      return false;
+    }
+    return false;
+  }
+
+  // A turn runs in a session whose transcript is `file`: what Claude
+  // writes there is picked up from its end, on each hook and every so
+  // often between them (so a line just before a long step shows at once).
+  // `fresh`: the turn starts now, so only what comes after counts.
+  watch(id, file, fresh) {
+    if (!file || this.owned.has(id)) return;
+    let t = this.tails.get(id);
+    if (!t || t.file !== file) { t = { file, off: -1 }; this.tails.set(id, t); }
+    if (fresh) { try { t.off = fs.statSync(file).size; } catch { t.off = -1; } }
+    t.running = true;
+    t.heard = this.now();
+    if (this.pollEvery > 0 && !this.poller) {
+      this.poller = setInterval(() => this.tick(), this.pollEvery);
+      if (this.poller.unref) this.poller.unref();
+    }
+  }
+
+  tick() {
+    let any = false;
+    for (const [id, t] of this.tails) {
+      if (!t.running) continue;
+      if (this.now() - t.heard > QUIET) { t.running = false; continue; }
+      any = true;
+      this.catchUp(id);
+    }
+    if (!any && this.poller) { clearInterval(this.poller); this.poller = null; }
+  }
+
+  // Reads what's new at the end of its transcript (only that: the whole
+  // lines since last time, a few MB at most) for what Claude wrote: its own
+  // words, not its helpers', its thinking or Claude Code's.
+  catchUp(id) {
+    const t = this.tails.get(id);
+    if (!t) return;
+    let fd, text = '', cut = false;
+    try {
+      fd = fs.openSync(t.file, 'r');
+      const size = fs.fstatSync(fd).size;
+      if (t.off < 0 || t.off > size) { t.off = Math.max(0, size - FIRST); cut = t.off > 0; } // (first seen mid-turn: the end of this turn)
+      const from = Math.max(t.off, size - TAIL);
+      if (from > t.off) cut = true;
+      if (size <= from) return;
+      const buf = Buffer.alloc(size - from);
+      fs.readSync(fd, buf, 0, buf.length, from);
+      const end = buf.lastIndexOf(10);
+      if (end < 0) return; // (not a whole line yet)
+      t.off = from + end + 1;
+      text = buf.toString('utf8', 0, end);
+    } catch { return; } finally { if (fd != null) try { fs.closeSync(fd); } catch { /* gone */ } }
+    const lines = text.split('\n');
+    if (cut) lines.shift(); // (it started before what was read)
+    let got = [];
+    for (const l of lines) {
+      if (!l.includes('"type":"assistant"') && !l.includes('"type":"user"')) continue;
+      let e;
+      try { e = JSON.parse(l); } catch { continue; }
+      if (!e || e.isSidechain || !e.message) continue;
+      const c = e.message.content;
+      if (e.type === 'user') {
+        // A new turn: what came before it was the last one's.
+        if (!e.isMeta && !e.isCompactSummary && !(Array.isArray(c) && c.some((b) => b && b.type === 'tool_result'))) got = [];
+        continue;
+      }
+      if (e.type !== 'assistant' || e.isApiErrorMessage || e.message.model === '<synthetic>') continue;
+      const words = (typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b) => b && b.type === 'text' && typeof b.text === 'string').map((b) => b.text).join('\n\n') : '').trim();
+      if (words) got.push({ words, mid: String(e.message.id || e.uuid || '') });
+    }
+    for (const g of got) this.said(id, g.words, g.mid);
   }
 
   // Hook events, for the log and to know when a turn starts or a session ends.
@@ -268,6 +386,16 @@ class Inbox extends EventEmitter {
     if (!id || payload.agent_id) return;
     const event = payload.hook_event_name;
     if (this.stops.has(id) && (event === 'Stop' || event === 'UserPromptSubmit' || event === 'SessionEnd')) { this.stops.delete(id); this.emit('change', id); }
+    // What Claude writes as it works, from its transcript: read before the
+    // step it led to is logged, so they're in order.
+    const file = typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
+    if (file && /^(PreToolUse|PostToolUse|PostToolUseFailure)$/.test(event)) { this.watch(id, file); this.catchUp(id); }
+    if (file && event === 'UserPromptSubmit') this.watch(id, file, true);
+    if (event === 'Stop' || event === 'SessionEnd') {
+      const t = this.tails.get(id);
+      if (t) { if (event === 'Stop' && t.running) this.catchUp(id); t.running = false; }
+      if (event === 'SessionEnd') this.tails.delete(id);
+    }
     // Its to-do list, as the terminal shows it.
     if (event === 'PostToolUse') {
       const doneOf = () => (this.todos.get(id) || []).filter((t) => t.status === 'completed').length;
@@ -310,7 +438,9 @@ class Inbox extends EventEmitter {
       }
     } else if (event === 'Stop' && payload.last_assistant_message) {
       // The reply answers the turn that just ended, so it goes above
-      // anything sent from the slime that hasn't been read yet.
+      // anything sent from the slime that hasn't been read yet. (Shown
+      // already as it was written: it moves here.)
+      this.unsaid(id, payload.last_assistant_message);
       const turn = turnOf(this.log(id), this.now());
       const entry = this.add(id, Object.assign({ who: 'claude', text: String(payload.last_assistant_message) }, turn ? { turn } : {}));
       const log = this.logs.get(id);
@@ -337,13 +467,13 @@ class Inbox extends EventEmitter {
   // A session that's gone for good: nothing is kept for it.
   forget(id) {
     if (this.waiters.has(id) || this.asks.has(id) || this.owned.has(id)) return false; // (still talking to it)
-    for (const m of [this.queue, this.logs, this.typed, this.todos, this.reachable, this.steerable, this.stops]) m.delete(id);
+    for (const m of [this.queue, this.logs, this.typed, this.todos, this.reachable, this.steerable, this.stops, this.tails]) m.delete(id);
     return true;
   }
 
   // Everything about a session moves to its new id.
   rename(from, to) {
-    for (const m of [this.waiters, this.queue, this.logs, this.asks, this.typed, this.todos]) if (m.has(from)) { m.set(to, m.get(from)); m.delete(from); }
+    for (const m of [this.waiters, this.queue, this.logs, this.asks, this.typed, this.todos, this.tails]) if (m.has(from)) { m.set(to, m.get(from)); m.delete(from); }
     for (const set of [this.reachable, this.owned, this.steerable, this.stops]) if (set.has(from)) { set.delete(from); set.add(to); }
     this.emit('change', to);
   }
@@ -446,7 +576,7 @@ function turnOf(log, now) {
   let start = -1;
   for (let i = log.length - 1; i >= 0; i--) {
     const e = log[i];
-    if (e.who === 'claude') break;
+    if (e.who === 'claude' && !e.live) break; // (what it wrote on the way is part of the turn)
     if (e.who !== 'you' || e.status === 'queued' || e.status === 'delivering') continue;
     start = i;
     if (!e.midTurn) break; // (a message added mid-turn: the turn began before it)
@@ -626,4 +756,4 @@ function alwaysLabel(updates, max = 70) {
   return text.length > max ? text.slice(0, max - 2) + '…' : text;
 }
 
-module.exports = { Inbox, frame, describe, toolName, alwaysLabel, stepText, stepDetail, stepEntry, turnOf, failedTests, stoppedLast, erredLast, runFailed, STYLE };
+module.exports = { Inbox, frame, midFrame, describe, toolName, alwaysLabel, stepText, stepDetail, stepEntry, turnOf, failedTests, stoppedLast, erredLast, runFailed, STYLE };
