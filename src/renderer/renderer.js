@@ -6015,6 +6015,8 @@
       return;
     }
     if (!wantsAttention(b)) return;
+    // You're reaching for it: it holds still to be clicked (and watches you).
+    if (reachingFor(b)) { b.nextHop = time + 0.3; return; }
     if (b.state === 'waiting') {
       // Waiting a while and you haven't come: it comes to you, hopping
       // over toward your cursor (and stops once it's close).
@@ -7140,6 +7142,24 @@
     return null;
   }
 
+  // The cursor's close by: one hopping for your attention stays put for it.
+  function reachingFor(b) {
+    const c = b.body.centroid();
+    return Math.hypot(mouse.x - c.x, mouse.y - c.y) < b.body.o.radius * 2.5;
+  }
+
+  // A press just off one wanting your attention still catches it (it's
+  // bouncing; you were aiming for it).
+  function attentionNear(x, y) {
+    let best = null, bestD = Infinity;
+    for (const b of buddies.values()) {
+      if (b.dying || !wantsAttention(b)) continue;
+      const c = b.body.centroid(), d = Math.hypot(x - c.x, y - c.y);
+      if (d < b.body.o.radius * 1.5 && d < bestD) { best = b; bestD = d; }
+    }
+    return best;
+  }
+
   // The session a slime belongs to: its own, or its mother's.
   function sessionOf(b) {
     const m = b.kind === 'child' ? b.mother : b;
@@ -7157,8 +7177,8 @@
     const rects = [];
     for (const b of buddies.values()) {
       if (b.dying) continue;
-      const box = b.body.bbox();
-      rects.push([box.minX, box.minY, box.maxX, box.maxY]);
+      const box = b.body.bbox(), pad = wantsAttention(b) ? b.body.o.radius * 0.5 : 0; // (see attentionNear)
+      rects.push([box.minX - pad, box.minY - pad, box.maxX + pad, box.maxY + pad]);
     }
     const h = petSize() * 0.7;
     for (const p of pets.values()) if (!p.dying) rects.push([p.x - h, p.y - h, p.x + h, p.y + h]);
@@ -7202,7 +7222,7 @@
       drag = { pet: p, x0: e.clientX, y0: e.clientY, t0: time, moved: false };
       return;
     }
-    const b = buddyAt(e.clientX, e.clientY);
+    const b = buddyAt(e.clientX, e.clientY) || attentionNear(e.clientX, e.clientY);
 		if (!b && jarAt(e.clientX, e.clientY)) {
 			// Pick up the snack jar.
 			jar.held = { dx: e.clientX - jar.x, dy: e.clientY - jar.y };
