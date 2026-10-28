@@ -111,6 +111,35 @@ const SCENES = {
 		wait: 6000,
 		size: [1400, 560],
 	},
+	// The beret: on a big slime, a small one and a helper, tilted to either
+	// side, the stalk on top.
+	beret: {
+		sessions: [
+			session('br', 'blaube', 'idle', { look: 'beret', tokens: { total: 6000000, context: 20000, limit: 200000 }, agents: [{ id: 'h36', type: 'general-purpose', description: 'Helper', state: 'working', activity: 'thinking' }] }),
+			session('br2', 'kalkis', 'idle', { color: '#5B8DEF', look: 'beret' }),
+			session('br3', 'website', 'working', { color: '#E07BA8', look: 'beret' }),
+		],
+		config: { size: 0.85 },
+		wait: 5000,
+		size: [1300, 560],
+	},
+	// Hopping (squashed on each landing), then shaken and dropped: does the
+	// beret stay on, lag and settle?
+	// (One slime each, so the rig's frame-to-frame checks follow one beret.)
+	beretHop: {
+		sessions: [session('br2', 'kalkis', 'idle', { color: '#5B8DEF', look: 'beret' })],
+		config: { size: 0.85 },
+		wait: 3000,
+		size: [1000, 560],
+		motion: { frames: 30, every: 45, drop: 0, still: true, hopAt: [1, 15] },
+	},
+	beretShake: {
+		sessions: [session('br', 'blaube', 'idle', { look: 'beret' })],
+		config: { size: 0.85 },
+		wait: 3000,
+		size: [1000, 560],
+		motion: { frames: 18, every: 70, drop: 8 },
+	},
 	looks2: {
 		sessions: ['bunny', 'sprout']
 			.map((look, i) => session('looks2' + i, look, i % 2 ? 'working' : 'idle', { look })),

@@ -133,6 +133,8 @@ ships that breaks a "must".
 - Other apps' windows: a Blaube set or dropped on top of one stays there
   (falls off only if it wanders off), and can still be thrown anywhere:
   window tops only catch things coming down onto them, softly.
+- A French beret is one of the looks: a flat deep navy felt disc worn tilted
+  to one side, overhanging it a little, with the little stalk on top.
 
 ## Look and taste notes
 - Simple shapes, generous roundness, consistent proportions relative to the
