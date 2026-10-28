@@ -44,20 +44,24 @@ while ($true) {
 const cleanTitle = (t) => String(t || '').replace(/^[^\p{L}\p{N}]+/u, '').trim();
 
 function transcriptPath(s) {
-	if (s.transcript) return s.transcript;
-	if (!s.cwd) return '';
-	const guess = path.join(os.homedir(), '.claude', 'projects', s.cwd.replace(/[^A-Za-z0-9]/g, '-'), `${s.id}.jsonl`);
-	if (fs.existsSync(guess)) return guess;
-	// Not there: it started in another folder (and was picked up here), or
-	// it's another config folder's (~/.claude-work). Looked for once, by its
-	// id, before any hook has said where it is (after a restart).
-	const found = findTranscript(s.id);
-	if (found) s.transcript = found;
-	return found || guess;
+	if (!s.transcript && !s.cwd) return '';
+	return realTranscript(s.id, s.transcript || path.join(os.homedir(), '.claude', 'projects', s.cwd.replace(/[^A-Za-z0-9]/g, '-'), `${s.id}.jsonl`));
+}
+// The file a session's transcript really is in. Where it's said to be (by
+// its hooks, or worked out from its folder) unless that isn't there: a
+// session picked up in another folder goes on writing where it started
+// (its hooks name the new folder), and another config folder's
+// (~/.claude-work) is under that one. Then it's looked for by its id.
+const found = new Map(); // session id -> its transcript, once looked for and found
+function realTranscript(id, said) {
+	if (said && fs.existsSync(said)) return said;
+	const f = found.get(id) || findTranscript(id);
+	if (f) found.set(id, f);
+	return f || said || '';
 }
 const looked = new Map(); // session id -> when it was last looked for (not found)
 function findTranscript(id, home = os.homedir()) {
-	if (!id || Date.now() - (looked.get(id) || 0) < 30e3) return '';
+	if (!id || Date.now() - (looked.get(id) || 0) < 10e3) return '';
 	looked.set(id, Date.now());
 	let roots = [];
 	try { roots = fs.readdirSync(home).filter((n) => n === '.claude' || /^\.claude-./.test(n)).map((n) => path.join(home, n, 'projects')); } catch { return ''; }
@@ -158,4 +162,4 @@ function startFocusWatcher(onChange) {
 	};
 }
 
-module.exports = { startFocusWatcher, sessionsInFront, cleanTitle, transcriptPath };
+module.exports = { startFocusWatcher, sessionsInFront, cleanTitle, transcriptPath, realTranscript };

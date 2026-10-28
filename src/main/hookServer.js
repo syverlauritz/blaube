@@ -1,6 +1,7 @@
 // Tiny HTTP server on localhost that Claude Code hooks POST their JSON to.
 const http = require('node:http');
 const { findClaudeAncestor } = require('./win/procs');
+const { realTranscript } = require('./focus');
 
 const DEFAULT_PORT = 47821;
 const HOOK_PATH = '/blaube/hook';
@@ -99,6 +100,8 @@ function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
         if (entry) payload._entry = entry.slice(0, 64);
         const term = req.headers['x-blaube-term'];
         if (term) payload._term = String(term).slice(0, 64);
+        // (Where its transcript really is: see realTranscript.)
+        if (payload.session_id && typeof payload.transcript_path === 'string') payload.transcript_path = realTranscript(String(payload.session_id), payload.transcript_path);
         tracker.handle(payload);
         const id = String(payload.session_id);
         // (Sessions Blaube started itself have no terminal but do have the slime.)
@@ -134,6 +137,7 @@ function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
         if (term) payload._term = String(term).slice(0, 64);
         const entry = req.headers['x-blaube-entry'];
         if (entry) payload._entry = String(entry).slice(0, 64);
+        if (payload.session_id && typeof payload.transcript_path === 'string') payload.transcript_path = realTranscript(String(payload.session_id), payload.transcript_path);
         tracker.handle(payload);
         if (inbox) inbox.observe(payload);
         if (inbox && /^(PreToolUse|PostToolUse|PostToolUseFailure)$/.test(String(payload.hook_event_name))) answer = inbox.step(payload, req.headers['x-blaube-out'] === '1');
