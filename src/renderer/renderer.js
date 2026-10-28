@@ -218,10 +218,10 @@
       ensureAudio();
       const parts = BlaubeChoir.arrange(song, singers.length);
       const at = audio.ctx.currentTime + 0.8; // a breath in first
-      const volume = CFG.voiceVolume * 1.4 / Math.sqrt(singers.length);
+      const volume = CFG.voiceVolume * CFG.singVolume / Math.sqrt(singers.length);
       singers.forEach((b, i) => {
         if (b.speech) b.speech.line.stop();
-        const line = BlaubeVoice.sing(audio.ctx, parts[i].notes, { at, out: audio.out, seed: BlaubeVoice.hash(b.key), volume, wah: CFG.voiceWah, vibrato: 28, attack: 0.007, loose: 1 }); // (crisp, and each its own)
+        const line = BlaubeVoice.sing(audio.ctx, parts[i].notes, { at, out: audio.out, seed: BlaubeVoice.hash(b.key), volume, wah: CFG.voiceWah, vibrato: CFG.singVibrato, attack: CFG.singAttack, soft: CFG.singSoft, loose: CFG.singLoose, consonants: CFG.singConsonants });
         b.speech = { line, at };
         b.singing = parts[i].role;
       });
@@ -308,6 +308,8 @@
     for (const k of ['mainRadius', 'childRadius']) CFG[k] *= CFG.size;
     // And Liveliness everything they get up to (0: calm, 2: twice as much).
     for (const k of BlaubeConfig.LIVELY) CFG[k] *= CFG.liveliness ?? 1;
+    // Seasons and weather off: no leaves, snow, petals, butterflies, bats, ghosts or fireworks.
+    if (CFG.weather === 'Off') CFG.seasons = 0;
     for (const b of buddies.values()) {
       const want = b.big ? CFG.mainPoints : CFG.childPoints;
       if (b.body.n !== want) {

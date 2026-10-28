@@ -178,10 +178,12 @@
   // Sings `notes` ([{ t, dur, f0, syl }], seconds from `at`; a syl of '-'
   // carries on the one before, over a new note). Held notes, a deeper
   // vibrato, words sung as written. opts as for speak, plus vibrato
-  // (cents), attack (how fast a note comes in, s: smaller is crisper, with
+  // (cents; it blooms on each note, after a straight start), soft (0..1:
+  // rounder and darker, less buzz), attack (how fast a note comes in, s: smaller is crisper, with
   // a little accent on top) and loose (0..1: how much this singer is its
   // own person, a touch early or late, a few cents off, some notes louder
-  // than others; from its seed, so the same singer is the same each time).
+  // than others; from its seed, so the same singer is the same each time),
+  // and consonants (0..1: how loud the little "t", "s", "d" ticks are).
   // Returns what speak returns, its syllables marked `hold`.
   function sing(ctx, notes, opts = {}) {
     const at = opts.at ?? ctx.currentTime + 0.02;
@@ -204,7 +206,7 @@
   // triangle, with a little vibrato, through the wah (a resonant low-pass) and the mouth
   // (three formant filters), into its own volume. Kept well under full
   // scale, so a few voices together don't clip. o: at, out, seed, base (its
-  // pitch), volume, wah, vibrato.
+  // pitch), volume, wah, vibrato, soft.
   function voiceNodes(ctx, o) {
     const { at, base } = o;
     const character = rng(o.seed ?? 1);
@@ -218,17 +220,19 @@
     saw.type = 'sawtooth'; tri.type = 'triangle';
     tri.detune.value = 7;
     const sawGain = ctx.createGain(), triGain = ctx.createGain();
-    sawGain.gain.value = 0.55; triGain.gain.value = 0.6;
+    const soft = o.soft || 0; // (less saw, more triangle: rounder)
+    sawGain.gain.value = 0.55 * (1 - soft * 0.55); triGain.gain.value = 0.6 * (1 + soft * 0.4);
     const vib = ctx.createOscillator(), vibDepth = ctx.createGain();
     vib.frequency.value = 5.5 + character();
-    vibDepth.gain.value = (o.vibrato || 14) * (o.loose ? 0.55 + character() * 0.9 : 1); // cents (a loose singer's own wobble)
+    const vibrato = (o.vibrato ?? 14) * (o.loose ? 0.55 + character() * 0.9 : 1); // cents (a loose singer's own wobble)
+    vibDepth.gain.value = vibrato;
     vib.connect(vibDepth); vibDepth.connect(saw.detune); vibDepth.connect(tri.detune);
     // The wah: a resonant low-pass that starts shut ("w") at a syllable and
     // sweeps open ("-ah"). wah 0..1 is how far shut it starts and how
     // slowly it opens.
     const wah = ctx.createBiquadFilter();
     wah.type = 'lowpass';
-    wah.Q.value = 3 + wahAmount * 3;
+    wah.Q.value = (3 + wahAmount * 3) * (1 - soft * 0.4);
     const wahOpen = Math.min(4500, 1800 + base * 2.5) * formantShift;
     saw.connect(sawGain).connect(wah); tri.connect(triGain).connect(wah);
     // The mouth: three resonances that glide between vowels.
@@ -241,11 +245,11 @@
     });
     const tone = ctx.createBiquadFilter();
     tone.type = 'lowpass';
-    tone.frequency.value = Math.min(6000, 2200 + base * 4); // a big voice is darker
+    tone.frequency.value = Math.min(6000, 2200 + base * 4) * (1 - soft * 0.35); // a big voice is darker
     amp.connect(tone).connect(bus).connect(o.out || ctx.destination);
     // stop(): cut it short with a quick fade (for a new line over it).
     const stop = () => { const now = ctx.currentTime; bus.gain.cancelScheduledValues(now); bus.gain.setTargetAtTime(0, now, 0.015); };
-    return { bus, amp, saw, tri, vib, wah, mouth, formantShift, wahOpen, wahAmount, stop };
+    return { bus, amp, saw, tri, vib, vibDepth, vibrato, wah, mouth, formantShift, wahOpen, wahAmount, stop };
   }
 
   // The talkbox playing a planned line: [{ t, dur, gap, f0, v, s: {
@@ -253,29 +257,30 @@
   // (hold: a sung note).
   function perform(ctx, plan, o) {
     const { at } = o;
-    const { bus, amp, saw, tri, vib, wah, mouth, formantShift, wahOpen, wahAmount, stop } = voiceNodes(ctx, o);
+    const { bus, amp, saw, tri, vib, vibDepth, vibrato, wah, mouth, formantShift, wahOpen, wahAmount, stop } = voiceNodes(ctx, o);
     const last = plan[plan.length - 1];
     const t = last.t + last.dur;
     const end = t + 0.35;
 
     // Each syllable: shut for the "w" just before it, held there a moment
-    // (for an "l", or a hum), then a sweep open into the vowel. Ramps in
-    // time order, so they never overlap.
+    // (for an "l", or a hum), then a sweep open into the vowel. Curves that
+    // start from wherever the filter is, never a jump: a resonant filter
+    // that jumps clicks.
     let swept = at;
-    const held = new Map();
     const sweep = (param, shut, open, t0, len, hold = 0) => {
       const from = Math.max(swept, t0 - 0.04);
-      if (from < t0 - 0.005) { param.setValueAtTime(held.get(param) ?? open, from); param.exponentialRampToValueAtTime(shut, t0); }
-      else param.setValueAtTime(shut, t0);
-      if (hold) param.setValueAtTime(shut, t0 + hold);
-      param.exponentialRampToValueAtTime(open, t0 + hold + len);
-      held.set(param, open);
+      param.setTargetAtTime(shut, Math.min(from, t0 - 0.006), Math.max(0.002, (t0 - from) / 3));
+      param.setTargetAtTime(open, t0 + hold, len / 3);
     };
 
-    const first = plan[0];
-    for (const osc of [saw, tri]) osc.frequency.setValueAtTime(first.f0 * 0.94, at);
-    wah.frequency.setValueAtTime(wahOpen, at);
-    for (const m of mouth) m.bp.frequency.setValueAtTime(formant(first.v, m.k) * formantShift, at);
+    // Where it starts from, set a moment before the first syllable's own
+    // moves (set at `at` it would win over them, and a whole first note
+    // was sung a semitone flat). Talking scoops up into its first syllable;
+    // a song starts right on its note.
+    const first = plan[0], ready = Math.max(0, at - 0.05);
+    for (const osc of [saw, tri]) osc.frequency.setValueAtTime(first.f0 * (first.hold ? 1 : 0.94), ready);
+    wah.frequency.setValueAtTime(wahOpen, ready);
+    for (const m of mouth) m.bp.frequency.setValueAtTime(formant(first.v, m.k) * formantShift, ready);
     for (const p of plan) {
       const { t: t0, dur, v } = p, t1 = t0 + dur, onset = p.s.onset || 'w';
       // The pitch glides from syllable to syllable (portamento), dipping a
@@ -288,7 +293,7 @@
       // How it opens: "wah" (the mouth from shut and round, "w", "u"),
       // "bl" (a soft, darker "l" held a moment), "ba" (from the lips, quick),
       // a hum ("m", shut a little longer), or a click ("k", straight in).
-      const len = Math.min(dur * 0.6, o.attack && p.hold ? 0.03 + wahAmount * 0.03 : (p.hold ? 0.09 : 0.05) + wahAmount * 0.07); // (a crisp attack opens quick)
+      const len = Math.min(dur * 0.6, o.attack && p.hold ? Math.max(0.03, o.attack * 2) + wahAmount * 0.03 : (p.hold ? 0.09 : 0.05) + wahAmount * 0.07); // (a crisp attack opens quick)
       const shut = wahAmount > 0 ? wahOpen * Math.pow(0.1, wahAmount) : wahOpen;
       if (p.tied) {
         // (a slur: same vowel, no new opening)
@@ -317,13 +322,20 @@
       const into = onset === 'l' || onset === 'm' ? Math.min(onset === 'm' ? 0.045 : 0.035, dur * 0.2) : 0;
       if (into) amp.gain.setTargetAtTime(onset === 'm' ? 0.3 : 0.4, t0 - 0.005, 0.012); // (the "l" or hum, softer)
       const peak = (p.s.stress || p.hold ? 1 : 0.8) * (p.level || 1);
+      // A sung note starts nearly straight and its vibrato blooms as it's held.
+      if (p.hold && !p.tied) {
+        vibDepth.gain.setTargetAtTime(vibrato * 0.15, t0 - 0.02, 0.008); // (eased, not cut: a cut clicks too)
+        vibDepth.gain.setTargetAtTime(vibrato, t0 + 0.02, Math.min(0.4, dur * 0.7) / 3);
+      }
       if (o.attack && p.hold && !p.tied) {
-        // Straight in, a little over, then settling: the start of the note is heard.
-        amp.gain.setTargetAtTime(peak * 1.25, into ? t0 + into : t0 - 0.003, o.attack);
-        amp.gain.setTargetAtTime(peak, t0 + Math.min(0.045, dur * 0.3), 0.03);
+        // In at its own speed; a hard attack (under 20ms) goes a touch over,
+        // then settles.
+        const crisp = o.attack < 0.02;
+        amp.gain.setTargetAtTime(crisp ? peak * 1.1 : peak, into ? t0 + into : t0 - 0.003, o.attack);
+        if (crisp) amp.gain.setTargetAtTime(peak, t0 + Math.min(0.045, dur * 0.3), 0.03);
       } else amp.gain.setTargetAtTime(peak, into ? t0 + into : t0 - 0.005, onset === 'k' ? 0.014 : 0.02);
       amp.gain.setTargetAtTime(floor, t1 - Math.min(p.hold ? 0.07 : 0.05, dur * 0.4), 0.035);
-      if (p.hold ? /[stkcfhzxqjdg]/.test(p.s.consonant) : onset === 'k' && /[tkcqp]/.test(p.s.consonant)) tick(ctx, bus, t0, p.s.consonant);
+      if (p.hold ? o.consonants > 0 && /[stkcfhzxqjdg]/.test(p.s.consonant) : onset === 'k' && /[tkcqp]/.test(p.s.consonant)) tick(ctx, bus, t0, p.s.consonant, p.hold ? o.consonants : 1);
     }
     amp.gain.setTargetAtTime(0, t - 0.02, 0.05);
     for (const osc of [saw, tri, vib]) { osc.start(at); osc.stop(end); }
@@ -359,8 +371,9 @@
   const LATERAL = { f1: 360, f2: 1050, f3: 2600 };
   const formant = (v, k) => (k === 'f3' ? Math.max(2500, v.f2 + 900) : v[k]);
 
-  // "s", "t", "k"...: a tiny breath of noise at the start of a syllable.
-  function tick(ctx, out, t, consonant) {
+  // "s", "t", "k"...: a tiny breath of noise at the start of a syllable,
+  // `level` loud (0..1). Short as it is, it's heard as a click.
+  function tick(ctx, out, t, consonant, level = 1) {
     const n = ctx.createBufferSource();
     n.buffer = noise(ctx);
     const hp = ctx.createBiquadFilter();
@@ -368,7 +381,8 @@
     hp.frequency.value = /[sz]/.test(consonant) ? 4500 : 2200;
     const ng = ctx.createGain();
     const len = /[sz]/.test(consonant) ? 0.035 : 0.018;
-    ng.gain.setValueAtTime(0.07, t);
+    ng.gain.setValueAtTime(0, t);
+    ng.gain.linearRampToValueAtTime(0.07 * level, t + 0.004); // (in, not straight on)
     ng.gain.exponentialRampToValueAtTime(0.001, t + len);
     n.connect(hp).connect(ng).connect(out);
     n.start(t); n.stop(t + len + 0.01);

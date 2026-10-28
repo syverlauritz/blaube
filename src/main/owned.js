@@ -50,6 +50,8 @@ class Owned extends EventEmitter {
   has(id) { return this.sessions.has(id); }
   shellPath() { return shellClaude; } // where a login shell found claude, if it had to
   list() { return [...this.sessions.keys()]; }
+  // Sent something and its turn hasn't ended yet.
+  busy(id) { const s = this.sessions.get(id); return !!(s && s.busy); }
 
   // Starts a session in `cwd`. `extra`: more arguments (a model);
   // `settings`: extra settings for it (written to a file, so no shell can
@@ -128,6 +130,10 @@ class Owned extends EventEmitter {
       return;
     }
     const s = this.sessions.get(id);
+    // Mid-turn from what it says, whatever its hooks do: from its first
+    // word until its turn's result (a helper finishing can start another).
+    if (s && m.type === 'assistant') s.busy = true;
+    if (s && m.type === 'result') s.busy = false;
     if (m.type === 'system' && typeof m.permissionMode === 'string') this.emit('mode', id, m.permissionMode);
     if (m.type === 'system' && m.subtype === 'compact_boundary') this.emit('compacted', id);
     // Claude's API busy (overloaded, rate limited): Claude Code tries again
@@ -162,6 +168,7 @@ class Owned extends EventEmitter {
     const s = this.sessions.get(id);
     if (!s || !s.proc.stdin.writable) return false;
     s.proc.stdin.write(JSON.stringify(Object.assign({ type: 'user', message: { role: 'user', content: String(text) } }, uuid ? { uuid } : {})) + '\n');
+    s.busy = true;
     return true;
   }
 

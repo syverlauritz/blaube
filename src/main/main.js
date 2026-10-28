@@ -967,6 +967,13 @@ function startSession(cwd, extra = [], resume = '', fork = '', quiet = false) {
 // ("Quit anyway", or moving them to terminals) lets them go.
 const ownedFile = () => path.join(app.getPath('userData'), 'owned-sessions.json');
 const BUSY = new Set(['working', 'waiting']); // (a question it asked you is lost with the turn too)
+// Doing something a restart would cut off: mid-turn (as it says itself, or
+// its hooks), asking you something, or with helpers still at work (they run
+// on after their mother's turn ends).
+function ownedBusy(id) {
+  const s = tracker.sessions.get(id) || {};
+  return owned.busy(id) || BUSY.has(s.state) || (s.agents || []).length > 0;
+}
 let ownedSaved = '', ownedHeld = false;
 const revived = new Set(); // ids brought back: no "couldn't start" dialog if one can't be
 function saveOwned() {
@@ -977,7 +984,10 @@ function saveOwned() {
     if (extra[0] === '--append-system-prompt') extra = extra.slice(2); // (its voice is added fresh)
     for (let i; (i = extra.indexOf('--permission-mode')) >= 0;) extra.splice(i, 2); // (as it is now: mode)
     // (Its worktree, if it made one, is where it carries on: not another.)
-    return { id, cwd: s.cwd || o.cwd, extra: extra.filter((a) => a !== '--worktree'), mode: s.mode || '', busy: BUSY.has(s.state) };
+    // done: finished a turn you haven't seen yet; it comes back saying so,
+    // and what it said (said: the start of its reply).
+    const done = s.state === 'done' && !s.seen, reply = done && [...inbox.log(id)].reverse().find((e) => e.who === 'claude');
+    return { id, cwd: s.cwd || o.cwd, extra: extra.filter((a) => a !== '--worktree'), mode: s.mode || '', busy: ownedBusy(id), done, said: reply ? snippet(reply.text) : '' };
   });
   const json = JSON.stringify(list);
   if (json === ownedSaved) return;
@@ -1000,6 +1010,12 @@ function bringBackOwned() {
     const id = startSession(o.cwd, [...(Array.isArray(o.extra) ? o.extra.filter((a) => typeof a === 'string') : []), ...mode], o.id, '', true);
     if (!id) continue;
     log(`brought back ${id} after a restart${o.busy ? ', mid-turn' : ''}`);
+    if (o.done) {
+      // Finished while you were away: still done, and it tells you again.
+      tracker.handle({ session_id: id, cwd: o.cwd, hook_event_name: 'Stop' }, 'blaube');
+      if (typeof o.said === 'string' && o.said) setTimeout(() => { if (win && tracker.sessions.has(id)) win.webContents.send('say', { id, text: o.said, seconds: 7 }); }, 2500); // (once it's landed)
+      continue;
+    }
     if (!o.busy) { inbox.add(id, { who: 'note', text: 'Back after Blaube restarted' }); continue; }
     inbox.add(id, { who: 'note', text: 'Blaube restarted while it was working, so it was told to carry on' });
     owned.send(id, 'Blaube (the desktop app this session runs in) restarted while you were working, which cut your last turn off. Carry on where you left off. If you were waiting on the user for something, ask again.');
@@ -1110,11 +1126,16 @@ async function newSession(extra = []) {
   if (!canceled && filePaths[0]) startSession(filePaths[0], Array.isArray(extra) ? extra : []);
 }
 
+// A new session: straight to the folder picker, or (once there are recent
+// folders) a submenu of them under it.
 function newSessionMenu() {
   const recent = (prefs.recentFolders || []).filter((f) => { try { return fs.statSync(f).isDirectory(); } catch { return false; } });
   return [
-    { label: 'New session…', click: newSession },
-    ...(recent.length ? [{ label: 'New session in', submenu: recent.map((f) => ({ label: path.basename(f), sublabel: f, click: () => startSession(f) })) }] : []),
+    recent.length ? { label: 'New session', submenu: [
+      { label: 'Choose a folder…', click: newSession },
+      { type: 'separator' },
+      ...recent.map((f) => ({ label: path.basename(f), sublabel: f, click: () => startSession(f) })),
+    ] } : { label: 'New session…', click: newSession },
     ...pastSessionsMenu(),
   ];
 }
@@ -1184,7 +1205,9 @@ function watchForChanges() {
   const apply = () => {
     // A session Blaube started is mid-turn: wait for it (it comes back after
     // the restart anyway, but its turn would be cut off).
-    if (owned.list().some((id) => (tracker.sessions.get(id) || {}).state === 'working')) {
+    // Or one just finished: its cheer and reply get a moment first.
+    const now = Date.now();
+    if (owned.list().some((id) => { const s = tracker.sessions.get(id) || {}; return ownedBusy(id) || (s.state === 'done' && !s.seen && now - s.updatedAt < 10000); })) {
       if (!apply.waiting) console.log('[dev] reloading once the sessions Blaube started are done working');
       apply.waiting = true;
       timer = setTimeout(apply, 2000);
@@ -1197,6 +1220,10 @@ function watchForChanges() {
     // Always a full restart: reloading just the window left its clicks
     // falling through to whatever was underneath.
     saveOwned(); // (they come back after it)
+    // Stopped now, not left running: app.exit skips 'will-quit', and one
+    // left running beside its brought-back self trips over it.
+    ownedHeld = true;
+    owned.killAll();
     app.relaunch();
     app.exit(0);
   };
@@ -1899,52 +1926,55 @@ function claudeCodeMenu(installed) {
   ] };
 }
 
-// The sound settings, as in Settings (see soundMenu.js). A slime's menu has
-// the voice ones at its top level, so its Blaube submenu leaves them out.
-function soundItems({ voice = true, choir = true } = {}) {
+// The sound settings, as in Settings (see soundMenu.js): Sing together, and
+// the voice settings in a Sound submenu.
+function soundItems() {
   const set = (partial) => setConfig(Object.assign({}, prefs.config, partial));
-  const items = soundMenu(prefs.config, set, choir ? { songs: SONGS, sing: (id) => send('choir:' + id), stopSinging: () => send('choir-stop') } : {});
-  return voice ? items : items.filter((i) => i.label === 'Sing together');
+  const items = soundMenu(prefs.config, set, { songs: SONGS, sing: (id) => send('choir:' + id), stopSinging: () => send('choir-stop') });
+  const sing = items.filter((i) => i.label === 'Sing together');
+  return [...sing, { label: 'Sound', submenu: items.filter((i) => !sing.includes(i)) }];
 }
 
-// Blaube's menu, most used first: getting set up (until it is) and starting
-// a session; the sound; the toys and how it looks and behaves; then the
-// setup you rarely touch; quitting last. nested: it's the Blaube submenu of
-// a slime's menu, which has the voice settings already. colour: it's the
+// Blaube's menu, the same wherever it shows (on its own, in the tray, and
+// under a slime's own part when you right-click one): getting set up
+// (until it is) and starting or picking up a session; the fun (singing,
+// playing) and the sound; showing the blobs; the settings you rarely
+// touch, in one submenu; then the version and quitting. colour: it's the
 // menu of Blaube itself, with no sessions, so its own colour (the main
-// one) is in it; elsewhere colour is each slime's, in its own menu.
-function appMenuTemplate({ nested = false, colour = false, blobs = true } = {}) {
+// one) is in it; elsewhere colour is each slime's, in its own part.
+function appMenuTemplate({ colour = false, blobs = true } = {}) {
   const installed = claudeHooks.isInstalled(undefined, PORT);
   const noClaude = !claudeFound();
   return [
-    { label: `Blaube ${app.getVersion()}`, enabled: false },
-    ...(nested ? [] : [updater.menuItem()]),
-    { type: 'separator' },
-    ...(blobs ? [blobsItem()] : []),
     ...(noClaude ? [{ label: installing ? 'Installing Claude Code…' : 'Install Claude Code…', enabled: !installing, click: installClaude }]
       : installed ? [] : [{ label: claudeHooks.hasAnyBlaubeHooks() ? 'Update Claude Code connection…' : 'Connect Claude Code…', click: installHooks }]),
     ...newSessionMenu(),
     { type: 'separator' },
-    ...soundItems({ voice: !nested }),
-    { type: 'separator' },
+    ...soundItems(),
     { label: 'Play', submenu: [
       { label: 'Come here', click: () => send('come-here') },
       { label: 'Everyone hop!', click: () => send('hop') },
       { label: 'Demo sessions', click: runDemo },
     ] },
-    { label: 'Stay in front of other windows', type: 'checkbox', checked: prefs.config.onTop !== 'Off', click: (i) => setConfig(Object.assign({}, prefs.config, { onTop: i.checked ? 'On' : 'Off' })) },
-    { label: 'Notifications', submenu: ['Behind windows', 'Always', 'Off'].map((m) => ({ label: m === 'Behind windows' ? 'When they’re behind windows' : m, type: 'radio', checked: (prefs.config.notify || 'Behind windows') === m, click: () => setConfig(Object.assign({}, prefs.config, { notify: m })) })) },
+    { type: 'separator' },
+    ...(blobs ? [blobsItem()] : []),
     ...(colour ? [{ label: 'Colour', submenu: colorMenu(prefs.config.color, (hex) => setConfig(Object.assign({}, prefs.config, { color: hex }))) }] : []),
-    { label: 'Settings…', click: openSettings },
+    { label: 'Settings', submenu: [
+      { label: 'Notifications', submenu: ['Behind windows', 'Always', 'Off'].map((m) => ({ label: m === 'Behind windows' ? 'When they’re behind windows' : m, type: 'radio', checked: (prefs.config.notify || 'Behind windows') === m, click: () => setConfig(Object.assign({}, prefs.config, { notify: m })) })) },
+      { label: 'Stay in front of other windows', type: 'checkbox', checked: prefs.config.onTop !== 'Off', click: (i) => setConfig(Object.assign({}, prefs.config, { onTop: i.checked ? 'On' : 'Off' })) },
+      { label: 'Live on display', submenu: displayMenu() },
+      { label: 'Open at login', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: (i) => app.setLoginItemSettings({ openAtLogin: i.checked }) },
+      // Without Accessibility the Dock is a solid strip; with it, its icon row
+      // is read so the slimes can bump into its ends.
+      ...(process.platform === 'darwin' && !systemPreferences.isTrustedAccessibilityClient(false)
+        ? [{ label: 'Bump into the Dock’s sides…', click: askDockAccess }] : []),
+      ...(noClaude ? [] : [{ type: 'separator' }, claudeCodeMenu(installed)]),
+      { type: 'separator' },
+      { label: 'All settings…', click: openSettings },
+    ] },
     { type: 'separator' },
-    ...(noClaude ? [] : [claudeCodeMenu(installed)]),
-    { label: 'Live on display', submenu: displayMenu() },
-    { label: 'Open at login', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: (i) => app.setLoginItemSettings({ openAtLogin: i.checked }) },
-    // Without Accessibility the Dock is a solid strip; with it, its icon row
-    // is read so the slimes can bump into its ends.
-    ...(process.platform === 'darwin' && !systemPreferences.isTrustedAccessibilityClient(false)
-      ? [{ label: 'Bump into the Dock’s sides…', click: askDockAccess }] : []),
-    { type: 'separator' },
+    { label: `Blaube ${app.getVersion()}`, enabled: false },
+    updater.menuItem(),
     { label: 'Quit Blaube', role: 'quit' },
   ];
 }
@@ -1954,12 +1984,12 @@ function appMenuTemplate({ nested = false, colour = false, blobs = true } = {}) 
 const INSTALL_URL = 'https://docs.claude.com/en/docs/claude-code/setup';
 const claudeFound = () => !!(findClaude() || owned.shellPath() || TEST);
 
-// A slime's menu, most used first: talking to it, getting to its terminal
-// and files; then moving or copying the session (the rarer bits under
-// More); its sound and colour; Blaube's own menu; and last what takes the
-// slime away. tray: it's that slime's submenu in the tray, under a row
-// that already says its name and how it is, beside the tray's own sound
-// and Blaube items; quick: the tray's quick actions for it, first.
+// A slime's menu: first its own part (who it is and how it's doing;
+// talking to it, its terminal and files; the rarer things to do with its
+// session in one submenu; its colour; hiding or ending it), then Blaube's
+// menu, the same as everywhere. tray: it's that slime's submenu in the
+// tray, under a row that already says its name and how it is, so it's
+// only its own part; quick: the tray's quick actions for it, first.
 const stateWord = { working: 'Working', waiting: 'Needs you', done: 'Done', idle: 'Idle' };
 function sessionMenu(id) {
   const items = sessionMenuTemplate(id);
@@ -1969,45 +1999,41 @@ function sessionMenuTemplate(id, { tray = false, quick = [] } = {}) {
   const s = tracker.sessions.get(id);
   if (!s) return null;
   const word = stateWord[s.state] || s.state;
-  const effort = { low: 'Low effort', medium: 'Medium effort', high: 'High effort', xhigh: 'Extra high effort', max: 'Max effort' }[efforts.get(id) || defaultEffort()];
+  const effort = { low: 'low effort', medium: 'medium effort', high: 'high effort', xhigh: 'extra high effort', max: 'max effort' }[efforts.get(id) || defaultEffort()];
   const isDemo = id.startsWith('demo-');
   const mine = owned.has(id);
   const talk = () => { if (!win) return; if (tray && process.platform === 'darwin') app.focus({ steal: true }); askTalk(id); };
   return [
     ...(quick.length ? [...quick, { type: 'separator' }] : []),
-    ...(tray ? [] : [
+    ...(tray ? (effort ? [{ label: effort[0].toUpperCase() + effort.slice(1), enabled: false }, { type: 'separator' }] : []) : [
       { label: shownOf(s).full, enabled: false },
-      { label: `${word}${s.message && s.state === 'waiting' ? ': ' + s.message : ''}`, enabled: false },
+      { label: `${word}${s.message && s.state === 'waiting' ? ': ' + s.message : ''}${effort ? ' · ' + effort : ''}`, enabled: false },
+      { type: 'separator' },
     ]),
-    ...(effort ? [{ label: effort, enabled: false }, { type: 'separator' }] : tray ? [] : [{ type: 'separator' }]),
     { label: 'Talk', enabled: !isDemo, click: talk },
-    ...(mine ? [
-      { label: 'Continue in terminal', click: () => continueInTerminal(s) },
-    ] : [
-      { label: 'Go to its terminal', sublabel: process.platform === 'darwin' ? '⌥-click the blob' : 'Alt-click the blob', enabled: !isDemo, click: () => goToSession(s) },
-      { label: 'Resume in a new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
-    ]),
+    mine ? { label: 'Continue in terminal', click: () => continueInTerminal(s) }
+      : { label: 'Go to its terminal', sublabel: process.platform === 'darwin' ? '⌥-click the blob' : 'Alt-click the blob', enabled: !isDemo, click: () => goToSession(s) },
     ...(!isDemo && s.cwd && editorNow() ? [{ label: `Open in ${editorNow().name}`, click: () => openInEditor(id, '') }] : []),
     { label: 'Open project folder', enabled: !!s.cwd, click: () => shell.openPath(s.cwd) },
-    { type: 'separator' },
-    ...(mine ? [] : [{ label: 'Bring it into Blaube', toolTip: 'It closes in its terminal and carries on here, its conversation kept', enabled: canBringIn(s), click: () => bringIn(s) }]),
-    { label: 'Fork into a new session', toolTip: 'A copy of this conversation in a new session, to try something else; this one carries on as it is', enabled: !isDemo && !!s.cwd, click: () => forkSession(s) },
-    { label: 'More', submenu: [
-      { label: 'Notify me about this one', type: 'checkbox', checked: !muted.has(id), enabled: !isDemo && (prefs.config.notify || 'Behind windows') !== 'Off', click: (item) => { if (item.checked) muted.delete(id); else muted.add(id); } },
-      ...(isDemo || !s.cwd ? [] : [allowedMenu(s)]),
+    { label: 'Session', submenu: [
+      ...(mine ? [] : [
+        { label: 'Bring it into Blaube', toolTip: 'It closes in its terminal and carries on here, its conversation kept', enabled: canBringIn(s), click: () => bringIn(s) },
+        { label: 'Resume in a new terminal', enabled: !isDemo, click: () => openResumeTerminal(s) },
+      ]),
+      { label: 'Fork into a new session', toolTip: 'A copy of this conversation in a new session, to try something else; this one carries on as it is', enabled: !isDemo && !!s.cwd, click: () => forkSession(s) },
       { type: 'separator' },
       { label: 'Save conversation as Markdown', enabled: !isDemo && inbox.log(id).length > 0, click: () => { const f = saveConversation(id); if (f) shell.showItemInFolder(f); } },
       { label: 'Copy resume command', click: () => clipboard.writeText(`cd "${s.cwd}" && ${resumeCommand(s.id)}`) },
+      { type: 'separator' },
+      ...(isDemo || !s.cwd ? [] : [allowedMenu(s)]),
+      { label: 'Notify me about this one', type: 'checkbox', checked: !muted.has(id), enabled: !isDemo && (prefs.config.notify || 'Behind windows') !== 'Off', click: (item) => { if (item.checked) muted.delete(id); else muted.add(id); } },
     ] },
-    { type: 'separator' },
-    ...(tray ? [] : soundItems({ choir: false })),
     { label: 'Colour', submenu: colorMenu(colorOf(s) || prefs.config.color, (hex) => { prefs.colors[colorKey(s)] = hex; savePrefs(); pushState(); }) },
-    ...(tray ? [] : [{ label: 'Blaube', submenu: appMenuTemplate({ nested: true }) }]),
-    { type: 'separator' },
     // (Its session carries on, still tracked; Blobs… shows it again.)
     onStage(id) ? { label: 'Hide', toolTip: 'Takes its blob off the screen; its session carries on, and Blobs… shows it again', click: () => setBlobHidden(id, true) }
       : { label: 'Show', toolTip: 'Puts its blob back on the screen', click: () => setBlobHidden(id, false) },
     ...(mine ? [{ label: 'End session', click: () => endOwned(s) }] : []),
+    ...(tray ? [] : [{ type: 'separator' }, ...appMenuTemplate()]),
   ];
 }
 
@@ -2753,6 +2779,8 @@ app.whenReady().then(async () => {
   ipcMain.on('open-tuning', openTuning);
   ipcMain.on('demo', runDemo);
   ipcMain.on('life-demo', () => win && win.webContents.send('command', 'life-demo'));
+  // The tuning panel's Sing button: a song picked at random, or stop.
+  ipcMain.on('tuning-sing', (_e, on) => send(on ? 'choir:' + SONGS[Math.floor(Math.random() * SONGS.length)].id : 'choir-stop'));
   ipcMain.handle('config-get', () => prefs.config);
 	// Its thought bubble while hovered: the end of its newest thinking (a
 	// session's own, or a helper's: "<session id>/<agent id>"), or, with

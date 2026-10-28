@@ -192,3 +192,16 @@ process.stdin.on('end', () => process.exit(0)); process.stdin.resume();
   assert.deepEqual(got, [['retry', { attempt: 2, max: 10, delay: 4000, status: 529, error: 'overloaded' }], ['fallback', { text: 'Opus is overloaded, so this turn uses Sonnet.', from: 'claude-opus', to: 'claude-sonnet' }], ['remembered', ['/home/me/.claude/memory/pnpm.md']]]);
   owned.end(id);
 });
+
+test('a session is busy from a message until its turn’s result, and again when it speaks up by itself', () => {
+  const owned = new Owned(() => 'claude');
+  owned.sessions.set('s', { id: 's', proc: { stdin: { writable: true, write() {} } }, pending: new Map() });
+  assert.equal(owned.busy('s'), false);
+  owned.send('s', 'go');
+  assert.equal(owned.busy('s'), true);
+  owned.read('s', { type: 'result', subtype: 'success', result: 'ok' });
+  assert.equal(owned.busy('s'), false);
+  owned.read('s', { type: 'assistant', message: { content: [] } }); // (a helper came back: it carries on)
+  assert.equal(owned.busy('s'), true);
+  assert.equal(owned.busy('nobody'), false);
+});

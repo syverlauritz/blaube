@@ -267,3 +267,11 @@ test('a session’s permission mode is kept from its hooks, and can be set', () 
   t.setMode('nobody', 'plan');
   assert.equal(changes.length, n + 1, 'no change, no news');
 });
+
+test('a finished session picked up again stays done, still unread', () => {
+  const t = new SessionTracker();
+  t.handle(ev('Stop'), 'blaube'); // (brought back after a restart, done)
+  t.handle(ev('SessionStart', { source: 'resume' }));
+  assert.equal(t.list()[0].state, 'done');
+  assert.equal(t.list()[0].seen, false);
+});

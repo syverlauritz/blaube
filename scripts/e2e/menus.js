@@ -1,5 +1,6 @@
 // End-to-end check of the right-click menus, invisible: they build, their
-// most used items come first, the tray has each slime's own menu under its
+// most used items come first, a slime's menu is its own part then Blaube's
+// (the same as Blaube's own), the tray has each slime's own part under its
 // row (and no app-wide Colour), and the sound settings in them change the
 // same settings as the Settings window, which keeps up.
 //
@@ -24,28 +25,31 @@ module.exports = async function run({ win, tracker }) {
 	// Blaube's own menu (on a Blaube with no sessions, and the menu bar's).
 	const app = () => global.__blaubeTrayMenu();
 	const top = labels(app());
+	const fresh = (l) => l.findIndex((x) => /^New session/.test(x)); // ('New session…', or a submenu once there are recent folders)
+	const sound = () => find(app(), 'Sound').submenu;
 	console.log('     Blaube menu: ' + top.join(' | '));
-	check(top.indexOf('New session…') < top.indexOf('Sound') && top.indexOf('Sound') < top.indexOf('Play'), 'a new session first, then the sound, then the toys');
-	check(['Sound', 'Volume', 'Wah at the start of each note', 'Sing together'].every((l) => top.includes(l)), 'the sound settings are right there');
-	check(!top.includes('Sounds') && !top.includes('Claude Code defaults') && !find(app(), 'Play').submenu.items.some((i) => i.label === 'Choir'), 'nothing in it twice');
+	check(fresh(top) < top.indexOf('Sing together') && top.indexOf('Sing together') < top.indexOf('Sound') && top.indexOf('Sound') < top.indexOf('Play'), 'a new session first, then singing, the sound and the toys');
+	check(['Sound', 'Volume'].every((l) => labels(sound()).includes(l)) && !top.includes('Volume'), 'the sound settings together under Sound');
+	check(!top.includes('Claude Code') && !find(app(), 'Play').submenu.items.some((i) => i.label === 'Choir'), 'nothing in it twice');
 	check(top[top.length - 1] === 'Quit Blaube', 'quitting last');
-	check(!!find(app(), 'Claude Code') && find(app(), 'Claude Code').submenu.items.some((i) => i.label === 'New sessions start on'), 'Claude Code’s defaults under Claude Code');
+	const settingsMenu = () => find(app(), 'Settings').submenu;
+	check(['Notifications', 'Live on display', 'Open at login', 'All settings…'].every((l) => labels(settingsMenu()).includes(l)), 'the rarely touched settings together under Settings');
+	check(!!find(settingsMenu(), 'Claude Code') && find(settingsMenu(), 'Claude Code').submenu.items.some((i) => i.label === 'New sessions start on'), 'Claude Code’s defaults under Settings ▸ Claude Code');
 
-	// A slime's menu.
+	// A slime's menu: its own part, then Blaube's, the same as everywhere.
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-menus-'));
 	tracker.handle({ session_id: 'menus-a', cwd: dir, hook_event_name: 'SessionStart' });
 	const slime = () => global.__blaubeSessionMenu('menus-a');
 	const its = labels(slime());
 	console.log('     slime menu: ' + its.join(' | '));
-	check(its.indexOf('Talk') < its.indexOf('Go to its terminal') && its.indexOf('Go to its terminal') < its.indexOf('Sound'), 'talking and its terminal first');
-	check(['Sound', 'Volume', 'Wah at the start of each note'].every((l) => its.includes(l)), 'the sound settings are at its top level');
-	check(!find(slime(), 'Blaube').submenu.items.some((i) => i.label === 'Sound'), 'and not again in its Blaube submenu');
-	check(['Notify me about this one', 'Save conversation as Markdown', 'Copy resume command'].every((l) => find(slime(), 'More').submenu.items.some((i) => i.label === l)), 'the rarer ones under More');
-	check(its[its.length - 1] === 'Hide', 'hiding it last');
-	check(its.includes('Colour'), 'its own colour in it');
+	check(its.indexOf('Talk') < its.indexOf('Go to its terminal') && its.indexOf('Go to its terminal') < its.indexOf('Session') && its.indexOf('Hide') < its.indexOf('Sound'), 'talking and its terminal first, its own part before Blaube’s');
+	const same = (l) => l.slice(fresh(l)).filter((x) => x !== 'Blobs…'); // (the tray has Blobs… at its very top)
+	check(JSON.stringify(same(its)) === JSON.stringify(same(top)), 'Blaube’s part is the same as Blaube’s own menu');
+	check(['Fork into a new session', 'Notify me about this one', 'Save conversation as Markdown', 'Copy resume command', 'Resume in a new terminal'].every((l) => find(slime(), 'Session').submenu.items.some((i) => i.label === l)), 'the rarer ones under Session');
+	check(its.includes('Colour') && its.indexOf('Colour') < its.indexOf('Hide'), 'its own colour in it, before Hide');
 
 	// The tray: no app-wide Colour; a row per session, its status said once,
-	// and under it that slime's own menu, without the app-wide bits again.
+	// and under it that slime's own part, without Blaube's again.
 	check(!top.includes('Colour'), 'no Colour in the tray’s own part');
 	const row = () => app().items.find((i) => i.submenu && /menus-a|blaube-menus-/.test(i.label));
 	check(await until(() => !!row(), 6000), 'a row for the session in the tray');
@@ -57,29 +61,27 @@ module.exports = async function run({ win, tracker }) {
 		const sub = labels(r.submenu);
 		check(sub.includes('Talk') && sub.includes('Colour'), 'its submenu has Talk and its Colour');
 		check(sub.indexOf('Talk') < sub.indexOf('Open project folder') && sub.indexOf('Open project folder') < sub.indexOf('Colour') && sub.indexOf('Colour') < sub.indexOf('Hide'), 'in the same order as right-clicking it');
-		check(!sub.includes('Sound') && !sub.includes('Blaube'), 'and no sound or Blaube submenu in it');
+		check(sub[sub.length - 1] === 'Hide' && !sub.includes('Sound') && !sub.includes('Quit Blaube'), 'and none of Blaube’s menu in it');
 	}
 
 	// The sound settings: the same ones as Settings, which keeps up.
-	find(app(), 'Settings…').click();
+	find(find(app(), 'Settings').submenu, 'All settings…').click();
 	let settings = null;
 	await until(() => (settings = BrowserWindow.getAllWindows().find((w) => w.getTitle() === 'Blaube settings' && !w.webContents.isLoading())), 8000);
 	await sleep(500);
 	const shown = (key) => settings.webContents.executeJavaScript(`(() => { const label = ${JSON.stringify(require('../../src/shared/config').SETTINGS.find((s) => s[0] === key)[5])}; const row = [...document.querySelectorAll('.row')].find((r) => r.querySelector('span').textContent === label); const c = row.querySelector('select, input'); return c.value; })()`);
 	check(!!settings && (await shown('voice')) === 'On', 'Settings shows the sound on');
-	find(slime(), 'Sound').click();
-	check(!find(app(), 'Sound').checked, 'turning the sound off in a slime’s menu turns it off in Blaube’s');
+	find(find(slime(), 'Sound').submenu, 'Sound').click();
+	check(!find(sound(), 'Sound').checked, 'turning the sound off in a slime’s menu turns it off in Blaube’s');
 	check(!find(app(), 'Sing together').enabled, 'and the choir waits for it');
 	check(await until(async () => (await shown('voice')) === 'Off', 3000), 'and Settings shows it off');
-	find(app(), 'Sound').click();
-	find(app(), 'Volume').submenu.items.find((i) => i.label === '25%').click();
-	check(find(slime(), 'Sound').checked && find(slime(), 'Volume').submenu.items.find((i) => i.label === '25%').checked, 'on again, at 25%');
+	find(sound(), 'Sound').click();
+	find(sound(), 'Volume').submenu.items.find((i) => i.label === '25%').click();
+	check(find(find(slime(), 'Sound').submenu, 'Sound').checked && find(find(slime(), 'Sound').submenu, 'Volume').submenu.items.find((i) => i.label === '25%').checked, 'on again, at 25%');
 	check(await until(async () => Number(await shown('voiceVolume')) === 0.25, 3000), 'and Settings’ volume slider moves to it');
-	find(slime(), 'Wah at the start of each note').submenu.items.find((i) => i.label === 'None').click();
-	check(await until(async () => Number(await shown('voiceWah')) === 0, 3000), 'no wah, and Settings says so');
 	// Moved in Settings: the menus tick it.
 	await settings.webContents.executeJavaScript(`(() => { const i = [...document.querySelectorAll('.row')].find((r) => r.querySelector('span').textContent === 'Voice volume').querySelector('input'); i.value = '0.35'; i.dispatchEvent(new Event('input')); })()`);
-	check(await until(() => { const v = find(app(), 'Volume').submenu.items.find((i) => i.checked); return v && v.label === '35%'; }, 3000), 'a volume set in Settings shows ticked in the menu');
+	check(await until(() => { const v = find(sound(), 'Volume').submenu.items.find((i) => i.checked); return v && v.label === '35%'; }, 3000), 'a volume set in Settings shows ticked in the menu');
 	settings.close();
 
 	tracker.handle({ session_id: 'menus-a', hook_event_name: 'SessionEnd' });

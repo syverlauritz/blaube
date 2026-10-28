@@ -318,7 +318,8 @@ function activityAfter(event, prev) {
 function nextState(current, p) {
   switch (p.hook_event_name) {
     case 'SessionStart':
-      return { state: current === 'working' ? 'working' : 'idle' };
+      // (Picked up again, a finished one stays done, its news unread.)
+      return { state: current === 'working' || current === 'done' ? current : 'idle' };
     case 'UserPromptSubmit':
     case 'PreToolUse':
     case 'PostToolUse':

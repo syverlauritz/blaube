@@ -287,7 +287,7 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 
 	// Fork: a copy of the conversation in a new session (a new slime), the original carrying on.
 	const before = new Set(owned.list());
-	const forkItem = global.__blaubeSessionMenu(id).items.find((i) => i.label === 'Fork into a new session');
+	const forkItem = global.__blaubeSessionMenu(id).items.find((i) => i.label === 'Session').submenu.items.find((i) => i.label === 'Fork into a new session');
 	check(!!forkItem && forkItem.enabled, 'its menu offers Fork into a new session');
 	forkItem.click();
 	check(await until(() => owned.list().some((x) => !before.has(x))), 'which starts a new session');
@@ -499,7 +499,7 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 
 	// Claude Code's own defaults for new sessions, from Blaube's menu.
 	global.__blaubeCcHome = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-cchome-'));
-	const ccMenu = () => global.__blaubeTrayMenu().items.find((i) => i.label === 'Claude Code');
+	const ccMenu = () => global.__blaubeTrayMenu().items.find((i) => i.label === 'Settings').submenu.items.find((i) => i.label === 'Claude Code');
 	check(!!ccMenu() && ccMenu().submenu.items.find((i) => i.label === 'Default').checked && ccMenu().submenu.items.find((i) => i.label === 'Ask before acting').checked, 'the menu has Claude Code’s defaults for new sessions');
 	ccMenu().submenu.items.find((i) => i.label === 'Haiku').click();
 	ccMenu().submenu.items.find((i) => i.label === 'Accept edits').click();

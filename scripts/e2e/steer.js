@@ -721,7 +721,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
 	const localSettings = path.join(repo, '.claude', 'settings.local.json');
 	fs.writeFileSync(localSettings, JSON.stringify({ permissions: { allow: ['Bash(npm test:*)', 'Edit'] } }));
-	const allowed = global.__blaubeSessionMenu(ID3).items.find((i) => i.label === 'More').submenu.items.find((i) => i.label === 'Allowed without asking');
+	const allowed = global.__blaubeSessionMenu(ID3).items.find((i) => i.label === 'Session').submenu.items.find((i) => i.label === 'Allowed without asking');
 	check(!!allowed && allowed.enabled && allowed.submenu.items.slice(0, 2).map((i) => `${i.label} | ${i.sublabel}`).join(', ') === 'Run npm test… | This project, just you, Edit (anything) | This project, just you', 'its menu lists what it may do without asking');
 	allowed.submenu.items[0].click();
 	check(await until(() => JSON.stringify(JSON.parse(fs.readFileSync(localSettings, 'utf8')).permissions.allow) === '["Edit"]'), 'a tap takes one back, leaving the rest');
