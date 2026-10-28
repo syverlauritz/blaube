@@ -74,7 +74,7 @@
     {
       id: 'la-vie-en-rose',
       title: 'La Vie en Rose',
-      bpm: 92,
+      bpm: 184,
       // Louiguy (Louis Guglielmi), 1945; words by Édith Piaf. Still in
       // copyright. The refrain, in C, from a letter-note transcription in D
       // (pianoletternotes.blogspot.com, 2018).
