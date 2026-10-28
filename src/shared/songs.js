@@ -74,15 +74,22 @@
     {
       id: 'la-vie-en-rose',
       title: 'La Vie en Rose',
-      bpm: 104,
+      bpm: 92,
       // Louiguy (Louis Guglielmi), 1945; words by Édith Piaf. Still in
-      // copyright. The refrain's opening, in C.
+      // copyright. The refrain, in C, from a letter-note transcription in D
+      // (pianoletternotes.blogspot.com, 2018).
       notes: `
-        C5:1.5:Quand B4:.5:il A4:1:me G4:1:prend E4:1.5:dans C5:.5:ses B4:2:bras
-        A4:1.5:Il G4:.5:me E4:1:par C5:1:le B4:1:tout A4:3:bas
-        G4:1.5:Je F4:.5:vois E4:1:la D4:1:vie E4:1:en D4:1:ro C4:2:se
-        C4:4:-`,
-      chords: 'C:4 C:4 Dm:4 G7:4 G7:4 C:8',
+        C5:3:Quand B4:1:il A4:1.5:me G4:.5:prend E4:1.5:dans C5:.5:ses
+        B4:3:bras A4:1:il G4:1.5:me E4:.5:par C4:1.5:le B4:.5:tout
+        A4:2:bas G4:2:je A4:2:vois B4:2:la C5:2:vie
+        A4:2:Il G4:1:me E4:1:dit E4:1:des D4:1:mots C4:1:d'a B3:1:mour C4:1:des D4:1:mots
+        E4:1:de F4:1:tous F4:1:les E4:1:jours D4:1:et C#4:1:ça D4:1:me E4:1:fait
+        F4:1:quel G4:1:que G4:1:cho F4:1:se E4:1:la D4:1:la E4:1:la F4:1:la
+        G4:1:la G4:1:la G4:1:la G4:1:la G4:1:la G4:1:la E4:1:la F#4:1:la G4:4:-
+        C5:3:Quand B4:1:il A4:1.5:me G4:.5:prend E4:1.5:dans C5:.5:ses
+        B4:3:bras A4:1:il G4:1.5:me E4:.5:par C4:1.5:le B4:.5:tout
+        A4:2:bas G4:2:je A4:2:vois B4:2:la C5:4:vie`,
+      chords: 'C:8 G7:8 Dm7:4 G7:4 C:4 C:4 G7:4 Dm7:4 A7:4 Dm:4 G7:4 C:4 D7:4 G7:4 C:8 G7:8 Dm7:4 G7:4 C:4',
     },
   ];
 
