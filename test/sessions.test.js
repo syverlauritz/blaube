@@ -80,6 +80,18 @@ test('a hooked session that was killed (no SessionEnd) merges back once claude a
   assert.equal(t.list().length, 0);
 });
 
+test('a long quiet job keeps its slime while its claude process runs, even when claude agents leaves it out', () => {
+  let now = 0, running = true;
+  const t = new SessionTracker(() => now, (pid) => pid === 4242 && running);
+  t.handle(ev('UserPromptSubmit', { _pid: 4242 }));
+  now = 10 * 60 * 1000; // ten quiet minutes in one long step
+  for (let i = 0; i < 5; i++) t.applyAgents([]);
+  assert.equal(t.list().length, 1, 'still running: it stays');
+  running = false;
+  for (let i = 0; i < 3; i++) t.applyAgents([]);
+  assert.equal(t.list().length, 0, 'its process ended: it goes');
+});
+
 test('subagents join and leave their session', () => {
   const t = new SessionTracker();
   let changes = 0;

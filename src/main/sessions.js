@@ -10,6 +10,10 @@ const { classify } = require('../shared/actions');
 const { planAfter, progress } = require('./plan');
 const { EventEmitter } = require('node:events');
 
+// Whether a process is still running (signal 0 only asks).
+function pidAlive(pid) {
+  try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
+}
 const STALE_WORKING_MS = 15 * 60 * 1000; // no hooks for this long means it probably died
 const FORGET_MS = 6 * 60 * 60 * 1000;
 const HOOKED_GONE_MS = 60 * 1000;
@@ -32,9 +36,10 @@ function fromHelper(p, session) {
 }
 
 class SessionTracker extends EventEmitter {
-  constructor(now = () => Date.now()) {
+  constructor(now = () => Date.now(), alive = pidAlive) {
     super();
     this.now = now;
+    this.alive = alive;
     this.sessions = new Map();
   }
 
@@ -246,7 +251,9 @@ class SessionTracker extends EventEmitter {
       else if (a.status !== 'busy' && cur === 'working') this.handle({ ...base, hook_event_name: 'Stop' }, 'agents');
     }
     for (const [id, s] of this.sessions) {
-      if (live.has(id) || id.startsWith('demo-')) { s.missing = 0; continue; }
+      // (`claude agents` can leave out a session that's still running: its
+      // own claude process says it's there, however long it's been quiet.)
+      if (live.has(id) || id.startsWith('demo-') || (s.pid && this.alive(s.pid))) { s.missing = 0; continue; }
       s.missing = (s.missing || 0) + 1;
       // Hooked sessions normally end with a SessionEnd hook, but a killed
       // session never sends one. Once it's been gone from `claude agents`
