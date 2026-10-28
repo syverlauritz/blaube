@@ -75,6 +75,8 @@
     // Queued, nobody waiting, and the turn is over (interrupted, say): it
     // only gets it when it next finishes a turn.
     if (s.queued && s.inbox !== 'ready' && s.state !== 'working' && s.inbox !== 'unknown') return `${s.project} gets this when it next finishes a turn. In a hurry? Go to its terminal.`;
+    // At work, with steps that hand messages over: it gets it at its next step.
+    if (s.stoppable && s.state === 'working' && !s.stopping) return '';
     // Never heard from its inbox: it may not be able to hear you at all.
     if (s.inbox === 'unknown' && s.typeable) return s.queued ? `${s.project} started before Blaube could talk to it, so Blaube will type this into its terminal as soon as it’s free.` : '';
     if (s.inbox === 'unknown' && (s.queued || s.state !== 'working')) return `Haven’t heard from ${s.project} yet. If it doesn’t pick this up, ${s.canBring ? 'bring it here' : 'restart the session'}.`;
@@ -539,8 +541,9 @@
     if (m.status === 'queued') {
       const t = document.createElement('div');
       t.className = 'meta';
-      t.textContent = current.inbox === 'unknown' ? (current.typeable ? 'Waiting: goes in when it’s free · ' : `Waiting for ${current.project} to pick this up · `)
-        : current.stoppable && current.state === 'working' && !current.stopping ? 'Waiting: goes in at its next step · ' : 'Waiting: goes in after this turn · ';
+      t.textContent = current.stoppable && current.state === 'working' && !current.stopping ? 'On its way: Claude sees this at its next step · '
+        : current.inbox === 'unknown' ? (current.typeable ? 'Waiting: goes in when it’s free · ' : `Waiting for ${current.project} to pick this up · `)
+        : 'Waiting: goes in after this turn · ';
       const undo = document.createElement('button');
       undo.className = 'unsend';
       undo.textContent = 'Unsend';
@@ -739,7 +742,7 @@
     let thinking = -1;
     if (s.state === 'working') {
       thinking = -2;
-      for (let i = s.log.length - 1; i >= 0 && s.log[i].who !== 'claude'; i--) {
+      for (let i = s.log.length - 1; i >= 0 && !(s.log[i].who === 'claude' && !s.log[i].live); i--) { // (what it writes as it works isn't its reply)
         if (s.log[i].who === 'you' && s.log[i].status !== 'queued') { thinking = i; break; }
       }
     }
@@ -829,7 +832,7 @@
         while (a >= 0 && s.log[a].status === 'queued') a--;
         if (a >= 0 && ends[a]) ends[a].after(dots); else if (histEnd && histEnd.isConnected) histEnd.after(dots); else inner.prepend(dots);
       }
-      if (!switched && s.log.slice(seen).some((m) => m.who === 'claude')) {
+      if (!switched && s.log.slice(seen).some((m) => m.who === 'claude' && !m.live)) { // (its reply: not each line it writes on the way)
         const w = $('wrap');
         w.classList.remove('boing'); void w.offsetWidth; w.classList.add('boing');
       }

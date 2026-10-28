@@ -33,20 +33,24 @@ test('a transcript reads as the talk box’s log: what you typed, the steps, the
 		said(70, [text('Fixed: the rounding was off.')]),
 		{ type: 'system', subtype: 'stop_hook_summary', timestamp: ts(71) },
 	]));
+	// (What it said on the way shows too, as the live log shows it.)
 	assert.deepEqual(got.map((e) => [e.who, e.text]), [
 		['you', 'make the tests pass'],
+		['claude', 'Let me look first.'],
 		['step', 'Read tax.js'],
 		['step', 'Edited tax.js'],
 		['step', 'Run the tests'],
 		['claude', 'Fixed: the rounding was off.'],
 	]);
+	assert.equal(got[1].live, true);
+	assert.equal(got[5].live, undefined);
 	assert.equal(got[0].via, 'terminal');
 	assert.equal(got[0].at, T0);
-	assert.equal(got[2].detail, '− a\n+ b');
-	assert.equal(got[2].file, '/work/app/src/tax.js');
-	assert.equal(got[3].ok, false);
-	assert.match(got[3].detail, /^\$ npm test\n/);
-	assert.deepEqual(got[4].turn, { took: 70e3, steps: 3, files: ['/work/app/src/tax.js'] });
+	assert.equal(got[3].detail, '− a\n+ b');
+	assert.equal(got[3].file, '/work/app/src/tax.js');
+	assert.equal(got[4].ok, false);
+	assert.match(got[4].detail, /^\$ npm test\n/);
+	assert.deepEqual(got[5].turn, { took: 70e3, steps: 3, files: ['/work/app/src/tax.js'] });
 	assert.ok(got.every((e) => e.n < 0), 'its own numbers, never the live log’s');
 	assert.equal(new Set(got.map((e) => e.n)).size, got.length);
 });
@@ -76,12 +80,13 @@ test('what isn’t part of the conversation is left out; a compaction is one div
 		['claude', 'A cat.'],
 		['note', 'Context compacted'],
 		['you', 'go on'],
+		['claude', 'Working'],
 		['note', 'Interrupted'],
 		['you', 'try again'],
 		['note', 'Claude Code: API Error: overloaded'],
 	]);
 	assert.equal(got[2].divider, true);
-	assert.equal(got[6].error, true);
+	assert.equal(got[7].error, true);
 });
 
 test('a reply in pieces is one reply; a step whose call is on an earlier page is skipped', () => {

@@ -205,3 +205,15 @@ test('a session is busy from a message until its turn’s result, and again when
   assert.equal(owned.busy('s'), true);
   assert.equal(owned.busy('nobody'), false);
 });
+
+test('what Claude writes as it works is said as it comes, not its helpers’ words or Claude Code’s', () => {
+  const owned = new Owned(() => 'claude');
+  owned.sessions.set('s', { id: 's', proc: { stdin: { writable: true, write() {} } }, pending: new Map() });
+  const got = [];
+  owned.on('said', (id, text, mid) => got.push([id, text, mid]));
+  owned.read('s', { type: 'assistant', parent_tool_use_id: null, message: { id: 'm1', content: [{ type: 'thinking', thinking: '' }, { type: 'text', text: 'Now the tests.' }] } });
+  owned.read('s', { type: 'assistant', parent_tool_use_id: null, message: { id: 'm1', content: [{ type: 'tool_use', id: 't', name: 'Bash', input: {} }] } });
+  owned.read('s', { type: 'assistant', parent_tool_use_id: 'toolu_1', message: { id: 'h', content: [{ type: 'text', text: 'helper talk' }] } });
+  owned.read('s', { type: 'assistant', message: { id: 'x', model: '<synthetic>', content: [{ type: 'text', text: 'No messages to compact' }] } });
+  assert.deepEqual(got, [['s', 'Now the tests.', 'm1']]);
+});

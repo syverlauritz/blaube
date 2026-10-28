@@ -819,7 +819,7 @@ function glanceNow(o) {
     turnStart: o.turnStart,
     waitingSince: o.state === 'waiting' ? o.updatedAt : 0,
     // Replies since its talk box was last open (never opened: since Blaube started).
-    unread: isOpen(o.id) ? 0 : inbox.log(o.id).filter((e) => e.who === 'claude' && e.at > (looked.get(o.id) || 0)).length,
+    unread: isOpen(o.id) ? 0 : inbox.log(o.id).filter((e) => e.who === 'claude' && !e.live && e.at > (looked.get(o.id) || 0)).length,
   });
 }
 
@@ -2699,6 +2699,7 @@ app.whenReady().then(async () => {
   // Something it saved to its memory, as the terminal shows it.
   owned.on('remembered', (id, files) => (win && win.webContents.send('nod', id), inbox.add(id, { who: 'note', text: `Remembered in ${files.slice(0, 3).map((f) => path.basename(f)).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more` : ''}` })));
   owned.on('fallback', (id, f) => inbox.add(id, { who: 'note', text: f.text ? f.text.replace(/\s+/g, ' ').trim().slice(0, 300) : `It switched to ${modelName(f.to) || f.to}${f.from ? `, as ${modelName(f.from) || f.from} couldn’t answer` : ''}` }));
+  owned.on('said', (id, text, mid) => inbox.said(id, text, mid)); // (what it writes as it works; its reply then takes the last one's place)
   owned.on('compacted', (id) => inbox.add(id, { who: 'note', text: 'Compacted: it carries on from a summary of the conversation so far' }));
   owned.on('result', (id, r) => {
     pickedModel.delete(id); // (its transcript says now)

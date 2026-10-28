@@ -181,6 +181,20 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => box(`document.querySelectorAll('#inner .msg.you.queued').length === 0`)), 'the box shows it went in');
 	const again = await tool({ hook_event_name: 'PostToolUse', tool_name: 'Read', tool_input: { file_path: '/tmp/kalkis/README.md' }, tool_response: {} });
 	check(!again.out, 'only once');
+	// Sooner: the next tool's PreToolUse hands it over too, and asks for an answer at once.
+	await type('and say hi');
+	check(await until(() => box(`[...document.querySelectorAll('#inner .meta')].some((e) => /Claude sees this at its next step/.test(e.textContent))`)), 'a waiting message says Claude sees it at its next step');	const pre2 = await tool({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: '/tmp/kalkis/README.md' } });
+	const ctx2 = pre2.json && pre2.json.hookSpecificOutput;
+	check(ctx2 && ctx2.hookEventName === 'PreToolUse' && !ctx2.permissionDecision && /say hi/.test(ctx2.additionalContext || '') && /very next text/.test(ctx2.additionalContext || ''), 'a PreToolUse hands it over, asking for a short answer straight away');
+	// What Claude writes between its steps shows as it's written (from its transcript).
+	const transcript = path.join(require('node:os').tmpdir(), `blaube-steer-${process.pid}.jsonl`);
+	fs.writeFileSync(transcript, JSON.stringify({ type: 'user', message: { role: 'user', content: 'add the 2027 brackets' } }) + '\n'
+		+ JSON.stringify({ type: 'assistant', message: { id: 'm-live', role: 'assistant', content: [{ type: 'text', text: 'Hi! Now I update the README.' }] } }) + '\n');
+	await tool({ hook_event_name: 'PreToolUse', transcript_path: transcript, tool_name: 'Read', tool_input: { file_path: '/tmp/kalkis/README.md' } });
+	check(await until(() => box(`[...document.querySelectorAll('#inner .msg.claude')].some((e) => /Now I update the README/.test(e.textContent))`)), 'what it writes between steps shows in the box at once');
+	fs.appendFileSync(transcript, JSON.stringify({ type: 'assistant', message: { id: 'm-live2', role: 'assistant', content: [{ type: 'text', text: 'Then the changelog.' }] } }) + '\n');
+	check(await until(() => box(`[...document.querySelectorAll('#inner .msg.claude')].some((e) => /Then the changelog/.test(e.textContent))`), 5000), 'and between hooks, too');
+	fs.rmSync(transcript, { force: true });
 	const sub = (() => { inbox.send(ID, 'a note for the main thread'); return tool({ hook_event_name: 'PostToolUse', agent_id: 'sub-1', tool_name: 'Read', tool_input: { file_path: '/tmp/x' }, tool_response: {} }); })();
 	check(!(await sub).out, 'a subagent’s step doesn’t take a message meant for the main thread');
 	for (const e of inbox.queue.get(ID) || []) inbox.unsend(ID, e.n);
@@ -228,7 +242,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await box(`(() => { const t = document.getElementById('text'); t.value = ''; t.dispatchEvent(new Event('input')); t.focus(); })()`);
 	const arrow = (k) => box(`document.getElementById('text').dispatchEvent(new KeyboardEvent('keydown', { key: '${k}', bubbles: true, cancelable: true }))`).then(() => box(`document.getElementById('text').value`));
 	check(await arrow('ArrowUp') === 'open a PR', '↑ brings back your last message');
-	check(await arrow('ArrowUp') === 'also do 2028 while you’re at it', 'and the one before');
+	check(await arrow('ArrowUp') === 'and say hi', 'and the one before');
 	check(await arrow('ArrowDown') === 'open a PR' && await arrow('ArrowDown') === '', '↓ goes forward, back to an empty field');
 
 	// Take the conversation with you: ⌘S saves it as Markdown, ⇧⌘C copies
