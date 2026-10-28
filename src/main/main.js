@@ -264,6 +264,7 @@ function fitWindow() {
   if (!win) return;
   win.setBounds(dock.windowBoundsFor(currentDisplay()));
   updateWorld();
+  sendLedges(); // the window tops on this screen, not the last one's
 }
 
 function updateWorld() {
