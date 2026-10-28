@@ -299,7 +299,7 @@
           }
         }
       }
-      if (s.brows && (face.expression === 'worried' || face.expression === 'concentrate' || face.expression === 'pained' || face.expression === 'annoyed' || face.expression === 'peek' || face.expression === 'sad')) {
+      if (s.brows && !face.squeeze && (face.expression === 'worried' || face.expression === 'concentrate' || face.expression === 'pained' || face.expression === 'annoyed' || face.expression === 'peek' || face.expression === 'sad')) {
         // Concentrating: level brows that only sometimes pull together.
         // Annoyed: pulled down hard at the middle. Peeking: level and calm.
         // Sad: steeply up at the middle.
