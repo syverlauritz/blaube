@@ -4,6 +4,15 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-28
+
+- Sessions you start in Blaube survive it restarting (an update, a crash): they come back with their conversation, and one that was mid-turn is told to carry on. Blaube never restarts on one that's still working, asking you something or waiting on its helpers, and one that finished while you were away comes back still done, saying what it did.
+- A picked-up session starts in the permission mode it had, and there's a "Don't ask" mode for sessions Blaube starts (⇧⇥ in the talk box, with a warning first).
+- The choir sings better: in tune from the very first note, no clicks, a crisper attack, and each singer a little its own. Three new songs: Somewhere Over the Rainbow, Fly Me to the Moon and Can't Help Falling in Love, and La Vie en Rose from a real transcription.
+- Tidier menus: Settings and Sound in their own submenus, New session lists your recent folders, a session's extras under Session.
+- Seasons and weather (leaves, snow, butterflies, bats...) can be turned off in Settings.
+- A blob hopping for your attention holds still when your cursor comes near, so it's easy to catch.
+
 ## [0.2.0] - 2026-10-27
 
 The first release.
