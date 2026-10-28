@@ -995,7 +995,7 @@ function bringBackOwned() {
   for (const o of Array.isArray(list) ? list : []) {
     if (!o || typeof o.id !== 'string' || typeof o.cwd !== 'string' || tracker.sessions.has(o.id) || owned.has(o.id)) continue;
     try { if (!fs.statSync(o.cwd).isDirectory()) continue; } catch { continue; }
-    const mode = ['acceptEdits', 'plan', 'bypassPermissions'].includes(o.mode) ? ['--permission-mode', o.mode] : [];
+    const mode = modeArgs(o.mode);
     revived.add(o.id);
     const id = startSession(o.cwd, [...(Array.isArray(o.extra) ? o.extra.filter((a) => typeof a === 'string') : []), ...mode], o.id, '', true);
     if (!id) continue;
@@ -1006,6 +1006,24 @@ function bringBackOwned() {
     tracker.handle({ session_id: id, hook_event_name: 'UserPromptSubmit' }, 'blaube');
   }
   saveOwned();
+}
+
+// Each session's permission mode, kept by id, so one picked up again
+// (from the past ones, or brought in from its terminal) asks you as it
+// did when it stopped. (Claude Code doesn't keep it with the conversation.)
+const RESUMABLE = ['acceptEdits', 'plan', 'bypassPermissions'];
+function modeArgs(mode) { return RESUMABLE.includes(mode) ? ['--permission-mode', mode] : []; }
+function rememberMode(s) {
+  if (!s || !s.mode || TEST || s.id.startsWith('demo-')) return;
+  const modes = prefs.sessionModes && typeof prefs.sessionModes === 'object' ? prefs.sessionModes : {};
+  const now = RESUMABLE.includes(s.mode) ? s.mode : undefined;
+  if (modes[s.id] === now) return;
+  delete modes[s.id];
+  if (now) modes[s.id] = now;
+  const ids = Object.keys(modes);
+  for (const id of ids.slice(0, Math.max(0, ids.length - 100))) delete modes[id]; // (the last 100)
+  prefs.sessionModes = modes;
+  savePrefs();
 }
 
 // Picks up a past session in Blaube, no terminal: its slime pops out with
@@ -1026,7 +1044,7 @@ async function pickUp(p) {
     dialog.showMessageBox({ type: 'warning', message: `Can’t find its folder any more.`, detail: p.cwd });
     return;
   }
-  const id = startSession(p.cwd, [], p.id);
+  const id = startSession(p.cwd, modeArgs((prefs.sessionModes || {})[p.id]), p.id);
   if (!id) return null;
   // (Ended while you watched: the conversation is still here.)
   // (Its box may have notes already, from before it was brought here.)
@@ -2273,6 +2291,7 @@ app.whenReady().then(async () => {
 
   focus = startFocusWatcher(() => { if (markFrontSeen()) pushState(); });
   tracker.on('change', (c) => { if (c && c.to === 'gone' && c.session) forgetBlob(c.session.id); });
+  tracker.on('change', (c) => rememberMode(c && c.session));
   tracker.on('change', () => {
     markFrontSeen();
     if (tracker.list().some((s) => !isReady(s))) refreshUsage();
