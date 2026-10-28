@@ -118,7 +118,7 @@ Blaube never calls the Anthropic API. It hears from your sessions through Claude
 - **[Developing Blaube](docs/DEVELOPMENT.md)**: running from source, tests, the render harness, releasing, signing.
 - **[Changelog](CHANGELOG.md)** · **[Design brief](docs/DESIGN.md)** · **[Report a problem](https://github.com/syverlauritz/blaube/issues/new/choose)**
 
-*Blau* is German for blue, *blob* is a blob. It's orange now. You can work out the rest.
+*Blaube* is "blob" as Claude would spell it, if Claude were French.
 
 ## License
 
