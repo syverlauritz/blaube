@@ -259,7 +259,10 @@ class SessionTracker extends EventEmitter {
       // session never sends one. Once it's been gone from `claude agents`
       // for a few polls and quiet for a minute, treat it as closed.
       const gone = s.hooked ? s.missing >= 3 && this.now() - s.updatedAt > HOOKED_GONE_MS : true;
-      if (gone) this.handle({ session_id: id, hook_event_name: 'SessionEnd' }, 'agents');
+      if (gone) {
+        this.emit('lost', { id, project: s.project, pid: s.pid, hooked: !!s.hooked, quiet: this.now() - s.updatedAt });
+        this.handle({ session_id: id, hook_event_name: 'SessionEnd' }, 'agents');
+      }
     }
   }
 

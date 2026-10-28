@@ -2317,6 +2317,8 @@ app.whenReady().then(async () => {
   updater.start({ log, test: !!TEST });
 
   focus = startFocusWatcher(() => { if (markFrontSeen()) pushState(); });
+  // (Why a slime went without its session saying goodbye, for the log.)
+  tracker.on('lost', (l) => log(`session ${l.project || l.id} gone: not in claude agents, pid ${l.pid || 'unknown'}, quiet ${Math.round(l.quiet / 1000)} s${l.hooked ? '' : ', no hooks'}`));
   tracker.on('change', (c) => { if (c && c.to === 'gone' && c.session) forgetBlob(c.session.id); });
   tracker.on('change', (c) => rememberMode(c && c.session));
   tracker.on('change', () => {
