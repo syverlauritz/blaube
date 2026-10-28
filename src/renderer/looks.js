@@ -8,7 +8,7 @@
 	// [name, weight]. 'none' keeps about half of the Blaubes plain.
 	const LOOKS = [
 		['none', 15], ['curl', 2], ['bow', 2], ['antenna', 2], ['horns', 2],
-		['catears', 2], ['bunny', 3], ['sprout', 2],
+		['catears', 2], ['bunny', 3], ['sprout', 2], ['beret', 2],
 	];
 
 	const hash = (key) => {
@@ -61,6 +61,12 @@
 				spread: 1,
 				scale: (1.45 - n * 0.1) * (0.9 + rnd() * 0.2),
 			}));
+		}
+		if (name === 'beret') {
+			// Worn tilted to one side (a random side), a little off the crown
+			// toward it.
+			const side = rnd() < 0.5 ? -1 : 1;
+			return [{ side, shift: side * (0.06 + rnd() * 0.08), spread: 1, scale: 0.94 + rnd() * 0.14 }];
 		}
 		const n = 1 + Math.floor(rnd() * (MAX[name] || 1) * 0.999);
 		const parts = [];
@@ -224,7 +230,7 @@
 	// base swings when the head is shoved, and the tip (leaves, antenna
 	// ball, ear tips) trails behind the base. It all runs in the fixed
 	// physics step (b.look's springs never see the frame rate).
-	const LOOSE = { antenna: 1.8, sprout: 2.2, bunny: 1.7 };
+	const LOOSE = { antenna: 1.8, sprout: 2.2, bunny: 1.7, beret: 0.8 }; // (a beret sits snug: stiffer)
 	function stepLook(b, dt) {
 		const L = b.lookState || (b.lookState = newState());
 		L.clock += dt;
@@ -304,11 +310,11 @@
 	// place bumps over and back, smoothly, and the look follows it. Rare on
 	// purpose: one at a time, and not again for a few seconds. For bunny
 	// ears, side picks one ear (-1 left, 1 right, 0 both), and w > 0 flicks
-	// it out, w < 0 pricks it up. A plant doesn't twitch.
+	// it out, w < 0 pricks it up. A plant (or a hat) doesn't twitch.
 	const TWITCH_REST = 4; // seconds between twitches, at least
 	function flick(b, w, side = 0) {
 		const L = b.lookState;
-		if (!L || b.look === 'sprout') return;
+		if (!L || b.look === 'sprout' || b.look === 'beret') return;
 		if (L.twitch && L.clock - L.twitch.at < TWITCH_REST) return;
 		const amp = L.ears ? w * 0.04 : w * 0.025 * (side || 1);
 		L.twitch = { at: L.clock, amp: Math.max(-0.35, Math.min(0.35, amp)), side };
@@ -352,7 +358,7 @@
 			const shortest = name === 'bunny' ? 0.85 : 0.45;
 			ctx.scale(Math.max(0.6, Math.cos(yaw)) * part.scale * near, Math.max(shortest, Math.cos(pitch)) * part.scale * near);
 			// Its highest point, about 2.6 u out along the look.
-			const reach = u * (name === 'bunny' ? 5 : name === 'horns' ? 2.7 : 2.6) * part.scale, ang = Math.atan2(p.ny, p.nx) + Math.PI / 2 + swing;
+			const reach = u * (name === 'bunny' ? 5 : name === 'horns' ? 2.7 : name === 'beret' ? 2.1 : 2.6) * part.scale, ang = Math.atan2(p.ny, p.nx) + Math.PI / 2 + swing;
 			const topY = p.y - p.ny * u * sink - reach * Math.cos(ang);
 			if (body.lookTop == null || topY < body.lookTop) body.lookTop = topY;
 			body.lookTips.push({ x: p.x - p.nx * u * sink + reach * Math.sin(ang), y: topY, w: u * 1.6 * part.scale }); // (a sheet over it drapes over these)
@@ -471,6 +477,49 @@
 							ctx.restore();
 						}
 					}, 0.3);
+					break;
+				case 'beret':
+					// A French beret: a soft flat felt disc tilted over to one
+					// side, overhanging it a little, with the little stalk on top.
+					// Its band hugs the head (the head's own curve, so it never
+					// floats off the sides); on a shove it slides and tips a little
+					// rather than swinging like a stalk, and the overhang flops
+					// after it.
+					if (front) at(0, () => {
+						const s = part.side, R = r / (u * part.scale); // the head's curve, in u
+						const head = (x) => x * x / (2 * R * u); // how far the skin drops x out from the crown
+						ctx.rotate(-swing * 0.6);
+						ctx.translate(swing * u * 0.9, 0);
+						ctx.scale(s, 1); // (drawn tilted right; mirrored for the left)
+						ctx.fillStyle = '#2b2f4e'; // deep navy felt
+						const flop = soft(tip, 0.5) * s * u * 0.5;
+						// The band, snug down over the crown, its ends curving up
+						// into the disc.
+						const a = -2.2 * u, z = 2.4 * u;
+						ctx.beginPath();
+						ctx.moveTo(-2.7 * u, -u * 0.75);
+						ctx.quadraticCurveTo(-2.75 * u, head(a) + u * 0.2, a, head(a) + u * 0.3);
+						ctx.quadraticCurveTo(0.1 * u, u * 0.6 + head(0.1 * u), z, head(z) + u * 0.35);
+						ctx.quadraticCurveTo(2.8 * u, head(z) + u * 0.3, 3.0 * u, u * 0.05);
+						ctx.closePath();
+						ctx.fill();
+						// The disc: wide and flat, tilted down toward the overhanging
+						// side.
+						ctx.beginPath();
+						ctx.ellipse(0.4 * u, -u * 0.6, 3.4 * u, 0.95 * u, 0.17, 0, Math.PI * 2);
+						ctx.fill();
+						// Its soft overhanging edge.
+						ctx.beginPath();
+						ctx.ellipse(3.15 * u, u * 0.05 + flop, 0.85 * u, 0.55 * u, 0.45, 0, Math.PI * 2);
+						ctx.fill();
+						// The stalk.
+						ctx.strokeStyle = '#2b2f4e';
+						ctx.lineWidth = u * 0.34;
+						ctx.beginPath();
+						ctx.moveTo(0.2 * u, -u * 1.35);
+						ctx.lineTo(0.2 * u + tip * u * 0.4, -u * 2.0);
+						ctx.stroke();
+					}, 0);
 					break;
 				case 'bunny':
 					// Long ears in the body's colour, one smooth shape each,
