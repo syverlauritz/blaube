@@ -91,6 +91,68 @@
         A4:2:bas G4:2:je A4:2:vois B4:2:la C5:4:vie`,
       chords: 'C:8 G7:8 Dm7:4 G7:4 C:4 C:4 G7:4 Dm7:4 A7:4 Dm:4 G7:4 C:4 D7:4 G7:4 C:8 G7:8 Dm7:4 G7:4 C:4',
     },
+    {
+      id: 'somewhere-over-the-rainbow',
+      title: 'Somewhere Over the Rainbow',
+      bpm: 68,
+      // Harold Arlen / E.Y. Harburg, 1939 (The Wizard of Oz). The main
+      // theme twice, 16 bars, in C.
+      notes: `
+        C4:2:Some C5:2:where
+        B4:1:o G4:0.5:ver A4:0.5:the B4:1:rain C5:1:bow
+        C4:2:way A4:2:up
+        G4:4:high
+        C4:2:There's F4:2:a
+        E4:1:land C4:0.5:that D4:0.5:I E4:1:heard F4:1:of
+        D4:1:once B3:0.5:in C4:0.5:a D4:1:lull E4:1:a
+        C4:4:by
+        C4:2:Some C5:2:where
+        B4:1:o G4:0.5:ver A4:0.5:the B4:1:rain C5:1:bow
+        C4:2:skies A4:2:are
+        G4:4:blue
+        C4:2:And F4:2:the
+        E4:1:dreams C4:0.5:that D4:0.5:you E4:1:dare F4:1:to
+        D4:1:dream B3:0.5:real C4:0.5:ly D4:1:do E4:1:come
+        C4:4:true`,
+      chords: 'C:4 Em:4 F:4 C:4 F:4 C:3 F:1 G7:2 C:2 C:4 C:4 Em:4 F:4 C:4 F:4 C:3 F:1 G7:2 C:2 C:4',
+    },
+    {
+      id: 'fly-me-to-the-moon',
+      title: 'Fly Me to the Moon',
+      bpm: 120,
+      // Bart Howard, 1954 ("In Other Words"). The melody from a
+      // virtual-piano transcription, in C.
+      notes: `
+        C5:3:Fly B4:.333:me A4:.333:to G4:.334:the
+        F4:1:moon G4:2.5:let A4:.5:me
+        C5:.5:play B4:2:a A4:1:mong G4:.25:the F4:.25:stars E4:5.5:-
+        A4:.5:let G4:.5:me F4:.5:see E4:1:what
+        D4:1.5:spring E4:.5:is F4:.5:like A4:1.5:on
+        G#4:2.5:Ju F4:1:pi E4:.25:ter D4:.25:and
+        C4:3.5:Mars C4:.5:In
+        D4:.5:oth A4:1.5:er A4:4:words
+        C5:1.5:hold B4:.5:my G4:7.5:hand
+        C4:.5:In C4:.5:oth F4:.5:er F4:4:words
+        A4:1.5:ba G4:1.5:by F4:1.5:kiss E4:6.5:me`,
+      chords: 'Am7:4 Dm7:4 G7:4 C:4 F:4 Bm7:4 E7:4 Am7:3 A7:1 Dm7:4 G7:4 C:4 A7:4 Dm7:4 G7:4 C:8',
+    },
+    {
+      id: 'cant-help-falling-in-love',
+      title: "Can't Help Falling in Love",
+      bpm: 100,
+      // Hugo Peretti, Luigi Creatore & George David Weiss, 1961 (Elvis
+      // Presley); the tune is Martini's "Plaisir d'amour", 1784. Here in G.
+      notes: `
+        G4:2:Wise D5:2:men G4:2:say
+        A4:1:on B4:1:ly C5:1:fools B4:1:rush A4:2:in
+        D4:1:But E4:1:I F#4:1:can't G4:1:help A4:1:fall B4:1:ing
+        C5:1:in B4:1:love A4:1:with G4:3:you
+        G4:2:Shall D5:2:I G4:2:stay
+        A4:1:would B4:1:it C5:1:be B4:1:a A4:2:sin
+        D4:1:If E4:1:I F#4:1:can't G4:1:help A4:1:fall B4:1:ing
+        C5:1:in B4:1:love A4:1:with G4:6:you`,
+      chords: 'G:2 D:2 Em:2 C:2 G:2 D:2 C:2 D:2 Em:2 Am:2 D:1 G:3 G:2 D:2 Em:2 C:2 G:2 D:2 C:2 D:2 Em:2 Am:2 D:1 G:6',
+    },
   ];
 
   const api = { SONGS };
