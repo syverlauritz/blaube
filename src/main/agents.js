@@ -18,8 +18,31 @@ function findClaude() {
   return candidates.find((p) => { try { return fs.statSync(p).isFile(); } catch { return false; } });
 }
 
+// Other Claude Code config folders (CLAUDE_CONFIG_DIR, e.g. ~/.claude-work
+// for a second account) that have Blaube's hooks: `claude agents` only
+// lists the sessions of the folder it's run with, so each is asked too.
+function otherConfigDirs(home = os.homedir()) {
+  let names = [];
+  try { names = fs.readdirSync(home).filter((n) => /^\.claude-./.test(n)); } catch { return []; }
+  return names.map((n) => path.join(home, n)).filter((dir) => {
+    try { return /blaube\/hook/.test(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')); } catch { return false; }
+  });
+}
+// Every folder's sessions, as one list (one that fails is left out; all
+// failing is a failure).
 function run(cb) {
-  const opts = { timeout: 8000, maxBuffer: 1 << 20, windowsHide: true, cwd: os.homedir(), env: claudeEnv() };
+  const dirs = [null, ...otherConfigDirs()];
+  let left = dirs.length, ok = false, out = [];
+  for (const dir of dirs) {
+    runOne(dir, (err, stdout) => {
+      const list = err ? null : parse(String(stdout));
+      if (list) { ok = true; out = out.concat(list); }
+      if (--left === 0) ok ? cb(null, JSON.stringify(out)) : cb(err || new Error('no list'));
+    });
+  }
+}
+function runOne(dir, cb) {
+  const opts = { timeout: 8000, maxBuffer: 1 << 20, windowsHide: true, cwd: os.homedir(), env: claudeEnv(process.env, dir ? { CLAUDE_CONFIG_DIR: dir } : {}) };
   const bin = findClaude();
   if (bin && !bin.endsWith('.cmd')) return execFile(bin, ['agents', '--json'], opts, cb);
   if (process.platform === 'win32') return execFile('cmd.exe', ['/d', '/s', '/c', 'claude agents --json'], opts, cb);
@@ -69,4 +92,4 @@ function listAgents(cb) {
   run((err, stdout) => cb(err ? null : parse(String(stdout))));
 }
 
-module.exports = { startAgentsPoller, listAgents, parse, findClaude };
+module.exports = { startAgentsPoller, listAgents, parse, findClaude, otherConfigDirs };
