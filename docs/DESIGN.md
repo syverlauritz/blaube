@@ -35,6 +35,7 @@ ships that breaks a "must".
 8. No flicker. Icons and bubbles don't toggle faster than you can read them.
 
 ## Decided by the creative director (not up for review)
+- Balloon trick squeeze eyes are > < (left eye >, right eye <), pointing inward.
 - A full context shows as a red tint that spreads in a circle from the
   middle of the face (a radial gradient) as the context fills, with sweat
   drops on the body. This is wanted.

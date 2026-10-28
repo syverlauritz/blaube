@@ -6446,6 +6446,7 @@
       fullTurn: (body.fullTurn = !!((b.flip && b.flip.spun) || b.tumble || b.roll)), // (mid-somersault the face, and what it wears, go all the way round)
       // Held, the face (and what it wears) turns with the body as it hangs
       // and swings from the cursor; let go, it eases back upright.
+      squeeze: !!(b.balloon && expression === 'pained'),
       blow: !!(b.balloon && b.balloon.stage === 'zip'), // (the air rushing out past its tongue)
       ...modelLook(b),
       turnAmt: (body.turnAmt = (body.turnAmt || 0) + ((body.grab ? 1 : 0) - (body.turnAmt || 0)) * ease(body.grab ? 0.04 : 0.025)),

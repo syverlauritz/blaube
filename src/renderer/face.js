@@ -177,10 +177,17 @@
           ctx.stroke();
           break;
         case 'pained':
-          // Squeezed shut, slanting down toward the nose.
           ctx.beginPath();
-          ctx.moveTo(x + side * ew * 0.75, y - eh * 0.35);
-          ctx.quadraticCurveTo(x, y - eh * 0.05, x - side * ew * 0.75, y + eh * 0.2);
+          if (face.squeeze) {
+					// Holding its breath (the balloon trick): > on the left eye, < on the right, tips pointing in.
+					ctx.moveTo(x + side * ew * 0.6, y - eh * 0.55);
+					ctx.lineTo(x - side * ew * 0.6, y);
+					ctx.lineTo(x + side * ew * 0.6, y + eh * 0.55);
+				} else {
+					// Squeezed shut, slanting down toward the nose.
+					ctx.moveTo(x + side * ew * 0.75, y - eh * 0.35);
+					ctx.quadraticCurveTo(x, y - eh * 0.05, x - side * ew * 0.75, y + eh * 0.2);
+				}
           ctx.stroke();
           break;
         case 'sleepy':
