@@ -926,7 +926,8 @@ if (TEST) global.__blaubeSweep = sweep;
 // Starts Claude Code in `cwd`, with no terminal: its slime pops out with
 // its talk box open, ready for your first message.
 const startedAt = new Map(); // session id -> when Blaube started it (see owned's 'exit')
-function startSession(cwd, extra = [], resume = '', fork = '') {
+// `quiet`: no talk box popping open (brought back after a restart).
+function startSession(cwd, extra = [], resume = '', fork = '', quiet = false) {
   if (!cwd) return null;
   // (Its own worktree needs a git repository to make one in.)
   let noTree = false;
@@ -946,6 +947,8 @@ function startSession(cwd, extra = [], resume = '', fork = '') {
   savePrefs();
   log(`started a session in ${cwd}: ${id}`);
   if (noTree) inbox.add(id, { who: 'note', text: `${path.basename(cwd)} isn’t a git repository, so it works right in the folder, not in a worktree of its own` });
+  saveOwned();
+  if (quiet) return id;
   // Open its talk box once its slime is out.
   let tries = 0;
   const open = setInterval(() => {
@@ -955,6 +958,54 @@ function startSession(cwd, extra = [], resume = '', fork = '') {
     setTimeout(() => { if (win) askTalk(id); }, 900); // after it lands
   }, 150);
   return id;
+}
+
+// Sessions Blaube started come back after a restart (an update, a crash,
+// the reload when you change its code): which ones are kept in a file as
+// they come and go, and each is resumed next time, its conversation
+// intact. One that was mid-turn is told to carry on. Quitting on purpose
+// ("Quit anyway", or moving them to terminals) lets them go.
+const ownedFile = () => path.join(app.getPath('userData'), 'owned-sessions.json');
+const BUSY = new Set(['working', 'waiting']); // (a question it asked you is lost with the turn too)
+let ownedSaved = '', ownedHeld = false;
+const revived = new Set(); // ids brought back: no "couldn't start" dialog if one can't be
+function saveOwned() {
+  if (TEST || ownedHeld) return;
+  const list = owned.list().map((id) => {
+    const o = owned.sessions.get(id), s = tracker.sessions.get(id) || {};
+    let extra = o.extra.slice();
+    if (extra[0] === '--append-system-prompt') extra = extra.slice(2); // (its voice is added fresh)
+    for (let i; (i = extra.indexOf('--permission-mode')) >= 0;) extra.splice(i, 2); // (as it is now: mode)
+    // (Its worktree, if it made one, is where it carries on: not another.)
+    return { id, cwd: s.cwd || o.cwd, extra: extra.filter((a) => a !== '--worktree'), mode: s.mode || '', busy: BUSY.has(s.state) };
+  });
+  const json = JSON.stringify(list);
+  if (json === ownedSaved) return;
+  try { fs.mkdirSync(path.dirname(ownedFile()), { recursive: true }); fs.writeFileSync(ownedFile(), json); ownedSaved = json; } catch { /* not fatal */ }
+}
+// Quitting for good: none come back. (And none of their stopping is saved.)
+function forgetOwned() {
+  ownedHeld = true;
+  try { fs.writeFileSync(ownedFile(), '[]'); } catch { /* not fatal */ }
+}
+function bringBackOwned() {
+  if (TEST) return;
+  let list = [];
+  try { list = JSON.parse(fs.readFileSync(ownedFile(), 'utf8')); } catch { return; }
+  for (const o of Array.isArray(list) ? list : []) {
+    if (!o || typeof o.id !== 'string' || typeof o.cwd !== 'string' || tracker.sessions.has(o.id) || owned.has(o.id)) continue;
+    try { if (!fs.statSync(o.cwd).isDirectory()) continue; } catch { continue; }
+    const mode = ['acceptEdits', 'plan', 'bypassPermissions'].includes(o.mode) ? ['--permission-mode', o.mode] : [];
+    revived.add(o.id);
+    const id = startSession(o.cwd, [...(Array.isArray(o.extra) ? o.extra.filter((a) => typeof a === 'string') : []), ...mode], o.id, '', true);
+    if (!id) continue;
+    log(`brought back ${id} after a restart${o.busy ? ', mid-turn' : ''}`);
+    if (!o.busy) { inbox.add(id, { who: 'note', text: 'Back after Blaube restarted' }); continue; }
+    inbox.add(id, { who: 'note', text: 'Blaube restarted while it was working, so it was told to carry on' });
+    owned.send(id, 'Blaube (the desktop app this session runs in) restarted while you were working, which cut your last turn off. Carry on where you left off. If you were waiting on the user for something, ask again.');
+    tracker.handle({ session_id: id, hook_event_name: 'UserPromptSubmit' }, 'blaube');
+  }
+  saveOwned();
 }
 
 // Picks up a past session in Blaube, no terminal: its slime pops out with
@@ -1113,11 +1164,21 @@ function watchForChanges() {
     try { new vm.Script(fs.readFileSync(file, 'utf8'), { filename: file }); return true; } catch (e) { console.log('[dev] not reloading,', e.message); return false; }
   };
   const apply = () => {
+    // A session Blaube started is mid-turn: wait for it (it comes back after
+    // the restart anyway, but its turn would be cut off).
+    if (owned.list().some((id) => (tracker.sessions.get(id) || {}).state === 'working')) {
+      if (!apply.waiting) console.log('[dev] reloading once the sessions Blaube started are done working');
+      apply.waiting = true;
+      timer = setTimeout(apply, 2000);
+      return;
+    }
+    apply.waiting = false;
     const files = [...pending].map((f) => path.join(root, f));
     pending = new Set();
     if (!files.every(compiles)) return;
     // Always a full restart: reloading just the window left its clicks
     // falling through to whatever was underneath.
+    saveOwned(); // (they come back after it)
     app.relaunch();
     app.exit(0);
   };
@@ -2198,6 +2259,7 @@ app.whenReady().then(async () => {
   createWindow();
   makeTalkWin();
   if (!app.isPackaged && !TEST) watchForChanges();
+  setTimeout(bringBackOwned, 1200); // (once its window is up, for their slimes)
 
   if (!TEST) {
     tray = new Tray(trayIcon());
@@ -2604,7 +2666,8 @@ app.whenReady().then(async () => {
     // starting, or before its first turn): say why.
     const quick = Date.now() - (startedAt.get(id) || 0) < 15000;
     startedAt.delete(id);
-    if ((code || signal) && !TEST && (quick || inbox.log(id).length === 0)) {
+    const back = revived.delete(id); // (brought back after a restart: one that can't be just goes, quietly)
+    if ((code || signal) && !TEST && !back && (quick || inbox.log(id).length === 0)) {
       if (/ENOENT|not found/i.test(err) && !claudeFound()) {
         dialog.showMessageBox({ type: 'warning', buttons: ['Install Claude Code…', 'OK'], defaultId: 0, cancelId: 1, message: 'Blaube can’t find Claude Code on this computer.', detail: 'Install it, then try New session again.' })
           .then(({ response }) => { if (response === 0) installClaude(); });
@@ -2616,7 +2679,9 @@ app.whenReady().then(async () => {
     tracker.handle({ session_id: id, hook_event_name: 'SessionEnd' }, 'blaube');
     inbox.observe({ session_id: id, hook_event_name: 'SessionEnd' });
     inbox.owned.delete(id);
+    saveOwned();
   });
+  setInterval(saveOwned, 2000); // (which are mid-turn, for a crash)
   // (Sessions forgotten here never said SessionEnd: tidy up after them too.)
   setInterval(() => { if (tracker.prune()) { pushState(); refreshTray(); sweepSoon(); } }, 30 * 1000);
   setInterval(refreshUsage, 3000);
@@ -4106,7 +4171,8 @@ let quitAnyway = false;
 app.on('before-quit', (e) => {
   const waiting = [...inbox.queue.values()].reduce((n, q) => n + q.length, 0);
   const mine = owned.list().length;
-  if (TEST || quitAnyway || (!waiting && !mine)) return;
+  if (TEST || quitAnyway) return;
+  if (!waiting && !mine) { forgetOwned(); return; }
   e.preventDefault();
   const lines = [];
   if (mine) lines.push(mine === 1 ? 'A session you started in Blaube will stop, unless you move it to a terminal, where it carries on with its conversation.' : `${mine} sessions you started in Blaube will stop, unless you move them to terminals, where each carries on with its conversation.`);
@@ -4123,6 +4189,7 @@ app.on('before-quit', (e) => {
   }).then(async ({ response }) => {
     if (response === buttons.length - 1) return;
     if (response === 1) await moveAllToTerminals();
+    forgetOwned(); // (you chose: they don't come back)
     quitAnyway = true;
     app.quit();
   });
@@ -4139,4 +4206,4 @@ async function moveAllToTerminals(open = openResumeTerminal) {
   })));
   for (const s of list) { try { open(s); } catch (e) { log(`couldn't move ${s.id} to a terminal: ${e.message}`); } }
 }
-app.on('will-quit', () => { globalShortcut.unregisterAll(); if (focus.stop) focus.stop(); owned.killAll(); runs.stopAll(); });
+app.on('will-quit', () => { saveOwned(); ownedHeld = true; /* (their stopping now isn't them going: see saveOwned) */ globalShortcut.unregisterAll(); if (focus.stop) focus.stop(); owned.killAll(); runs.stopAll(); });
