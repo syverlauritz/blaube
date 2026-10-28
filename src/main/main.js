@@ -723,7 +723,7 @@ function pushTalk(id, focusField = false) {
     editor: id.startsWith('demo-') || !editorNow() ? '' : editorNow().name, // (your code editor, to open its files in)
     scripts: s.cwd && !id.startsWith('demo-') ? runs.scripts(s.cwd).slice(0, 6).map((x) => x.name) : [], // (its package.json's, for Run)
     pr: prStates.get(id) ? { number: prStates.get(id).number, url: prStates.get(id).url, title: prStates.get(id).title } : null,
-    earlier: !id.startsWith('demo-') && !!transcriptPath(s) && fs.existsSync(transcriptPath(s)), // (its transcript has what came before)
+    earlier: hasEarlier(id, s), // (its transcript has what came before)
     lookedAt: looked.get(id) || 0, // (when its box was last closed: what's new since shows)
     quick: quickFor(id, s),
     // Every slime, to switch between them from the box.
@@ -791,6 +791,15 @@ function fetchFor(id, asked) {
 }
 // Its git line: the branch and what's changed, and how its pull request stands.
 const gitLine = (id) => [gitStates.has(id) ? git.summary(gitStates.get(id)) : '', pulls.words(prStates.get(id))].filter(Boolean).join(' · ');
+
+// Whether a session's transcript is there to read what came before from
+// (noted in the log the first time it isn't, to find out why).
+const noEarlier = new Set();
+function hasEarlier(id, s) {
+  const ok = !id.startsWith('demo-') && !!transcriptPath(s) && fs.existsSync(transcriptPath(s));
+  if (!ok && !id.startsWith('demo-') && !noEarlier.has(id)) { noEarlier.add(id); log(`no transcript for ${s.project} (${id}) at ${transcriptPath(s) || 'nowhere'}`); }
+  return ok;
+}
 
 // A session at a glance, for the overview in the talk box.
 const looked = new Map(); // session id -> when you last had its talk box open
@@ -3759,8 +3768,12 @@ app.whenReady().then(async () => {
   ipcMain.handle('talk-history', async (_e, id, before) => {
     const s = typeof id === 'string' && tracker.sessions.get(id);
     const file = s && !id.startsWith('demo-') && transcriptPath(s);
-    if (!file) return { entries: [], from: 0 };
-    try { return await transcript.page(file, { before: Number.isFinite(before) && before >= 0 ? before : undefined }); } catch { return { entries: [], from: 0 }; }
+    if (!file) { log(`talk history for ${id}: no transcript known`); return { entries: [], from: 0 }; }
+    try {
+      const r = await transcript.page(file, { before: Number.isFinite(before) && before >= 0 ? before : undefined });
+      log(`talk history for ${s.project}: ${r.entries.length} entries from ${file}`);
+      return r;
+    } catch (e) { log(`talk history for ${s.project}: couldn't read ${file} (${e.message})`); return { entries: [], from: 0 }; }
   });
   // One changed file's diff, for the git line's file list.
   ipcMain.handle('talk-diff', (_e, id, file) => new Promise((done) => {
