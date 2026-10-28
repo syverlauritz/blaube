@@ -221,7 +221,7 @@
       const volume = CFG.voiceVolume * 1.4 / Math.sqrt(singers.length);
       singers.forEach((b, i) => {
         if (b.speech) b.speech.line.stop();
-        const line = BlaubeVoice.sing(audio.ctx, parts[i].notes, { at, out: audio.out, seed: BlaubeVoice.hash(b.key), volume, wah: CFG.voiceWah, vibrato: 28 });
+        const line = BlaubeVoice.sing(audio.ctx, parts[i].notes, { at, out: audio.out, seed: BlaubeVoice.hash(b.key), volume, wah: CFG.voiceWah, vibrato: 28, attack: 0.007, loose: 1 }); // (crisp, and each its own)
         b.speech = { line, at };
         b.singing = parts[i].role;
       });

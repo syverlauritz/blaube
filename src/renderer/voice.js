@@ -178,9 +178,15 @@
   // Sings `notes` ([{ t, dur, f0, syl }], seconds from `at`; a syl of '-'
   // carries on the one before, over a new note). Held notes, a deeper
   // vibrato, words sung as written. opts as for speak, plus vibrato
-  // (cents). Returns what speak returns, its syllables marked `hold`.
+  // (cents), attack (how fast a note comes in, s: smaller is crisper, with
+  // a little accent on top) and loose (0..1: how much this singer is its
+  // own person, a touch early or late, a few cents off, some notes louder
+  // than others; from its seed, so the same singer is the same each time).
+  // Returns what speak returns, its syllables marked `hold`.
   function sing(ctx, notes, opts = {}) {
     const at = opts.at ?? ctx.currentTime + 0.02;
+    const loose = opts.loose || 0, own = rng(hash(String(opts.seed ?? 1)) + 17);
+    const lag = loose * (own() - 0.3) * 0.04; // (this singer's habit: mostly a hair behind)
     let vowel = 'a';
     const plan = notes.map((n, i) => {
       const next = notes[i + 1];
@@ -188,7 +194,8 @@
       const y = Object.assign({ vowel: 'a', consonant: '' }, tied ? { vowel } : syllables(n.syl, 1)[0], { onset: 'w' });
       vowel = y.vowel;
       const gap = next ? next.t - (n.t + n.dur) : 1;
-      return { t: at + n.t, dur: n.dur, gap, f0: n.f0, v: VOWELS[y.vowel], s: y, last: !next, legato: !!next && next.syl === '-' && gap < 0.02, tied, hold: true };
+      const late = tied ? 0 : lag + loose * (own() - 0.5) * 0.03, off = tied ? 1 : Math.pow(2, loose * (own() - 0.5) * 14 / 1200);
+      return { t: Math.max(at, at + n.t + late), dur: n.dur - late * 0.5, gap, f0: n.f0 * off, v: VOWELS[y.vowel], s: y, last: !next, legato: !!next && next.syl === '-' && gap < 0.02, tied, hold: true, level: 1 - loose * own() * 0.3 };
     });
     return perform(ctx, plan, Object.assign({}, opts, { at, base: opts.base || (notes[0] && notes[0].f0) || 330, volume: opts.volume ?? 0.5, bend: 1 }));
   }
@@ -214,7 +221,7 @@
     sawGain.gain.value = 0.55; triGain.gain.value = 0.6;
     const vib = ctx.createOscillator(), vibDepth = ctx.createGain();
     vib.frequency.value = 5.5 + character();
-    vibDepth.gain.value = o.vibrato || 14; // cents
+    vibDepth.gain.value = (o.vibrato || 14) * (o.loose ? 0.55 + character() * 0.9 : 1); // cents (a loose singer's own wobble)
     vib.connect(vibDepth); vibDepth.connect(saw.detune); vibDepth.connect(tri.detune);
     // The wah: a resonant low-pass that starts shut ("w") at a syllable and
     // sweeps open ("-ah"). wah 0..1 is how far shut it starts and how
@@ -281,7 +288,7 @@
       // How it opens: "wah" (the mouth from shut and round, "w", "u"),
       // "bl" (a soft, darker "l" held a moment), "ba" (from the lips, quick),
       // a hum ("m", shut a little longer), or a click ("k", straight in).
-      const len = Math.min(dur * 0.6, (p.hold ? 0.09 : 0.05) + wahAmount * 0.07);
+      const len = Math.min(dur * 0.6, o.attack && p.hold ? 0.03 + wahAmount * 0.03 : (p.hold ? 0.09 : 0.05) + wahAmount * 0.07); // (a crisp attack opens quick)
       const shut = wahAmount > 0 ? wahOpen * Math.pow(0.1, wahAmount) : wahOpen;
       if (p.tied) {
         // (a slur: same vowel, no new opening)
@@ -309,7 +316,12 @@
       const floor = p.legato ? 0.8 : p.gap < 0.02 ? 0.4 : p.gap < 0.15 ? 0.08 : 0.0001;
       const into = onset === 'l' || onset === 'm' ? Math.min(onset === 'm' ? 0.045 : 0.035, dur * 0.2) : 0;
       if (into) amp.gain.setTargetAtTime(onset === 'm' ? 0.3 : 0.4, t0 - 0.005, 0.012); // (the "l" or hum, softer)
-      amp.gain.setTargetAtTime(p.s.stress || p.hold ? 1 : 0.8, into ? t0 + into : t0 - 0.005, onset === 'k' ? 0.014 : 0.02);
+      const peak = (p.s.stress || p.hold ? 1 : 0.8) * (p.level || 1);
+      if (o.attack && p.hold && !p.tied) {
+        // Straight in, a little over, then settling: the start of the note is heard.
+        amp.gain.setTargetAtTime(peak * 1.25, into ? t0 + into : t0 - 0.003, o.attack);
+        amp.gain.setTargetAtTime(peak, t0 + Math.min(0.045, dur * 0.3), 0.03);
+      } else amp.gain.setTargetAtTime(peak, into ? t0 + into : t0 - 0.005, onset === 'k' ? 0.014 : 0.02);
       amp.gain.setTargetAtTime(floor, t1 - Math.min(p.hold ? 0.07 : 0.05, dur * 0.4), 0.035);
       if (p.hold ? /[stkcfhzxqjdg]/.test(p.s.consonant) : onset === 'k' && /[tkcqp]/.test(p.s.consonant)) tick(ctx, bus, t0, p.s.consonant);
     }
