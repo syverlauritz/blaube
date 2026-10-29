@@ -93,6 +93,17 @@ module.exports = async function run({ win, tracker }) {
 	check(await until(async () => (await style()).text === base, 3000), 'and “Back to Blaube’s own” brings the default back');
 	settings.close();
 
+	// Its look, from its menu: a new one at random, or none.
+	const worn = () => win.webContents.executeJavaScript(`(__blaube.buddies.get('menus-a') || {}).look`);
+	find(slime(), 'New look').click();
+	const first = await (async () => { let l = ''; await until(async () => (l = await worn()) && l !== 'none', 3000); return l; })();
+	check(!!first && first !== 'none', `New look puts one on (${first})`);
+	find(slime(), 'New look').click();
+	check(await until(async () => (await worn()) !== first, 3000), 'and another one, a different one');
+	find(slime(), 'Remove look').click();
+	check(await until(async () => (await worn()) === 'none', 3000), 'Remove look takes it off');
+	check(!find(slime(), 'Remove look').enabled, 'and then there\u2019s nothing to remove');
+
 	tracker.handle({ session_id: 'menus-a', hook_event_name: 'SessionEnd' });
 	return failed ? 1 : 0;
 };

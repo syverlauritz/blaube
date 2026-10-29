@@ -242,6 +242,17 @@ function applyTalkKey() {
   else log(`${want} is taken by another app: no talk shortcut`);
 }
 
+// A look picked from a blob's menu, per session (see New look).
+const LOOK_NAMES = (() => { require('../renderer/looks.js'); return globalThis.BlaubeLooks.LOOKS.map(([n]) => n).filter((n) => n !== 'none'); })();
+const newLook = (now) => { const left = LOOK_NAMES.filter((n) => n !== now); return left[Math.floor(Math.random() * left.length)]; };
+function setLook(s, look) {
+  prefs.looks = Object.assign({}, prefs.looks, { [s.id]: look });
+  const ids = Object.keys(prefs.looks);
+  for (const id of ids.slice(0, Math.max(0, ids.length - 200))) delete prefs.looks[id]; // (the newest 200 kept)
+  savePrefs();
+  pushState();
+}
+
 function setConfig(next) {
   prefs.config = BlaubeConfig.sanitize(next);
   savePrefs();
@@ -1388,6 +1399,7 @@ function pushState() {
     sessions: all.filter(shownNow).map((s) => Object.assign({}, s, {
       shownName: shownOf(s).full,
       color: colorOf(s),
+      look: (prefs.looks || {})[s.id] || s.look || '', // (picked from its menu: see New look)
       tokens: tokens.get(s.id) || null,
       info: Object.assign(usage.sessionInfo(transcriptPath(s)), gitStates.get(s.id) ? { branch: [gitLine(s.id), testsWords(s.id)].filter(Boolean).join(' · ') } : {}), // (its git line on hover: branch, changes, its PR, its tests)
       todo: (() => { const t = inbox.todos.get(s.id) || []; const done = t.filter((x) => x.status === 'completed').length; return t.length && done < t.length ? { done, of: t.length } : null; })(),
@@ -2103,6 +2115,9 @@ function sessionMenuTemplate(id, { tray = false, quick = [] } = {}) {
       { label: 'Notify me about this one', type: 'checkbox', checked: !muted.has(id), enabled: !isDemo && (prefs.config.notify || 'Behind windows') !== 'Off', click: (item) => { if (item.checked) muted.delete(id); else muted.add(id); } },
     ] },
     { label: 'Colour', submenu: colorMenu(colorOf(s) || prefs.config.color, (hex) => { prefs.colors[colorKey(s)] = hex; savePrefs(); pushState(); }) },
+    // Its look: another one at random, or none at all (kept while it runs).
+    { label: 'New look', enabled: prefs.config.looks !== 'Off', click: () => setLook(s, newLook((prefs.looks || {})[s.id])) },
+    { label: 'Remove look', enabled: prefs.config.looks !== 'Off' && (prefs.looks || {})[s.id] !== 'none', click: () => setLook(s, 'none') },
     // (Its session carries on, still tracked; Blobs… shows it again.)
     onStage(id) ? { label: 'Hide', toolTip: 'Takes its blob off the screen; its session carries on, and Blobs… shows it again', click: () => setBlobHidden(id, true) }
       : { label: 'Show', toolTip: 'Puts its blob back on the screen', click: () => setBlobHidden(id, false) },

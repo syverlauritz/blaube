@@ -1463,8 +1463,8 @@
   // (A session can name one, which the shots script uses.)
   function lookOf(b) {
     if (CFG.looks === 'Off' || b.kind === 'home') return 'none';
+    if (b.session && b.session.look) return b.session.look; // (picked from its menu: worn even with glasses)
     if (b.effort === 'high' && !b.glasses) return 'none'; // the glasses are its accent
-    if (b.session && b.session.look) return b.session.look;
     // Chosen once, then kept for as long as it runs. A session's slime takes
     // its favourite look that no other session's slime is wearing (plain
     // ones may repeat; about half are plain). A helper takes its favourite.
