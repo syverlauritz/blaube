@@ -4,7 +4,13 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-29
+
 - Pictures in the talk box: what you attach shows as a little picture (and in your message once sent), and pictures Claude makes or points at show in its reply. Tap one to see it big, or draw on it (pen, arrow, box, words) and add the drawing to your message.
+- A new blob wears the effort its session really runs at from the start, so it no longer shows up with glasses that fall off the moment you talk to it.
+- A helper blob wears its own model's face (Sonnet, Haiku...), not always its mother's.
+- On a Mac, Blaube tells you once when a new version is out, with a button to download it.
+- Sung notes are flat, with no white outline, and blobs' skin is a little stiffer to stretch.
 - A helper asking for permission no longer changes its mother's mode under her talk box (a "Don't ask" session showed "Auto mode"). Mode changes are logged in `blaube.log` with what caused them.
 
 ## [0.3.0] - 2026-10-28
