@@ -375,6 +375,62 @@
   .steps:not(.open) .step.early, .steps:not(.open) .step.early + .stepout { display: none; }
   .steps .earlier { display: block; align-self: flex-start; border: 0; background: none; border-radius: 999px; padding: 3px 10px; margin: 0 0 2px; font: 700 13.5px var(--ui); color: var(--dim); cursor: pointer; }
   .steps .earlier:hover { color: var(--ink); background: var(--paper); }
+  /* Pictures: what you attached, what Claude made or points at, shown
+     small; a tap shows one big, the pencil draws on it. */
+  .pics { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pics:not(:has(> :not([hidden]))) { display: none; }
+  .msg.you .pics { justify-content: flex-end; }
+  .msg.you > .pics:first-child { margin-top: 0; }
+  .pic { position: relative; flex: none; width: fit-content; max-width: 100%; border-radius: 14px; overflow: hidden; background: var(--softer); line-height: 0; animation: squish .3s cubic-bezier(.3, 1.6, .5, 1); }
+  .pic .show { display: block; border: 0; padding: 0; margin: 0; background: none; cursor: zoom-in; max-width: 100%; }
+  /* (Sized from the picture's own size before it's drawn: --w, --r.) */
+  .pic { --maxh: 260px; }
+  .pic img { display: block; width: min(var(--w, 240px), calc(var(--maxh) * var(--r, 1))); max-width: 100%; height: auto; aspect-ratio: var(--r, auto); min-width: 40px; object-fit: contain; }
+  .pics.many .pic { --maxh: 150px; }
+  .msg.you .pic { --maxh: 132px; background: var(--paper); }
+  .msg.you .pic img { max-width: min(240px, 100%); }
+  .stepimg .pic { --maxh: 340px; margin: 0 auto; display: block; width: fit-content; }
+  .pic .draw { position: absolute; top: 7px; right: 7px; width: 32px; height: 32px; border: 0; border-radius: 50%; padding: 0; display: grid; place-items: center; background: var(--paper); color: var(--ink); cursor: pointer; opacity: 0; transition: opacity .15s, transform .15s; }
+  .pic .draw svg, .file .draw svg { width: 16px; height: 16px; }
+  .pic:hover .draw, .pic .draw:focus-visible { opacity: 1; }
+  .pic .draw:hover { transform: scale(1.08); }
+  .msg.you .filechip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px; border-radius: 999px; background: var(--paper); font: 600 13.5px var(--ui); color: var(--dim); line-height: 1.6; }
+  /* One big, over the conversation (Esc or a click beside it closes it). */
+  .viewer, .markup { position: absolute; inset: 0; z-index: 50; display: flex; flex-direction: column; gap: 10px; padding: 16px 16px 16px; background: var(--paper); animation: squish .22s cubic-bezier(.3, 1.6, .5, 1); }
+  .vbar, .mbar, .mfoot { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .vbar { padding-left: 10px; }
+  .vname { flex: 1; min-width: 0; font: 700 14px var(--ui); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vstage { flex: 1; min-height: 0; display: grid; place-items: center; border-radius: 20px; background: var(--softer); padding: 10px; cursor: zoom-out; }
+  .vstage img { display: block; max-width: 100%; max-height: 100%; border-radius: 12px; object-fit: contain; cursor: default; }
+  .vbar .tbtn svg { width: 15px; height: 15px; }
+  /* Drawing on one: pen, arrow, box, words, a few colours, undo, clear. */
+  .tools { display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--soft); }
+  .tools button { width: 34px; height: 34px; border: 0; border-radius: 50%; padding: 0; display: grid; place-items: center; background: none; color: var(--dim); cursor: pointer; }
+  .tools button svg { width: 18px; height: 18px; }
+  .tools button:hover { color: var(--ink); background: var(--hover); }
+  .tools button.on { background: var(--ink); color: var(--paper); }
+  .swatches { display: flex; gap: 4px; padding: 3px 6px; border-radius: 999px; background: var(--soft); }
+  .swatches button { width: 34px; height: 34px; border: 0; border-radius: 50%; padding: 0; background: none; cursor: pointer; display: grid; place-items: center; }
+  .swatches button i { width: 20px; height: 20px; border-radius: 50%; background: var(--c); transition: transform .15s; }
+  .swatches button:hover i { transform: scale(1.12); }
+  .swatches button.on { background: var(--paper); }
+  .swatches button.on i { transform: scale(1.18); }
+  /* (White on a light tray, ink on a dark one: a faint ring, to be seen.) */
+  .swatches button[data-color="#ffffff"] i { box-shadow: inset 0 0 0 1.5px var(--line); }
+  body.dark .swatches button[data-color="#ffffff"] i { box-shadow: none; }
+  body.dark .swatches button[data-color="#1b2440"] i { box-shadow: inset 0 0 0 1.5px var(--grip); }
+  .mbar .round { width: 34px; height: 34px; }
+  .mbar .round svg { width: 16px; height: 16px; }
+  .mbar .round:disabled { opacity: .4; cursor: default; background: var(--soft); color: var(--dim); }
+  .mstage { flex: 1; min-height: 0; position: relative; display: grid; place-items: center; border-radius: 20px; background: var(--softer); padding: 10px; overflow: hidden; }
+  .mstage canvas { display: block; max-width: 100%; max-height: 100%; border-radius: 10px; cursor: crosshair; touch-action: none; }
+  .mstage canvas.words { cursor: text; }
+  .mtext { position: absolute; min-width: 60px; border: 0; border-radius: 10px; padding: 3px 8px; background: var(--glass2); font: 800 18px var(--ui); outline: none; user-select: text; }
+  .mfoot { padding-left: 10px; }
+  .mfoot .mhint { flex: 1; min-width: 0; font: 600 14px var(--ui); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mfoot .add { height: 36px; border: 0; border-radius: 999px; padding: 0 18px; background: var(--color); color: var(--on); font: 800 14.5px var(--ui); cursor: pointer; }
+  .mfoot .add:disabled { background: var(--offbtn); color: var(--faint); cursor: default; }
+  .mfoot .add:not(:disabled):active { transform: scale(.94); }
   /* It's working: three hopping dots and what it's on, and its helpers. */
   .dots { align-self: stretch; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 4px 0; max-width: 100%; }
   .dots i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--color); animation: bob 1.1s steps(3) infinite; transform-origin: 50% 100%; }
@@ -507,6 +563,11 @@
   .file { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; background: var(--soft); border-radius: 999px; padding: 4px 6px 4px 13px; font: 600 14px var(--ui); color: var(--ink); animation: squish .3s cubic-bezier(.3, 1.6, .5, 1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .file button { border: 0; background: none; width: 22px; height: 22px; border-radius: 50%; padding: 0; font: 700 15px/1 var(--ui); color: var(--dim); cursor: pointer; }
   .file button:hover { color: var(--ink); background: var(--hover); }
+  .file.haspic { padding-left: 4px; gap: 6px; }
+  .file .thumb { flex: none; width: 34px; height: 34px; border: 0; border-radius: 12px; padding: 0; overflow: hidden; background: var(--paper); cursor: zoom-in; }
+  .file .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .file .fname { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .file button.draw { display: grid; place-items: center; width: 28px; height: 28px; }
   body.dropping .bubble { background: var(--paper)af7; }
   .editing { display: flex; gap: 8px; justify-content: space-between; align-items: center; font: 600 14px var(--ui); color: var(--dim); padding: 0 22px 8px; }
   /* "@" for a file and "/" for a command, as in the terminal. */
@@ -619,11 +680,40 @@
       </div>
     </form>
     <button class="mode" id="mode" type="button" hidden></button>
+    <div class="viewer" id="viewer" hidden role="dialog" aria-label="Picture">
+      <div class="vbar">
+        <span class="vname" id="viewName"></span>
+        <button class="tbtn" id="viewDraw" type="button" title="Draw on it, then add it to your message"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-4.5L16 4.5a2.1 2.1 0 0 1 3 3L8 18.5z"/><path d="M14 7l3 3"/></svg>Draw on it</button>
+        <button class="round" id="viewClose" type="button" title="Close (Esc)" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
+      </div>
+      <div class="vstage" id="viewStage"><img id="viewImg" alt=""></div>
+    </div>
+    <div class="markup" id="markup" hidden role="dialog" aria-label="Draw on it">
+      <div class="mbar">
+        <div class="tools" id="markTools" role="radiogroup" aria-label="Tool">
+          <button type="button" data-tool="pen" title="Pen" aria-label="Pen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-4.5L16 4.5a2.1 2.1 0 0 1 3 3L8 18.5z"/><path d="M14 7l3 3"/></svg></button>
+          <button type="button" data-tool="arrow" title="Arrow" aria-label="Arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19 19 5M10 5h9v9"/></svg></button>
+          <button type="button" data-tool="box" title="Box" aria-label="Box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"><rect x="4" y="6" width="16" height="12" rx="3.5"/></svg></button>
+          <button type="button" data-tool="text" title="Words" aria-label="Words"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M5 6h14M12 6v13"/></svg></button>
+        </div>
+        <div class="swatches" id="markColors" role="radiogroup" aria-label="Colour"></div>
+        <span class="spacer"></span>
+        <button class="round" id="markUndo" type="button" title="Undo (⌘Z)" aria-label="Undo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+        <button class="round" id="markClear" type="button" title="Clear it all" aria-label="Clear it all"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg></button>
+      </div>
+      <div class="mstage" id="markStage"><canvas id="markCanvas"></canvas><input class="mtext" id="markText" type="text" hidden aria-label="Words to add"></div>
+      <div class="mfoot">
+        <span class="mhint" id="markHint"></span>
+        <button class="tbtn" id="markCancel" type="button">Cancel</button>
+        <button class="add" id="markAdd" type="button">Add to message</button>
+      </div>
+    </div>
   </div>
 </div>
 <script src="../shared/talkHistory.js"></script>
 <script src="../shared/helperStats.js"></script>
 <script src="../shared/caret.js"></script>
+<script src="../shared/talkMedia.js"></script>
 <script src="talk.js"></script>
 </body>
 </html>

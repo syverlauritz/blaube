@@ -17,6 +17,7 @@ const { Owned } = require('./owned');
 const history = require('./history');
 const attention = require('./attention');
 const { names: sessionNames } = require('../shared/names');
+const media = require('../shared/talkMedia');
 const markdown = require('./markdown');
 const git = require('./git');
 const projectFiles = require('./files');
@@ -873,6 +874,50 @@ function sessionFile(id, rel) {
     try { if (r && inside(r) && fs.statSync(r).isFile()) return abs; } catch { /* not here */ }
   }
   return '';
+}
+
+// Images a session's box may show (see talk-image), as a full path, or ''.
+// Its own folder's, ones its steps named, ones pasted into a box, ones you
+// picked for it, and ones named in what you and Claude said (its live log,
+// and the history pages its box was given).
+const talkImages = new Map(); // session id -> Set of full paths picked or named in its history
+function talkImageFile(id, file) {
+  if (typeof file !== 'string' || !file || file.length > 1000 || file.includes('\0') || !media.isImage(file)) return '';
+  const s = tracker.sessions.get(id);
+  if (!s) return '';
+  const home = (p) => (p.startsWith('~/') ? path.join(app.getPath('home'), p.slice(2)) : p);
+  const want = home(file);
+  if (!path.isAbsolute(want)) return sessionFile(id, file);
+  const abs = path.normalize(want);
+  if (sessionFile(id, abs)) return abs;
+  if (path.dirname(abs) === path.join(app.getPath('temp'), 'blaube-pastes')) return abs;
+  if ((talkImages.get(id) || new Set()).has(abs)) return abs;
+  for (const x of inbox.log(id)) {
+    if (x.who === 'step' && x.file === abs) return abs;
+    if ((x.who === 'you' || x.who === 'claude') && typeof x.text === 'string' && x.text.includes(path.basename(abs))) {
+      const named = media.imagePaths(x.text).concat(media.attached(x.text).paths).map(home);
+      if (named.some((p) => path.isAbsolute(p) && path.normalize(p) === abs)) return abs;
+    }
+  }
+  return '';
+}
+// Images seen in a session's history (or picked for it), for talkImageFile.
+function noteTalkImages(id, list) {
+  if (!talkImages.has(id)) talkImages.set(id, new Set());
+  const set = talkImages.get(id);
+  for (const p of list) if (typeof p === 'string' && media.isImage(p)) { const abs = p.startsWith('~/') ? path.join(app.getPath('home'), p.slice(2)) : p; if (path.isAbsolute(abs)) set.add(path.normalize(abs)); }
+  if (set.size > 2000) set.clear();
+}
+// Is it really an image (its first bytes), not something else named .png?
+function looksLikeImage(file, ext) {
+  let head;
+  try { const fd = fs.openSync(file, 'r'); head = Buffer.alloc(1024); const n = fs.readSync(fd, head, 0, 1024, 0); fs.closeSync(fd); head = head.subarray(0, n); } catch { return false; }
+  if (ext === 'png') return head.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  if (ext === 'jpg' || ext === 'jpeg') return head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+  if (ext === 'gif') return head.subarray(0, 4).toString('latin1') === 'GIF8';
+  if (ext === 'webp') return head.subarray(0, 4).toString('latin1') === 'RIFF' && head.subarray(8, 12).toString('latin1') === 'WEBP';
+  if (ext === 'svg') return /<svg[\s>]/i.test(head.toString('utf8'));
+  return false;
 }
 
 // The files git says a session's folder has changed, as full paths.
@@ -3760,6 +3805,7 @@ app.whenReady().then(async () => {
     talkPicking = true;
     try {
       const { canceled, filePaths } = await dialog.showOpenDialog({ title: `Files for ${s.project}`, defaultPath: s.cwd || undefined, properties: ['openFile', 'multiSelections'] });
+      if (!canceled) noteTalkImages(id, filePaths.slice(0, 20)); // (their pictures show in the box)
       return canceled ? [] : filePaths.slice(0, 20);
     } finally {
       talkPicking = false;
@@ -3777,6 +3823,8 @@ app.whenReady().then(async () => {
     try {
       const r = await transcript.page(file, { before: Number.isFinite(before) && before >= 0 ? before : undefined });
       log(`talk history for ${s.project}: ${r.entries.length} entries from ${file}`);
+      // (Images named in it may show in the box.)
+      noteTalkImages(id, r.entries.flatMap((x) => (x.who === 'step' ? [x.file || ''] : typeof x.text === 'string' ? media.imagePaths(x.text).concat(media.attached(x.text).paths) : [])));
       return r;
     } catch (e) { log(`talk history for ${s.project}: couldn't read ${file} (${e.message})`); return { entries: [], from: 0 }; }
   });
@@ -4097,21 +4145,26 @@ app.whenReady().then(async () => {
     try { if (!fs.statSync(file).isFile()) return; } catch { return; }
     e.sender.startDrag({ file, icon: nativeImage.createFromPath(path.join(ASSETS, 'icon.png')).resize({ width: 32, height: 32 }) });
   });
-  // An image a step looked at, shown in its box (only images its steps named).
+  // An image shown in its box: one a step looked at or wrote, one in its
+  // folder, one you pasted or picked, or one named in what was said (a
+  // relative path is in its folder). Only image files (by their first
+  // bytes too), never anything else.
   ipcMain.handle('talk-image', (_e, id, file) => {
-    if (!id || !isOpen(id) || typeof file !== 'string' || !path.isAbsolute(file) || !/\.(png|jpe?g|gif|webp)$/i.test(file)) return null;
-    if (!inbox.log(id).some((x) => x.who === 'step' && x.file === file)) return null;
+    const abs = isOpen(id) ? talkImageFile(id, file) : '';
+    if (!abs) return null;
     let size = 0;
-    try { size = fs.statSync(file).size; } catch { return null; }
+    try { size = fs.statSync(abs).size; } catch { return null; }
+    const ext = path.extname(abs).slice(1).toLowerCase();
+    const mime = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' }[ext];
+    if (!mime || !looksLikeImage(abs, ext)) return null;
     // (Small ones as they are, so a GIF still moves; big ones made smaller.)
-    const mime = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' }[path.extname(file).slice(1).toLowerCase()];
-    if (size <= 4e6) { try { return { url: `data:${mime};base64,${fs.readFileSync(file).toString('base64')}` }; } catch { return null; } }
-    if (size > 30e6) return null;
-    let img = nativeImage.createFromPath(file);
+    if (size <= 4e6) { try { return { url: `data:${mime};base64,${fs.readFileSync(abs).toString('base64')}`, path: abs }; } catch { return null; } }
+    if (size > 30e6 || ext === 'svg') return null;
+    let img = nativeImage.createFromPath(abs);
     if (img.isEmpty()) return null;
     const { width } = img.getSize();
-    if (width > 800) img = img.resize({ width: 800, quality: 'good' });
-    return { url: img.toDataURL() };
+    if (width > 1600) img = img.resize({ width: 1600, quality: 'good' });
+    return { url: img.toDataURL(), path: abs };
   });
   // A file a turn changed, shown in Finder (never opened: it could be a program).
   ipcMain.on('talk-reveal', (_e, id, file) => {

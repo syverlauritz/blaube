@@ -24,6 +24,57 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const session = (id, project, state, extra = {}) => Object.assign({ id, project, state, activity: 'thinking', agents: [], tasks: [] }, extra);
 const full = (fill) => ({ total: 400000, context: fill * 200000, limit: 200000 });
 
+// The talk box with pictures in it (docs/img stands in for what was made).
+const MEDIA_BOX = { x: 340, y: 14, w: 600, h: 790 };
+const MEDIA_LOG = [
+	{ who: 'you', text: `the header feels cramped, can you give it more room?\n\nAttached file (open with your Read tool): ${path.join(ROOT, 'docs', 'img', 'talk.png')}`, via: 'blaube', status: 'sent', n: 1, at: 1 },
+	{ who: 'step', text: 'Read talk.png', ok: true, kind: 'read', file: path.join(ROOT, 'docs', 'img', 'talk.png'), n: 2, at: 2 },
+	{ who: 'step', text: 'Edited talk.html', ok: true, kind: 'edit', n: 3, at: 3 },
+	{ who: 'step', text: 'Ran npm run shots -- talkChat', ok: true, kind: 'run', n: 4, at: 4 },
+	{ who: 'claude', text: 'Done: the header has 6 px more room on each side, and the name no longer touches the buttons. Here is how it looks now:\n\n![the header now](docs/img/question.png)\n\nThe slimes for the README are in `docs/img/blobs.png` too.', n: 5, at: 5, turn: { took: 95e3, steps: 3, files: ['/w/src/talk/talk.html'] } },
+];
+// Pastes a real picture (one already in the box) into the field, then draws
+// on another and adds that too: two little pictures wait by the field.
+const MEDIA_PASTE = `
+	const bytes = (url) => { const b = atob(url.split(',')[1]); const a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; };
+	const pasteFrom = (img) => { const dt = new DataTransfer(); dt.items.add(new File([bytes(img.src)], 'shot.png', { type: 'image/png' })); document.getElementById('text').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); };
+	const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+	const drawOn = async (c, moves) => {
+		const r = c.getBoundingClientRect();
+		const ev = (type, x, y) => c.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: r.left + x * r.width, clientY: r.top + y * r.height }));
+		for (const m of moves) { ev('pointerdown', m[0][0], m[0][1]); for (const p of m.slice(1)) { ev('pointermove', p[0], p[1]); await wait(16); } ev('pointerup', m[m.length - 1][0], m[m.length - 1][1]); }
+	};
+	const tool = (t) => document.querySelector('#markTools [data-tool="' + t + '"]').click();
+	const colour = (i) => document.querySelectorAll('#markColors button')[i].click();
+	const squiggle = Array.from({ length: 24 }, (_, i) => [0.62 + i * 0.012, 0.78 + Math.sin(i / 2.2) * 0.03]);
+	const draw = async () => {
+		tool('arrow'); colour(0); await drawOn(document.getElementById('markCanvas'), [[[0.2, 0.75], [0.3, 0.6], [0.38, 0.42]]]);
+		tool('box'); await drawOn(document.getElementById('markCanvas'), [[[0.42, 0.18], [0.6, 0.3], [0.9, 0.42]]]);
+		tool('pen'); colour(3); await drawOn(document.getElementById('markCanvas'), [squiggle]);
+		tool('text'); colour(0); await drawOn(document.getElementById('markCanvas'), [[[0.12, 0.82]]]);
+		const f = document.getElementById('markText'); f.value = 'bigger!'; f.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		tool('arrow');
+	};
+`;
+const MEDIA_CHIPS = `(async () => { ${MEDIA_PASTE}
+	await wait(600);
+	pasteFrom(document.querySelector('.msg.claude .pic img'));
+	await wait(300);
+	document.querySelectorAll('.msg.claude .pic .draw')[1].click();
+	await wait(300);
+	await draw();
+	document.getElementById('markAdd').click();
+	await wait(300);
+	document.getElementById('text').value = 'make this part bigger';
+	document.getElementById('text').dispatchEvent(new Event('input'));
+})()`;
+const MEDIA_DRAW = `(async () => { ${MEDIA_PASTE}
+	await wait(600);
+	document.querySelector('.msg.you .pic .draw').click();
+	await wait(300);
+	await draw();
+})()`;
+
 // Each scene: sessions to show, and optionally what to do before the picture.
 const SCENES = {
 	idle: { sessions: [session('a', 'blaube', 'idle')] },
@@ -531,6 +582,49 @@ const SCENES = {
 		wait: 3000,
 		size: [1000, 460],
 		motion: { frames: 24, every: 80, drop: 0, still: true, hopAt: [], jsAt: { 0: 'teleport', 4: 'ghost' }, grabAt: { 16: 'gh1' }, releaseAt: 23 },
+	},
+	// Pictures in the talk box: what you attached shows in your message,
+	// what Claude made or names shows in its reply, a pasted image and a
+	// drawing wait as little pictures by the field.
+	talkMedia: {
+		talkJs: MEDIA_CHIPS,
+		sessions: [session('tm', 'blaube', 'done', { look: 'beret' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1280, 900],
+		talk: { key: 'tm', inbox: 'ready', box: MEDIA_BOX, log: MEDIA_LOG },
+	},
+	talkMediaDark: {
+		talkJs: `(async () => { await ${MEDIA_CHIPS}; await new Promise((r) => setTimeout(r, 300)); document.getElementById('log').scrollTop = 0; })()`, // (from the top: your message with its picture)
+		sessions: [session('tm', 'blaube', 'done', { look: 'beret' })],
+		wait: 3500,
+		size: [1280, 900],
+		talk: { key: 'tm', inbox: 'ready', box: MEDIA_BOX, dark: true, log: MEDIA_LOG },
+	},
+	// A tap on a picture: big, over the conversation.
+	talkLightbox: {
+		talkJs: `setTimeout(() => document.querySelector('.msg.claude .pic .show').click(), 700)`,
+		sessions: [session('tm', 'blaube', 'done', { look: 'beret' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1280, 900],
+		talk: { key: 'tm', inbox: 'ready', box: MEDIA_BOX, log: MEDIA_LOG },
+	},
+	// The pencil: drawing on it (an arrow, a box, a squiggle, words).
+	talkMarkup: {
+		talkJs: MEDIA_DRAW,
+		sessions: [session('tm', 'blaube', 'done', { look: 'beret' })],
+		bg: '#f2f0ec',
+		wait: 3500,
+		size: [1280, 900],
+		talk: { key: 'tm', inbox: 'ready', box: MEDIA_BOX, log: MEDIA_LOG },
+	},
+	talkMarkupDark: {
+		talkJs: MEDIA_DRAW,
+		sessions: [session('tm', 'blaube', 'done', { look: 'beret' })],
+		wait: 3500,
+		size: [1280, 900],
+		talk: { key: 'tm', inbox: 'ready', box: MEDIA_BOX, dark: true, log: MEDIA_LOG },
 	},
 	// The talk box (a click on a slime), drawn where the app would put it.
 	talkChat: {
@@ -1106,7 +1200,15 @@ async function addTalk(win, scene, name) {
 	ipcMain.removeHandler('talk-files-exist');
 	ipcMain.handle('talk-files-exist', () => []);
 	ipcMain.removeHandler('talk-paste');
-	ipcMain.handle('talk-paste', () => '/tmp/blaube-pastes/pasted-1.png'); // (nothing is saved for a picture)
+	let pasted = 0;
+	ipcMain.handle('talk-paste', () => `/tmp/blaube-pastes/pasted-${++pasted}.png`); // (nothing is saved for a picture)
+	// Pictures: the repo stands in for the session's folder (docs/img).
+	ipcMain.removeHandler('talk-image');
+	ipcMain.handle('talk-image', (_e, _id, file) => {
+		const abs = path.isAbsolute(file) ? file : path.join(ROOT, file);
+		const mime = { png: 'image/png', gif: 'image/gif', jpg: 'image/jpeg', svg: 'image/svg+xml' }[path.extname(abs).slice(1).toLowerCase()];
+		try { return mime ? { url: `data:${mime};base64,${fs.readFileSync(abs).toString('base64')}`, path: abs } : null; } catch { return null; }
+	});
 	tw.webContents.on('console-message', (e) => { if (e.level === 'error') console.log('talk error:', e.message); });
 	await tw.loadFile(path.join(ROOT, 'src', 'talk', 'talk.html'));
 	tw.webContents.send('talk-state', Object.assign({ id: sess.id, project: sess.project, state: sess.state, color: sess.color || '#D97757', font: 'Coiny', connected: true, queued: 0, ask: null, asks: 0, tail: place.tail }, t));
