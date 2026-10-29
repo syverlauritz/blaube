@@ -1,7 +1,7 @@
 {
   "name": "blaube",
   "productName": "Blaube",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "A squishy softbody desktop buddy you can toss around, that keeps an eye on your Claude Code sessions.",
   "main": "src/main/main.js",
   "license": "MIT",
