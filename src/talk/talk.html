@@ -68,6 +68,8 @@
   .grips [data-edge="sw"] { bottom: 0; left: 0; cursor: nesw-resize; }
   .grips svg { position: absolute; right: 21px; bottom: 21px; width: 9px; height: 9px; fill: var(--grip); opacity: .7; transition: opacity .15s; }
   .grips [data-edge="se"]:hover svg, body.resizing .grips svg { opacity: 1; fill: var(--faint); }
+  /* (Not over a picture shown big or being drawn on.) */
+  body:has(#viewer:not([hidden]), #markup:not([hidden])) .grips svg { display: none; }
   [hidden] { display: none !important; }
 
   /* ---- Top: who it is, how it is, and the way to the others ---- */
@@ -232,8 +234,8 @@
   #inner { margin-top: auto; }
   #log.scrolled { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px); }
   /* (And the bottom, while there's more under it.) */
-  #log.below { -webkit-mask-image: linear-gradient(to top, transparent 0, #000 34px); }
-  #log.scrolled.below { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 34px), transparent 100%); }
+  #log.below { -webkit-mask-image: linear-gradient(to top, transparent 0, transparent 6px, #000 44px); }
+  #log.scrolled.below { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 44px), transparent calc(100% - 6px)); }
   /* (Too little room for even a line: hidden, but still laid out, so it knows how much room to ask for.) */
   #log.squeezed { visibility: hidden; }
   #log::-webkit-scrollbar, .glance::-webkit-scrollbar { width: 8px; }
@@ -405,7 +407,7 @@
   .viewer, .markup { position: absolute; inset: 0; z-index: 50; display: flex; flex-direction: column; gap: 10px; padding: 18px 20px 20px; background: var(--paper); animation: squish .22s cubic-bezier(.3, 1.6, .5, 1); }
   .vbar, .mbar, .mfoot { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; }
   .vbar { padding-left: 10px; }
-  .vname { flex: 1; min-width: 0; font: 700 14px var(--ui); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vname { flex: 1; min-width: 0; font: 700 15px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .vstage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: zoom-out; }
   .vstage img { display: block; max-width: 100%; max-height: 100%; min-height: 0; border-radius: 14px; object-fit: contain; }
   .vbar .tbtn svg { width: 15px; height: 15px; }
@@ -570,7 +572,7 @@
   .quick button.careful { color: var(--dim); }
   .quick button.sure { background: #d04a3c; color: #fff; }
   /* Pasted images and dropped files, waiting to go with the next message. */
-  .files { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 16px 8px; }
+  .files { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 16px 8px; }
   .file { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; background: var(--soft); border-radius: 999px; padding: 4px 6px 4px 13px; font: 600 14px var(--ui); color: var(--ink); animation: squish .3s cubic-bezier(.3, 1.6, .5, 1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .file button { border: 0; background: none; width: 22px; height: 22px; border-radius: 50%; padding: 0; font: 700 15px/1 var(--ui); color: var(--dim); cursor: pointer; }
   .file button:hover { color: var(--ink); background: var(--hover); }
