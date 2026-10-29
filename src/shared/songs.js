@@ -1,4 +1,5 @@
-// Songs the choir knows (Sing together, in the menu). Old and famous; mostly public domain.
+// Songs the choir knows (Sing together, in the menu). Old and famous; mostly public domain,
+// and a few well-known pop songs (each says "still in copyright" below).
 //
 // notes: "pitch:beats:syllable" separated by spaces. A syllable of "-"
 // carries the one before over a new note (a slur). bpm counts beats.
@@ -175,6 +176,145 @@
         B3:2:I C#4:2:can't D4:2:help E4:.667:fall F#4:.667:ing G4:.666:in
         F#4:2:love E4:2:with D4:6:you`,
       chords: 'D:2 F#m:2 Bm:4 G:2 D:2 A7:4 G:2 A:2 Bm:2 Em:2 D:2 A7:2 D:4 D:2 F#m:2 Bm:4 G:2 D:2 A7:4 G:2 A:2 Bm:2 Em:2 D:2 A7:2 D:6',
+    },
+    {
+      id: 'pie-jesu',
+      title: 'Pie Jesu (Lloyd Webber)',
+      bpm: 38,
+      // Andrew Lloyd Webber, 1985 (Requiem; the Latin prayer text). Still in
+      // copyright. Notes and timing from a MIDI (bitmidi.com/uploads/85062.mid,
+      // "PIE-JESU.MID", its Solo Soprano track), the first sung stretch: the
+      // two opening phrases, then the falling run and the high held note. The
+      // MIDI is in Ab; here it is in C (down eight semitones). The MIDI's
+      // accompaniment is single root notes, so the chords are those roots
+      // with major or minor read from the tune (the Fm, Cm are minor because
+      // the tune sings their minor third). Only the title words are sung.
+      notes: `
+        E4:.5:pie E4:.5:- F4:1:Je D4:2:su
+        A3:.5:oo F4:.5:- E4:1:- D4:2:-
+        E4:.5:pie E4:.5:- F4:1:Je D4:2:su
+        A3:.5:oo F4:.5:- E4:1:- D4:2.5:-
+        G4:.5:oo C5:1:ah B4:.5:- A4:.5:- G4:.5:- F4:.5:- E4:.5:- F4:.5:-
+        G4:.5:oo G4:.5:- G4:.5:- E4:.5:- G4:.5:- E4:.25:- C5:2.25:ah
+        B4:.5:oo A4:.5:- G4:.5:- F4:.5:- E4:.5:- G4:.5:- E4:.25:- D4:.25:- C4:1.5:-`,
+      chords: 'F:5 G:4 F:4 G:4 F:2 G:2 Em:2 Am:2 F:2 G:2 C:2',
+    },
+    {
+      id: 'unchained-melody',
+      title: 'Unchained Melody',
+      bpm: 66,
+      // Alex North (music) and Hy Zaret (words), 1955; the Righteous Brothers
+      // made it famous in 1965. Still in copyright. Notes, timing and chords
+      // from a MIDI (bitmidi.com/uploads/107032.mid, its "vocal" track and its
+      // bass), the opening: the first two stanzas and the climbing line after
+      // them (the MIDI's two-bar intro is left out). The MIDI is in C; here it
+      // is in Eb, up a minor third to sit in range. The hum on the long "oo" holds
+      // through the rests; the quick curls are slurred.
+      notes: `
+        Eb4:3:oo G4:.5:- F4:.5:-
+        Eb4:.25:oo F4:.25:- G4:.25:- F4:.25:- Eb4:2.5:- F4:.5:-
+        G4:1:oo Eb4:3:-
+        Bb3:1.5:oo D4:.5:- F4:1.5:- G4:.5:-
+        Eb4:3.5:oo F4:.5:-
+        Eb4:2.75:oo G3:.75:- Ab3:.5:-
+        Bb3:7.5:oo Bb3:.5:-
+        Eb4:2.5:oo G4:.75:- F4:.25:- Eb4:.25:- F4:.25:-
+        G4:.25:oo F4:.25:- Eb4:3:- F4:.5:-
+        G4:.5:oo F4:.5:- Eb4:.5:- F4:.25:- Eb4:.25:- C4:1.75:- Eb4:.25:-
+        Bb3:2.75:oo Bb3:.25:- F4:.5:- G4:.25:- F4:.25:-
+        Eb4:.25:oo F4:.25:- Eb4:3:- F4:.5:-
+        G4:.25:oo F4:.25:- G4:.25:- F4:.25:- Eb4:2.75:- Eb4:.25:-
+        Bb4:4:oo
+        D5:1.335:oo C5:.333:- D5:.167:- C5:.166:- Bb4:.167:- C5:.166:- Bb4:.333:- Ab4:.167:- Bb4:.166:- Ab4:1:-
+        G4:1.25:oo Eb4:.5:- Bb3:2.25:-`,
+      chords: 'Eb:4 Cm:4 Ab:4 Bb:4 Eb:4 Cm:4 Bb:8 Eb:4 Cm:4 Ab:4 Bb:4 Eb:4 Cm:4 Bb:8 Eb:4',
+    },
+    {
+      id: 'careless-whisper',
+      title: 'Careless Whisper (the sax)',
+      bpm: 77,
+      // George Michael and Andrew Ridgeley, 1984. Still in copyright. Only the
+      // saxophone riff that opens it, twice. Notes, timing and chords from a
+      // MIDI (bitmidi.com/uploads/22027.mid, its Alto Sax and bass), in D
+      // minor like the recording. The MIDI's little four-note run into each
+      // repeat is left out; the long low note holds through its rest.
+      notes: `
+        E5:.5:doo D5:.25:- A4:.5:doo F4:.75:doo E5:.5:doo D5:.25:- A4:.5:doo F4:.75:doo
+        C5:.5:doo Bb4:.25:- F4:.5:doo D4:.75:doo C5:.5:doo Bb4:.25:- F4:.25:- F4:1:doo
+        Bb4:.5:doo A4:.25:- F4:.5:doo D4:.5:doo Bb3:2.25:doo
+        A3:.5:doo Bb3:.5:- C4:.5:- D4:.5:- E4:.5:- F4:.5:- G4:.5:- A4:.5:-
+        E5:.5:doo D5:.25:- A4:.5:doo F4:.75:doo E5:.5:doo D5:.25:- A4:.5:doo F4:.75:doo
+        C5:.5:doo Bb4:.25:- F4:.5:doo D4:.75:doo C5:.5:doo Bb4:.25:- F4:.25:- F4:1:doo
+        Bb4:.5:doo A4:.25:- F4:.5:doo D4:.5:doo Bb3:2.25:doo
+        A3:.5:doo Bb3:.5:- C4:.5:- D4:.5:- E4:.5:- F4:.5:- G4:.5:- A4:.5:-`,
+      chords: 'Dm:4 Gm:4 Bb:4 Am:4 Dm:4 Gm:4 Bb:4 Am:4',
+    },
+    {
+      id: 'i-will-always-love-you',
+      title: 'I Will Always Love You',
+      bpm: 67,
+      // Dolly Parton, 1973; Whitney Houston's 1992 version is the one followed.
+      // Still in copyright. Notes and timing from a MIDI (bitmidi.com/uploads/59408.mid,
+      // its MELODY track; chords from its bass and string pad), in A like the
+      // recording, the first chorus (the MIDI writes it an octave up; here it
+      // is the sung octave). The unaccompanied lead-in and the one-beat pickup
+      // before the chorus are left out. The title words are sung where they
+      // belong; the rest is "oo". The quick G#, F# and E turns after the long
+      // notes are the singer's runs, kept as written.
+      notes: `
+        A4:5.75:I A4:.375:will Ab4:.5:al A4:1.875:ways
+        B4:.25:love A4:1:- B4:.25:you C#5:.25:- B4:.125:- C#5:.25:- B4:.125:- A4:3:-
+        A4:.25:oo Ab4:.5:- A4:1.75:-
+        A4:.375:oo A4:6.125:-
+        Ab4:.25:oo A4:.25:- Ab4:.125:- F#4:.125:- E4:.125:- F#4:.875:-
+        F#4:.25:oo E4:.25:- F#4:.25:- E4:.125:- F#4:2.375:-
+        E4:.25:oo Ab4:.375:- Ab4:.25:- F#4:3.375:-
+        C#4:.25:oo A3:1.75:-`,
+      chords: 'A:2 F#m:2 D:2 E:2 A:2 F#m:2 D:2 E:2 A:8 D:4 C#m:4 Bm7:2',
+    },
+    {
+      id: 'all-you-need-is-love',
+      title: 'All You Need Is Love',
+      bpm: 102,
+      // John Lennon and Paul McCartney, 1967. Still in copyright. The chorus,
+      // twice. Notes and timing from a MIDI (bitmidi.com/uploads/5174.mid, its
+      // CHARANG lead; checked against uploads/100741.mid, a karaoke file whose
+      // vocal channel has the same notes); chords from its bass and pads.
+      // The MIDI is in G; here it is in D (down a fourth). The singer rests
+      // between the repeated lines; here the last note of each holds through
+      // the rest. The second time is the same tune, without the words.
+      notes: `
+        A4:.667:all A4:.333:you A4:.667:need A4:1:is A4:5.333:love
+        A4:.667:la A4:.333:- A4:.667:- A4:1:- A4:5.333:-
+        A4:.667:la A4:.333:- Bb4:.667:- Bb4:1:- B4:2:- F#4:3.333:-
+        E4:.333:la F#4:.333:- E4:1:- D4:.334:- D4:1:-
+        A4:.667:la A4:.333:- A4:.667:- A4:1:- A4:5.333:-
+        A4:.667:la A4:.333:- A4:.667:- A4:1:- A4:5.333:-
+        A4:.667:la A4:.333:- Bb4:.667:- Bb4:1:- B4:2:- F#4:3.333:-
+        E4:.333:la F#4:.333:- E4:1:- D4:.334:- D4:3:-`,
+      chords: 'D:1 E:2 A:4 D:2 E:2 A:4 D:2 F#7:2 Bm:2 D:2 G:2 A7:2 D:1 E:2 A:4 D:2 E:2 A:4 D:2 F#7:2 Bm:2 D:2 G:2 A7:2 D:2',
+    },
+    {
+      id: 'yesterday',
+      title: 'Yesterday',
+      bpm: 90,
+      // John Lennon and Paul McCartney, 1965. Still in copyright. The first
+      // verse, then the second verse's tune (nearly the same, with a few
+      // shifted rhythms). Notes, timing and chords from a MIDI
+      // (bitmidi.com/uploads/16448.mid, its melody track and the chord names it
+      // carries), in C; the first verse's tune checked against uploads/16443.mid,
+      // the same tune in F. The title words are sung at the start; the rest is
+      // "oo". Csus4 and G/B are written C and G.
+      notes: `
+        D4:.5:yes C4:.25:ter C4:4.25:day
+        E4:.5:oo F#4:.5:- G#4:.25:- A4:.75:- B4:.5:- C5:.5:- B4:1:- A4:.5:- A4:3.5:-
+        A4:.5:oo A4:.5:- G4:.5:- F4:.25:- E4:.75:- D4:.5:- F4:1:- E4:.5:- E4:1.5:-
+        D4:1:oo C4:1:- E4:.5:- D4:2:- A3:.5:- C4:1:- E4:.5:- E4:2.5:-
+        D4:.25:oo C4:.5:- C4:4.25:-
+        E4:.5:oo F#4:.5:- G#4:.5:- A4:.25:- B4:.75:- C5:.5:- B4:.5:- A4:.25:- A4:4.25:-
+        A4:.5:oo A4:.25:- G4:.5:- F4:.75:- E4:.5:- D4:.5:- F4:1:- E4:.5:- E4:2:-
+        D4:.5:oo C4:1:- E4:.5:- D4:2:- A3:.5:- C4:1:- E4:.5:- E4:2.5:-`,
+      chords: 'C:4 Bm7:2 E7:2 Am:3 G:1 F:2 G:2 C:3 G:1 Am:2 D:2 F:1 C:3 C:4 Bm7:2 E7:2 Am:3 G:1 F:2 G:2 C:3 G:1 Am:2 D:2 F:1 C:3',
     },
   ];
 
