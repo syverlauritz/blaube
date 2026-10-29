@@ -2677,7 +2677,7 @@
   // Drawing on one: pen, arrow, box and words in a few colours, undo and
   // clear. Add to message saves it (as a pasted image is) and puts it with
   // what you're writing.
-  const COLORS = [['#ff3b5c', 'Red'], ['#ffb020', 'Yellow'], ['#22b573', 'Green'], ['#3d7bfd', 'Blue'], ['#1b2440', 'Ink'], ['#ffffff', 'White']];
+  const COLORS = [['#ff3b5c', 'Red'], ['#ffb020', 'Yellow'], ['#22b573', 'Green'], ['#3d7bfd', 'Blue'], ['#a05cf0', 'Purple'], ['#1b2440', 'Ink'], ['#ffffff', 'White']]; // (ink or white: whichever shows on the box)
   let mark = null, markTool = 'arrow', markColor = COLORS[0][0];
   const canvas = $('markCanvas');
   for (const [c, label] of COLORS) {
@@ -2714,6 +2714,9 @@
       canvas.width = Math.max(1, Math.round(w * k));
       canvas.height = Math.max(1, Math.round(h * k));
       mark = { img, name: name || 'picture', ops: [], cleared: null, live: null, saving: false, said: '' };
+      // (Ink shows on a light box, white on a dark one: the other is hidden.)
+      const dark = document.body.classList.contains('dark');
+      if (markColor === (dark ? '#1b2440' : '#ffffff')) markColor = dark ? '#ffffff' : '#1b2440';
       $('viewer').hidden = true;
       viewing = null;
       $('markText').hidden = true;
@@ -2847,11 +2850,12 @@
   // (Undo after Clear brings it all back.)
   $('markUndo').addEventListener('click', () => {
     if (!mark) return;
+    mark.said = '';
     if (mark.ops.length) mark.ops.pop(); else if (mark.cleared) { mark.ops = mark.cleared; mark.cleared = null; }
     paint();
     markBar();
   });
-  $('markClear').addEventListener('click', () => { if (mark && mark.ops.length) { mark.cleared = mark.ops; mark.ops = []; paint(); markBar(); } });
+  $('markClear').addEventListener('click', () => { if (mark && mark.ops.length) { mark.cleared = mark.ops; mark.ops = []; mark.said = 'Cleared. Undo brings it back'; paint(); markBar(); } });
   $('markCancel').addEventListener('click', unmark);
   $('markAdd').addEventListener('click', async () => {
     if (!mark || mark.saving || !current || current.demo || text.disabled || !api.paste) return;

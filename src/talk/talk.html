@@ -232,8 +232,8 @@
   #inner { margin-top: auto; }
   #log.scrolled { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px); }
   /* (And the bottom, while there's more under it.) */
-  #log.below { -webkit-mask-image: linear-gradient(to top, transparent 0, #000 22px); }
-  #log.scrolled.below { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%); }
+  #log.below { -webkit-mask-image: linear-gradient(to top, transparent 0, #000 34px); }
+  #log.scrolled.below { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 34px), transparent 100%); }
   /* (Too little room for even a line: hidden, but still laid out, so it knows how much room to ask for.) */
   #log.squeezed { visibility: hidden; }
   #log::-webkit-scrollbar, .glance::-webkit-scrollbar { width: 8px; }
@@ -389,7 +389,10 @@
   /* (Sized from the picture's own size before it's drawn: --w, --r.) */
   .pic { --maxh: 260px; }
   .pic img { display: block; width: min(var(--w, 240px), calc(var(--maxh) * var(--r, 1))); max-width: 100%; height: auto; aspect-ratio: var(--r, auto); min-width: 40px; object-fit: contain; }
-  .pics.many .pic { --maxh: 150px; }
+  /* (Several: same-size tiles, each a tap from all of it.) */
+  .pics.many .pic { width: 168px; aspect-ratio: 4 / 3; }
+  .msg.you .pics.many .pic { width: 116px; }
+  .pics.many .pic .show, .pics.many .pic img { width: 100%; height: 100%; max-width: none; aspect-ratio: auto; object-fit: cover; }
   .msg.you .pic { --maxh: 132px; background: var(--paper); }
   .msg.you .pic img { max-width: min(240px, 100%); }
   .stepimg .pic { --maxh: 340px; margin: 0 auto; display: block; width: fit-content; }
@@ -397,7 +400,7 @@
   .pic .draw svg, .file .draw svg { width: 16px; height: 16px; }
   .pic:hover .draw, .pic .draw:focus-visible { opacity: 1; }
   .pic .draw:hover { transform: scale(1.08); }
-  .msg.you .filechip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px; border-radius: 999px; background: var(--paper); font: 600 13.5px var(--ui); color: var(--dim); line-height: 1.6; }
+  .msg.you .filechip { align-self: center; display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px; border-radius: 999px; background: var(--paper); font: 600 13.5px var(--ui); color: var(--dim); line-height: 1.6; }
   /* One big, over the conversation (Esc or a click beside it closes it). */
   .viewer, .markup { position: absolute; inset: 0; z-index: 50; display: flex; flex-direction: column; gap: 10px; padding: 18px 20px 20px; background: var(--paper); animation: squish .22s cubic-bezier(.3, 1.6, .5, 1); }
   .vbar, .mbar, .mfoot { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -422,11 +425,13 @@
   .swatches button.on i { transform: scale(1.2); }
   .swatches button.on i svg { opacity: 1; transform: none; }
   /* (White on a light tray, ink on a dark one: a faint ring, to be seen.) */
-  .swatches button[data-color="#ffffff"] i { box-shadow: inset 0 0 0 1.5px var(--line); }
-  body.dark .swatches button[data-color="#ffffff"] i { box-shadow: none; }
-  body.dark .swatches button[data-color="#1b2440"] i { box-shadow: inset 0 0 0 1.5px var(--grip); }
+  /* (The last one is ink on a light box, white on a dark one: one that shows on its tray.) */
+  .swatches button[data-color="#ffffff"], body.dark .swatches button[data-color="#1b2440"] { display: none; }
+  body.dark .swatches button[data-color="#ffffff"] { display: grid; }
   .mbar .round { width: 34px; height: 34px; }
   .mbar .round svg { width: 16px; height: 16px; }
+  .mbar #markClear { background: none; }
+  .mbar #markClear:hover:not(:disabled) { background: var(--hover); }
   .mbar .round:disabled { opacity: .4; cursor: default; background: var(--soft); color: var(--dim); }
   .mstage { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
   .mstage canvas { display: block; max-width: 100%; max-height: 100%; min-height: 0; border-radius: 14px; cursor: crosshair; touch-action: none; }
@@ -565,7 +570,7 @@
   .quick button.careful { color: var(--dim); }
   .quick button.sure { background: #d04a3c; color: #fff; }
   /* Pasted images and dropped files, waiting to go with the next message. */
-  .files { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 8px; }
+  .files { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 16px 8px; }
   .file { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; background: var(--soft); border-radius: 999px; padding: 4px 6px 4px 13px; font: 600 14px var(--ui); color: var(--ink); animation: squish .3s cubic-bezier(.3, 1.6, .5, 1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .file button { border: 0; background: none; width: 22px; height: 22px; border-radius: 50%; padding: 0; font: 700 15px/1 var(--ui); color: var(--dim); cursor: pointer; }
   .file button:hover { color: var(--ink); background: var(--hover); }
@@ -573,7 +578,8 @@
   .file .thumb { flex: none; width: 40px; height: 40px; border: 0; border-radius: 12px; padding: 0; overflow: hidden; background: var(--paper); cursor: zoom-in; }
   .file .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
   .file .fname { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-  .file button.draw { display: grid; place-items: center; width: 28px; height: 28px; }
+  .file.haspic button { width: 28px; height: 28px; }
+  .file button.draw { display: grid; place-items: center; }
   body.dropping .bubble { background: var(--paper)af7; }
   .editing { display: flex; gap: 8px; justify-content: space-between; align-items: center; font: 600 14px var(--ui); color: var(--dim); padding: 0 22px 8px; }
   /* "@" for a file and "/" for a command, as in the terminal. */

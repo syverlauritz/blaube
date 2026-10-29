@@ -27,7 +27,7 @@ const full = (fill) => ({ total: 400000, context: fill * 200000, limit: 200000 }
 // The talk box with pictures in it (docs/img stands in for what was made).
 const MEDIA_BOX = { x: 340, y: 14, w: 600, h: 790 };
 const MEDIA_LOG = [
-	{ who: 'you', text: `the header feels cramped, can you give it more room?\n\nAttached file (open with your Read tool): ${path.join(ROOT, 'docs', 'img', 'talk.png')}`, via: 'blaube', status: 'sent', n: 1, at: 1 },
+	{ who: 'you', text: `the header feels cramped, can you give it more room?\n\nAttached files (open with your Read tool): ${path.join(ROOT, 'docs', 'img', 'talk.png')}, ${path.join(ROOT, 'docs', 'img', 'permission.png')}, ${path.join(ROOT, 'docs', 'FEATURES.md')}`, via: 'blaube', status: 'sent', n: 1, at: 1 },
 	{ who: 'step', text: 'Read talk.png', ok: true, kind: 'read', file: path.join(ROOT, 'docs', 'img', 'talk.png'), n: 2, at: 2 },
 	{ who: 'step', text: 'Edited talk.html', ok: true, kind: 'edit', n: 3, at: 3 },
 	{ who: 'step', text: 'Ran npm run shots -- talkChat', ok: true, kind: 'run', n: 4, at: 4 },
