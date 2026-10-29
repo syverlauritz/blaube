@@ -107,6 +107,17 @@
   }
 
   const buddies = new Map();
+  // (For blaube.log: what each slime's face is made of, a little after the
+  // start and every ten minutes; to see why one shows without its blush or
+  // its look.)
+  const faceNote = () => {
+    try {
+      const list = [...buddies.values()].filter((b) => !b.dying).map((b) => `${b.key.slice(0, 8)} ${b.kind} r${Math.round(b.body.o.radius)} look=${b.look || '?'} effort=${b.effort} glasses=${b.glasses ? 'off' : '-'} model=${b.modelFam || (b.mother && b.mother.modelFam) || '?'} blush=${(b.blush || 0).toFixed(2)} colour=${b.color}`);
+      console.log(`[blaube] faces: cheeks ${CFG.cheeks} ${CFG.cheekColor}, looks ${CFG.looks}; ${list.join(' | ') || 'none'}`);
+    } catch (e) { console.log(`[blaube] faces: ${e.message}`); }
+  };
+  setTimeout(faceNote, 20e3);
+  setInterval(faceNote, 10 * 60e3);
 
   // How much they say. What you need to know (a session needs you, is done,
   // an error, its context full) always gets its balloon. The rest is
