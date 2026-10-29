@@ -111,6 +111,8 @@
         continue;
       }
       if (!line.trim()) { end(); continue; }
+      // (A line of just pictures: they show under the reply instead.)
+      if (/^\s*(?:!\[[^\]\n]*\]\([^)\n]+\)\s*)+$/.test(line) && !/!\[[^\]\n]*\]\(\s*<?(?:https?:|data:)/.test(line)) { end(); continue; }
       if ((m = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line))) {
         end();
         const h = document.createElement(m[1].length <= 2 ? 'h3' : m[1].length === 3 ? 'h4' : 'h5');
@@ -178,8 +180,10 @@
 
   // A line's own formatting: `code`, **bold**, *italic*, and links.
   function inline(el, text) {
-    for (const bit of String(text).split(/(`[^`\n]+`|\*\*[^*\n]+\*\*|(?<![\w*])\*(?![\s*])[^*\n]*?[^\s*]\*(?![\w*]))/)) {
+    for (const bit of String(text).split(/(!\[[^\]\n]*\]\([^)\n]+\)|`[^`\n]+`|\*\*[^*\n]+\*\*|(?<![\w*])\*(?![\s*])[^*\n]*?[^\s*]\*(?![\w*]))/)) {
       if (!bit) continue;
+      // A picture: shown under the reply (one on the web: its link).
+      if (bit.startsWith('![')) { const w = /^!\[([^\]\n]*)\]\(\s*<?(https?:\/\/[^\s)>]+)/.exec(bit); if (w) links(el, `[${w[1] || w[2]}](${w[2]})`); continue; }
       if (bit[0] === '`') { const c = document.createElement('code'); c.textContent = bit.slice(1, -1); if (PATHLIKE.test(c.textContent)) c.dataset.path = c.textContent; el.append(c); }
       else if (bit.startsWith('**')) { const b = document.createElement('b'); b.textContent = bit.slice(2, -2); el.append(b); }
       else if (bit[0] === '*' && bit.length > 2 && bit.endsWith('*')) { const e = document.createElement('em'); e.textContent = bit.slice(1, -1); el.append(e); }
@@ -294,9 +298,9 @@
       inner.append(b);
     }
     let last = null;
-    for (const m of hist) {
+    for (const [i, m] of hist.entries()) {
       if (m.who === 'step') { last = addStep(m, false); continue; }
-      const nodes = message(m, false);
+      const nodes = message(m, false, madeBy(hist, i));
       inner.append(...nodes);
       last = nodes[nodes.length - 1];
     }
@@ -341,7 +345,7 @@
   // A step goes into the run of steps it follows (or starts one). A run
   // shows its last SHOWN; the earlier ones fold behind "N more".
   const SHOWN = 3;
-  const IMAGE = /\.(png|jpe?g|gif|webp)$/i;
+  const IMAGE = /\.(png|jpe?g|gif|webp|svg)$/i;
   const openRuns = new Set(); // runs you unfolded (by their first step's n)
   const openSteps = new Set(); // steps you opened (by n)
   function addStep(m, fresh) {
@@ -409,14 +413,7 @@
       const shown = () => openSteps.has(m.n);
       const load = () => {
         if (box.firstChild || !current) return;
-        api.image(current.id, m.file).then((r) => {
-          if (!r) { box.textContent = 'It’s not there any more.'; return; }
-          const img = document.createElement('img');
-          img.src = r.url; img.alt = m.file.split(/[\\/]/).pop();
-          img.draggable = false;
-          img.onload = () => fitWindow();
-          box.append(img);
-        });
+        box.append(picture({ id: current.id, path: m.file }, m.file.split(/[\\/]/).pop(), () => { box.textContent = 'It’s not there any more.'; }));
       };
       box.hidden = !shown();
       if (shown()) load();
@@ -439,7 +436,7 @@
     return run;
   }
 
-  function message(m, fresh) {
+  function message(m, fresh, made = []) {
     // A question asked on the side (/btw), and its answer.
     if (m.who === 'note' && m.aside) {
       const e = document.createElement('div');
@@ -518,10 +515,21 @@
     e.className = 'msg ' + m.who + (m.status === 'queued' || m.status === 'unsent' ? ' ' + m.status : '') + (fresh ? ' new' : '');
     e.dataset.at = m.at;
     e.dataset.text = m.text; // (what find looks in: not its buttons)
+    // (Yours: the files that went with it show as pictures and names, not
+    // as the line that told Claude where they are.)
+    const sent = m.who === 'you' ? BlaubeMedia.attached(m.text) : null;
+    const words = sent ? sent.text : m.text;
     // (A very long one is cut until you unfold it with Show more.)
-    const cut = m.text.length > MAX && !open.has(m.at);
-    rich(e, cut ? m.text.slice(0, MAX) + '…' : m.text);
+    const cut = words.length > MAX && !open.has(m.at);
+    rich(e, cut ? words.slice(0, MAX) + '…' : words);
     markPaths(e);
+    if (current && !current.demo) {
+      // Pictures: what you attached, or what Claude made or points at.
+      const named = sent ? sent.paths.concat(BlaubeMedia.imagePaths(sent.text)) : BlaubeMedia.imagePaths(m.text).concat(made);
+      const pics = [...new Set(named)].filter(BlaubeMedia.isImage).slice(0, BlaubeMedia.MAX);
+      const others = sent ? sent.paths.filter((p) => !BlaubeMedia.isImage(p)) : [];
+      if (pics.length || others.length) e.append(gallery(current.id, pics, others));
+    }
     const out = [e];
     if (cut) {
       e.dataset.measured = '1'; // (folded already, whatever its height)
@@ -818,7 +826,7 @@
       for (let i = from; i < s.log.length; i++) {
         if (i === since && sinceShows) { const d = document.createElement('div'); d.className = 'since'; d.textContent = 'New since you last looked'; inner.append(d); }
         if (s.log[i].who === 'step') { ends[i] = addStep(s.log[i], !switched && i >= seen); continue; }
-        const nodes = message(s.log[i], !switched && i >= seen);
+        const nodes = message(s.log[i], !switched && i >= seen, madeBy(s.log, i));
         inner.append(...nodes);
         ends[i] = nodes[nodes.length - 1];
       }
@@ -2143,7 +2151,7 @@
     // the window has room for asks for that room).
     let chrome = 0;
     for (const el of bubble.children) {
-      if (el === log || !el.offsetParent) continue;
+      if (el === log || !el.offsetParent || el.id === 'viewer' || el.id === 'markup') continue;
       const cs = getComputedStyle(el);
       chrome += Math.max(el.offsetHeight, el.scrollHeight) + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
     }
@@ -2154,7 +2162,18 @@
     // A hidden (squeezed) log still wants its height back; an empty one doesn't.
     if (inner.offsetHeight) innerH = inner.offsetHeight;
     const logH = inner.children.length ? innerH + pad : 0; // (with a card up too: what it's asking about stays in view if there's room)
-    api.setHeight(current.id, Math.ceil(chrome + card + logH + 24 + 1)); // 24: room round the bubble
+    api.setHeight(current.id, bigPicture(bubble) || Math.ceil(chrome + card + logH + 24 + 1)); // 24: room round the bubble
+  }
+  // A picture up big (or being drawn on): room to see it, about as tall as
+  // it is at the box's width (the app keeps it within the screen).
+  function bigPicture(bubble) {
+    const over = !$('markup').hidden ? $('markup') : !$('viewer').hidden ? $('viewer') : null;
+    if (!over) return 0;
+    const stage = over.querySelector('.vstage, .mstage');
+    const w = over === $('markup') ? canvas.width : $('viewImg').naturalWidth, h = over === $('markup') ? canvas.height : $('viewImg').naturalHeight;
+    if (!w || !h) return 640;
+    const tall = Math.min(h, stage.clientWidth * h / w);
+    return Math.ceil(Math.min(860, Math.max(420, over.offsetHeight - stage.offsetHeight + tall + (bubble.parentNode.offsetHeight - bubble.offsetHeight) + 1)));
   }
 
   // When the log gets shorter (a permission card, a taller field), keep the
@@ -2164,6 +2183,7 @@
   log.addEventListener('scroll', () => {
     pinned = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
     log.classList.toggle('scrolled', log.scrollTop > 2);
+    log.classList.toggle('below', !pinned); // (and the bottom, while there's more under it)
   });
   new ResizeObserver(() => { if (pinned) log.scrollTop = log.scrollHeight; }).observe(log);
 
@@ -2452,7 +2472,7 @@
   });
   // Images pasted into the field, and files dropped on the box: chips
   // above the field, sent with the message as paths Claude can open.
-  let files = [];
+  let files = []; // { path, name, pic: { url, w, h } for a picture already in hand }
   function drawFiles() {
     const box = $('files');
     box.textContent = '';
@@ -2460,20 +2480,49 @@
     files.forEach((f, i) => {
       const chip = document.createElement('span');
       chip.className = 'file';
-      chip.textContent = f.name;
+      const name = document.createElement('span');
+      name.className = 'fname';
+      name.textContent = f.name;
       chip.title = f.path;
       const x = document.createElement('button');
       x.type = 'button';
       x.textContent = '×';
       x.setAttribute('aria-label', 'Remove ' + f.name);
       x.onclick = () => { files.splice(i, 1); drawFiles(); };
-      chip.append(x);
+      chip.append(name, x);
       box.append(chip);
+      // A picture: a little one in front (tap: big), and the pencil.
+      if (!BlaubeMedia.isImage(f.path) && !f.pic) return;
+      const withPic = (pic) => {
+        if (!pic || !chip.isConnected) return;
+        f.pic = pic;
+        const thumb = document.createElement('button');
+        thumb.type = 'button';
+        thumb.className = 'thumb';
+        thumb.title = 'Show it big';
+        const img = document.createElement('img');
+        img.src = pic.url; img.alt = ''; img.draggable = false;
+        thumb.append(img);
+        thumb.onclick = () => view(pic.url, f.name);
+        chip.classList.add('haspic');
+        chip.prepend(thumb);
+        x.before(drawButton(() => ({ url: pic.url, name: f.name, path: f.path })));
+      };
+      if (f.pic) withPic(f.pic);
+      else if (current) picOf(current.id, f.path).then(withPic);
     });
     if (current) send.disabled = text.disabled || (!text.value.trim() && !files.length);
     requestAnimationFrame(fitWindow);
   }
-  const addFile = (path, name) => { if (path && !files.some((f) => f.path === path)) { files.push({ path, name: name || path.split(/[\\/]/).pop() }); drawFiles(); } };
+  const addFile = (path, name, pic) => { if (path && !files.some((f) => f.path === path)) { files.push({ path, name: name || path.split(/[\\/]/).pop(), pic }); drawFiles(); } };
+  // (A picture you gave it, read right here: it shows before it's sent.)
+  const readPic = (blob) => new Promise((done) => {
+    if (!blob || !/^image\//.test(blob.type) || blob.size > 20e6) return done(null);
+    const r = new FileReader();
+    r.onload = () => { const img = new Image(); img.onload = () => done({ url: r.result, w: img.naturalWidth, h: img.naturalHeight }); img.onerror = () => done(null); img.src = r.result; };
+    r.onerror = () => done(null);
+    r.readAsDataURL(blob);
+  });
   $('attach').addEventListener('click', () => {
     if (!current || current.demo || !api.attach) return;
     api.attach(current.id).then((paths) => { for (const p of paths || []) addFile(p); text.focus(); });
@@ -2487,8 +2536,8 @@
     for (const it of items) {
       const f = it.getAsFile();
       if (!f) continue;
-      const saved = await api.paste(into, new Uint8Array(await f.arrayBuffer()), f.type);
-      if (saved && current && current.id === into) addFile(saved, `Image ${files.filter((x) => /^Image /.test(x.name)).length + 1}`);
+      const [saved, pic] = await Promise.all([api.paste(into, new Uint8Array(await f.arrayBuffer()), f.type), readPic(f)]);
+      if (saved && current && current.id === into) addFile(saved, `Image ${files.filter((x) => /^Image /.test(x.name)).length + 1}`, pic || undefined);
     }
   });
   document.addEventListener('dragover', (e) => { if (current && !text.disabled) { e.preventDefault(); document.body.classList.add('dropping'); } });
@@ -2497,9 +2546,346 @@
     e.preventDefault();
     document.body.classList.remove('dropping');
     if (!current || text.disabled || !api.pathOf) return;
-    for (const f of e.dataTransfer.files) addFile(api.pathOf(f), f.name);
+    const into = current.id;
+    for (const f of [...e.dataTransfer.files]) {
+      const p = api.pathOf(f);
+      addFile(p, f.name);
+      // (A picture shows as one straight away.)
+      if (p && BlaubeMedia.isImage(f.name)) readPic(f).then((pic) => { const it = files.find((x) => x.path === p); if (pic && it && !it.pic && current && current.id === into) { it.pic = pic; drawFiles(); } });
+    }
     text.focus();
   });
+
+  // ---- Pictures ----
+  // Shown small where they come up (what you attached, what Claude made or
+  // names); a tap shows one big, the pencil draws on it. The app reads
+  // each one (talk-image: only image files that are fine to show).
+  const PENCIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-4.5L16 4.5a2.1 2.1 0 0 1 3 3L8 18.5z"/><path d="M14 7l3 3"/></svg>';
+  const picAsked = new Map(); // `${id}\n${path}` -> promise of { url, w, h } or null
+  const picKnown = new Map(); // the same, once known (so a redraw shows it at once, at its size)
+  function picOf(id, p) {
+    const k = id + '\n' + p;
+    if (!picAsked.has(k)) {
+      if (picAsked.size > 300) { picAsked.clear(); picKnown.clear(); }
+      // (One that isn't there may be soon, written a moment later: asked again after a while.)
+      const none = (done) => { picKnown.set(k, null); setTimeout(() => { if (picKnown.get(k) === null) { picKnown.delete(k); picAsked.delete(k); } }, 15e3); done(null); };
+      picAsked.set(k, Promise.resolve(api.image ? api.image(id, p) : null).catch(() => null).then((r) => new Promise((done) => {
+        if (!r || !r.url) return none(done);
+        const img = new Image();
+        img.onload = () => { const v = { url: r.url, w: img.naturalWidth || 800, h: img.naturalHeight || 600 }; picKnown.set(k, v); done(v); };
+        img.onerror = () => none(done);
+        img.src = r.url;
+      })));
+    }
+    return picAsked.get(k);
+  }
+  // One picture: { url, w, h } in hand, or { id, path } to ask the app for.
+  // Not there (or not an image): it takes itself away (gone() says so).
+  function picture(src, name, gone) {
+    const box = document.createElement('span');
+    box.className = 'pic';
+    const show = document.createElement('button');
+    show.type = 'button';
+    show.className = 'show';
+    show.title = 'Show it big';
+    const img = document.createElement('img');
+    img.alt = name || '';
+    img.draggable = false;
+    show.append(img);
+    box.append(show);
+    let pic = null;
+    show.onclick = () => { if (pic) view(pic.url, name); };
+    box.append(drawButton(() => pic && { url: pic.url, name, path: src.path }));
+    const k = src.path && src.id + '\n' + src.path;
+    const known = src.url ? src : k && picKnown.has(k) ? picKnown.get(k) : undefined;
+    const put = (v) => {
+      if (!v) { box.remove(); if (gone) gone(); return; }
+      pic = v;
+      // (Its size before it's drawn, so nothing jumps as it comes in.)
+      img.style.setProperty('--w', v.w + 'px');
+      img.style.setProperty('--r', String(v.w / v.h));
+      img.src = v.url;
+      box.hidden = false;
+      if (known === undefined) requestAnimationFrame(() => grew(box));
+    };
+    if (known !== undefined) put(known);
+    else { box.hidden = true; picOf(src.id, src.path).then(put); }
+    return box;
+  }
+  // A row of them (and the names of files that aren't pictures).
+  function gallery(id, paths, others = []) {
+    const row = document.createElement('div');
+    row.className = 'pics' + (paths.length > 1 ? ' many' : '');
+    for (const p of paths) row.append(picture({ id, path: p }, p.split(/[\\/]/).pop()));
+    for (const p of others) {
+      const c = document.createElement('span');
+      c.className = 'filechip';
+      c.textContent = p.split(/[\\/]/).pop();
+      c.title = p;
+      row.append(c);
+    }
+    return row;
+  }
+  // Something came in taller: the newest stays in view if it was.
+  function grew(el) {
+    if (!el.isConnected) return;
+    if (log.contains(el) && log.scrollHeight - log.scrollTop - log.clientHeight - el.offsetHeight < 60) log.scrollTop = log.scrollHeight;
+    fitWindow();
+  }
+  function drawButton(get) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'draw';
+    b.innerHTML = PENCIL;
+    b.title = 'Draw on it, then add it to your message';
+    b.setAttribute('aria-label', 'Draw on it');
+    b.onclick = (ev) => { ev.stopPropagation(); const p = get(); if (p) markup(p.url, p.name); };
+    return b;
+  }
+  // Images its steps wrote since what was said before (for the reply after them).
+  function madeBy(list, i) {
+    const m = list[i];
+    if (!m || m.who !== 'claude' || m.live) return [];
+    const out = [];
+    for (let j = i - 1; j >= 0 && list[j].who !== 'you' && !(list[j].who === 'claude' && !list[j].live); j--) {
+      const x = list[j];
+      if (x.who === 'step' && x.file && x.kind !== 'read' && !/^Read\b/.test(x.text || '') && BlaubeMedia.isImage(x.file) && !out.includes(x.file)) out.unshift(x.file);
+    }
+    return out;
+  }
+
+  // One big, over the conversation: Esc, ✕ or a click closes it.
+  let viewing = null;
+  function view(url, name) {
+    if (!url) return;
+    viewing = { url, name: name || '' };
+    $('viewImg').src = url;
+    $('viewName').textContent = name || '';
+    $('viewer').hidden = false;
+    $('viewDraw').hidden = !!(current && current.demo);
+    fitWindow();
+    $('viewClose').focus();
+  }
+  function unview() {
+    if ($('viewer').hidden) return;
+    $('viewer').hidden = true;
+    viewing = null;
+    fitWindow();
+  }
+  $('viewClose').addEventListener('click', unview);
+  $('viewStage').addEventListener('click', unview);
+  $('viewDraw').addEventListener('click', () => { const v = viewing; if (v) markup(v.url, v.name); });
+
+  // Drawing on one: pen, arrow, box and words in a few colours, undo and
+  // clear. Add to message saves it (as a pasted image is) and puts it with
+  // what you're writing.
+  const COLORS = [['#ff3b5c', 'Red'], ['#ffb020', 'Yellow'], ['#22b573', 'Green'], ['#3d7bfd', 'Blue'], ['#a05cf0', 'Purple'], ['#1b2440', 'Ink'], ['#ffffff', 'White']]; // (ink or white: whichever shows on the box)
+  let mark = null, markTool = 'arrow', markColor = COLORS[0][0];
+  const canvas = $('markCanvas');
+  for (const [c, label] of COLORS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.color = c;
+    b.title = label;
+    b.setAttribute('aria-label', label);
+    b.style.setProperty('--c', c);
+    const dot = document.createElement('i');
+    dot.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'; // (a tick on the one picked)
+    b.append(dot);
+    b.onclick = () => { markColor = c; markBar(); if (!$('markText').hidden) { $('markText').style.color = c; $('markText').focus(); } };
+    $('markColors').append(b);
+  }
+  for (const b of $('markTools').querySelectorAll('button')) b.onclick = () => { putWords(); markTool = b.dataset.tool; markBar(); };
+  function markBar() {
+    for (const b of $('markTools').querySelectorAll('button')) { b.classList.toggle('on', b.dataset.tool === markTool); b.setAttribute('aria-pressed', String(b.dataset.tool === markTool)); }
+    for (const b of $('markColors').querySelectorAll('button')) { b.classList.toggle('on', b.dataset.color === markColor); b.setAttribute('aria-pressed', String(b.dataset.color === markColor)); }
+    canvas.classList.toggle('words', markTool === 'text');
+    const done = !!(mark && mark.ops.length);
+    $('markUndo').disabled = !done && !(mark && mark.cleared);
+    $('markClear').disabled = !done;
+    const can = !!(current && !current.demo && !text.disabled && api.paste);
+    $('markAdd').disabled = !can || !mark || mark.saving;
+    $('markAdd').title = can ? 'Save it and add it to your message' : 'This session can’t take a message right now';
+    $('markHint').textContent = mark && mark.said ? mark.said : markTool === 'text' ? 'Click where the words go' : done ? '' : 'Draw on it, then add it to your message';
+  }
+  function markup(url, name) {
+    const img = new Image();
+    img.onload = () => {
+      // (At most 2400 px across: plenty for Claude, and quick to save.)
+      const w = img.naturalWidth || 1000, h = img.naturalHeight || 750, k = Math.min(1, 2400 / Math.max(w, h));
+      canvas.width = Math.max(1, Math.round(w * k));
+      canvas.height = Math.max(1, Math.round(h * k));
+      mark = { img, name: name || 'picture', ops: [], cleared: null, live: null, saving: false, said: '' };
+      // (Ink shows on a light box, white on a dark one: the other is hidden.)
+      const dark = document.body.classList.contains('dark');
+      if (markColor === (dark ? '#1b2440' : '#ffffff')) markColor = dark ? '#ffffff' : '#1b2440';
+      $('viewer').hidden = true;
+      viewing = null;
+      $('markText').hidden = true;
+      $('markup').hidden = false;
+      markBar();
+      paint();
+      fitWindow();
+    };
+    img.src = url;
+  }
+  function unmark() {
+    if ($('markup').hidden) return;
+    $('markup').hidden = true;
+    $('markText').hidden = true;
+    mark = null;
+    fitWindow();
+    text.focus();
+  }
+  // Image pixels per pixel on screen (marks are as thick as they look).
+  const perPx = () => { const r = canvas.getBoundingClientRect(); return r.width ? canvas.width / r.width : 1; };
+  const at = (e) => { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * canvas.width / r.width, (e.clientY - r.top) * canvas.height / r.height]; };
+  function paint() {
+    if (!mark) return;
+    const g = canvas.getContext('2d');
+    g.clearRect(0, 0, canvas.width, canvas.height);
+    g.drawImage(mark.img, 0, 0, canvas.width, canvas.height);
+    for (const op of mark.live ? mark.ops.concat([mark.live]) : mark.ops) drawMark(g, op);
+  }
+  function drawMark(g, op) {
+    g.save();
+    g.strokeStyle = g.fillStyle = op.color;
+    g.lineWidth = op.w;
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    if (op.tool === 'pen') {
+      const p = op.pts;
+      g.beginPath();
+      g.moveTo(p[0][0], p[0][1]);
+      if (p.length === 1) g.lineTo(p[0][0] + 0.1, p[0][1]);
+      // (Smoothed through the middles, so it isn't jaggy.)
+      for (let i = 1; i < p.length - 1; i++) g.quadraticCurveTo(p[i][0], p[i][1], (p[i][0] + p[i + 1][0]) / 2, (p[i][1] + p[i + 1][1]) / 2);
+      if (p.length > 1) g.lineTo(p[p.length - 1][0], p[p.length - 1][1]);
+      g.stroke();
+    } else if (op.tool === 'box') {
+      const x = Math.min(op.a[0], op.b[0]), y = Math.min(op.a[1], op.b[1]), w = Math.abs(op.b[0] - op.a[0]), h = Math.abs(op.b[1] - op.a[1]);
+      g.beginPath();
+      g.roundRect(x, y, w, h, Math.min(op.w * 3, w / 2, h / 2));
+      g.stroke();
+    } else if (op.tool === 'arrow') {
+      const [ax, ay] = op.a, [bx, by] = op.b, len = Math.hypot(bx - ax, by - ay);
+      if (len >= 1) {
+        const ux = (bx - ax) / len, uy = (by - ay) / len, head = Math.min(len * 0.6, op.w * 4.5), wide = head * 0.62;
+        g.beginPath();
+        g.moveTo(ax, ay);
+        g.lineTo(bx - ux * head * 0.8, by - uy * head * 0.8);
+        g.stroke();
+        // (A rounded, filled head.)
+        g.beginPath();
+        g.moveTo(bx, by);
+        g.lineTo(bx - ux * head - uy * wide, by - uy * head + ux * wide);
+        g.lineTo(bx - ux * head + uy * wide, by - uy * head - ux * wide);
+        g.closePath();
+        g.lineWidth = op.w * 0.6;
+        g.fill();
+        g.stroke();
+      }
+    } else if (op.tool === 'text') {
+      g.font = `800 ${op.size}px Nunito, system-ui, sans-serif`;
+      g.textBaseline = 'top';
+      g.fillText(op.text, op.at[0], op.at[1]);
+    }
+    g.restore();
+  }
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!mark || e.button !== 0) return;
+    e.preventDefault();
+    if (mark.said) { mark.said = ''; markBar(); }
+    if (markTool === 'text') return startWords(e);
+    try { canvas.setPointerCapture(e.pointerId); } catch { /* (not a real pointer) */ }
+    const p = at(e), w = 4.5 * perPx();
+    mark.live = markTool === 'pen' ? { tool: 'pen', color: markColor, w, pts: [p] } : { tool: markTool, color: markColor, w, a: p, b: p };
+    paint();
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!mark || !mark.live) return;
+    const p = at(e);
+    if (mark.live.tool === 'pen') mark.live.pts.push(p); else mark.live.b = p;
+    if (!mark.frame) mark.frame = requestAnimationFrame(() => { if (mark) { mark.frame = 0; paint(); } });
+  });
+  const endMark = () => {
+    if (!mark || !mark.live) return;
+    const op = mark.live, far = 6 * perPx();
+    mark.live = null;
+    // (A tap with the arrow or box draws nothing.)
+    if (op.tool === 'pen' || Math.hypot(op.b[0] - op.a[0], op.b[1] - op.a[1]) > far) { mark.ops.push(op); mark.cleared = null; }
+    paint();
+    markBar();
+  };
+  canvas.addEventListener('pointerup', endMark);
+  canvas.addEventListener('lostpointercapture', endMark);
+  // Words: a little field where you click; ↩ (or clicking away) puts them on.
+  function startWords(e) {
+    putWords();
+    const field = $('markText'), stage = $('markStage').getBoundingClientRect();
+    field.value = '';
+    field.style.color = markColor;
+    field.style.background = /^#f/i.test(markColor) ? 'rgba(27, 36, 64, .55)' : '';
+    field.style.left = (e.clientX - stage.left - 8) + 'px';
+    field.style.top = (e.clientY - stage.top - 6) + 'px';
+    field.dataset.at = JSON.stringify(at(e));
+    field.hidden = false;
+    requestAnimationFrame(() => field.focus());
+  }
+  function putWords() {
+    const field = $('markText');
+    if (field.hidden || !mark) return;
+    field.hidden = true;
+    const words = field.value.trim();
+    if (!words) return;
+    const k = perPx();
+    const [x, y] = JSON.parse(field.dataset.at);
+    mark.cleared = null;
+    mark.ops.push({ tool: 'text', color: markColor, size: 22 * k, at: [x, y], text: words });
+    paint();
+    markBar();
+  }
+  $('markText').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); putWords(); }
+  });
+  $('markText').addEventListener('blur', (e) => { if (!(e.relatedTarget && e.relatedTarget.closest('#markColors'))) putWords(); });
+  // (Undo after Clear brings it all back.)
+  $('markUndo').addEventListener('click', () => {
+    if (!mark) return;
+    mark.said = '';
+    if (mark.ops.length) mark.ops.pop(); else if (mark.cleared) { mark.ops = mark.cleared; mark.cleared = null; }
+    paint();
+    markBar();
+  });
+  $('markClear').addEventListener('click', () => { if (mark && mark.ops.length) { mark.cleared = mark.ops; mark.ops = []; mark.said = 'Cleared. Undo brings it back'; paint(); markBar(); } });
+  $('markCancel').addEventListener('click', unmark);
+  $('markAdd').addEventListener('click', async () => {
+    if (!mark || mark.saving || !current || current.demo || text.disabled || !api.paste) return;
+    putWords();
+    paint();
+    const into = current.id, was = mark;
+    was.saving = true;
+    markBar();
+    const blob = await new Promise((done) => canvas.toBlob(done, 'image/png'));
+    const pic = { url: canvas.toDataURL('image/png'), w: canvas.width, h: canvas.height };
+    const saved = blob ? await api.paste(into, new Uint8Array(await blob.arrayBuffer()), 'image/png') : '';
+    if (mark !== was) return;
+    was.saving = false;
+    if (!saved || !current || current.id !== into) { was.said = 'Couldn’t save it. Try again?'; markBar(); return; }
+    unmark();
+    addFile(saved, `Drawing ${files.filter((x) => /^Drawing /.test(x.name)).length + 1}`, pic);
+  });
+  // ⌘Z undoes the last mark; Esc closes the picture (before the box).
+  document.addEventListener('keydown', (e) => {
+    if (!$('markup').hidden && (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && document.activeElement !== $('markText')) { e.preventDefault(); $('markUndo').click(); return; }
+    if (e.key !== 'Escape' || e.isComposing) return;
+    if (!$('markup').hidden) {
+      if (!$('markText').hidden) { $('markText').value = ''; $('markText').hidden = true; } else unmark();
+    } else if (!$('viewer').hidden) unview();
+    else return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }, true);
 
   // Closing shrinks it back into its tail, then hides it.
   let closing = false, kept = false; // (kept: pinned, it stays open)

@@ -4,6 +4,7 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+- Pictures in the talk box: what you attach shows as a little picture (and in your message once sent), and pictures Claude makes or points at show in its reply. Tap one to see it big, or draw on it (pen, arrow, box, words) and add the drawing to your message.
 - A helper asking for permission no longer changes its mother's mode under her talk box (a "Don't ask" session showed "Auto mode"). Mode changes are logged in `blaube.log` with what caused them.
 
 ## [0.3.0] - 2026-10-28
