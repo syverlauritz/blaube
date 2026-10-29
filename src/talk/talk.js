@@ -2567,11 +2567,13 @@
     const k = id + '\n' + p;
     if (!picAsked.has(k)) {
       if (picAsked.size > 300) { picAsked.clear(); picKnown.clear(); }
+      // (One that isn't there may be soon, written a moment later: asked again after a while.)
+      const none = (done) => { picKnown.set(k, null); setTimeout(() => { if (picKnown.get(k) === null) { picKnown.delete(k); picAsked.delete(k); } }, 15e3); done(null); };
       picAsked.set(k, Promise.resolve(api.image ? api.image(id, p) : null).catch(() => null).then((r) => new Promise((done) => {
-        if (!r || !r.url) { picKnown.set(k, null); return done(null); }
+        if (!r || !r.url) return none(done);
         const img = new Image();
         img.onload = () => { const v = { url: r.url, w: img.naturalWidth || 800, h: img.naturalHeight || 600 }; picKnown.set(k, v); done(v); };
-        img.onerror = () => { picKnown.set(k, null); done(null); };
+        img.onerror = () => none(done);
         img.src = r.url;
       })));
     }

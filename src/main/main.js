@@ -4149,8 +4149,9 @@ app.whenReady().then(async () => {
   // folder, one you pasted or picked, or one named in what was said (a
   // relative path is in its folder). Only image files (by their first
   // bytes too), never anything else.
-  ipcMain.handle('talk-image', (_e, id, file) => {
-    const abs = isOpen(id) ? talkImageFile(id, file) : '';
+  ipcMain.handle('talk-image', (e, id, file) => {
+    // (Asked by that session's own box, even a moment before it shows.)
+    const abs = id && (isOpen(id) || (talkFrom(e.sender) && talkFrom(e.sender) === talkOf(id))) ? talkImageFile(id, file) : '';
     if (!abs) return null;
     let size = 0;
     try { size = fs.statSync(abs).size; } catch { return null; }
