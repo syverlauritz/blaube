@@ -2517,7 +2517,17 @@
   const addFile = (path, name, pic) => { if (path && !files.some((f) => f.path === path)) { files.push({ path, name: name || path.split(/[\\/]/).pop(), pic }); drawFiles(); } };
   // (A picture you gave it, read right here: it shows before it's sent.)
   const readPic = (blob) => new Promise((done) => {
-    if (!blob || !/^image\//.test(blob.type) || blob.size > 20e6) return done(null);
+    if (!blob || !/^image\//.test(blob.type) || blob.size > 60e6) return done(null);
+    // (A big one, a camera's photo: made small first, as the app does.)
+    if (blob.size > 4e6 && blob.type !== 'image/gif' && blob.type !== 'image/svg+xml') {
+      return createImageBitmap(blob).then((bmp) => {
+        const k = Math.min(1, 1600 / bmp.width), c = document.createElement('canvas');
+        c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+        c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+        bmp.close();
+        done({ url: c.toDataURL('image/jpeg', 0.9), w: c.width, h: c.height });
+      }).catch(() => done(null));
+    }
     const r = new FileReader();
     r.onload = () => { const img = new Image(); img.onload = () => done({ url: r.result, w: img.naturalWidth, h: img.naturalHeight }); img.onerror = () => done(null); img.src = r.result; };
     r.onerror = () => done(null);
@@ -2598,7 +2608,14 @@
     box.append(drawButton(() => pic && { url: pic.url, name, path: src.path }));
     const k = src.path && src.id + '\n' + src.path;
     const known = src.url ? src : k && picKnown.has(k) ? picKnown.get(k) : undefined;
+    let tries = 0;
     const put = (v) => {
+      // (Not there yet, maybe: what you just sent is in the app's log a
+      // moment later. Asked again a few times before it goes.)
+      if (!v && src.path && !src.url && tries < 3 && box.isConnected !== false) {
+        tries++;
+        return setTimeout(() => { picKnown.delete(k); picAsked.delete(k); picOf(src.id, src.path).then(put); }, 1500 * tries);
+      }
       if (!v) { box.remove(); if (gone) gone(); return; }
       pic = v;
       // (Its size before it's drawn, so nothing jumps as it comes in.)

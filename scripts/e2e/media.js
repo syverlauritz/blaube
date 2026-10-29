@@ -60,6 +60,16 @@ module.exports = async function run({ win, tracker, inbox, talk, talkId }) {
 	check(ok(await image(path.join(folder, 'shot.png'))), 'and by its full path');
 	check(ok(await image(attached)), 'a picture named in what you said, from elsewhere');
 	check(!(await image(secret)), 'not a picture elsewhere that nobody named');
+
+	// A big photo (a camera's, tens of MB) shows too, made smaller.
+	const { nativeImage } = require('electron');
+	const W = 4000, H = 5000, px = Buffer.alloc(W * H * 4);
+	for (let i = 0; i < px.length; i += 4) { const v = (i * 2654435761) >>> 24; px[i] = v; px[i + 1] = (v * 7) & 255; px[i + 2] = (v * 13) & 255; px[i + 3] = 255; }
+	const big = path.join(elsewhere, 'Big Photo 1104.jpg');
+	fs.writeFileSync(big, nativeImage.createFromBitmap(px, { width: W, height: H }).toJPEG(100));
+	console.log(`     big photo: ${(fs.statSync(big).size / 1e6).toFixed(1)} MB`);
+	inbox.add(id, { who: 'you', text: `now do this one\n\nAttached file (open with your Read tool): ${big}`, via: 'blaube', status: 'sent' });
+	check(await until(async () => (await shown('.msg.you .pic')) === 2, 8000), 'a big photo you sent shows in your message');
 	check(!(await image(path.join(folder, 'fake.png'))), 'not a file called .png that isn’t a picture');
 	check(!(await image(path.join(folder, 'notes.txt'))), 'not a file that isn’t a picture');
 	check(!(await image('../elsewhere/secret.png')), 'not out of its folder by ..');

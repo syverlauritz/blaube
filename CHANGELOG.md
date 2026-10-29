@@ -4,6 +4,7 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+- Big photos (a camera's, up to 60 MB) show as a little picture by the field, and a picture that isn't ready the moment you send it is asked for again instead of left out.
 - Settings has "How sessions talk": the style every session you start in Blaube is asked to reply in, yours to change (and "Back to Blaube's own" to undo).
 
 ## [0.4.0] - 2026-10-29
