@@ -178,70 +178,6 @@
       chords: 'D:2 F#m:2 Bm:4 G:2 D:2 A7:4 G:2 A:2 Bm:2 Em:2 D:2 A7:2 D:4 D:2 F#m:2 Bm:4 G:2 D:2 A7:4 G:2 A:2 Bm:2 Em:2 D:2 A7:2 D:6',
     },
     {
-      id: 'o-mio-babbino-caro',
-      title: 'O mio babbino caro (Puccini)',
-      bpm: 100,
-      // Giacomo Puccini, Gianni Schicchi, 1918; words by Giovacchino Forzano.
-      // Notes and timing from a MIDI of the tune (bitmidi.com/uploads/86860.mid,
-      // a one-line "Lead" over a "Pad"), in F (the MIDI is in Ab, 140 beats a
-      // minute; moved down a minor third to sit in range, and slowed). The MIDI
-      // flattens the 12/8 into plain beats and has no real harmony (its pad just
-      // doubles the tune), so the chords are ours, plain ones under the tune.
-      // The first phrases to "Sì, sì, ci voglio andare"; the opening "O" is left
-      // out (the MIDI has no note for it), the words are fitted by ear.
-      notes: `
-        F4:2:mio F4:1:bab A4:2:bi E4:1:no D4:3:ca C4:3:ro
-        F4:1:mi G4:1:pia A4:1:ce F4:2:bel F5:1:lo C5:3:bel C5:2:lo
-        A4:1:vo C5:2:da G4:1:re Bb4:2:Por A4:1:ta F4:3:Ros F4:3:sa
-        F4:1:a G4:1:com A4:1:pe F4:2:rar E4:1:l'a G4:3:nel G4:3:lo
-        C4:1:si F4:2:si A4:1:ci F4:1:vo E4:1:glio D4:1:an C4:3:da C4:3:re`,
-      chords: 'F:5 C7:1 Bb:3 C7:3 F:1 C:1 F:4 C:3 C:2 F:1 C:3 Bb:2 F:1 F:3 Bb:3 F:1 C:1 F:1 F:2 C7:1 C7:6 C:1 F:2 F:1 F:1 C7:1 Bb:1 C7:3 F:3',
-    },
-    {
-      id: 'nessun-dorma',
-      title: 'Nessun dorma (Puccini)',
-      bpm: 56,
-      // Giacomo Puccini, Turandot, 1926 (completed by Franco Alfano); words by
-      // Giuseppe Adami and Renato Simoni. Notes, timing and chords from a MIDI
-      // (bitmidi.com/uploads/18966.mid, tenor line on channel 4), in D (the MIDI
-      // is in G; moved down a fourth so the high notes sit in range). The MIDI is
-      // played with rubato; the timing is rounded to sixteenths. "Nessun dorma"
-      // to "speranza", then the end: "Tramontate, stelle", "All'alba vincerò".
-      // The aria's odd Eb chord (with D, C and F# in it) is a plain Bb here.
-      notes: `
-        A4:.75:Nes A4:.25:sun A4:1:dor A4:2:ma A3:.75:Nes A3:.25:sun A3:1:dor A3:4.5:ma
-        A4:.5:Tu A4:.5:pu A4:.5:reo A4:.75:Prin G4:.25:ci F#4:1:pes F#4:1:sa F#4:.25:nel
-        F#4:.25:la F#4:.5:tua F4:.75:fred C#4:.25:da D4:1:stan D4:1:za C#5:1:guar C#5:.75:di
-        B4:.25:a A4:1:stel A4:.5:le A4:.5:che A4:.5:tre A4:.5:ma A4:.75:no G4:.25:d'a
-        F#4:1:mo F#4:1.5:re F#4:.5:e F4:.75:di C#4:.25:spe D4:1:ran D4:3.5:za
-        C#5:.5:tra C#5:.5:mon C#5:.75:ta A4:.25:te E4:1:stel E4:.5:le E4:.5:al E4:.5:l'al
-        E4:.5:ba B4:.75:vin G#4:.25:ce A4:3:ro F#4:.75:Vin A4:.25:ce D5:3:ro A4:.75:Vin
-        F#5:.25:ce E5:4:ro`,
-      chords: 'Bb:1 D:3 Bb:1 D:7 Bb:1 D:3 Bb:1 D:2 Bb:2 D:3 Bb:1 D:3 Bb:1 D:4.5 Bm:1 D:1 A:3 E7:1 D:8 A:4',
-    },
-    {
-      id: 'pie-jesu',
-      title: 'Pie Jesu (Lloyd Webber)',
-      bpm: 38,
-      // Andrew Lloyd Webber, 1985 (Requiem; the Latin prayer text). Still in
-      // copyright. Notes and timing from a MIDI (bitmidi.com/uploads/85062.mid,
-      // "PIE-JESU.MID", its Solo Soprano track), the first sung stretch: the
-      // two opening phrases, then the falling run and the high held note. The
-      // MIDI is in Ab; here it is in C (down eight semitones). The MIDI's
-      // accompaniment is single root notes, so the chords are those roots
-      // with major or minor read from the tune (the Fm, Cm are minor because
-      // the tune sings their minor third). Only the title words are sung.
-      notes: `
-        E4:.5:pie E4:.5:- F4:1:Je D4:2:su
-        A3:.5:oo F4:.5:- E4:1:- D4:2:-
-        E4:.5:pie E4:.5:- F4:1:Je D4:2:su
-        A3:.5:oo F4:.5:- E4:1:- D4:2.5:-
-        G4:.5:oo C5:1:ah B4:.5:- A4:.5:- G4:.5:- F4:.5:- E4:.5:- F4:.5:-
-        G4:.5:oo G4:.5:- G4:.5:- E4:.5:- G4:.5:- E4:.25:- C5:2.25:ah
-        B4:.5:oo A4:.5:- G4:.5:- F4:.5:- E4:.5:- G4:.5:- E4:.25:- D4:.25:- C4:1.5:-`,
-      chords: 'F:5 G:4 F:4 G:4 F:2 G:2 Em:2 Am:2 F:2 G:2 C:2',
-    },
-    {
       id: 'unchained-melody',
       title: 'Unchained Melody',
       bpm: 66,
@@ -313,28 +249,6 @@
         E4:.25:oo Ab4:.375:- Ab4:.25:- F#4:3.375:-
         C#4:.25:oo A3:1.75:-`,
       chords: 'A:2 F#m:2 D:2 E:2 A:2 F#m:2 D:2 E:2 A:8 D:4 C#m:4 Bm7:2',
-    },
-    {
-      id: 'all-you-need-is-love',
-      title: 'All You Need Is Love',
-      bpm: 102,
-      // John Lennon and Paul McCartney, 1967. Still in copyright. The chorus,
-      // twice. Notes and timing from a MIDI (bitmidi.com/uploads/5174.mid, its
-      // CHARANG lead; checked against uploads/100741.mid, a karaoke file whose
-      // vocal channel has the same notes); chords from its bass and pads.
-      // The MIDI is in G; here it is in D (down a fourth). The singer rests
-      // between the repeated lines; here the last note of each holds through
-      // the rest. The second time is the same tune, without the words.
-      notes: `
-        A4:.667:all A4:.333:you A4:.667:need A4:1:is A4:5.333:love
-        A4:.667:la A4:.333:- A4:.667:- A4:1:- A4:5.333:-
-        A4:.667:la A4:.333:- Bb4:.667:- Bb4:1:- B4:2:- F#4:3.333:-
-        E4:.333:la F#4:.333:- E4:1:- D4:.334:- D4:1:-
-        A4:.667:la A4:.333:- A4:.667:- A4:1:- A4:5.333:-
-        A4:.667:la A4:.333:- A4:.667:- A4:1:- A4:5.333:-
-        A4:.667:la A4:.333:- Bb4:.667:- Bb4:1:- B4:2:- F#4:3.333:-
-        E4:.333:la F#4:.333:- E4:1:- D4:.334:- D4:3:-`,
-      chords: 'D:1 E:2 A:4 D:2 E:2 A:4 D:2 F#7:2 Bm:2 D:2 G:2 A7:2 D:1 E:2 A:4 D:2 E:2 A:4 D:2 F#7:2 Bm:2 D:2 G:2 A7:2 D:2',
     },
     {
       id: 'yesterday',
