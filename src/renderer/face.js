@@ -340,6 +340,7 @@
         const tx = ax + yaw, ty = ay + pitch;
         if (Math.abs(tx) > Math.PI / 2) continue; // turned out of sight
         b.cheekSeen.sides++;
+        b.cheekSeen['s' + side] = { tx: +tx.toFixed(2), ty: +ty.toFixed(2), yaw: +yaw.toFixed(2), pitch: +pitch.toFixed(2), r: Math.round(r) };
         const w = Math.min(1.1, Math.cos(tx) / Math.cos(ax)), h = Math.min(1.1, Math.cos(ty) / Math.cos(ay));
         const cx = R * Math.sin(tx), cy = R * Math.sin(ty), cw = r * (0.12 + 0.11 * puffed) * w, ch = r * (0.07 + 0.15 * puffed) * h; // (full of air: big round cheeks)
         // face.cheekKind picks a blush (to tell models apart): soft 'oval's,

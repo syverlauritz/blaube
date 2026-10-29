@@ -2978,6 +2978,8 @@ app.whenReady().then(async () => {
   win.webContents.on('console-message', (e) => {
     const msg = String(e.message || '');
     if (msg.startsWith('[blaube]')) log(msg.slice(9));
+    // (With its faces note: what the stage looks like, kept as stage.png.)
+    if (msg.startsWith('[blaube] faces:') && win && !win.isDestroyed()) win.webContents.capturePage().then((img) => fs.writeFile(path.join(app.getPath('userData'), 'stage.png'), img.toPNG(), () => {})).catch(() => {});
     else if (e.level === 'error') log(`stage error: ${msg.slice(0, 300)}${e.sourceId ? ` (${path.basename(e.sourceId)}:${e.lineNumber})` : ''}`);
   });
   ipcMain.on('acknowledge', (_e, id) => {
