@@ -43,7 +43,7 @@
       ['gravity', 1950, 0, 6000, 50, 'Gravity (px/s²)'],
       ['damping', 0.996, 0.95, 1, 0.001, 'Air damping per step'],
       ['iterations', 12, 1, 16, 1, 'Solver iterations'],
-      ['edgeStiffness', 0.03, 0, 1, 0.01, 'Skin stretch stiffness'],
+      ['edgeStiffness', 0.18, 0, 1, 0.01, 'Skin stretch stiffness'],
       ['bending', 0.3, 0, 0.5, 0.01, 'Skin smoothing'],
       ['pressure', 0.04, 0, 1.5, 0.01, 'Gas pressure'],
       ['fullness', 0.5, 0.5, 1, 0.01, 'Fullness (lower = saggier)'],

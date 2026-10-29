@@ -145,7 +145,7 @@ test('a small blob spawned inside a big one gets out', () => {
 });
 
 // The "life" forces: each must shape the body without pushing it anywhere.
-const TUNED = { radius: 78, points: 29, edgeStiffness: 0.03, bending: 0.07, pressure: 0.4, fullness: 0.7, shapeStiffness: 0.002, upright: 0.01, bounce: 0.92, friction: 0.14, gravity: 1950, damping: 0.994, iterations: 5 };
+const TUNED = { radius: 78, points: 29, edgeStiffness: 0.18, bending: 0.07, pressure: 0.4, fullness: 0.7, shapeStiffness: 0.002, upright: 0.01, bounce: 0.92, friction: 0.14, gravity: 1950, damping: 0.994, iterations: 5 };
 const settled = () => {
   const b = new SoftBody(400, 500, TUNED);
   b.setBounds(0, 0, 800, 600);
