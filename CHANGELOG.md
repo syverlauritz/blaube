@@ -4,6 +4,8 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+- Settings has "How sessions talk": the style every session you start in Blaube is asked to reply in, yours to change (and "Back to Blaube's own" to undo).
+
 ## [0.4.0] - 2026-10-29
 
 - Pictures in the talk box: what you attach shows as a little picture (and in your message once sent), and pictures Claude makes or points at show in its reply. Tap one to see it big, or draw on it (pen, arrow, box, words) and add the drawing to your message.

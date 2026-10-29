@@ -82,6 +82,15 @@ module.exports = async function run({ win, tracker }) {
 	// Moved in Settings: the menus tick it.
 	await settings.webContents.executeJavaScript(`(() => { const i = [...document.querySelectorAll('.row')].find((r) => r.querySelector('span').textContent === 'Voice volume').querySelector('input'); i.value = '0.35'; i.dispatchEvent(new Event('input')); })()`);
 	check(await until(() => { const v = find(sound(), 'Volume').submenu.items.find((i) => i.checked); return v && v.label === '35%'; }, 3000), 'a volume set in Settings shows ticked in the menu');
+	// How sessions talk: Blaube's own to start with, yours once changed, and back.
+	const style = () => settings.webContents.executeJavaScript('blaubeTuning.getStyle()');
+	const base = (await style()).base;
+	check((await settings.webContents.executeJavaScript('document.getElementById("styleText").value')) === base && base.includes('Blaube'), 'Settings shows how sessions talk, Blaube’s own at first');
+	await settings.webContents.executeJavaScript(`(() => { const t = document.getElementById('styleText'); t.value = 'Talk like a pirate.'; t.dispatchEvent(new Event('input')); })()`);
+	check(await until(async () => (await style()).text === 'Talk like a pirate.', 3000), 'a changed style is kept for the next session');
+	if (process.env.BLAUBE_SHOT_DIR) { await settings.webContents.executeJavaScript('document.getElementById("style").scrollIntoView()'); await sleep(200); } if (process.env.BLAUBE_SHOT_DIR) fs.writeFileSync(path.join(process.env.BLAUBE_SHOT_DIR, 'settings-style.png'), (await settings.webContents.capturePage()).toPNG());
+	await settings.webContents.executeJavaScript('document.getElementById("styleReset").click()');
+	check(await until(async () => (await style()).text === base, 3000), 'and “Back to Blaube’s own” brings the default back');
 	settings.close();
 
 	tracker.handle({ session_id: 'menus-a', hook_event_name: 'SessionEnd' });

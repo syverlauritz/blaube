@@ -21,11 +21,21 @@
 			.row label { display: flex; justify-content: space-between; margin-bottom: 8px; }
 			.row output { color: var(--muted); font-variant-numeric: tabular-nums; }
 			.row input { width: 100%; accent-color: var(--accent); }
+			.row textarea { width: 100%; height: 150px; resize: vertical; font: inherit; font-size: 12px; line-height: 1.45; padding: 7px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); }
+			.row .note { color: var(--muted); font-size: 11px; margin: 6px 0 0; }
+			.row button { margin-top: 8px; font: inherit; padding: 4px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); cursor: pointer; }
+			.row button:disabled { opacity: 0.5; cursor: default; }
 			.ends { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-top: 2px; }
 		</style>
 	</head>
 	<body>
 		<div id="rows"></div>
+		<div class="row" id="style">
+			<label for="styleText"><span>How sessions talk</span></label>
+			<textarea id="styleText" spellcheck="false"></textarea>
+			<p class="note">Sent to every session you start in Blaube, from the next one on. Change anything you can't stand.</p>
+			<button type="button" id="styleReset">Back to Blaube's own</button>
+		</div>
 		<script src="../shared/config.js"></script>
 		<script src="settings.js"></script>
 	</body>

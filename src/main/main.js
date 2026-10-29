@@ -321,6 +321,16 @@ function openSettings() {
   settingsWin.on('closed', () => { settingsWin = null; });
 }
 
+// How the sessions Blaube starts talk (their --append-system-prompt): yours
+// from Settings if you changed it, else Blaube's own (STYLE).
+const replyStyle = () => (typeof prefs.replyStyle === 'string' && prefs.replyStyle.trim()) || STYLE;
+ipcMain.handle('style-get', () => ({ text: replyStyle(), base: STYLE }));
+ipcMain.on('style-set', (_e, text) => {
+  text = String(text || '').trim().slice(0, 8000);
+  if (!text || text === STYLE) delete prefs.replyStyle; else prefs.replyStyle = text;
+  savePrefs();
+});
+
 function openTuning() {
   if (tuningWin) { tuningWin.show(); tuningWin.focus(); return; }
   tuningWin = new BrowserWindow({
@@ -996,7 +1006,7 @@ function startSession(cwd, extra = [], resume = '', fork = '', quiet = false) {
     settings = claudeHooks.withBlaube({}, PORT);
     settings.hooks.Stop = settings.hooks.Stop.filter((g) => !g.hooks.some((h) => h.asyncRewake));
   }
-  const id = owned.start(cwd, ['--append-system-prompt', STYLE, ...extra], settings, resume, fork);
+  const id = owned.start(cwd, ['--append-system-prompt', replyStyle(), ...extra], settings, resume, fork);
   startedAt.set(id, Date.now());
   prefs.recentFolders = [cwd, ...(prefs.recentFolders || []).filter((f) => f !== cwd)].slice(0, 5);
   savePrefs();

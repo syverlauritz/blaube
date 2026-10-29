@@ -9,4 +9,6 @@ contextBridge.exposeInMainWorld('blaubeTuning', {
   demo: () => ipcRenderer.send('demo'),
   lifeDemo: () => ipcRenderer.send('life-demo'),
   sing: (on) => ipcRenderer.send('tuning-sing', on),
+  getStyle: () => ipcRenderer.invoke('style-get'),
+  setStyle: (text) => ipcRenderer.send('style-set', text),
 });

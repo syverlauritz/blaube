@@ -45,4 +45,16 @@
 		}
 		if (api.onChange) api.onChange((next) => { for (const [key, show] of shows) if (next[key] !== undefined) show(next[key]); });
 	});
+
+	// How the sessions Blaube starts talk: saved as you type (a moment after).
+	const styleText = document.getElementById('styleText'), styleReset = document.getElementById('styleReset');
+	if (api.getStyle) api.getStyle().then(({ text, base }) => {
+		styleText.value = text;
+		const same = () => { styleReset.disabled = styleText.value.trim() === base; };
+		same();
+		let timer = null;
+		styleText.addEventListener('input', () => { same(); clearTimeout(timer); timer = setTimeout(() => api.setStyle(styleText.value), 400); });
+		styleText.addEventListener('blur', () => { clearTimeout(timer); if (!styleText.value.trim()) { styleText.value = base; same(); } api.setStyle(styleText.value); }); // (emptied: Blaube's own again)
+		styleReset.addEventListener('click', () => { styleText.value = base; same(); clearTimeout(timer); api.setStyle(base); });
+	});
 })();
