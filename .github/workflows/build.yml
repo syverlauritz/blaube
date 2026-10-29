@@ -139,8 +139,10 @@ jobs:
             gh release delete "$t" -R "$GITHUB_REPOSITORY" --cleanup-tag -y || true
             gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$t" || true
           done
-          # A run that failed halfway can leave a draft release behind.
-          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft) | .id' | xargs -r -I{} gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/{}" || true
+          # A nightly run that failed halfway can leave a draft behind. (Only
+          # nightly ones: a real release is a draft while its files upload,
+          # and its run may be going right now, from the same push.)
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft and (.tag_name == "nightly" or .tag_name == "latest" or (.name // "" | startswith("Nightly")))) | .id' | xargs -r -I{} gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/{}" || true
           gh release create nightly artifacts/*.dmg artifacts/*.exe -R "$GITHUB_REPOSITORY" --prerelease --target "$SHA" \
             --title "Nightly (${SHA::7})" \
             --notes "Built automatically from ${SHA}, not a release: things may be half done. Releases update themselves; this doesn't. macOS: Blaube-mac-arm64.dmg (Apple Silicon) or Blaube-mac-x64.dmg (Intel). Windows: Blaube-Setup-windows.exe."
