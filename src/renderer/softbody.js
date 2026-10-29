@@ -384,14 +384,21 @@
     solveEdges() {
       const { n, px, py } = this;
       const L = this.restEdge, s = this.o.edgeStiffness * 0.5;
+      // Every edge from where the points were before this pass (not one
+      // after another round the ring: that drags the skin along the way it
+      // goes, the body spins, and on the floor it rolls off sideways; with
+      // a stiff skin, steadily, to the right).
+      const fx = this.edgeFx || (this.edgeFx = new Float64Array(n)), fy = this.edgeFy || (this.edgeFy = new Float64Array(n));
+      fx.fill(0); fy.fill(0);
       for (let i = 0; i < n; i++) {
         const j = (i + 1) % n;
         const dx = px[j] - px[i], dy = py[j] - py[i];
         const d = Math.hypot(dx, dy) || 1e-6;
         const f = ((d - L) / d) * s;
-        px[i] += dx * f; py[i] += dy * f;
-        px[j] -= dx * f; py[j] -= dy * f;
+        fx[i] += dx * f; fy[i] += dy * f;
+        fx[j] -= dx * f; fy[j] -= dy * f;
       }
+      for (let i = 0; i < n; i++) { px[i] += fx[i]; py[i] += fy[i]; }
     }
 
     solveBending() {
