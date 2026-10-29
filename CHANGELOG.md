@@ -4,6 +4,7 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+- Switched to "Don't ask", a blob cheers like it means it: a short rising "woo", then a long "hoooo" falling from up high, a bit higher and louder than it talks.
 - Big photos (a camera's, up to 60 MB) show as a little picture by the field, and a picture that isn't ready the moment you send it is asked for again instead of left out.
 - Settings has "How sessions talk": the style every session you start in Blaube is asked to reply in, yours to change (and "Back to Blaube's own" to undo).
 

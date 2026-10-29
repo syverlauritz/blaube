@@ -126,7 +126,9 @@
   // Says `text` on `ctx` from `at` (ctx time, default now), into `out` (a
   // node; default ctx.destination): in gibberish, but shaped like the
   // words. opts: pitch (Hz), seed, volume 0..1, wah 0..1, max syllables,
-  // pace (1 normal, lower faster). Returns { sylls: [{ t0, t1, vowel, open
+  // pace (1 normal, lower faster), tune (its own tune, one { semis, dur,
+  // to } per syllable: where it starts, how long it is, and how many
+  // semitones it bends by as it goes, in place of the usual). Returns { sylls: [{ t0, t1, vowel, open
   // }], length, land } in seconds from `at` (land: when its main stressed
   // syllable starts, the "-kay" of "okay"), and stop(); or null when
   // there's nothing in it to say (an emoji).
@@ -165,8 +167,11 @@
       if (phraseEnd && s.end === '?') semis = 6;
       else if (phraseEnd && s.end !== '!') semis -= 2;
       const gap = { '': 0, word: 0.03 + rand() * 0.05, comma: 0.22, stop: 0.34, end: 0 }[s.gap];
+      let bend = last ? (s.end === '?' ? 1.25 : s.end === '!' ? 0.95 : 0.85) : 1;
+      const own = opts.tune && opts.tune[i];
+      if (own) { semis = own.semis || 0; dur = own.dur || dur; bend = Math.pow(2, (own.to || 0) / 12); }
       dur *= pace;
-      plan.push({ t, dur, gap: gap * pace, f0: base * Math.pow(2, semis / 12), v: VOWELS[s.vowel], s, last, bend: last ? (s.end === '?' ? 1.25 : s.end === '!' ? 0.95 : 0.85) : 1 });
+      plan.push({ t, dur, gap: gap * pace, f0: base * Math.pow(2, semis / 12), v: VOWELS[s.vowel], s, last, bend });
       t += dur + gap * pace;
     });
     const excited = list.some((s) => s.end === '!');
@@ -288,7 +293,7 @@
       for (const osc of [saw, tri]) {
         if (onset === 'b' && !p.hold) osc.frequency.setTargetAtTime(p.f0 * 0.92, t0 - 0.02, 0.01);
         osc.frequency.setTargetAtTime(p.f0, onset === 'b' && !p.hold ? t0 + 0.02 : t0 - 0.02, p.hold ? 0.025 : 0.04);
-        if (p.last && p.bend && p.bend !== 1) osc.frequency.setTargetAtTime(p.f0 * p.bend, t0 + dur * 0.4, dur * 0.4);
+        if (p.bend && p.bend !== 1) osc.frequency.setTargetAtTime(p.f0 * p.bend, t0 + dur * (p.last ? 0.4 : 0.15), dur * (p.last ? 0.4 : 0.3));
       }
       // How it opens: "wah" (the mouth from shut and round, "w", "u"),
       // "bl" (a soft, darker "l" held a moment), "ba" (from the lips, quick),

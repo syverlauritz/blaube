@@ -148,7 +148,7 @@
       ensureAudio();
       const now = audio.ctx.currentTime, at = now + 0.03;
       const line = BlaubeVoice.speak(audio.ctx, text, {
-        at, out: audio.out, pitch: BlaubeVoice.pitchFor(b.body.o.radius, !b.big) * (how.higher || 1), seed: BlaubeVoice.hash(b.key), volume: CFG.voiceVolume * (how.softer || 1), wah: CFG.voiceWah, pace: how.pace,
+        at, out: audio.out, pitch: BlaubeVoice.pitchFor(b.body.o.radius, !b.big) * (how.higher || 1), seed: BlaubeVoice.hash(b.key), volume: CFG.voiceVolume * (how.softer || 1), wah: CFG.voiceWah, pace: how.pace, tune: how.tune,
       });
       if (!line) return null;
       if (b.speech) b.speech.line.stop();
@@ -199,6 +199,10 @@
   // A turn done: a cheer, not the same one twice in a row, a bigger one
   // for a long turn.
   const CHEERS = ['Hurray!', 'Ta-da!', 'All done!'], BIG_CHEERS = ['Yippee!', 'Woo-hoo!'];
+  // ("Don't ask": see kevin. Its long high "hoooo" rings out far louder
+  // through the mouth than talk does, so it's turned down to end up only
+  // about half as loud again as a usual line.)
+  const WOHOO = { minor: true, higher: 1.12, softer: 0.5, tune: [{ semis: 2, dur: 0.12, to: 4 }, { semis: 8, dur: 0.75, to: -9 }] };
   function cheer(b, long, more = []) {
     const pool = (long ? BIG_CHEERS : CHEERS).filter((w) => w !== b.lastCheer);
     b.lastCheer = pool[Math.floor(Math.random() * pool.length)];
@@ -7463,11 +7467,13 @@
       return;
     }
     // Switched into "Don't ask": wohooo, off it bounces (see kevin).
+    // A cheer: "woo" short and rising, "hooooo" long and falling from up
+    // high; a bit higher and louder than it talks.
     if (m.kind === 'kevin') {
       if (!once('kevin', 3) || b.kevin) return;
       kevinNow(b);
       // (Always said, over a passing "hi!": you did this, it isn't chatter.)
-      if (b.kevin && !(b.bubble && b.bubble.sticky)) { spoken.react = time; b.say([{ text: 'wohooo!' }], 3.4, false, { minor: true }); }
+      if (b.kevin && !(b.bubble && b.bubble.sticky)) { spoken.react = time; b.say([{ text: 'wohooo!' }], 3.4, false, WOHOO); }
       return;
     }
     if (m.kind === 'push' && once('push', 30)) {
