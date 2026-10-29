@@ -4,6 +4,7 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+- About one blob in three is plain (no look), up from one in five.
 ## [0.5.1] - 2026-10-29
 
 - Most blobs wear a look again (a bow, ears, antennas...): only about one in five is plain, down from half.

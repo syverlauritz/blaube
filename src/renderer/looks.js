@@ -5,9 +5,9 @@
 (function (root) {
 	'use strict';
 
-	// [name, weight]. 'none' keeps a few of the Blaubes plain (about one in five).
+	// [name, weight]. 'none' keeps about one Blaube in three plain.
 	const LOOKS = [
-		['none', 3], ['curl', 2], ['bow', 2], ['antenna', 2], ['horns', 2],
+		['none', 8.5], ['curl', 2], ['bow', 2], ['antenna', 2], ['horns', 2],
 		['catears', 2], ['bunny', 3], ['sprout', 2], ['beret', 2],
 	];
 
