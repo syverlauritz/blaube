@@ -137,6 +137,8 @@ function startHookServer(tracker, port = DEFAULT_PORT, inbox = null) {
         if (term) payload._term = String(term).slice(0, 64);
         const entry = req.headers['x-blaube-entry'];
         if (entry) payload._entry = String(entry).slice(0, 64);
+        const effort = String(req.headers['x-blaube-effort'] || '').toLowerCase();
+        if (/^(low|medium|high|xhigh|max)$/.test(effort)) payload._effort = effort;
         if (payload.session_id && typeof payload.transcript_path === 'string') payload.transcript_path = realTranscript(String(payload.session_id), payload.transcript_path);
         tracker.handle(payload);
         if (inbox) inbox.observe(payload);

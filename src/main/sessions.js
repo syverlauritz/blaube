@@ -76,6 +76,7 @@ class SessionTracker extends EventEmitter {
       cwd,
       term: payload._term || (prev && prev.term) || '',
       entry: payload._entry || (prev && prev.entry) || '',
+      effort: payload._effort || (prev && prev.effort) || '', // (from its hooks' CLAUDE_EFFORT)
       transcript: payload.transcript_path || (prev && prev.transcript) || '',
       pid: payload._pid || (prev && prev.pid) || 0,
       // Its permission mode, as Claude Code last said ('default',

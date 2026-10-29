@@ -1567,7 +1567,7 @@ function refreshUsage() {
     }
     // Not shown yet: finish reading it first, then check its old tasks.
     const caughtUp = readySessions.has(s.id) || s.id.startsWith('demo-') || usage.catchUp(file);
-    setEffort(s.id, demoEfforts.get(s.id) || usage.sessionEffort(file));
+    setEffort(s.id, demoEfforts.get(s.id) || usage.sessionEffort(file) || s.effort);
     for (const a of s.agents) setEffort(`${s.id}/${a.id}`, demoEfforts.get(s.id) || usage.sessionEffort(file, a.id));
     const u = demoTokens.get(s.id) || usage.sessionUsage(file);
     // A tool just failed: the slime winces (and says so if it keeps failing).

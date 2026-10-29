@@ -17,16 +17,18 @@ function settingsPath(home = os.homedir()) {
 }
 
 function hookCommand(port = DEFAULT_PORT) {
+  // X-Blaube-Effort is the effort it really runs at (its transcript only
+  // says after its first reply; ~/.claude/settings.json can be overruled).
   // X-Blaube-Pid is the Windows process id of the hook's shell, so Blaube
   // can find the claude.exe above it (and later, its terminal window).
-  return `curl -s -m 2 -X POST -H "Content-Type: application/json" -H "X-Blaube-Term: $TERM_PROGRAM" -H "X-Blaube-Entry: $CLAUDE_CODE_ENTRYPOINT" -H "X-Blaube-Pid: $(cat /proc/$$/winpid 2>/dev/null)" --data-binary @- http://127.0.0.1:${port}${HOOK_PATH} >/dev/null 2>&1 || true`;
+  return `curl -s -m 2 -X POST -H "Content-Type: application/json" -H "X-Blaube-Term: $TERM_PROGRAM" -H "X-Blaube-Entry: $CLAUDE_CODE_ENTRYPOINT" -H "X-Blaube-Effort: $CLAUDE_EFFORT" -H "X-Blaube-Pid: $(cat /proc/$$/winpid 2>/dev/null)" --data-binary @- http://127.0.0.1:${port}${HOOK_PATH} >/dev/null 2>&1 || true`;
 }
 
 // For tool events: the same, but what Blaube answers goes back to Claude
 // (X-Blaube-Out says so), so a message from the slime can go in at the
 // next step and Stop can stop it. Blaube answers nothing almost always.
 function toolHookCommand(port = DEFAULT_PORT) {
-  return `curl -s -m 2 -X POST -H "Content-Type: application/json" -H "X-Blaube-Out: 1" -H "X-Blaube-Term: $TERM_PROGRAM" -H "X-Blaube-Entry: $CLAUDE_CODE_ENTRYPOINT" -H "X-Blaube-Pid: $(cat /proc/$$/winpid 2>/dev/null)" --data-binary @- http://127.0.0.1:${port}${HOOK_PATH} 2>/dev/null || true`;
+  return `curl -s -m 2 -X POST -H "Content-Type: application/json" -H "X-Blaube-Out: 1" -H "X-Blaube-Term: $TERM_PROGRAM" -H "X-Blaube-Entry: $CLAUDE_CODE_ENTRYPOINT" -H "X-Blaube-Effort: $CLAUDE_EFFORT" -H "X-Blaube-Pid: $(cat /proc/$$/winpid 2>/dev/null)" --data-binary @- http://127.0.0.1:${port}${HOOK_PATH} 2>/dev/null || true`;
 }
 
 // Waits for a message from the slime. Blaube holds the request open; a
