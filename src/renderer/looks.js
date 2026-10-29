@@ -5,9 +5,9 @@
 (function (root) {
 	'use strict';
 
-	// [name, weight]. 'none' keeps about half of the Blaubes plain.
+	// [name, weight]. 'none' keeps a few of the Blaubes plain (about one in five).
 	const LOOKS = [
-		['none', 15], ['curl', 2], ['bow', 2], ['antenna', 2], ['horns', 2],
+		['none', 3], ['curl', 2], ['bow', 2], ['antenna', 2], ['horns', 2],
 		['catears', 2], ['bunny', 3], ['sprout', 2], ['beret', 2],
 	];
 

@@ -4,6 +4,7 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+- Most blobs wear a look again (a bow, ears, antennas...): only about one in five is plain, down from half.
 ## [0.5.0] - 2026-10-29
 
 - Blobs no longer slide off to the right by themselves (a stiffer skin made them slowly roll that way).

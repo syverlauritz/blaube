@@ -39,11 +39,11 @@ test('pickLook returns a known look, never bunny when small', () => {
 	}
 });
 
-test('about half of the Blaubes are plain, and it is stable per key', () => {
+test('about one Blaube in five is plain, and it is stable per key', () => {
 	let plain = 0;
 	for (let i = 0; i < 1000; i++) {
 		if (lookOrder('session-' + i, false)[0] === 'none') plain++;
 		assert.strictEqual(pickLook('session-' + i, true), pickLook('session-' + i, true));
 	}
-	assert.ok(plain > 400 && plain < 600, 'plain share ' + plain / 1000);
+	assert.ok(plain > 120 && plain < 260, 'plain share ' + plain / 1000);
 });

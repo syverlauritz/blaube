@@ -318,10 +318,12 @@
 		// (Full of air, they puff out: bigger, rounder, further out, and they show
 		// even on a face that has none.)
 		const puffed = face.puffed || 0;
+		b.cheekSeen = { cheeks: s.cheeks, sides: 0, alpha: ctx.globalAlpha, op: ctx.globalCompositeOperation, filter: ctx.filter }; // (for blaube.log: see faceNote)
 		if (s.cheeks > 0 || puffed > 0) {
       ctx.save();
       const warm = isWarm(face.bodyColor);
 			ctx.globalAlpha = Math.max(warm ? s.cheeks : Math.max(s.cheeks, 0.7), 0.55 * puffed);
+			b.cheekSeen.alpha = ctx.globalAlpha; b.cheekSeen.warm = warm; b.cheekSeen.fill = s.cheekColor;
       ctx.fillStyle = warm ? s.cheekColor : '#ff86a6';
       // Cheeks sit on a round head, so they turn on a ball instead of
       // sliding with the rest of the face: one turning toward the edge moves
@@ -337,6 +339,7 @@
 				const ax = angleOf(side * r * (0.55 + 0.14 * puffed) * s.eyeSpacing), ay = angleOf(r * (0.14 + 0.1 * puffed));
         const tx = ax + yaw, ty = ay + pitch;
         if (Math.abs(tx) > Math.PI / 2) continue; // turned out of sight
+        b.cheekSeen.sides++;
         const w = Math.min(1.1, Math.cos(tx) / Math.cos(ax)), h = Math.min(1.1, Math.cos(ty) / Math.cos(ay));
         const cx = R * Math.sin(tx), cy = R * Math.sin(ty), cw = r * (0.12 + 0.11 * puffed) * w, ch = r * (0.07 + 0.15 * puffed) * h; // (full of air: big round cheeks)
         // face.cheekKind picks a blush (to tell models apart): soft 'oval's,
