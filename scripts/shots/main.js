@@ -96,6 +96,14 @@ const SCENES = {
 	done: { sessions: [session('a', 'blaube', 'done')] },
 	waiting: { sessions: [session('a', 'blaube', 'waiting', { message: 'Claude needs your permission to use Bash' })] },
 	sweat: { sessions: [session('a', 'blaube', 'working', { tokens: full(0.75) })], wait: 4000 },
+	// The blush on every colour, as the context fills and the face goes red:
+	// it must still show (0%, 50%, 90% full; orange, pink, blue).
+	blushFill: {
+		sessions: [['#D97757', 0], ['#D97757', 0.5], ['#D97757', 0.9], ['#E07BA8', 0], ['#E07BA8', 0.5], ['#E07BA8', 0.9], ['#5B8DEF', 0], ['#5B8DEF', 0.5], ['#5B8DEF', 0.9]].map(([color, f], i) => session('bf' + i, 'p' + i, 'idle', { color, tokens: full(f) })),
+		config: { size: 0.7, seasons: 0 },
+		wait: 5000,
+		size: [1500, 420],
+	},
 	// Talking: a big one and a small one babble; the mouth should open and
 	// shut with each syllable (vowels shaping it), then settle back.
 	talking: {

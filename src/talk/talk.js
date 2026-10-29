@@ -2625,6 +2625,16 @@
       box.hidden = false;
       if (known === undefined) requestAnimationFrame(() => grew(box));
     };
+    // (Shown broken, a file still being written when it was read (a
+    // screenshot, while its preview floats in the corner): read again.)
+    img.onerror = () => {
+      if (!k || !img.getAttribute('src')) return;
+      box.hidden = true;
+      picKnown.delete(k); picAsked.delete(k);
+      if (tries >= 3) { box.remove(); if (gone) gone(); return; }
+      tries++;
+      setTimeout(() => picOf(src.id, src.path).then(put), 1500 * tries);
+    };
     if (known !== undefined) put(known);
     else { box.hidden = true; picOf(src.id, src.path).then(put); }
     return box;
