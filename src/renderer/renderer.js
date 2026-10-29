@@ -6536,18 +6536,22 @@
 
   // "claude-opus-5-5" -> "Opus 5.5", "claude-haiku-4-5-20251001" -> "Haiku 4.5".
   // Which model a session runs on shows in its face: its eye shape and its
-  // blush (all eyes stay black). Opus is the original look; a helper looks
-  // like its mother.
+  // blush (all eyes stay black). Opus is the original look; a helper wears
+  // its own model's face (like its mother's until its transcript says).
   const MODEL_LOOKS = { opus: {}, sonnet: { eyeKind: 'tall', cheekKind: 'lines' }, haiku: { eyeKind: 'small', cheekKind: 'freckles' }, fable: { eyeKind: 'wide', cheekKind: 'hearts' } };
   // (Kept once known: an update that doesn't say which model leaves the
   // face as it was, rather than flicking it back to the plain one.)
   function modelLook(b) {
+    const fam = (x, id) => {
+      const f = (/^claude-([a-z]+)/.exec(String(id || '')) || [])[1];
+      if (f && MODEL_LOOKS[f]) x.modelFam = f;
+      return x.modelFam;
+    };
     const m = b.kind === 'child' ? b.mother : b;
+    const mine = b.kind === 'child' && fam(b, b.agent && b.agent.model);
+    if (mine) return MODEL_LOOKS[mine];
     if (!m) return {};
-    const id = (m.session && m.session.info && m.session.info.model) || '';
-    const fam = (/^claude-([a-z]+)/.exec(String(id)) || [])[1];
-    if (fam && MODEL_LOOKS[fam]) m.modelFam = fam;
-    return MODEL_LOOKS[m.modelFam] || {};
+    return MODEL_LOOKS[fam(m, m.session && m.session.info && m.session.info.model)] || {};
   }
   function modelName(id) {
     const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(String(id || ''));

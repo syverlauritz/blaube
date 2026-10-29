@@ -2,7 +2,8 @@
 // the background and installs when you quit or pick "Restart to update". A
 // Mac can only install an update itself when the app is signed with a
 // Developer ID (Squirrel.Mac refuses ad-hoc signatures), so an ad-hoc build
-// just says a new version is out and opens its download page.
+// just says a new version is out (once, through opts.announce) and opens its
+// download page.
 const { app, shell, dialog } = require('electron');
 
 const RELEASES = 'https://github.com/syverlauritz/blaube/releases/latest';
@@ -12,6 +13,7 @@ let updater = null;
 let state = { status: 'idle', version: '' }; // idle | checking | downloading | ready | available | error
 let onChange = () => {};
 let log = () => {};
+let announce = () => {};
 let asked = false; // (a check you asked for answers even "you're up to date")
 
 // Signed builds get blaubeSigned in their package.json (build/signed.config.js).
@@ -25,6 +27,7 @@ function set(next) {
 function start(opts = {}) {
   onChange = opts.onChange || onChange;
   log = opts.log || log;
+  announce = opts.announce || announce;
   if (!app.isPackaged || opts.test) return;
   try { ({ autoUpdater: updater } = require('electron-updater')); } catch (e) { log(`no updater: ${e.message}`); return; }
   updater.autoDownload = canInstall();
@@ -40,6 +43,7 @@ function start(opts = {}) {
     set({ status: canInstall() ? 'downloading' : 'available', version: info.version });
     log(`update ${info.version} is out`);
     if (asked && !canInstall()) offerDownload(info.version);
+    else if (!canInstall()) announce(info.version, () => shell.openExternal(RELEASES));
     asked = false;
   });
   updater.on('update-downloaded', (info) => { set({ status: 'ready', version: info.version }); log(`update ${info.version} is ready`); });

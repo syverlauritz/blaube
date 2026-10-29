@@ -89,6 +89,9 @@ function addInfo(u, line) {
 			if (e.aiTitle) u.aiTitle = String(e.aiTitle);
 		} catch { /* half a line */ }
 	}
+	// (A helper's own transcript is all sidechain: its model is anyModel.)
+	const model = line.includes('"type":"assistant"') && /"model":"(claude-[^"]+)"/.exec(line);
+	if (model) u.anyModel = model[1];
 	if (!own) return;
 	// Claude Code couldn't get an answer (overloaded, a usage limit...): what it said.
 	if (line.includes('"isApiErrorMessage":true')) {
@@ -100,8 +103,7 @@ function addInfo(u, line) {
 	}
 	const branch = /"gitBranch":"([^"]*)"/.exec(line);
 	if (branch && branch[1] && !branch[1].startsWith('worktree-agent-')) u.branch = branch[1];
-	const model = /"model":"(claude-[^"]+)"/.exec(line);
-	if (model && line.includes('"type":"assistant"')) u.model = model[1];
+	if (model) u.model = model[1];
 }
 
 // Background tasks: a tool call with run_in_background, whose result
@@ -163,6 +165,12 @@ function helperTokens(file, agentId) {
 function helperStats(file, agentId) {
 	const h = file && agentId ? readNew(path.join(file.replace(/\.jsonl$/, ''), 'subagents', `agent-${agentId}.jsonl`)) : null;
 	return { since: (h && h.since) || 0, tokens: (h && h.last) || 0 };
+}
+
+// The model one helper runs on ('' until its transcript says).
+function helperModel(file, agentId) {
+	const h = file && agentId ? readNew(path.join(file.replace(/\.jsonl$/, ''), 'subagents', `agent-${agentId}.jsonl`)) : null;
+	return (h && h.anyModel) || '';
 }
 
 // The last thing Claude wrote in a transcript (its own words, not tools).
@@ -228,4 +236,4 @@ function forget(keep) {
 	for (const f of files.keys()) if (!keep.has(f) && !dirs.some((d) => f.startsWith(d))) files.delete(f);
 }
 
-module.exports = { helperTokens, helperStats, sessionUsage, sessionTasks, sessionEffort, sessionInfo, sessionErrors, sessionApiErrors, lastText, catchUp, forget };
+module.exports = { helperTokens, helperStats, helperModel, sessionUsage, sessionTasks, sessionEffort, sessionInfo, sessionErrors, sessionApiErrors, lastText, catchUp, forget };

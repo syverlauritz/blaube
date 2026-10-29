@@ -1341,6 +1341,7 @@ function pushState() {
         // Its own tokens, so its slime grows with them too.
         tokens: demoTokens.has(s.id) ? Math.round(demoTokens.get(s.id).total / 8) : usage.helperTokens(transcriptPath(s), a.id),
         stats: helperNumbers(s, a), // (its time and tokens as the terminal has them, for its hover bubble)
+        model: demoTokens.has(s.id) ? '' : usage.helperModel(transcriptPath(s), a.id), // (a helper can run on another model than its mother)
       })),
     })),
     settings: { hooksInstalled: claudeHooks.isInstalled(undefined, PORT), talked: !!prefs.talked, noClaude: !claudeFound() },
@@ -2328,7 +2329,20 @@ app.whenReady().then(async () => {
     tray.on('right-click', () => tray.popUpContextMenu(trayMenu()));
   }
   refreshTray();
-  updater.start({ log, test: !!TEST });
+  // (A Mac without a signed build can't update itself: say a new version is
+  // out, once per version, so you needn't spot it in the menu.)
+  updater.start({ log, test: !!TEST, announce: (version, download) => {
+    if (prefs.updateNoted === version) return;
+    prefs.updateNoted = version;
+    savePrefs();
+    if (!Notification.isSupported() || (prefs.config.notify || 'Behind windows') === 'Off') return;
+    const note = new Notification({ title: `Blaube ${version} is out`, body: `You have ${app.getVersion()}. Download the new one and drag it into Applications.`, actions: [{ type: 'button', text: 'Download' }] });
+    note.on('action', () => { shown.delete(note); download(); });
+    note.on('click', () => { shown.delete(note); download(); });
+    note.on('close', () => shown.delete(note));
+    shown.add(note);
+    note.show();
+  } });
 
   focus = startFocusWatcher(() => { if (markFrontSeen()) pushState(); });
   // (Why a slime went without its session saying goodbye, for the log.)

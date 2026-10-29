@@ -90,6 +90,19 @@ test("a helper's numbers as the terminal shows them: when it began, and its newe
 	assert.deepStrictEqual(helperStats(file, 'nobody'), { since: 0, tokens: 0 });
 });
 
+test('a helper runs on its own model, not always its mother’s', () => {
+	const { helperModel, sessionInfo } = require('../src/main/usage.js');
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-'));
+	const file = path.join(dir, 's1.jsonl');
+	const sub = path.join(dir, 's1', 'subagents');
+	fs.mkdirSync(sub, { recursive: true });
+	fs.writeFileSync(file, line('m1', { input_tokens: 1, output_tokens: 1 }));
+	fs.writeFileSync(path.join(sub, 'agent-k1.jsonl'), JSON.stringify({ type: 'assistant', isSidechain: true, message: { id: 'h1', model: 'claude-haiku-5-5', usage: { input_tokens: 1, output_tokens: 1 } } }) + '\n');
+	assert.strictEqual(helperModel(file, 'k1'), 'claude-haiku-5-5');
+	assert.strictEqual(sessionInfo(file).model, 'claude-opus-5-5');
+	assert.strictEqual(helperModel(file, 'nobody'), '');
+});
+
 test('reads the effort of the newest call, for the session and each helper', () => {
 	const { sessionEffort } = require('../src/main/usage.js');
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-'));
