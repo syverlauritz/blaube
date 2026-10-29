@@ -14,8 +14,9 @@ ships that breaks a "must".
 
 ## Musts
 1. Flat. No outlines, no strokes around shapes, no glow, no drop shadows on
-   anything (bodies, bubbles, pets, accessories). Only a soft floor shadow
-   under bodies is allowed.
+   anything (bodies, bubbles, pets, accessories, sung notes, any little
+   effect). No white edges to make something stand out either. Only a soft
+   floor shadow under bodies is allowed.
 2. One bubble style. Every bubble (speech, status, hover, "!", "?", thought)
    is the same white, rounded shape family, same corner roundness, same pointed
    tail shape, same text colour (#1b2440), same padding rules. A thought bubble
@@ -35,6 +36,7 @@ ships that breaks a "must".
 8. No flicker. Icons and bubbles don't toggle faster than you can read them.
 
 ## Decided by the creative director (not up for review)
+- Sung notes are flat, in the singer's colour, with no white outline.
 - Balloon trick squeeze eyes are > < (left eye >, right eye <), pointing inward.
 - A full context shows as a red tint that spreads in a circle from the
   middle of the face (a radial gradient) as the context fills, with sweat

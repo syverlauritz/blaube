@@ -889,10 +889,6 @@
     };
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.fillStyle = ctx.strokeStyle = '#fff';
-    ctx.lineWidth = s * 0.14 + 4;
-    shape();
-    ctx.save(); ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(0, 0, s * 0.3, s * 0.22, -0.4, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
     ctx.fillStyle = ctx.strokeStyle = color;
     ctx.lineWidth = s * 0.14;
     shape();

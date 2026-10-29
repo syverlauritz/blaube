@@ -6800,7 +6800,7 @@
         ctx.fill();
         ctx.restore();
       } else if (h.note) {
-        // A sung note: a little ♪ in the singer's colour, white edged,
+        // A sung note: a little ♪ in the singer's colour (flat, no edge),
         // rocking as it rises.
         ctx.save();
         ctx.globalAlpha = Math.max(0, Math.min(1, age * 6, (1.6 - age) * 2));
