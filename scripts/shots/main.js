@@ -608,7 +608,7 @@ const SCENES = {
 		bg: '#f2f0ec',
 		wait: 3500,
 		size: [1280, 900],
-		talk: { key: 'tm', inbox: 'ready', box: MEDIA_BOX, log: MEDIA_LOG },
+		talk: { key: 'tm', inbox: 'ready', log: MEDIA_LOG },
 	},
 	// The pencil: drawing on it (an arrow, a box, a squiggle, words).
 	talkMarkup: {
@@ -617,14 +617,14 @@ const SCENES = {
 		bg: '#f2f0ec',
 		wait: 3500,
 		size: [1280, 900],
-		talk: { key: 'tm', inbox: 'ready', box: MEDIA_BOX, log: MEDIA_LOG },
+		talk: { key: 'tm', inbox: 'ready', log: MEDIA_LOG },
 	},
 	talkMarkupDark: {
 		talkJs: MEDIA_DRAW,
 		sessions: [session('tm', 'blaube', 'done', { look: 'beret' })],
 		wait: 3500,
 		size: [1280, 900],
-		talk: { key: 'tm', inbox: 'ready', box: MEDIA_BOX, dark: true, log: MEDIA_LOG },
+		talk: { key: 'tm', inbox: 'ready', dark: true, log: MEDIA_LOG },
 	},
 	// The talk box (a click on a slime), drawn where the app would put it.
 	talkChat: {

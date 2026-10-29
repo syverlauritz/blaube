@@ -2162,8 +2162,18 @@
     // A hidden (squeezed) log still wants its height back; an empty one doesn't.
     if (inner.offsetHeight) innerH = inner.offsetHeight;
     const logH = inner.children.length ? innerH + pad : 0; // (with a card up too: what it's asking about stays in view if there's room)
-    const big = !$('viewer').hidden || !$('markup').hidden ? 720 : 0; // (a picture up: room to see it)
-    api.setHeight(current.id, Math.max(big, Math.ceil(chrome + card + logH + 24 + 1))); // 24: room round the bubble
+    api.setHeight(current.id, bigPicture(bubble) || Math.ceil(chrome + card + logH + 24 + 1)); // 24: room round the bubble
+  }
+  // A picture up big (or being drawn on): room to see it, about as tall as
+  // it is at the box's width (the app keeps it within the screen).
+  function bigPicture(bubble) {
+    const over = !$('markup').hidden ? $('markup') : !$('viewer').hidden ? $('viewer') : null;
+    if (!over) return 0;
+    const stage = over.querySelector('.vstage, .mstage');
+    const w = over === $('markup') ? canvas.width : $('viewImg').naturalWidth, h = over === $('markup') ? canvas.height : $('viewImg').naturalHeight;
+    if (!w || !h) return 640;
+    const tall = Math.min(h, stage.clientWidth * h / w);
+    return Math.ceil(Math.min(860, Math.max(420, over.offsetHeight - stage.offsetHeight + tall + (bubble.parentNode.offsetHeight - bubble.offsetHeight) + 1)));
   }
 
   // When the log gets shorter (a permission card, a taller field), keep the
@@ -2173,6 +2183,7 @@
   log.addEventListener('scroll', () => {
     pinned = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
     log.classList.toggle('scrolled', log.scrollTop > 2);
+    log.classList.toggle('below', !pinned); // (and the bottom, while there's more under it)
   });
   new ResizeObserver(() => { if (pinned) log.scrollTop = log.scrollHeight; }).observe(log);
 
@@ -2676,7 +2687,9 @@
     b.title = label;
     b.setAttribute('aria-label', label);
     b.style.setProperty('--c', c);
-    b.append(document.createElement('i'));
+    const dot = document.createElement('i');
+    dot.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'; // (a tick on the one picked)
+    b.append(dot);
     b.onclick = () => { markColor = c; markBar(); if (!$('markText').hidden) { $('markText').style.color = c; $('markText').focus(); } };
     $('markColors').append(b);
   }
@@ -2686,7 +2699,7 @@
     for (const b of $('markColors').querySelectorAll('button')) { b.classList.toggle('on', b.dataset.color === markColor); b.setAttribute('aria-pressed', String(b.dataset.color === markColor)); }
     canvas.classList.toggle('words', markTool === 'text');
     const done = !!(mark && mark.ops.length);
-    $('markUndo').disabled = !done;
+    $('markUndo').disabled = !done && !(mark && mark.cleared);
     $('markClear').disabled = !done;
     const can = !!(current && !current.demo && !text.disabled && api.paste);
     $('markAdd').disabled = !can || !mark || mark.saving;
@@ -2700,7 +2713,7 @@
       const w = img.naturalWidth || 1000, h = img.naturalHeight || 750, k = Math.min(1, 2400 / Math.max(w, h));
       canvas.width = Math.max(1, Math.round(w * k));
       canvas.height = Math.max(1, Math.round(h * k));
-      mark = { img, name: name || 'picture', ops: [], live: null, saving: false, said: '' };
+      mark = { img, name: name || 'picture', ops: [], cleared: null, live: null, saving: false, said: '' };
       $('viewer').hidden = true;
       viewing = null;
       $('markText').hidden = true;
@@ -2795,7 +2808,7 @@
     const op = mark.live, far = 6 * perPx();
     mark.live = null;
     // (A tap with the arrow or box draws nothing.)
-    if (op.tool === 'pen' || Math.hypot(op.b[0] - op.a[0], op.b[1] - op.a[1]) > far) mark.ops.push(op);
+    if (op.tool === 'pen' || Math.hypot(op.b[0] - op.a[0], op.b[1] - op.a[1]) > far) { mark.ops.push(op); mark.cleared = null; }
     paint();
     markBar();
   };
@@ -2822,6 +2835,7 @@
     if (!words) return;
     const k = perPx();
     const [x, y] = JSON.parse(field.dataset.at);
+    mark.cleared = null;
     mark.ops.push({ tool: 'text', color: markColor, size: 22 * k, at: [x, y], text: words });
     paint();
     markBar();
@@ -2830,8 +2844,14 @@
     if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); putWords(); }
   });
   $('markText').addEventListener('blur', (e) => { if (!(e.relatedTarget && e.relatedTarget.closest('#markColors'))) putWords(); });
-  $('markUndo').addEventListener('click', () => { if (mark && mark.ops.length) { mark.ops.pop(); paint(); markBar(); } });
-  $('markClear').addEventListener('click', () => { if (mark) { mark.ops = []; paint(); markBar(); } });
+  // (Undo after Clear brings it all back.)
+  $('markUndo').addEventListener('click', () => {
+    if (!mark) return;
+    if (mark.ops.length) mark.ops.pop(); else if (mark.cleared) { mark.ops = mark.cleared; mark.cleared = null; }
+    paint();
+    markBar();
+  });
+  $('markClear').addEventListener('click', () => { if (mark && mark.ops.length) { mark.cleared = mark.ops; mark.ops = []; paint(); markBar(); } });
   $('markCancel').addEventListener('click', unmark);
   $('markAdd').addEventListener('click', async () => {
     if (!mark || mark.saving || !current || current.demo || text.disabled || !api.paste) return;
