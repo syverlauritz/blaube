@@ -3,7 +3,7 @@
 // anything else), a tap shows one big, and a drawing on one goes with your
 // next message:
 //
-//   BLAUBE_TEST=scripts/e2e/media.js BLAUBE_PORT=47960 npx electron .
+//   BLAUBE_TEST=scripts/e2e/media.js BLAUBE_PORT=47961 npx electron .
 //
 // Exits non-zero on a failure.
 const fs = require('node:fs');
