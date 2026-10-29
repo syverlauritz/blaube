@@ -318,12 +318,13 @@
 		// (Full of air, they puff out: bigger, rounder, further out, and they show
 		// even on a face that has none.)
 		const puffed = face.puffed || 0;
-		b.cheekSeen = { cheeks: s.cheeks, sides: 0, alpha: ctx.globalAlpha, op: ctx.globalCompositeOperation, filter: ctx.filter }; // (for blaube.log: see faceNote)
+		const wt = ctx.getTransform();
+		b.cheekSeen = { cheeks: s.cheeks, sides: 0, alpha: ctx.globalAlpha, op: ctx.globalCompositeOperation, filter: ctx.filter, angle: +b.angle.toFixed(2), world: [wt.a, wt.b, wt.c, wt.d, wt.e, wt.f].map((v) => +v.toFixed(2)), st: [+st.x.toFixed(2), +st.y.toFixed(2)], fill: ctx.fillStyle }; // (for blaube.log: see faceNote)
 		if (s.cheeks > 0 || puffed > 0) {
       ctx.save();
       const warm = isWarm(face.bodyColor);
 			ctx.globalAlpha = Math.max(warm ? s.cheeks : Math.max(s.cheeks, 0.7), 0.55 * puffed);
-			b.cheekSeen.alpha = ctx.globalAlpha; b.cheekSeen.warm = warm; b.cheekSeen.fill = s.cheekColor;
+			b.cheekSeen.alpha = ctx.globalAlpha; b.cheekSeen.warm = warm; b.cheekSeen.fill = ctx.fillStyle;
       ctx.fillStyle = warm ? s.cheekColor : '#ff86a6';
       // Cheeks sit on a round head, so they turn on a ball instead of
       // sliding with the rest of the face: one turning toward the edge moves

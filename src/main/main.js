@@ -2979,7 +2979,13 @@ app.whenReady().then(async () => {
     const msg = String(e.message || '');
     if (msg.startsWith('[blaube]')) log(msg.slice(9));
     // (With its faces note: what the stage looks like, kept as stage.png.)
-    if (msg.startsWith('[blaube] faces:') && win && !win.isDestroyed()) win.webContents.capturePage().then((img) => fs.writeFile(path.join(app.getPath('userData'), 'stage.png'), img.toPNG(), () => {})).catch(() => {});
+    if (msg.startsWith('[blaube] faces:') && win && !win.isDestroyed()) win.webContents.capturePage().then((img) => {
+      const dir = path.join(app.getPath('userData'), 'stage');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFile(path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-')}.png`), img.toPNG(), () => {});
+      const old = fs.readdirSync(dir).sort(); // (the last 30 kept)
+      for (const f of old.slice(0, Math.max(0, old.length - 30))) fs.unlink(path.join(dir, f), () => {});
+    }).catch(() => {});
     else if (e.level === 'error') log(`stage error: ${msg.slice(0, 300)}${e.sourceId ? ` (${path.basename(e.sourceId)}:${e.lineNumber})` : ''}`);
   });
   ipcMain.on('acknowledge', (_e, id) => {
