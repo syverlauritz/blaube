@@ -1037,7 +1037,10 @@ const BUSY = new Set(['working', 'waiting']); // (a question it asked you is los
 // on after their mother's turn ends).
 function ownedBusy(id) {
   const s = tracker.sessions.get(id) || {};
-  return owned.busy(id) || BUSY.has(s.state) || (s.agents || []).length > 0;
+  // (A helper not heard from in 15 minutes doesn't count: one that died
+  // without saying so, its session restarted under it, would hold this up
+  // for ever.)
+  return owned.busy(id) || BUSY.has(s.state) || (s.agents || []).some((a) => Date.now() - (a.updatedAt || a.startedAt || 0) < 15 * 60e3);
 }
 let ownedSaved = '', ownedHeld = false;
 const revived = new Set(); // ids brought back: no "couldn't start" dialog if one can't be
