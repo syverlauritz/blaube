@@ -1235,6 +1235,13 @@ async function endOwned(s, what = 'End it') {
     });
     if (response !== 0) return false;
   }
+  // (Ended for good, in a worktree of its own: tidied away if nothing in it
+  // would be lost; its branch stays unless it's merged.)
+  const tree = what === 'End it' && cur && cur.cwd && /[\\/]\.claude[\\/]worktrees[\\/][^\\/]+$/.test(cur.cwd) ? cur.cwd : '';
+  if (tree) {
+    const tidy = (gone) => { if (gone !== s.id) return; owned.removeListener('exit', tidy); git.tidyTree(tree, (r) => log(`worktree ${tree}: ${r.removed ? `removed${r.branchGone ? `, and ${r.branch} (merged)` : ', its branch kept'}` : 'kept (changes in it, or git said no)'}`)); };
+    owned.on('exit', tidy);
+  }
   owned.end(s.id);
   return true;
 }
@@ -3687,11 +3694,12 @@ app.whenReady().then(async () => {
     const pr = prStates.get(id);
     const cmd = s && st && s.state !== 'working' && s.state !== 'waiting' && git.command(run, st, pr);
     if (!cmd) return;
-    const as = run === 'push' ? `Pushed ${st.branch || 'it'}` : run === 'home' ? `Back on ${pr.base}, up to date, ${st.branch} deleted` : run === 'finish' ? (st.midway === 'rebase' ? 'Carried on with the rebase' : `Finished the ${st.midway}`) : run === 'abort' ? `Called off the ${st.midway}: back to how it was before` : `Pulled into ${st.branch || 'it'}`;
+    const as = run === 'bringin' ? `Brought ${st.branch} into ${st.tree.base}, in ${path.basename(st.tree.main)}’s own folder` : run === 'push' ? `Pushed ${st.branch || 'it'}` : run === 'home' ? `Back on ${pr.base}, up to date, ${st.branch} deleted` : run === 'finish' ? (st.midway === 'rebase' ? 'Carried on with the rebase' : `Finished the ${st.midway}`) : run === 'abort' ? `Called off the ${st.midway}: back to how it was before` : `Pulled into ${st.branch || 'it'}`;
     const entry = runForSession(id, cmd, as, (code) => {
       if (code === 0 && win) win.webContents.send('nod', id);
       if (code === 0 && run === 'push') pulls.forget(s.cwd, st.branch); // (its checks start again)
-      if (code !== 0) entry.text = run === 'abort' ? `git couldn’t call off the ${st.midway} (tap for why); tapping it again asks Claude to` : run === 'finish' ? 'git couldn’t finish it (tap for why); tapping it again asks Claude to' : run === 'push' ? 'git couldn’t push (tap for why); Push again asks Claude to' : run === 'home' ? `git couldn’t do all of it (tap for why): ${st.branch} may still be there` : 'git couldn’t pull without a merge (tap for why); Pull again asks Claude to';
+      if (run === 'bringin') git.forget(st.tree.main);
+      if (code !== 0) entry.text = run === 'bringin' ? `git couldn’t bring it into ${st.tree.base} by itself (tap for why), so nothing changed there; Bring into ${st.tree.base} again asks Claude to` : run === 'abort' ? `git couldn’t call off the ${st.midway} (tap for why); tapping it again asks Claude to` : run === 'finish' ? 'git couldn’t finish it (tap for why); tapping it again asks Claude to' : run === 'push' ? 'git couldn’t push (tap for why); Push again asks Claude to' : run === 'home' ? `git couldn’t do all of it (tap for why): ${st.branch} may still be there` : 'git couldn’t pull without a merge (tap for why); Pull again asks Claude to';
       if (run === 'home') { prStates.delete(id); pulls.forget(s.cwd, st.branch); }
       git.forget(s.cwd);
       git.status(s.cwd, (now) => {

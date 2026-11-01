@@ -91,6 +91,10 @@ function quickActions(st, state, more = {}) {
   const merged = more.pr && more.pr.state === 'MERGED' && more.pr.base && st && st.branch && st.branch !== more.pr.base && !st.changed ? more.pr : null; // (new files go along)
   if (merged && more.gitFailed !== 'home') out.unshift({ label: `Back to ${merged.base}`, prompt: `Its pull request is merged: switches to ${merged.base}, pulls it, and deletes ${st.branch}`, run: 'home' });
   if (pr && pr.checks.fail) out.unshift({ label: 'Fix the checks', prompt: `The checks on pull request #${pr.number} are failing. Find out why (\`gh pr checks ${pr.number}\` and the failing run's log), fix it, push, and tell me what was wrong.` });
+  // (Its own worktree, with commits its project's folder doesn't have yet:
+  // merged in there, a step, no model call; a conflict calls it off and the
+  // next tap asks Claude.)
+  if (st && st.tree && st.tree.ahead && !n && !st.midway && !pr && !merged) out.push(Object.assign({ label: `Bring into ${st.tree.base}`, prompt: `Merge this worktree's branch (${st.branch}) into ${st.tree.base} in the project's own folder (${st.tree.main}), with \`git -C\` there. Resolve any conflicts keeping both sides' intent, and tell me what came in.` }, direct('bringin')));
   if (st && st.branch && !MAIN.test(st.branch) && !pr && !merged) out.push({ label: 'Open a PR', prompt: 'Open a pull request for this branch (commit and push first if needed) and give me the link.' });
   if (!more.failedTests) out.push({ label: 'Run tests', prompt: 'Run the tests and tell me what fails, if anything.' });
   if (st && st.behind) out.push(Object.assign({ label: 'Pull', prompt: 'Pull the latest changes into this branch and tell me if anything conflicts.' }, n ? {} : direct('pull')));
@@ -120,16 +124,58 @@ function status(cwd, cb, now = Date.now()) {
     // (A merge, rebase, revert or cherry-pick under way, from git's own files.)
     const midway = (dir) => { st.midway = !dir ? '' : ['rebase-merge', 'rebase-apply'].some((d) => fs.existsSync(path.join(dir, d))) ? 'rebase' : fs.existsSync(path.join(dir, 'MERGE_HEAD')) ? 'merge' : fs.existsSync(path.join(dir, 'REVERT_HEAD')) ? 'revert' : fs.existsSync(path.join(dir, 'CHERRY_PICK_HEAD')) ? 'cherry-pick' : ''; };
     // Its files are named from the top of the repository: where that is.
-    if (roots.has(cwd)) { st.root = roots.get(cwd); midway(gitDirs.get(cwd)); return done(st); }
+    // (A worktree of Claude Code's own: what it would go back into.)
+    const andTree = (dir) => {
+      const t = st.root && claudeTree(st.root, dir);
+      if (!t || !st.branch) return done(st);
+      treeInfo(t, st.branch, (info) => { if (info) st.tree = info; done(st); });
+    };
+    if (roots.has(cwd)) { st.root = roots.get(cwd); midway(gitDirs.get(cwd)); return andTree(gitDirs.get(cwd)); }
     execFile('git', ['rev-parse', '--show-toplevel', '--absolute-git-dir'], { cwd, timeout: 3000, windowsHide: true }, (e2, top) => {
       const [root, dir] = e2 ? [] : String(top).trim().split('\n');
       st.root = root ? path.resolve(root.trim()) : '';
       if (st.root) { roots.set(cwd, st.root); gitDirs.set(cwd, dir ? dir.trim() : ''); }
       midway(dir && dir.trim());
-      done(st);
+      andTree(dir && dir.trim());
     });
   });
 }
+// A worktree Claude Code made (claude --worktree): its folder is
+// <project>/.claude/worktrees/<name>, and its git folder that project's
+// .git/worktrees/<name>. -> { main: the project's folder } or null.
+function claudeTree(root, gitDir) {
+  const m = /^(.*)[\\/]\.claude[\\/]worktrees[\\/][^\\/]+$/.exec(String(root || ''));
+  const g = /^(.*)[\\/]\.git[\\/]worktrees[\\/][^\\/]+$/.exec(String(gitDir || ''));
+  return m && g && path.resolve(m[1]) === path.resolve(g[1]) ? { main: path.resolve(m[1]) } : null;
+}
+// The branch the project's own folder is on, and how many commits this
+// branch has that it doesn't: { main, base, ahead }.
+function treeInfo(t, branch, cb) {
+  execFile('git', ['symbolic-ref', '--short', '-q', 'HEAD'], { cwd: t.main, timeout: 3000, windowsHide: true }, (err, out) => {
+    const base = err ? '' : String(out).trim();
+    if (!base || base === branch) return cb(null);
+    execFile('git', ['rev-list', '--count', `${base}..${branch}`], { cwd: t.main, timeout: 3000, windowsHide: true }, (e2, n) => cb({ main: t.main, base, ahead: e2 ? 0 : Number(String(n).trim()) || 0 }));
+  });
+}
+
+// A Claude Code worktree whose session you ended: taken away if nothing in
+// it would be lost (git worktree remove refuses changes and new files), and
+// its branch too if it's merged (branch -d refuses otherwise, so commits are
+// never lost). cb({ removed, branchGone }).
+function tidyTree(tree, cb) {
+  const t = claudeTree(tree, path.join(tree, '..', '..', '..', '.git', 'worktrees', path.basename(tree)));
+  if (!t) return cb({ removed: false, branchGone: false });
+  const git = (args, done) => execFile('git', args, { cwd: t.main, timeout: 15000, windowsHide: true }, (err) => done(!err));
+  execFile('git', ['symbolic-ref', '--short', '-q', 'HEAD'], { cwd: tree, timeout: 3000, windowsHide: true }, (e0, out) => {
+    const branch = e0 ? '' : branchName(String(out).trim());
+    git(['worktree', 'unlock', tree], () => git(['worktree', 'remove', tree], (removed) => {
+      if (!removed) { git(['worktree', 'lock', tree], () => {}); return cb({ removed, branchGone: false }); }
+      if (!branch) return cb({ removed, branchGone: false });
+      git(['branch', '-d', branch], (branchGone) => cb({ removed, branchGone, branch }));
+    }));
+  });
+}
+
 const roots = new Map(); // cwd -> the top of its repository
 const gitDirs = new Map(); // cwd -> its repository's .git folder
 
@@ -164,6 +210,14 @@ function diff(root, rel, how, cb) {
 function command(run, st, pr = null, platform = process.platform) {
   if (run === 'push') return st && !st.upstream ? 'git push --set-upstream origin HEAD' : 'git push';
   if (run === 'pull') return 'git pull --ff-only';
+  if (run === 'bringin') {
+    const t = st && st.tree, branch = st && branchName(st.branch), base = t && branchName(t.base);
+    if (!t || !branch || !base || /["$`\\%!\n]/.test(platform === 'win32' ? t.main.replace(/\\/g, '') : t.main)) return '';
+    const at = `git -C "${t.main}"`;
+    return platform === 'win32'
+      ? `${at} merge --no-ff --no-edit ${branch} || (${at} merge --abort & exit /b 1)`
+      : `${at} merge --no-ff --no-edit ${branch} || { ${at} merge --abort; exit 1; }`;
+  }
   if (run === 'abort') return st && st.midway ? `git ${st.midway} --abort` : '';
   if (run === 'finish') return !st || !st.midway || st.conflicts ? '' : st.midway === 'merge' ? 'git commit --no-edit' : `git -c core.editor=true ${st.midway} --continue`;
   if (run === 'home') {
@@ -481,4 +535,4 @@ function webLink(repo, st, pr) {
 }
 const gitSaid = (errOut) => (String(errOut || '').split('\n').find((l) => /^(fatal|error):/.test(l)) || '').replace(/^(fatal|error):\s*/, '');
 
-module.exports = { stashes, bringBack, revert, finishLabel, githubOf, github, webLink, merged, deleteMerged, settle, fetchQuietly, park, parked, unpark, canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };
+module.exports = { claudeTree, treeInfo, tidyTree, stashes, bringBack, revert, finishLabel, githubOf, github, webLink, merged, deleteMerged, settle, fetchQuietly, park, parked, unpark, canUndo, undoCommit, discard, putBack, parseStatus, summary, quickActions, status, compactDiff, diff, branchName, branches, switchTo, command, forget, commits, commitText, show, parseNameStatus, branchChanges, branchDiff };
