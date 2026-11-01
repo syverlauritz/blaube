@@ -655,6 +655,17 @@
       const c = copyButton(() => m.text, 'Copy reply');
       c.classList.add('copyreply');
       e.append(c);
+      // Read it out, in your computer's own voice (tap again: stop).
+      if (window.speechSynthesis && !current.demo) {
+        const r = document.createElement('button');
+        r.type = 'button';
+        r.className = 'copy speak';
+        r.dataset.label = speaking === m.text ? 'Stop reading' : 'Read aloud';
+        r.title = 'Read this reply out loud, in your computer’s voice';
+        r.onclick = (ev) => { ev.stopPropagation(); readAloud(m.text); };
+        if ((current.others || []).some((o) => o.id !== current.id && !o.demo) && api.forward) r.classList.add('withfwd');
+        e.append(r);
+      }
       // Pass it on to another session ("tell the website what the API
       // changed"), instead of copying between terminals.
       const others = (current.others || []).filter((o) => o.id !== current.id && !o.demo);
@@ -696,6 +707,33 @@
     return false;
   };
   const took = (ms) => { const m = Math.round(ms / 60e3); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
+
+  // Read aloud: a reply as words to listen to (code and links left out).
+  let speaking = '';
+  const spoken = (md) => String(md || '')
+    .replace(/```[\s\S]*?```/g, ' (some code) ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/https?:\/\/\S+/g, ' a link ')
+    .replace(/^#+\s*|[*_>|~]+/gm, '')
+    .replace(/\s+\n/g, '\n').trim();
+  function readAloud(text) {
+    const synth = window.speechSynthesis;
+    const again = speaking === text;
+    synth.cancel();
+    speaking = '';
+    const mark = () => { for (const b of document.querySelectorAll('.speak')) b.dataset.label = 'Read aloud'; };
+    mark();
+    if (again) return;
+    const u = new SpeechSynthesisUtterance(spoken(text).slice(0, 20000));
+    const done = () => { if (speaking === text) { speaking = ''; mark(); } };
+    u.onend = done;
+    u.onerror = done;
+    speaking = text;
+    for (const b of document.querySelectorAll('.speak')) if (b.parentElement && b.parentElement.dataset.text === text) b.dataset.label = 'Stop reading';
+    synth.speak(u);
+  }
 
   // "Copy", then "Copied" for a moment.
   function copyButton(get, label = 'Copy') {

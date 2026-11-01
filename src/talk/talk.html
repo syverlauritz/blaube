@@ -300,7 +300,10 @@
   .msg .copyreply, .msg .fwd { position: absolute; bottom: -4px; background: var(--paper); border-radius: 999px; padding: 2px 10px; opacity: 0; transition: opacity .15s; }
   .msg .copyreply { right: -6px; }
   .msg .fwd { right: 56px; }
-  .msg.claude:hover .copyreply, .msg .copyreply:focus-visible, .msg.claude:hover .fwd, .msg .fwd:focus-visible { opacity: 1; }
+  .msg.claude:hover .copyreply, .msg .copyreply:focus-visible, .msg.claude:hover .fwd, .msg .fwd:focus-visible, .msg.claude:hover .speak, .msg .speak:focus-visible { opacity: 1; }
+  .msg .speak { position: absolute; bottom: -4px; right: 56px; background: var(--paper); border-radius: 999px; padding: 2px 10px; opacity: 0; transition: opacity .15s; }
+  .msg .speak.withfwd { right: 136px; }
+  .msg .speak[data-label="Stop reading"] { opacity: 1; color: var(--ink); }
   .fwdmenu { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .fwdmenu button { display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 999px; padding: 4px 12px 4px 10px; background: var(--soft); font: 700 13.5px var(--ui); color: var(--ink); cursor: pointer; }
   .fwdmenu button::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--c); }

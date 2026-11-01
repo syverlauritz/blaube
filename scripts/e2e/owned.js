@@ -395,8 +395,8 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	const file = require('../../src/main/focus').transcriptPath(tracker.sessions.get(EID));
 	fs.mkdirSync(path.dirname(file), { recursive: true });
 	fs.writeFileSync(file, [{ type: 'user', uuid: u1, parentUuid: null }, { type: 'assistant', uuid: 'a1', parentUuid: u1 }, { type: 'user', uuid: u2, parentUuid: 'a1' }].map((e) => JSON.stringify(Object.assign({ sessionId: EID }, e))).join('\n') + '\n');
-	check(await until(() => box(`document.querySelectorAll('#inner .meta.edit button').length === 2`)), 'your own messages can be edited');
-	await box(`[...document.querySelectorAll('#inner .meta.edit button')].pop().click()`);
+	check(await until(() => box(`[...document.querySelectorAll('#inner .meta.edit button')].filter((b) => b.textContent === 'Edit').length === 2`)), 'your own messages can be edited');
+	await box(`[...document.querySelectorAll('#inner .meta.edit button')].filter((b) => b.textContent === 'Edit').pop().click()`);
 	check(await until(() => box(`document.getElementById('text').value === 'second' && !document.getElementById('editing').hidden`)), 'edit puts it back in the field, saying what sending does');
 	await type('second, better');
 	check(await until(() => talkId() && talkId() !== EID && owned.has(talkId()) && !owned.has(EID)), 'sending it goes back: a copy cut before it takes its place');
