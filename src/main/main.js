@@ -3741,7 +3741,7 @@ app.whenReady().then(async () => {
   // An image pasted into the talk box: saved where Claude can open it.
   ipcMain.handle('talk-paste', (_e, id, bytes, type) => {
     const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }[type];
-    if (!id || !isOpen(id) || !ext || !(bytes instanceof Uint8Array) || bytes.length > 20e6) return '';
+    if (!id || !isOpen(id) || !ext || !(bytes instanceof Uint8Array) || bytes.length > 60e6) return ''; // (as big as the box takes: see readPic)
     try {
       const dir = path.join(app.getPath('temp'), 'blaube-pastes');
       fs.mkdirSync(dir, { recursive: true });
