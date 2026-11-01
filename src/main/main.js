@@ -202,7 +202,7 @@ function saveQueue(now) {
     queueTimer = null;
     const json = JSON.stringify(inbox.snapshot());
     if (json === queueSaved) return;
-    try { fs.mkdirSync(path.dirname(queueFile()), { recursive: true }); fs.writeFileSync(queueFile(), json); queueSaved = json; } catch { /* not fatal */ }
+    try { writeWhole(queueFile(), json); queueSaved = json; } catch { /* not fatal */ }
   };
   if (now) write(); else queueTimer = setTimeout(write, 300);
 }
@@ -1075,7 +1075,7 @@ function saveOwned() {
   });
   const json = JSON.stringify(list);
   if (json === ownedSaved) return;
-  try { fs.mkdirSync(path.dirname(ownedFile()), { recursive: true }); fs.writeFileSync(ownedFile(), json); ownedSaved = json; } catch { /* not fatal */ }
+  try { writeWhole(ownedFile(), json); ownedSaved = json; } catch { /* not fatal */ }
 }
 // Quitting for good: none come back. (And none of their stopping is saved.)
 function forgetOwned() {
