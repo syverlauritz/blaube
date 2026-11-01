@@ -6,6 +6,8 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 - Right-click a blob for New look (another accessory, at random) or Remove look.
 - About one blob in three is plain (no look), up from one in five.
+- Install with one line: `install.sh` (Mac) and `install.ps1` (Windows) download the newest release, install it and open it, with no "unverified developer" step. Run again to update.
+- The demo sessions, screenshots and tests use made-up project names.
 ## [0.5.1] - 2026-10-29
 
 - Most blobs wear a look again (a bow, ears, antennas...): only about one in five is plain, down from half.

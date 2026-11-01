@@ -6,7 +6,7 @@ const path = require('node:path');
 const taskOutput = require('../src/main/taskOutput');
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-tasks-'));
-const dir = path.join(root, '-Users-me-kalkis', 'sess-1', 'tasks');
+const dir = path.join(root, '-Users-me-shop', 'sess-1', 'tasks');
 fs.mkdirSync(dir, { recursive: true });
 const file = path.join(dir, 'bash_7.output');
 

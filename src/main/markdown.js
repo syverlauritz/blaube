@@ -52,7 +52,7 @@ function quote(text) {
   return String(text || '').trim().split('\n').map((l) => (l ? `> ${l}` : '>')).join('\n');
 }
 
-// A file name for it: "kalkis 2026-10-26.md".
+// A file name for it: "shop 2026-10-26.md".
 function fileName(project, now = Date.now()) {
   const safe = String(project || 'conversation').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'conversation';
   return `${safe} ${day(now)}.md`;

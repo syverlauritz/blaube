@@ -34,7 +34,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, pinned }) 
 	const box = (js) => talk().webContents.executeJavaScript(js);
 	const hook = (payload) => new Promise((done) => {
 		const req = http.request({ host: '127.0.0.1', port: PORT, path: '/blaube/hook', method: 'POST', headers: { 'content-type': 'application/json', 'x-blaube-entry': 'cli' } }, (res) => { res.resume(); res.on('end', done); });
-		req.end(JSON.stringify(Object.assign({ session_id: ID, cwd: '/tmp/kalkis' }, payload)));
+		req.end(JSON.stringify(Object.assign({ session_id: ID, cwd: '/tmp/shop' }, payload)));
 	});
 	const runHook = (cmd, payload, env = {}) => {
 		const p = sh(['-c', cmd], { env: Object.assign({}, process.env, env) });
@@ -175,7 +175,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, pinned }) 
 	const got = await Promise.race([waiting.done, sleep(3000).then(() => null)]);
 	check(got && got.code === 2 && /update the changelog/.test(got.err), 'sending wakes Claude with the message (exit 2)');
 	check(await until(async () => (await box(`document.querySelectorAll('#inner .dots').length`)) === 1), 'thinking dots while it works on it');
-	await hook({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: '/tmp/kalkis/CHANGELOG.md' } });
+	await hook({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: '/tmp/shop/CHANGELOG.md' } });
 	check(await until(async () => (await box(`(document.querySelector('#inner .dots .doing') || {}).textContent`)) === 'Editing CHANGELOG.md'), 'with what it’s doing next to them');
 	await shot('thinking');
 	await hook({ hook_event_name: 'UserPromptSubmit', prompt: '<task-notification>\n<summary>Stop hook feedback</summary>' });
@@ -189,7 +189,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, pinned }) 
 	check(await box(`document.querySelectorAll('#inner .dots').length === 0`), 'and the dots go away');
 
 	// A permission prompt: Allow on the slime answers the hook.
-	const asking = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'npm test' }, permission_suggestions: [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm test' }], behavior: 'allow', destination: 'localSettings' }] }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	const asking = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/shop', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'npm test' }, permission_suggestions: [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm test' }], behavior: 'allow', destination: 'localSettings' }] }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
 	check(await until(async () => !(await box(`document.getElementById('ask').hidden`))), 'the permission card shows');
 	check(await box(`document.getElementById('askDetail').textContent`) === 'npm test', 'with the command');
 	check(await box(`document.getElementById('always').textContent`) === 'Always allow npm test', 'and what “always” would allow');
@@ -208,7 +208,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, pinned }) 
 
 	// Claude asks a question: one tap on an option answers it.
 	const questions = [{ question: 'Which pet?', header: 'Pet', options: [{ label: 'Cats', description: 'Purr' }, { label: 'Dogs', description: 'Woof' }], multiSelect: false }];
-	const quiz = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	const quiz = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/shop', hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
 	check(await until(async () => (await box(`document.querySelectorAll('#askQuestions .opt').length`)) === 2), 'a question shows its options');
 	await sleep(500);
 	await shot('question');
@@ -219,7 +219,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, pinned }) 
 	check(qd && qd.behavior === 'allow' && qd.updatedInput.answers['Which pet?'] === 'Cats', 'tapping an option answers it');
 
 	// A plan: Go ahead approves it, with the plan passed back.
-	const planning = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'ExitPlanMode', tool_input: { plan: '1. Add **sounds**\n2. A switch in Settings', planFilePath: '/tmp/plan.md' } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	const planning = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/shop', hook_event_name: 'PermissionRequest', tool_name: 'ExitPlanMode', tool_input: { plan: '1. Add **sounds**\n2. A switch in Settings', planFilePath: '/tmp/plan.md' } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
 	check(await until(async () => /Add sounds/.test(await box(`document.getElementById('askPlan').textContent`))), 'a plan shows');
 	check(await box(`document.getElementById('allow').textContent === 'Go ahead' && document.getElementById('deny').textContent === 'Keep planning'`), 'with Go ahead and Keep planning');
 	await sleep(500);
@@ -235,7 +235,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, pinned }) 
 		{ question: 'Which ones?', header: 'Scope', multiSelect: true, options: [{ label: 'VAT', description: '' }, { label: 'Car tax', description: '' }] },
 		{ question: 'Ship today?', header: 'Release', multiSelect: false, options: [{ label: 'Yes', description: '' }, { label: 'No', description: '' }] },
 	];
-	const quiz2 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions: multi } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	const quiz2 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/shop', hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions: multi } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
 	check(await until(async () => (await box(`document.querySelectorAll('#askQuestions .q').length`)) === 2), 'a card with two questions shows');
 	check(await box(`getComputedStyle(document.getElementById('form')).display === 'none'`), 'and the main field steps aside for it');
 	await sleep(500);
@@ -253,7 +253,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, pinned }) 
 
 	// A draft you were writing when a question came stays a message, not an answer.
 	await box(`(() => { const t = document.getElementById('text'); t.value = 'also run the tests'; t.dispatchEvent(new Event('input')); })()`);
-	const quiz3 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	const quiz3 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/shop', hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
 	check(await until(async () => !(await box(`document.getElementById('ask').hidden`))), 'another question shows');
 	await sleep(600);
 	// Typing a number into the field is typing, not picking an option.
@@ -271,7 +271,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, pinned }) 
 	check(td && td['Which pet?'] === 'Dogs, obviously', 'typing after it came answers it');
 
 	// Enter on a plan card sends it back with what to change.
-	const planning2 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'ExitPlanMode', tool_input: { plan: '1. Add sounds' } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	const planning2 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/shop', hook_event_name: 'PermissionRequest', tool_name: 'ExitPlanMode', tool_input: { plan: '1. Add sounds' } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
 	check(await until(async () => !(await box(`document.getElementById('askPlan').hidden`))), 'a plan shows again');
 	await sleep(600);
 	await box(`(() => { const t = document.getElementById('text'); t.value = 'use Web Audio, not files'; t.dispatchEvent(new Event('input')); })()`);
@@ -290,7 +290,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, pinned }) 
 	await hook({ session_id: ID2, hook_event_name: 'SessionStart', cwd: '/tmp/website' });
 	await until(async () => !!(await page(`__blaube.buddies.get(${JSON.stringify(ID2)})`)), 6000);
 	await box(`(() => { const t = document.getElementById('text'); t.value = 'a draft from before'; t.dispatchEvent(new Event('input')); })()`);
-	const quiz4 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions: multi } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	const quiz4 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/shop', hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions: multi } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
 	await until(async () => (await box(`document.querySelectorAll('#askQuestions .q').length`)) === 2);
 	await sleep(500);
 	await box(`document.querySelectorAll('#askQuestions .opt')[1].click()`);
@@ -309,7 +309,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, pinned }) 
 	check(kd && kd['Which ones?'] === 'Car tax' && kd['Ship today?'] === 'Yes', `answered with the picks from before the switch (${JSON.stringify(kd)})`);
 
 	// A plan that comes over a draft: the draft isn't taken as what to change.
-	const planning3 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'ExitPlanMode', tool_input: { plan: '1. Add sounds' } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	const planning3 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/shop', hook_event_name: 'PermissionRequest', tool_name: 'ExitPlanMode', tool_input: { plan: '1. Add sounds' } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
 	check(await until(async () => !(await box(`document.getElementById('askPlan').hidden`))), 'a plan comes while the draft is there');
 	await sleep(600);
 	check(await box(`document.getElementById('deny').textContent`) === 'Keep planning', 'the button doesn’t claim the draft');
@@ -524,13 +524,13 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, pinned }) 
 
 	// From the menu bar: a question's answers, and a plan's Go ahead.
 	const trayItem = (label) => { for (const r of global.__blaubeTrayMenu().items) { const i = r.submenu && r.submenu.items.find((x) => x.label === label); if (i) return i; } return null; };
-	const quiz5 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	const quiz5 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/shop', hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
 	check(await until(() => !!trayItem('Dogs') && !!trayItem('Which pet?')), 'the menu bar menu shows a question and its answers');
 	trayItem('Dogs').click();
 	let qd5 = null;
 	try { qd5 = JSON.parse((await Promise.race([quiz5.done, sleep(3000).then(() => null)])).out).hookSpecificOutput.decision; } catch { /* checked below */ }
 	check(qd5 && qd5.behavior === 'allow' && qd5.updatedInput.answers['Which pet?'] === 'Dogs', 'and a click there answers it');
-	const planning5 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'ExitPlanMode', tool_input: { plan: '1. Add sounds' } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
+	const planning5 = runHook(permissionCommand(PORT), { session_id: ID, cwd: '/tmp/shop', hook_event_name: 'PermissionRequest', tool_name: 'ExitPlanMode', tool_input: { plan: '1. Add sounds' } }, { CLAUDE_CODE_ENTRYPOINT: 'cli' });
 	check(await until(() => !!trayItem('Go ahead with the plan')), 'and a plan has Go ahead');
 	trayItem('Go ahead with the plan').click();
 	let pd5 = null;

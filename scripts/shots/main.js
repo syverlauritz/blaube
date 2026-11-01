@@ -107,7 +107,7 @@ const SCENES = {
 	// Talking: a big one and a small one babble; the mouth should open and
 	// shut with each syllable (vowels shaping it), then settle back.
 	talking: {
-		sessions: [session('t1', 'blaube', 'idle', { tokens: { total: 6000000, context: 20000, limit: 200000 } }), session('t2', 'kalkis', 'idle', { color: '#5B8DEF' })],
+		sessions: [session('t1', 'blaube', 'idle', { tokens: { total: 6000000, context: 20000, limit: 200000 } }), session('t2', 'shop', 'idle', { color: '#5B8DEF' })],
 		config: { size: 0.85 },
 		wait: 3000,
 		size: [1000, 460],
@@ -118,7 +118,7 @@ const SCENES = {
 	choir: {
 		sessions: [
 			session('c1', 'blaube', 'idle', { tokens: { total: 6000000, context: 20000, limit: 200000 } }),
-			session('c2', 'kalkis', 'idle', { color: '#5B8DEF' }),
+			session('c2', 'shop', 'idle', { color: '#5B8DEF' }),
 			session('c3', 'playground', 'idle', { color: '#5FB57A', agents: [{ id: 'ca', type: 'general-purpose', description: 'Helper', state: 'working', activity: 'thinking' }] }),
 			session('c4', 'notes', 'idle', { color: '#9B7BD8' }),
 		],
@@ -146,7 +146,7 @@ const SCENES = {
 	},
 	// Helpers grow with their own tokens: a fresh one, a busy one, a big one.
 	helperSizes: {
-		sessions: [session('hs', 'kalkis', 'working', {
+		sessions: [session('hs', 'shop', 'working', {
 			tokens: { total: 900000, context: 90000, limit: 200000 },
 			agents: [
 				{ id: 'k1', type: 'Explore', description: 'Quick look', state: 'working', activity: 'thinking', tokens: 5000 },
@@ -175,7 +175,7 @@ const SCENES = {
 	beret: {
 		sessions: [
 			session('br', 'blaube', 'idle', { look: 'beret', tokens: { total: 6000000, context: 20000, limit: 200000 }, agents: [{ id: 'h36', type: 'general-purpose', description: 'Helper', state: 'working', activity: 'thinking' }] }),
-			session('br2', 'kalkis', 'idle', { color: '#5B8DEF', look: 'beret' }),
+			session('br2', 'shop', 'idle', { color: '#5B8DEF', look: 'beret' }),
 			session('br3', 'website', 'working', { color: '#E07BA8', look: 'beret' }),
 		],
 		config: { size: 0.85 },
@@ -186,7 +186,7 @@ const SCENES = {
 	// beret stay on, lag and settle?
 	// (One slime each, so the rig's frame-to-frame checks follow one beret.)
 	beretHop: {
-		sessions: [session('br2', 'kalkis', 'idle', { color: '#5B8DEF', look: 'beret' })],
+		sessions: [session('br2', 'shop', 'idle', { color: '#5B8DEF', look: 'beret' })],
 		config: { size: 0.85 },
 		wait: 3000,
 		size: [1000, 560],
@@ -250,7 +250,7 @@ const SCENES = {
 		config: { size: 0.85 },
 		wait: 3500,
 		size: [1100, 560],
-		later: { sessions: [session('g1', 'blaube', 'idle', { look: 'bow' }), session('g2', 'kalkis', 'idle', { color: '#5B8DEF', look: 'antenna' })], wait: 700 },
+		later: { sessions: [session('g1', 'blaube', 'idle', { look: 'bow' }), session('g2', 'shop', 'idle', { color: '#5B8DEF', look: 'antenna' })], wait: 700 },
 	},
 	// A long turn (7 minutes) finishes: a burst of hearts and a big bounce.
 	longDone: {
@@ -277,7 +277,7 @@ const SCENES = {
 	// Two sessions arrive: their slimes pop out of the middle of the screen,
 	// small, already in their own colour and look, and grow as they fly out.
 	spawn: {
-		sessions: [session('sp1', 'blaube', 'working', { look: 'antenna' }), session('sp2', 'kalkis', 'idle', { color: '#5B8DEF', look: 'catears' })],
+		sessions: [session('sp1', 'blaube', 'working', { look: 'antenna' }), session('sp2', 'shop', 'idle', { color: '#5B8DEF', look: 'catears' })],
 		config: { size: 0.85 },
 		wait: 60,
 		size: [1100, 560],
@@ -295,7 +295,7 @@ const SCENES = {
 	// Drag one slime through two others: they should get shoved aside and
 	// keep their shape, not get dented.
 	shove: {
-		sessions: [session('s1', 'blaube', 'idle'), session('s2', 'kalkis', 'idle', { color: '#5B8DEF' }), session('s3', 'playground', 'working', { color: '#8BC34A' })],
+		sessions: [session('s1', 'blaube', 'idle'), session('s2', 'shop', 'idle', { color: '#5B8DEF' }), session('s3', 'playground', 'working', { color: '#8BC34A' })],
 		config: { size: 0.85 },
 		wait: 4000,
 		size: [1100, 560],
@@ -312,7 +312,7 @@ const SCENES = {
 	// One slime dropped on another's head: the one below glares, then
 	// shrugs it off. A helper on its mother's head gets to stay, happily.
 	stack: {
-		sessions: [session('st1', 'blaube', 'idle'), session('st2', 'kalkis', 'idle', { color: '#5B8DEF' })],
+		sessions: [session('st1', 'blaube', 'idle'), session('st2', 'shop', 'idle', { color: '#5B8DEF' })],
 		config: { size: 0.85 },
 		wait: 3000,
 		size: [900, 560],
@@ -320,7 +320,7 @@ const SCENES = {
 	},
 	// One yawns; the ones next to it catch it.
 	yawns: {
-		sessions: [session('y1', 'blaube', 'idle'), session('y2', 'kalkis', 'idle', { color: '#5B8DEF' }), session('y3', 'playground', 'idle', { color: '#8BC34A' })],
+		sessions: [session('y1', 'blaube', 'idle'), session('y2', 'shop', 'idle', { color: '#5B8DEF' }), session('y3', 'playground', 'idle', { color: '#8BC34A' })],
 		config: { size: 0.8 },
 		wait: 3000,
 		size: [900, 560],
@@ -330,7 +330,7 @@ const SCENES = {
 	// stays; one thrown up from below passes through it; then the window
 	// moves and the one on top rides along.
 	ledge: {
-		sessions: [session('le1', 'blaube', 'idle'), session('le2', 'kalkis', 'idle', { color: '#5B8DEF' })],
+		sessions: [session('le1', 'blaube', 'idle'), session('le2', 'shop', 'idle', { color: '#5B8DEF' })],
 		config: { size: 0.85 },
 		wait: 2500,
 		size: [1000, 560],
@@ -341,7 +341,7 @@ const SCENES = {
 	// spread out, one at a time, some up onto the window tops. (A frame every
 	// 13 s; prints how crowded they are in each.)
 	crowding: {
-		sessions: ['blaube', 'kalkis', 'website', 'notes', 'api', 'docs', 'shop', 'game', 'cli', 'blog'].map((p, i) => session('cr' + i, p, i < 7 ? 'working' : 'idle', { color: ['#D97757', '#5B8DEF', '#E07BA8', '#6BBF8A', '#E8B04B', '#9B7FD4', '#4FB3BF', '#E06B5B', '#8FA3B8', '#C9A0DC'][i] })),
+		sessions: ['blaube', 'shop', 'website', 'notes', 'api', 'docs', 'shop', 'game', 'cli', 'blog'].map((p, i) => session('cr' + i, p, i < 7 ? 'working' : 'idle', { color: ['#D97757', '#5B8DEF', '#E07BA8', '#6BBF8A', '#E8B04B', '#9B7FD4', '#4FB3BF', '#E06B5B', '#8FA3B8', '#C9A0DC'][i] })),
 		config: { size: 0.6 },
 		wait: 2500,
 		size: [760, 1000],
@@ -423,7 +423,7 @@ const SCENES = {
 	},
 	// The same with others standing by, to get some on them.
 	queasyCrowd: {
-		sessions: [session('q1', 'kalkis', 'idle', { color: '#5B8DEF' }), session('q2', 'blaube', 'idle'), session('q3', 'web', 'idle', { color: '#B07CE8' })],
+		sessions: [session('q1', 'shop', 'idle', { color: '#5B8DEF' }), session('q2', 'blaube', 'idle'), session('q3', 'web', 'idle', { color: '#B07CE8' })],
 		config: { snackJar: 'Off' },
 		wait: 3000,
 		size: [900, 560],
@@ -432,7 +432,7 @@ const SCENES = {
 	// Going green on any colour: blue with its helpers, orange, purple;
 	// sicker and sicker, then over it.
 	sickColors: {
-		sessions: [session('g1', 'kalkis', 'working', { color: '#5B8DEF', agents: [{ id: 'ga', description: 'Find the tables', type: 'general-purpose' }, { id: 'gb', description: 'Run the tests', type: 'general-purpose' }] }), session('g2', 'blaube', 'idle'), session('g3', 'web', 'idle', { color: '#B07CE8' })],
+		sessions: [session('g1', 'shop', 'working', { color: '#5B8DEF', agents: [{ id: 'ga', description: 'Find the tables', type: 'general-purpose' }, { id: 'gb', description: 'Run the tests', type: 'general-purpose' }] }), session('g2', 'blaube', 'idle'), session('g3', 'web', 'idle', { color: '#B07CE8' })],
 		config: { snackJar: 'Off', seasons: 0 },
 		wait: 4000,
 		size: [1100, 560],
@@ -440,7 +440,7 @@ const SCENES = {
 	},
 	// Sworn at in a prompt: scared and sad, small and trembling, then over it.
 	cursed: {
-		sessions: [session('c1', 'blaube', 'idle'), session('c2', 'kalkis', 'idle', { color: '#5B8DEF' })],
+		sessions: [session('c1', 'blaube', 'idle'), session('c2', 'shop', 'idle', { color: '#5B8DEF' })],
 		config: { snackJar: 'Off', seasons: 0 },
 		wait: 3000,
 		size: [800, 460],
@@ -459,7 +459,7 @@ const SCENES = {
 	// Switched into "Don't ask": "wohooo!", and off it bounces round the
 	// screen like a ping-pong ball, lower each time, until it settles.
 	kevin: {
-		sessions: [session('k1', 'blaube', 'idle'), session('k2', 'kalkis', 'idle', { color: '#5B8DEF' })],
+		sessions: [session('k1', 'blaube', 'idle'), session('k2', 'shop', 'idle', { color: '#5B8DEF' })],
 		config: { snackJar: 'Off', seasons: 0 },
 		wait: 3000,
 		size: [1200, 820],
@@ -486,7 +486,7 @@ const SCENES = {
 	// A butterfly flying in, flapping and leaning into its turns, and
 	// landing on a head.
 	butterfly: {
-		sessions: [session('f1', 'blaube', 'idle'), session('f2', 'kalkis', 'idle', { color: '#5B8DEF' })],
+		sessions: [session('f1', 'blaube', 'idle'), session('f2', 'shop', 'idle', { color: '#5B8DEF' })],
 		config: { snackJar: 'Off', seasons: 0 },
 		wait: 2500,
 		size: [900, 560],
@@ -529,9 +529,9 @@ const SCENES = {
 	},
 	hoverCrowd: {
 		sessions: [
-			session('hc1', 'vergence-studios-playground', 'working', { activity: 'tool', look: 'sprout', color: '#E07BA8' }),
-			session('hc2', 'Depth Strands: plane for all the strands', 'working', { activity: 'tool', look: 'sprout' }),
-			session('hc3', 'blaube', 'idle', { look: 'antenna', color: '#E07BA8', info: { title: 'Blaubes clickability after restart', branch: 'claude/project-thread-a0ni6n', model: 'claude-opus-5-5' } }),
+			session('hc1', 'todo-app', 'working', { activity: 'tool', look: 'sprout', color: '#E07BA8' }),
+			session('hc2', 'photo-album: tidy the upload page', 'working', { activity: 'tool', look: 'sprout' }),
+			session('hc3', 'blaube', 'idle', { look: 'antenna', color: '#E07BA8', info: { title: 'Faster window scanning', branch: 'fix/window-scan', model: 'claude-opus-5-5' } }),
 		],
 		config: { font: 'DynaPuff' },
 		hover: 'hc3',
@@ -541,7 +541,7 @@ const SCENES = {
 	// The same bubbles on a light desktop.
 	light: {
 		sessions: [
-			session('l1', 'kalkis', 'done', { look: 'bow' }),
+			session('l1', 'shop', 'done', { look: 'bow' }),
 			session('l2', 'website', 'waiting', { color: '#5B8DEF', look: 'catears' }),
 			session('l3', 'blaube', 'working', { color: '#5FB57A', look: 'antenna' }),
 		],
@@ -577,7 +577,7 @@ const SCENES = {
 	// Halloween: one pulls a sheet over itself, creeps up on the other,
 	// boooo!, and off comes the sheet.
 	ghost: {
-		sessions: [session('gh1', 'blaube', 'idle', { look: 'horns' }), session('gh2', 'kalkis', 'idle', { color: '#5B8DEF', look: 'catears' })],
+		sessions: [session('gh1', 'blaube', 'idle', { look: 'horns' }), session('gh2', 'shop', 'idle', { color: '#5B8DEF', look: 'catears' })],
 		config: { size: 0.85 },
 		wait: 3000,
 		size: [1000, 460],
@@ -585,7 +585,7 @@ const SCENES = {
 	},
 	// The same, picked up mid-creep: the sheet comes off as it's lifted.
 	ghostGrab: {
-		sessions: [session('gh1', 'blaube', 'idle', { look: 'bunny' }), session('gh2', 'kalkis', 'idle', { color: '#5B8DEF', look: 'bow' })],
+		sessions: [session('gh1', 'blaube', 'idle', { look: 'bunny' }), session('gh2', 'shop', 'idle', { color: '#5B8DEF', look: 'bow' })],
 		config: { size: 0.85 },
 		wait: 3000,
 		size: [1000, 460],
@@ -636,13 +636,13 @@ const SCENES = {
 	},
 	// The talk box (a click on a slime), drawn where the app would put it.
 	talkChat: {
-		sessions: [session('tc', 'vergence-studios-playground', 'done', { look: 'bunny' }), session('tc2', 'kalkis', 'idle', { color: '#5B8DEF', look: 'bow' })],
+		sessions: [session('tc', 'todo-app', 'done', { look: 'bunny' }), session('tc2', 'shop', 'idle', { color: '#5B8DEF', look: 'bow' })],
 		bg: '#f2f0ec',
 		wait: 3500,
 		size: [1000, 640],
 		talk: { key: 'tc', inbox: 'ready', today: 'Today: 14 replies · 2h 10m of work · 23 files changed', git: 'feature/login · 3 changed', quick: [{ label: 'Commit', prompt: 'Commit' }, { label: 'Open a PR', prompt: 'PR' }, { label: 'Run tests', prompt: 'Tests' }],
-			others: [{ id: 'tc', project: 'vergence', color: '#D97757', state: 'done', status: 'Done: Committed as f3a91c2 “Fix flaky e2e timeout”.', meta: 'feature/login · 3 changed' },
-				{ id: 'tc2', project: 'kalkis', color: '#5B8DEF', state: 'waiting', status: 'Needs you: Claude needs your permission to use Bash', meta: '62% context · main' },
+			others: [{ id: 'tc', project: 'todo-app', color: '#D97757', state: 'done', status: 'Done: Committed as f3a91c2 “Fix flaky e2e timeout”.', meta: 'feature/login · 3 changed' },
+				{ id: 'tc2', project: 'shop', color: '#5B8DEF', state: 'waiting', status: 'Needs you: Claude needs your permission to use Bash', meta: '62% context · main' },
 				{ id: 'tc3', project: 'web', color: '#E07BA8', state: 'working', status: 'Editing Hero.tsx · 4m', meta: '2 of 5 on its list · main · 7 changed' }], log: [
 			{ who: 'you', text: 'run the tests and tell me if anything fails', via: 'terminal' },
 			{ who: 'claude', text: 'All 66 tests pass. I also fixed a flaky timeout in the e2e test: it was waiting on the wrong event.' },
@@ -656,23 +656,23 @@ const SCENES = {
 	// earlier at the top for more), and looks just the same.
 	talkHistory: {
 		talkJs: `setTimeout(() => { document.getElementById('log').scrollTop = 0; }, 300)`,
-		sessions: [session('th', 'kalkis', 'done', { color: '#5B8DEF', look: 'bow' })],
+		sessions: [session('th', 'shop', 'done', { color: '#5B8DEF', look: 'bow' })],
 		bg: '#f2f0ec',
 		wait: 3500,
 		size: [1000, 640],
 		talk: { key: 'th', inbox: 'ready', earlier: true, history: { from: 48213, entries: [
-			{ who: 'you', text: 'why is the VAT off by a krone sometimes?', via: 'terminal', at: 1, n: -11 },
-			{ who: 'step', text: 'Read vat.js', ok: true, kind: 'read', n: -12, at: 2 },
+			{ who: 'you', text: 'why is the cart total off by a cent sometimes?', via: 'terminal', at: 1, n: -11 },
+			{ who: 'step', text: 'Read cart.js', ok: true, kind: 'read', n: -12, at: 2 },
 			{ who: 'step', text: 'Searched for “Math.round”', ok: true, kind: 'search', n: -13, at: 3 },
-			{ who: 'claude', text: 'It rounds each line before adding them up, so the öre add up to a krone now and then. Rounding the total instead fixes it.', at: 4, n: -14, turn: { took: 95e3, steps: 2, files: [] } },
+			{ who: 'claude', text: 'It rounds each line before adding them up, so the fractions add up to a cent now and then. Rounding the total instead fixes it.', at: 4, n: -14, turn: { took: 95e3, steps: 2, files: [] } },
 			{ who: 'note', text: 'Context compacted', divider: true, at: 5, n: -15 },
 			{ who: 'you', text: 'ok, do that', via: 'terminal', at: 6, n: -16 },
-			{ who: 'step', text: 'Edited vat.js', ok: true, kind: 'edit', file: '/w/kalkis/src/vat.js', n: -17, at: 7, detail: '− lines.map((l) => Math.round(l * rate))\n+ Math.round(lines.reduce((a, l) => a + l, 0) * rate)' },
+			{ who: 'step', text: 'Edited cart.js', ok: true, kind: 'edit', file: '/w/shop/src/cart.js', n: -17, at: 7, detail: '− lines.map((l) => Math.round(l * rate))\n+ Math.round(lines.reduce((a, l) => a + l, 0) * rate)' },
 			{ who: 'step', text: 'Run the tests', ok: true, kind: 'test', n: -18, at: 8 },
-			{ who: 'claude', text: 'Done: it rounds the total now, and the tests pass.', at: 9, n: -19, turn: { took: 140e3, steps: 2, files: ['/w/kalkis/src/vat.js'] } },
+			{ who: 'claude', text: 'Done: it rounds the total now, and the tests pass.', at: 9, n: -19, turn: { took: 140e3, steps: 2, files: ['/w/shop/src/cart.js'] } },
 		] }, log: [
 			{ who: 'you', text: 'can you commit it?', via: 'terminal', at: 20, n: 1 },
-			{ who: 'step', text: 'Committed: Round the VAT total, not each line', ok: true, kind: 'commit', n: 2, at: 21 },
+			{ who: 'step', text: 'Committed: Round the cart total, not each line', ok: true, kind: 'commit', n: 2, at: 21 },
 			{ who: 'claude', text: 'Committed as 4e1c0b2.', at: 22, n: 3 },
 		] },
 	},
@@ -774,12 +774,12 @@ const SCENES = {
 		] } },
 	},
 	talkQuestions: {
-		sessions: [session('tqs', 'kalkis', 'waiting', { color: '#5FB57A', look: 'sprout' })],
+		sessions: [session('tqs', 'shop', 'waiting', { color: '#5FB57A', look: 'sprout' })],
 		wait: 3500,
 		size: [1000, 1000],
 		talk: { key: 'tqs', inbox: 'busy', log: [], ask: { key: 1, kind: 'question', tool: 'AskUserQuestion', detail: '', always: '', questions: [
-			{ question: 'Which calculators should get the 2027 rates?', header: 'Scope', multiSelect: true, options: [
-				{ label: 'Income tax', description: '' }, { label: 'VAT', description: '' }, { label: 'Car tax', description: '' },
+			{ question: 'Which pages should get the new design?', header: 'Scope', multiSelect: true, options: [
+				{ label: 'Home', description: '' }, { label: 'Cart', description: '' }, { label: 'Checkout', description: '' },
 			] },
 			{ question: 'Ship today?', header: 'Release', multiSelect: false, options: [
 				{ label: 'Yes', description: 'Deploy when the tests pass' }, { label: 'No', description: 'Leave it on a branch' },
@@ -788,14 +788,14 @@ const SCENES = {
 	},
 	// The same card with answers being picked (after the click guard).
 	talkQuestionsPicked: {
-		sessions: [session('tqp', 'kalkis', 'waiting', { color: '#E8B84A', look: 'bow' })],
+		sessions: [session('tqp', 'shop', 'waiting', { color: '#E8B84A', look: 'bow' })],
 		bg: '#f2f0ec',
 		wait: 3500,
 		size: [1000, 1000],
-		talkJs: `setTimeout(() => { const o = document.querySelectorAll('#askQuestions .opt'); o[1].click(); o[2].click(); document.querySelectorAll('#askQuestions .otherchip')[0].click(); document.querySelectorAll('#askQuestions .other')[0].value = 'and the payroll one'; document.querySelectorAll('#askQuestions .other')[0].dispatchEvent(new Event('input')); }, 500)`,
+		talkJs: `setTimeout(() => { const o = document.querySelectorAll('#askQuestions .opt'); o[1].click(); o[2].click(); document.querySelectorAll('#askQuestions .otherchip')[0].click(); document.querySelectorAll('#askQuestions .other')[0].value = 'and the about page'; document.querySelectorAll('#askQuestions .other')[0].dispatchEvent(new Event('input')); }, 500)`,
 		talk: { key: 'tqp', inbox: 'busy', log: [], ask: { key: 1, kind: 'question', tool: 'AskUserQuestion', detail: '', always: '', questions: [
-			{ question: 'Which calculators should get the 2027 rates?', header: 'Scope', multiSelect: true, options: [
-				{ label: 'Income tax', description: '' }, { label: 'VAT', description: '' }, { label: 'Car tax', description: '' },
+			{ question: 'Which pages should get the new design?', header: 'Scope', multiSelect: true, options: [
+				{ label: 'Home', description: '' }, { label: 'Cart', description: '' }, { label: 'Checkout', description: '' },
 			] },
 			{ question: 'Ship today?', header: 'Release', multiSelect: false, options: [
 				{ label: 'Yes', description: 'Deploy when the tests pass' }, { label: 'No', description: 'Leave it on a branch' },
@@ -812,14 +812,14 @@ const SCENES = {
 	},
 	// A session you just started from Blaube: its box opens by itself.
 	talkNew: {
-		sessions: [session('tn', 'kalkis', 'idle', { color: '#5B8DEF', look: 'antenna' })],
+		sessions: [session('tn', 'shop', 'idle', { color: '#5B8DEF', look: 'antenna' })],
 		bg: '#f2f0ec',
 		wait: 3500,
 		size: [1000, 700],
 		talk: { key: 'tn', inbox: 'ready', owned: true, log: [] },
 	},
 	talkBusy: {
-		sessions: [session('tb', 'kalkis', 'working', { color: '#5FB57A', look: 'sprout' })],
+		sessions: [session('tb', 'shop', 'working', { color: '#5FB57A', look: 'sprout' })],
 		wait: 3500,
 		size: [1000, 640],
 		talk: { key: 'tb', inbox: 'busy', queued: 1, log: [
@@ -830,17 +830,17 @@ const SCENES = {
 	// The talk box on a roomy desktop, in the states it's in most: a short
 	// chat, a long one (Markdown, code, steps), working, asking, an error.
 	talkShort: {
-		sessions: [session('hs', 'kalkis', 'done', { color: '#5B8DEF', look: 'antenna' })],
+		sessions: [session('hs', 'shop', 'done', { color: '#5B8DEF', look: 'antenna' })],
 		bg: '#f2f0ec',
 		wait: 3500,
 		size: [1280, 900],
 		talk: { key: 'hs', inbox: 'ready', git: 'main · 1 changed', log: [
-			{ who: 'you', text: 'what does the VAT calculator round to?', via: 'blaube', status: 'sent' },
-			{ who: 'claude', text: 'It rounds to **whole kroner**, half up, after adding the 25% VAT. The rounding lives in `src/vat.js` in `roundKr()`.' },
+			{ who: 'you', text: 'what does the cart round prices to?', via: 'blaube', status: 'sent' },
+			{ who: 'claude', text: 'It rounds to **whole cents**, half up, after adding the tax. The rounding lives in `src/cart.js` in `roundCents()`.' },
 		] },
 	},
 	talkHarness: {
-		sessions: [session('hh', 'blaube', 'done', { look: 'sprout' }), session('hh2', 'kalkis', 'waiting', { color: '#5B8DEF', look: 'bow' }), session('hh3', 'website', 'working', { color: '#E07BA8', look: 'catears' })],
+		sessions: [session('hh', 'blaube', 'done', { look: 'sprout' }), session('hh2', 'shop', 'waiting', { color: '#5B8DEF', look: 'bow' }), session('hh3', 'website', 'working', { color: '#E07BA8', look: 'catears' })],
 		bg: '#f2f0ec',
 		wait: 3500,
 		size: [1400, 1000],
@@ -850,7 +850,7 @@ const SCENES = {
 			{ id: '2', text: 'Keep one osascript running', doing: 'Keeping one osascript running', status: 'completed' },
 			{ id: '3', text: 'Run the tests', doing: 'Running the tests', status: 'completed' },
 		],
-		others: [{ id: 'hh', project: 'blaube', color: '#D97757', state: 'done' }, { id: 'hh2', project: 'kalkis', color: '#5B8DEF', state: 'waiting' }, { id: 'hh3', project: 'website', color: '#E07BA8', state: 'working' }],
+		others: [{ id: 'hh', project: 'blaube', color: '#D97757', state: 'done' }, { id: 'hh2', project: 'shop', color: '#5B8DEF', state: 'waiting' }, { id: 'hh3', project: 'website', color: '#E07BA8', state: 'working' }],
 		log: [
 			{ who: 'you', text: 'why is the window ledge code slow on mac? fix it if you can', via: 'blaube', status: 'sent', n: 1 },
 			{ who: 'step', text: 'Read src/main/ledges.js', ok: true, n: 2 },
@@ -910,7 +910,7 @@ const SCENES = {
 	crowd: {
 		sessions: [
 			session('a', 'blaube', 'working'),
-			session('b', 'kalkis', 'done', { color: '#5B8DEF' }),
+			session('b', 'shop', 'done', { color: '#5B8DEF' }),
 			session('c', 'website', 'waiting', { color: '#5FB57A' }),
 		],
 		wait: 4000,
@@ -920,7 +920,7 @@ const SCENES = {
 	speech: {
 		sessions: [
 			session('sa', 'blaube', 'working'),
-			session('sb', 'kalkis', 'idle', { color: '#5B8DEF' }),
+			session('sb', 'shop', 'idle', { color: '#5B8DEF' }),
 			session('sc', 'website', 'working', { color: '#5FB57A', activity: 'tool' }),
 			session('sd', 'notes', 'idle', { color: '#9B7BD8' }),
 			session('se', 'shop', 'done', { color: '#E07BA8' }),
@@ -935,7 +935,7 @@ const SCENES = {
 	speechHover: {
 		sessions: [
 			session('sa', 'blaube', 'working'),
-			session('sb', 'kalkis', 'idle', { color: '#5B8DEF', info: { title: 'Fix the login bug', branch: 'main', model: 'claude-opus-5-5' } }),
+			session('sb', 'shop', 'idle', { color: '#5B8DEF', info: { title: 'Fix the login bug', branch: 'main', model: 'claude-opus-5-5' } }),
 			session('sc', 'website', 'working', { color: '#5FB57A', activity: 'tool' }),
 			session('sd', 'notes', 'idle', { color: '#9B7BD8' }),
 		],
@@ -953,7 +953,7 @@ const SCENES = {
 	thoughtMother: {
 		sessions: [
 			session('tm', 'blaube', 'working', { activity: 'tool', agents: [{ id: 'th', type: 'Explore', description: 'Find the buttermilk recipes', state: 'working', activity: 'tool' }] }),
-			session('tn', 'kalkis', 'working', { color: '#5B8DEF', activity: 'tool' }),
+			session('tn', 'shop', 'working', { color: '#5B8DEF', activity: 'tool' }),
 		],
 		config: { size: 0.8 },
 		hover: 'tm', thinking: 'fixture', wait: 4500, size: [1200, 560],
@@ -961,7 +961,7 @@ const SCENES = {
 	thoughtHelper: {
 		sessions: [
 			session('tm', 'blaube', 'working', { activity: 'tool', agents: [{ id: 'th', type: 'Explore', description: 'Find the buttermilk recipes', state: 'working', activity: 'tool' }] }),
-			session('tn', 'kalkis', 'working', { color: '#5B8DEF', activity: 'tool' }),
+			session('tn', 'shop', 'working', { color: '#5B8DEF', activity: 'tool' }),
 		],
 		config: { size: 0.8 },
 		hover: 'tm/th', thinking: 'fixture', wait: 4500, size: [1200, 560],
@@ -971,7 +971,7 @@ const SCENES = {
 	thoughtHelperLong: {
 		sessions: [
 			session('tm', 'blaube', 'working', { activity: 'tool', agents: [{ id: 'th', type: 'general-purpose', description: 'Move camera code into motion.js and keep the pan and zoom behaviour exactly the same as before', state: 'working', activity: 'tool' }] }),
-			session('tn', 'kalkis', 'working', { color: '#5B8DEF', activity: 'tool' }),
+			session('tn', 'shop', 'working', { color: '#5B8DEF', activity: 'tool' }),
 		],
 		config: { size: 0.8 },
 		hover: 'tm/th', thinking: 'raw', wait: 4500, size: [1200, 560],
@@ -1021,7 +1021,7 @@ SCENES.talkResizedBig = aroundTalk([140, 700], { x: 300, y: 40, w: 860, h: 640 }
 // Two pinned boxes: one moved off to the top left, far from its slime (no
 // tail), one still near its own (its tail points at it).
 SCENES.talkPinnedTwo = {
-	sessions: [session('pa', 'blaube', 'idle'), session('pb', 'kalkis', 'idle', { color: '#5B8DEF' })], wait: 2500, size: [1400, 860], config: { seasons: 0 },
+	sessions: [session('pa', 'blaube', 'idle'), session('pb', 'shop', 'idle', { color: '#5B8DEF' })], wait: 2500, size: [1400, 860], config: { seasons: 0 },
 	talk: { key: 'pa', x: 1300, box: { x: 40, y: 30, w: 520, h: 420 }, pinned: true, inbox: 'ready', log: [{ who: 'you', text: 'is it green?' }, { who: 'claude', text: 'All 66 tests pass.' }],
 		also: [{ key: 'pb', stand: [900, 700], box: { x: 640, y: 250, w: 520, h: 400 }, inbox: 'ready', log: [{ who: 'claude', text: 'Deployed to production.' }] }] },
 };
@@ -1047,7 +1047,7 @@ SCENES.talkHelpers = {
 SCENES.thoughtHelperStats = {
 	sessions: [
 		session('tm', 'blaube', 'working', { activity: 'tool', agents: WORKERS.slice(0, 2).map((x) => ({ id: x.id, type: 'general-purpose', description: x.name, state: 'working', activity: 'tool', tokens: x.tokens, stats: { since: x.since, tokens: x.tokens } })) }),
-		session('tn', 'kalkis', 'working', { color: '#5B8DEF', activity: 'tool' }),
+		session('tn', 'shop', 'working', { color: '#5B8DEF', activity: 'tool' }),
 	],
 	config: { size: 0.8 },
 	hover: 'tm/w2', thinking: { text: '', doing: WORKERS[1].doing }, wait: 4500, size: [1200, 600],
@@ -1055,7 +1055,7 @@ SCENES.thoughtHelperStats = {
 const blobsState = (dark) => ({ dark, max: 0, shown: 2, over: false, note: null, rows: [
 	{ id: 'b1', name: 'blaube', color: '#D97757', state: 'working', word: 'Working', helpers: 3, tokens: 1438200, shown: true, why: '', talk: true, doing: 'Sending a helper: Find every place the thought bubble is…',
 		kids: WORKERS.map((x) => ({ key: 'b1/' + x.id, name: x.name, state: 'working', word: 'Working', doing: x.doing, since: x.since, tokens: x.tokens, shown: true, byParent: false })) },
-	{ id: 'b2', name: 'kalkis', color: '#5B8DEF', state: 'idle', word: 'Idle', helpers: 0, tokens: 86400, shown: true, why: '', talk: true, doing: '', kids: [] },
+	{ id: 'b2', name: 'shop', color: '#5B8DEF', state: 'idle', word: 'Idle', helpers: 0, tokens: 86400, shown: true, why: '', talk: true, doing: '', kids: [] },
 ] });
 SCENES.blobsHelpers = { blobs: blobsState(false), size: [760, 420] };
 SCENES.blobsHelpersDark = { blobs: blobsState(true), size: [760, 420] };
@@ -1069,7 +1069,7 @@ for (const name of ['talkLong', 'talkAsk', 'talkQuestion', 'talkPlan', 'talkHarn
 // Find (⌘F) in a conversation with steps.
 SCENES.talkFind = Object.assign({}, SCENES.talkSteps, { talkJs: `setTimeout(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', metaKey: true })); const f = document.getElementById('find'); f.value = 'test'; f.dispatchEvent(new Event('input')); }, 400)` });
 SCENES.talkHarnessTop = Object.assign({}, SCENES.talkHarness, { talkJs: `setTimeout(() => { const b = [...document.querySelectorAll('button.step')].find((x) => /tests/.test(x.textContent)); if (b) b.click(); setTimeout(() => { document.getElementById('log').scrollTop = 0; }, 300); }, 400)` });
-SCENES.talkHarnessOverview = Object.assign({}, SCENES.talkHarness, { talkJs: `setTimeout(() => document.getElementById('allSessions').click(), 400)`, talk: Object.assign({}, SCENES.talkHarness.talk, { today: 'Today: 14 replies · 2h 10m of work · 23 files changed', others: [{ id: 'hh', project: 'blaube', color: '#D97757', state: 'done', status: 'Done: Committed as f3a91c2.', meta: 'feature/ledges · 3 changed' }, { id: 'hh2', project: 'kalkis', color: '#5B8DEF', state: 'waiting', status: 'Needs you: Claude needs your permission to use Bash', meta: '62% of context used · main', ask: { key: 3, tool: 'Bash', detail: 'npm run deploy' } }, { id: 'hh3', project: 'website', color: '#E07BA8', state: 'working', status: 'Editing Hero.tsx · 4m', meta: '2 of 5 on its list · main · 7 changed' }] }) });
+SCENES.talkHarnessOverview = Object.assign({}, SCENES.talkHarness, { talkJs: `setTimeout(() => document.getElementById('allSessions').click(), 400)`, talk: Object.assign({}, SCENES.talkHarness.talk, { today: 'Today: 14 replies · 2h 10m of work · 23 files changed', others: [{ id: 'hh', project: 'blaube', color: '#D97757', state: 'done', status: 'Done: Committed as f3a91c2.', meta: 'feature/ledges · 3 changed' }, { id: 'hh2', project: 'shop', color: '#5B8DEF', state: 'waiting', status: 'Needs you: Claude needs your permission to use Bash', meta: '62% of context used · main', ask: { key: 3, tool: 'Bash', detail: 'npm run deploy' } }, { id: 'hh3', project: 'website', color: '#E07BA8', state: 'working', status: 'Editing Hero.tsx · 4m', meta: '2 of 5 on its list · main · 7 changed' }] }) });
 // The speech bubbles in each of the other fonts Settings offers.
 for (const font of ['Concert One', 'DynaPuff', 'Rubik Spray Paint', 'System']) SCENES['speech' + font.replace(/ /g, '')] = Object.assign({}, SCENES.speech, { config: { size: 0.7, font } });
 SCENES.talkOverview = Object.assign({}, SCENES.talkChat, { talkJs: `setTimeout(() => document.getElementById('allSessions').click(), 400)` });
@@ -1202,7 +1202,7 @@ async function addTalk(win, scene, name) {
 	ipcMain.removeHandler('talk-github-todo');
 	ipcMain.handle('talk-github-todo', () => []);
 	ipcMain.removeHandler('talk-hub');
-	ipcMain.handle('talk-hub', () => ({ folders: [{ path: '/Users/me/Git/blaube', name: 'blaube' }, { path: '/Users/me/Git/kalkis', name: 'kalkis' }], past: [{ id: 'p1', title: 'Speed up the build', where: 'blaube · yesterday' }, { id: 'p2', title: 'Fix the login bug', where: 'kalkis · 3 days ago' }] }));
+	ipcMain.handle('talk-hub', () => ({ folders: [{ path: '/Users/me/Git/blaube', name: 'blaube' }, { path: '/Users/me/Git/shop', name: 'shop' }], past: [{ id: 'p1', title: 'Speed up the build', where: 'blaube · yesterday' }, { id: 'p2', title: 'Fix the login bug', where: 'shop · 3 days ago' }] }));
 	ipcMain.removeHandler('talk-history');
 	ipcMain.handle('talk-history', () => t.history || { entries: [], from: 0 });
 	ipcMain.removeHandler('talk-files-exist');

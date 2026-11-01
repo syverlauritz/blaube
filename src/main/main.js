@@ -2269,7 +2269,7 @@ function runDemo() {
   at(15000, () => { const s = tracker.sessions.get(b); if (s) { s.tasks = s.tasks.slice(1); pushState(); } });
   at(0, () => ev(a, path.join(home, 'code', 'blaube'), 'SessionStart'));
   at(900, () => ev(a, path.join(home, 'code', 'blaube'), 'UserPromptSubmit'));
-  at(1800, () => ev(b, path.join(home, 'code', 'kalkis'), 'UserPromptSubmit'));
+  at(1800, () => ev(b, path.join(home, 'code', 'shop'), 'UserPromptSubmit'));
   at(2600, () => ev(c, path.join(home, 'code', 'website'), 'UserPromptSubmit'));
   at(3400, () => ev(a, '', 'SubagentStart', { agent_id: 'demo-a1', agent_type: 'Explore' }));
   at(4200, () => ev(a, '', 'SubagentStart', { agent_id: 'demo-a2', agent_type: 'general-purpose' }));

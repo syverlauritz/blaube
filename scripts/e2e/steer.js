@@ -37,7 +37,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	const ID = 'steer-' + Date.now(), ID2 = ID + '-b';
 	const hook = (payload) => new Promise((done) => {
 		const req = http.request({ host: '127.0.0.1', port: PORT, path: '/blaube/hook', method: 'POST', headers: { 'content-type': 'application/json', 'x-blaube-entry': 'cli' } }, (res) => { res.resume(); res.on('end', done); });
-		req.end(JSON.stringify(Object.assign({ session_id: ID, cwd: '/tmp/kalkis' }, payload)));
+		req.end(JSON.stringify(Object.assign({ session_id: ID, cwd: '/tmp/shop' }, payload)));
 	});
 	// A tool event the way Claude Code sends it: through the hook command,
 	// whose output is what Claude reads.
@@ -46,7 +46,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 		let out = '';
 		p.stdout.on('data', (d) => { out += d; });
 		p.on('exit', (code) => { let json = null; try { json = out ? JSON.parse(out) : null; } catch { /* checked by the caller */ } done({ code, out, json }); });
-		p.stdin.end(JSON.stringify(Object.assign({ session_id: ID, cwd: '/tmp/kalkis' }, payload)));
+		p.stdin.end(JSON.stringify(Object.assign({ session_id: ID, cwd: '/tmp/shop' }, payload)));
 	});
 	const type = (text) => box(`(() => { const t = document.getElementById('text'); t.value = ${JSON.stringify(text)}; t.dispatchEvent(new Event('input')); document.getElementById('form').requestSubmit(); })()`);
 	const texts = () => box(`[...document.querySelectorAll('#inner .msg, #inner .note')].map((e) => e.dataset.text != null ? e.dataset.text : e.textContent)`);
@@ -64,9 +64,9 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	// A session at work: its first steps.
 	await hook({ hook_event_name: 'SessionStart' });
 	await hook({ hook_event_name: 'UserPromptSubmit', prompt: 'add the 2027 tax brackets' });
-	const pre = await tool({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: '/tmp/kalkis/src/tax.js' } });
+	const pre = await tool({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: '/tmp/shop/src/tax.js' } });
 	check(pre.code === 0 && !pre.out, 'an ordinary step goes ahead (nothing said back)');
-	await tool({ hook_event_name: 'PostToolUse', tool_name: 'Read', tool_input: { file_path: '/tmp/kalkis/src/tax.js' }, tool_response: { file: { content: 'export const brackets = [];' } } });
+	await tool({ hook_event_name: 'PostToolUse', tool_name: 'Read', tool_input: { file_path: '/tmp/shop/src/tax.js' }, tool_response: { file: { content: 'export const brackets = [];' } } });
 	await tool({ hook_event_name: 'PostToolUse', tool_name: 'TodoWrite', tool_input: { todos: [
 		{ content: 'Add the 2027 brackets', activeForm: 'Adding the 2027 brackets', status: 'in_progress' },
 		{ content: 'Update the tests', activeForm: 'Updating the tests', status: 'pending' },
@@ -98,7 +98,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	// Its Output, read from Claude Code's own file for it: no asking Claude.
 	const tmpRoot = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'blaube-cc-tmp-'));
 	process.env.CLAUDE_CODE_TMPDIR = tmpRoot;
-	const outDir = path.join(tmpRoot, `claude-${process.getuid ? process.getuid() : 0}`, '-tmp-kalkis', ID, 'tasks');
+	const outDir = path.join(tmpRoot, `claude-${process.getuid ? process.getuid() : 0}`, '-tmp-shop', ID, 'tasks');
 	fs.mkdirSync(outDir, { recursive: true });
 	fs.writeFileSync(path.join(outDir, 'bash_7.output'), '\x1b[32m  VITE ready\x1b[0m on http://localhost:5173\n');
 	const queuedBefore = (inbox.queue.get(ID) || []).length;
@@ -146,7 +146,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 
 	// Asked whether it may edit a file: the card shows the change, tinted.
 	const asking = sh(['-c', permissionCommand(PORT)], { env: Object.assign({}, process.env, { CLAUDE_CODE_ENTRYPOINT: 'cli' }) });
-	asking.stdin.end(JSON.stringify({ session_id: ID, cwd: '/tmp/kalkis', hook_event_name: 'PermissionRequest', tool_name: 'Edit', tool_input: { file_path: '/tmp/kalkis/src/tax.js', old_string: 'rate = 0.22', new_string: 'rate = 0.23' } }));
+	asking.stdin.end(JSON.stringify({ session_id: ID, cwd: '/tmp/shop', hook_event_name: 'PermissionRequest', tool_name: 'Edit', tool_input: { file_path: '/tmp/shop/src/tax.js', old_string: 'rate = 0.22', new_string: 'rate = 0.23' } }));
 	check(await until(() => box(`(() => { const d = document.getElementById('askDetail'); return !document.getElementById('ask').hidden && !!d.querySelector('.del') && /0\\.23/.test(d.querySelector('.add').textContent); })()`)), 'a permission card for an edit shows the change, tinted');
 	let askOut = '';
 	asking.stdout.on('data', (d) => { askOut += d; });
@@ -164,7 +164,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await until(() => box(`document.getElementById('ask').hidden`));
 
 	// Tapping a step shows what it did.
-	await tool({ hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: '/tmp/kalkis/src/tax.js', old_string: 'export const brackets = [];', new_string: 'export const brackets = [2027];' }, tool_response: {} });
+	await tool({ hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: '/tmp/shop/src/tax.js', old_string: 'export const brackets = [];', new_string: 'export const brackets = [2027];' }, tool_response: {} });
 	check(await until(() => box(`[...document.querySelectorAll('#inner .step.opens')].some((e) => /tax\.js/.test(e.textContent) && /Edit/.test(e.textContent))`)), 'an edit shows as a step you can open');
 	await box(`[...document.querySelectorAll('#inner .step.opens')].pop().click()`);
 	check(await until(() => box(`[...document.querySelectorAll('#inner .stepout')].some((e) => !e.hidden && /2027/.test(e.textContent))`)), 'tapping it shows the change');
@@ -179,18 +179,18 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(ctx && ctx.hookEventName === 'PostToolUse' && /2028/.test(ctx.additionalContext || ''), 'Claude gets it with that step’s result');
 	check(inbox.view(ID).queued === 0, 'and it isn’t waiting any more');
 	check(await until(() => box(`document.querySelectorAll('#inner .msg.you.queued').length === 0`)), 'the box shows it went in');
-	const again = await tool({ hook_event_name: 'PostToolUse', tool_name: 'Read', tool_input: { file_path: '/tmp/kalkis/README.md' }, tool_response: {} });
+	const again = await tool({ hook_event_name: 'PostToolUse', tool_name: 'Read', tool_input: { file_path: '/tmp/shop/README.md' }, tool_response: {} });
 	check(!again.out, 'only once');
 	// Sooner: the next tool's PreToolUse hands it over too, and asks for an answer at once.
 	await type('and say hi');
-	check(await until(() => box(`[...document.querySelectorAll('#inner .meta')].some((e) => /Claude sees this at its next step/.test(e.textContent))`)), 'a waiting message says Claude sees it at its next step');	const pre2 = await tool({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: '/tmp/kalkis/README.md' } });
+	check(await until(() => box(`[...document.querySelectorAll('#inner .meta')].some((e) => /Claude sees this at its next step/.test(e.textContent))`)), 'a waiting message says Claude sees it at its next step');	const pre2 = await tool({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: '/tmp/shop/README.md' } });
 	const ctx2 = pre2.json && pre2.json.hookSpecificOutput;
 	check(ctx2 && ctx2.hookEventName === 'PreToolUse' && !ctx2.permissionDecision && /say hi/.test(ctx2.additionalContext || '') && /very next text/.test(ctx2.additionalContext || ''), 'a PreToolUse hands it over, asking for a short answer straight away');
 	// What Claude writes between its steps shows as it's written (from its transcript).
 	const transcript = path.join(require('node:os').tmpdir(), `blaube-steer-${process.pid}.jsonl`);
 	fs.writeFileSync(transcript, JSON.stringify({ type: 'user', message: { role: 'user', content: 'add the 2027 brackets' } }) + '\n'
 		+ JSON.stringify({ type: 'assistant', message: { id: 'm-live', role: 'assistant', content: [{ type: 'text', text: 'Hi! Now I update the README.' }] } }) + '\n');
-	await tool({ hook_event_name: 'PreToolUse', transcript_path: transcript, tool_name: 'Read', tool_input: { file_path: '/tmp/kalkis/README.md' } });
+	await tool({ hook_event_name: 'PreToolUse', transcript_path: transcript, tool_name: 'Read', tool_input: { file_path: '/tmp/shop/README.md' } });
 	check(await until(() => box(`[...document.querySelectorAll('#inner .msg.claude')].some((e) => /Now I update the README/.test(e.textContent))`)), 'what it writes between steps shows in the box at once');
 	fs.appendFileSync(transcript, JSON.stringify({ type: 'assistant', message: { id: 'm-live2', role: 'assistant', content: [{ type: 'text', text: 'Then the changelog.' }] } }) + '\n');
 	check(await until(() => box(`[...document.querySelectorAll('#inner .msg.claude')].some((e) => /Then the changelog/.test(e.textContent))`), 5000), 'and between hooks, too');
@@ -251,12 +251,12 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => box(`!document.getElementById('toast').hidden && /Saved to Downloads/.test(document.getElementById('toast').textContent)`)), '⌘S saves the conversation, and says where');
 	const saved = await box(`document.getElementById('toast').title`);
 	const md = saved && fs.existsSync(saved) ? fs.readFileSync(saved, 'utf8') : '';
-	check(/^# kalkis/.test(md) && /> add the 2027 tax brackets/.test(md) && /\*\*Claude\*\*/.test(md) && /- Read tax\.js/.test(md) && /2028 isn’t started/.test(md), 'as Markdown: what you said, its steps, its replies');
+	check(/^# shop/.test(md) && /> add the 2027 tax brackets/.test(md) && /\*\*Claude\*\*/.test(md) && /- Read tax\.js/.test(md) && /2028 isn’t started/.test(md), 'as Markdown: what you said, its steps, its replies');
 	await key('s', mod);
 	const second = await until(async () => (await box(`document.getElementById('toast').title`)) !== saved);
 	check(second && fs.existsSync(saved), 'saving again never writes over the first');
 	await key('c', Object.assign({ shiftKey: true }, mod));
-	check(await until(async () => /^# kalkis/.test(await clipboard.readText())), '⇧⌘C copies it as Markdown');
+	check(await until(async () => /^# shop/.test(await clipboard.readText())), '⇧⌘C copies it as Markdown');
 	check(await box(`(() => { const b = document.querySelector('#inner .msg.claude .copyreply'); return !!b && b.draggable; })()`), 'a reply drags out as text');
 	check(await box(`[...document.querySelectorAll('#inner .filelink')].every((b) => b.draggable)`), 'a changed file drags out as the file');
 
@@ -267,7 +267,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	check(await until(() => box(`document.querySelectorAll('#others .dot, #others button:not(.all)').length >= 1`)), 'the other session shows in the header');
 	await key('0', mod);
 	check(await until(() => box(`document.body.classList.contains('overview')`)), '⌘0 opens the overview');
-	check(await until(() => box(`[...document.querySelectorAll('#overview .row:not(.past)')].map((r) => r.querySelector('b').textContent).join(',')`).then((t) => /kalkis/.test(t) && /website/.test(t))), 'with a row for each session');
+	check(await until(() => box(`[...document.querySelectorAll('#overview .row:not(.past)')].map((r) => r.querySelector('b').textContent).join(',')`).then((t) => /shop/.test(t) && /website/.test(t))), 'with a row for each session');
 	check(await box(`/Today/.test((document.querySelector('#overview .today') || {}).textContent || '')`), 'and the day so far');
 	check(await until(() => box(`[...document.querySelectorAll('#overview .planfirst')].map((l) => l.textContent.trim()).join(',') === 'Plan first,Own worktree'`)), 'and new sessions can plan first, or get a worktree of their own');
 	check(await until(() => box(`!!document.querySelector('#overview .planfirst input[type=checkbox]')`)), 'new sessions can start with a plan first');
@@ -284,7 +284,7 @@ module.exports = async function run({ win, inbox, PORT, talk, talkId, tracker })
 	await box(`[...document.querySelectorAll('#inner .msg.claude')].pop().querySelector('.fwd').click()`);
 	check(await until(() => box(`[...document.querySelectorAll('#inner .fwdmenu button')].map((b) => b.textContent).join() === 'website'`)), 'Send to… lists the other sessions');
 	await box(`document.querySelector('#inner .fwdmenu button').click()`);
-	const passed = () => [...inbox.log(ID2), ...(inbox.queue.get(ID2) || [])].some((e) => e.who === 'you' && /^\(This is from kalkis, another Claude Code session working in \/tmp\/kalkis; I'm passing it on:\)\n\nThis came while you were looking at the website\.$/.test(e.text));
+	const passed = () => [...inbox.log(ID2), ...(inbox.queue.get(ID2) || [])].some((e) => e.who === 'you' && /^\(This is from shop, another Claude Code session working in \/tmp\/shop; I'm passing it on:\)\n\nThis came while you were looking at the website\.$/.test(e.text));
 	check(await until(passed), 'and passes the reply on to the one you pick');
 	check(await until(() => inbox.log(ID).some((e) => e.who === 'note' && e.text === 'Sent to website')), 'saying where it went');
 	for (const e of inbox.queue.get(ID2) || []) inbox.unsend(ID2, e.n);
