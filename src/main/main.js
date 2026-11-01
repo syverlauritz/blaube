@@ -244,7 +244,11 @@ function applyTalkKey() {
 
 // A look picked from a blob's menu, per session (see New look).
 const LOOK_NAMES = (() => { require('../renderer/looks.js'); return globalThis.BlaubeLooks.LOOKS.map(([n]) => n).filter((n) => n !== 'none'); })();
-const newLook = (now) => { const left = LOOK_NAMES.filter((n) => n !== now); return left[Math.floor(Math.random() * left.length)]; };
+// (Not the one it was given from the menu, nor the one it's wearing now,
+// which its own blob says when its menu opens: else 1 in 8 New looks
+// changed nothing.)
+const wornLooks = new Map(); // session id -> the look its blob wore when its menu last opened
+const newLook = (id) => { const not = [(prefs.looks || {})[id], wornLooks.get(id)]; const left = LOOK_NAMES.filter((n) => !not.includes(n)); return left[Math.floor(Math.random() * left.length)]; };
 function setLook(s, look) {
   prefs.looks = Object.assign({}, prefs.looks, { [s.id]: look });
   const ids = Object.keys(prefs.looks);
@@ -2077,7 +2081,10 @@ const claudeFound = () => !!(findClaude() || owned.shellPath() || TEST);
 // tray, under a row that already says its name and how it is, so it's
 // only its own part; quick: the tray's quick actions for it, first.
 const stateWord = { working: 'Working', waiting: 'Needs you', done: 'Done', idle: 'Idle' };
-function sessionMenu(id) {
+// `look`: what its blob is wearing (said by the blob, when it's right-clicked).
+function sessionMenu(id, look) {
+  if (typeof look === 'string' && (look === 'none' || LOOK_NAMES.includes(look))) wornLooks.set(String(id), look); else wornLooks.delete(String(id));
+  if (wornLooks.size > 200) wornLooks.delete(wornLooks.keys().next().value);
   const items = sessionMenuTemplate(id);
   return items && Menu.buildFromTemplate(items);
 }
@@ -2116,8 +2123,8 @@ function sessionMenuTemplate(id, { tray = false, quick = [] } = {}) {
     ] },
     { label: 'Colour', submenu: colorMenu(colorOf(s) || prefs.config.color, (hex) => { prefs.colors[colorKey(s)] = hex; savePrefs(); pushState(); }) },
     // Its look: another one at random, or none at all (kept while it runs).
-    { label: 'New look', enabled: prefs.config.looks !== 'Off', click: () => setLook(s, newLook((prefs.looks || {})[s.id])) },
-    { label: 'Remove look', enabled: prefs.config.looks !== 'Off' && (prefs.looks || {})[s.id] !== 'none', click: () => setLook(s, 'none') },
+    { label: 'New look', enabled: prefs.config.looks !== 'Off', click: () => { setLook(s, newLook(s.id)); wornLooks.delete(s.id); } },
+    { label: 'Remove look', enabled: prefs.config.looks !== 'Off' && (wornLooks.get(s.id) || (prefs.looks || {})[s.id]) !== 'none', click: () => { setLook(s, 'none'); wornLooks.delete(s.id); } },
     // (Its session carries on, still tracked; Blobs… shows it again.)
     onStage(id) ? { label: 'Hide', toolTip: 'Takes its blob off the screen; its session carries on, and Blobs… shows it again', click: () => setBlobHidden(id, true) }
       : { label: 'Show', toolTip: 'Puts its blob back on the screen', click: () => setBlobHidden(id, false) },
@@ -4327,8 +4334,8 @@ app.whenReady().then(async () => {
     if (s && !s.id.startsWith('demo-')) goToSession(s);
   });
   ipcMain.on('app-menu', () => appMenu().popup({ window: win }));
-  ipcMain.on('session-menu', (_e, id) => {
-    const m = sessionMenu(id);
+  ipcMain.on('session-menu', (_e, id, look) => {
+    const m = sessionMenu(id, look);
     if (m) m.popup({ window: win });
   });
 

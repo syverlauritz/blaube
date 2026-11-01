@@ -7175,7 +7175,19 @@
   // (By the refresh's own time, not when this got round to running: that
   // wanders by a millisecond or so, and a frame drawn for the wrong moment
   // is a frame out of step.)
+  // One bad frame (a throw in a behaviour, say) mustn't stop the slimes for
+  // good: the next frame is asked for whatever happens in this one, and the
+  // error is said once (not 60 times a second).
+  let frameErr = '';
   function frame(stamp) {
+    requestAnimationFrame(frame);
+    try { frameBody(stamp); } catch (e) {
+      acc = 0; // (or the steps it didn't get through pile up)
+      const said = String(e && e.stack || e);
+      if (said !== frameErr) { frameErr = said; console.error('[blaube] frame:', said); }
+    }
+  }
+  function frameBody(stamp) {
     const now = (stamp || performance.now()) / 1000;
     acc += Math.max(0, Math.min(0.05, now - last));
     last = now;
@@ -7209,7 +7221,6 @@
     }
     updateIgnore();
     followTalk();
-    requestAnimationFrame(frame);
   }
 
   // --- Input --------------------------------------------------------------
@@ -7370,7 +7381,7 @@
     if (!b) return;
     const s = sessionOf(b);
     if (b.big && e.altKey) api.openTuning();
-    else if (s) api.showSessionMenu(s.id);
+    else if (s) api.showSessionMenu(s.id, b.session && b.session.id === s.id ? b.look || '' : ''); // (what it wears now: New look picks another)
     else api.showAppMenu();
   }
 

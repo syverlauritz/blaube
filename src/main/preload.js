@@ -9,7 +9,7 @@ contextBridge.exposeInMainWorld('blaube', {
   onPointer: (cb) => ipcRenderer.on('pointer', (_e, p) => cb(p)),
   acknowledge: (id) => ipcRenderer.send('acknowledge', id || null),
   showAppMenu: () => ipcRenderer.send('app-menu'),
-  showSessionMenu: (id) => ipcRenderer.send('session-menu', id),
+  showSessionMenu: (id, look) => ipcRenderer.send('session-menu', id, look),
   openSession: (id) => ipcRenderer.send('open-session', id),
   talk: (id, at) => ipcRenderer.send('talk', id, at),
   talkAt: (id, at) => ipcRenderer.send('talk-at', id, at), // where the tail leaves the box
