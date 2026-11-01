@@ -4,6 +4,8 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+- **Screenshot** by the talk box's field: pick a part of the screen (as ⇧⌘4 does on a Mac, or the Snipping Tool on Windows) and it goes with your message as a picture, with no saving and dragging.
+- **Keep as a command** under anything you said: name it, keep it for you or for the project, and `/its-name` says it again in any box (or terminal).
 - Right-click a blob for New look (another accessory, at random) or Remove look.
 - About one blob in three is plain (no look), up from one in five.
 ## [0.5.1] - 2026-10-29

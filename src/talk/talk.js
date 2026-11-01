@@ -561,16 +561,32 @@
     }
     // Your own, in a session Blaube started: change it (Esc Esc in the
     // terminal), going back to before it.
-    if (m.who === 'you' && m.uuid && (m.status === 'sent' || !m.status) && current.owned && api.editFrom) {
+    // And any you said: kept as a command of your own, to say it again
+    // with /its-name in any box or terminal.
+    const canEdit = m.who === 'you' && m.uuid && (m.status === 'sent' || !m.status) && current.owned && api.editFrom;
+    const canKeep = m.who === 'you' && (m.status === 'sent' || !m.status) && !current.demo && api.saveCommand && words.trim().length > 3 && !/^[/!#]/.test(words.trim());
+    if (canEdit || canKeep) {
       const t = document.createElement('div');
       t.className = 'meta edit';
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'unsend';
-      b.textContent = 'Edit';
-      b.title = 'Change this: it goes back to before it (its files too), then what you write goes instead';
-      b.onclick = () => startEdit(m);
-      t.append(b);
+      if (canEdit) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'unsend';
+        b.textContent = 'Edit';
+        b.title = 'Change this: it goes back to before it (its files too), then what you write goes instead';
+        b.onclick = () => startEdit(m);
+        t.append(b);
+      }
+      if (canKeep) {
+        if (canEdit) t.append(' · ');
+        const k = document.createElement('button');
+        k.type = 'button';
+        k.className = 'unsend';
+        k.textContent = 'Keep as a command';
+        k.title = 'Save this as a command of your own, to say it again with /its-name';
+        k.onclick = () => keepAsCommand(t, words.trim());
+        t.append(k);
+      }
       out.push(t);
     }
     if (m.via === 'terminal') e.title = 'Typed in the terminal';
@@ -2473,6 +2489,47 @@
   // Images pasted into the field, and files dropped on the box: chips
   // above the field, sent with the message as paths Claude can open.
   let files = []; // { path, name, pic: { url, w, h } for a picture already in hand }
+  // "Keep as a command": name it, and say where it's kept (this project's
+  // .claude/commands, which goes along with it, or yours, for every
+  // project). Then /name is in the box's suggestions everywhere.
+  function keepAsCommand(row, said) {
+    if (!current) return;
+    const id = current.id;
+    row.textContent = '';
+    row.classList.add('keeping');
+    const slash = document.createElement('span');
+    slash.textContent = '/';
+    const name = document.createElement('input');
+    name.className = 'cmdname';
+    name.placeholder = 'its-name';
+    name.setAttribute('aria-label', 'The command’s name');
+    name.maxLength = 40;
+    name.value = said.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').trim().split(/\s+/).slice(0, 3).join('-');
+    const say = document.createElement('span');
+    say.className = 'cmdsay';
+    const go = (where) => {
+      api.saveCommand(id, name.value, said, where).then((r) => {
+        if (!row.isConnected) return;
+        if (!r || r.error) { say.textContent = (r && r.error) || 'Couldn’t keep it'; name.focus(); return; }
+        row.classList.remove('keeping');
+        row.textContent = `Kept as /${r.name}${where === 'project' ? ' for this project' : ''}: type it in any box to say this again`;
+      });
+    };
+    const btn = (label, where, tip) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'unsend'; b.textContent = label; b.title = tip; b.onclick = () => go(where); return b; };
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'unsend';
+    cancel.textContent = 'Cancel';
+    cancel.onclick = () => { drawn.entries = []; render(current); };
+    name.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); go('mine'); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel.onclick(); }
+    });
+    row.append(slash, name, ' ', btn('Keep for me', 'mine', 'In your own commands (~/.claude/commands), for every project'), ' · ',
+      btn('For this project', 'project', 'In this project’s .claude/commands, so it goes along with the project'), ' · ', cancel, say);
+    name.focus();
+    name.select();
+  }
   function drawFiles() {
     const box = $('files');
     box.textContent = '';
@@ -2536,6 +2593,21 @@
   $('attach').addEventListener('click', () => {
     if (!current || current.demo || !api.attach) return;
     api.attach(current.id).then((paths) => { for (const p of paths || []) addFile(p); text.focus(); });
+  });
+  // A screenshot: the box steps aside while you pick a part of the screen.
+  if (api.snapOk) api.snapOk().then((ok) => { $('snap').hidden = !ok; });
+  $('snap').addEventListener('click', () => {
+    if (!current || current.demo || !api.snap) return;
+    const into = current.id, btn = $('snap'), label = btn.querySelector('span');
+    if (btn.classList.contains('busy')) return api.snap(into); // (again: stop waiting)
+    btn.classList.add('busy');
+    label.textContent = 'Picking…';
+    api.snap(into).then((file) => {
+      btn.classList.remove('busy');
+      label.textContent = 'Screenshot';
+      if (file && current && current.id === into) addFile(file, `Screenshot ${files.filter((x) => /^Screenshot /.test(x.name)).length + 1}`);
+      text.focus();
+    });
   });
   text.addEventListener('paste', async (e) => {
     if (!current || text.disabled || !api.paste) return;

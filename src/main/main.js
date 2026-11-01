@@ -3850,6 +3850,47 @@ app.whenReady().then(async () => {
   }));
   // 📎 in the box: files to go with the next message (the box stays open
   // while you pick).
+  // A screenshot for the message: the box steps aside while you pick a
+  // part of the screen (src/main/snap.js), then comes back with it by the
+  // field. A second tap (Windows, where nothing says you called it off)
+  // stops waiting.
+  let snapping = null;
+  // Something you said, kept as a command of your own (/name).
+  ipcMain.handle('talk-save-command', (_e, id, name, text, where) => {
+    const s = typeof id === 'string' && tracker.sessions.get(id);
+    if (!s || id.startsWith('demo-') || typeof text !== 'string' || text.length > 20000) return { error: 'Couldn’t keep it' };
+    if (where === 'project' && !s.cwd) return { error: 'It has no project folder' };
+    const dir = where === 'project' ? path.join(s.cwd, '.claude', 'commands') : path.join(app.getPath('home'), '.claude', 'commands');
+    const r = require('./commands').saveCommand(dir, name, text);
+    log(`kept a command for ${s.project}: ${r.error || r.file}`);
+    return r;
+  });
+  ipcMain.handle('talk-snap-ok', () => !TEST && require('./snap').supported());
+  ipcMain.handle('talk-snap', (_e, id) => new Promise((done) => {
+    const s = isOpen(id) && tracker.sessions.get(id);
+    const rec = s && talkOf(id);
+    if (snapping) { snapping.cancel(); return done(''); }
+    if (!rec || TEST) return done('');
+    const win = rec.win;
+    talkPicking = true;
+    try { win.setOpacity(0); win.setIgnoreMouseEvents(true); } catch { /* gone */ }
+    const back = () => { try { if (!win.isDestroyed()) { win.setOpacity(1); win.setIgnoreMouseEvents(false); } } catch { /* gone */ } };
+    // (Windows: the Snipping Tool has frozen the screen by now, so the box
+    // can come back while you pick, without being in the picture.)
+    const early = process.platform === 'win32' ? setTimeout(back, 1500) : null;
+    let handle = null;
+    handle = require('./snap').capture(path.join(app.getPath('temp'), 'blaube-pastes'), (file) => {
+      clearTimeout(early);
+      if (snapping === handle) snapping = null;
+      talkPicking = false;
+      back();
+      if (!win.isDestroyed() && win.isVisible()) win.focus();
+      if (file) noteTalkImages(id, [file]);
+      log(`screenshot for ${s.project}: ${file ? 'taken' : 'called off'}`);
+      done(file || '');
+    }, { clipboard });
+    snapping = handle && handle.cancel ? handle : null;
+  }));
   ipcMain.handle('talk-attach', async (_e, id) => {
     const s = isOpen(id) && tracker.sessions.get(id);
     if (!s || TEST) return [];

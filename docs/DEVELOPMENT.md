@@ -24,6 +24,7 @@ BLAUBE_TEST=scripts/e2e/steer.js BLAUBE_PORT=47873 npx electron .  # the real ap
 BLAUBE_TEST=scripts/e2e/owned.js BLAUBE_PORT=47876 npx electron .  # a session Blaube started, against a stand-in for Claude Code: /model, /plan, ⇧⇥ modes, Stop at once, bringing one in from a terminal (no tokens)
 BLAUBE_TEST=scripts/e2e/many.js BLAUBE_PORT=47874 npx electron .   # load: a dozen busy sessions at once, and nothing kept once they’re gone
 BLAUBE_TEST=scripts/e2e/media.js BLAUBE_PORT=47961 npx electron .  # pictures in the talk box: what shows (and what never does), big on a tap, drawing on one (no tokens)
+BLAUBE_TEST=scripts/e2e/keep.js BLAUBE_PORT=47962 npx electron .   # Keep as a command: named, kept in the project, suggested after / (no tokens)
 node scripts/make-icons.js  # re-render the icons (needs playwright)
 ```
 
