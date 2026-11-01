@@ -82,6 +82,29 @@
       this.restArea = polyArea(this.n, this.o.radius) * this.o.fullness;
     }
 
+    // A safety net: if a point ever went to NaN or Infinity (a force divided
+    // by a zero somewhere), the body would vanish for good and, touching
+    // others, spread it to them. So after each step: all well, it notes
+    // where it is; otherwise it's put back there, round and still. True if
+    // it had to be.
+    heal() {
+      let x = 0, y = 0;
+      for (let i = 0; i < this.n; i++) { x += this.px[i] + this.ox[i]; y += this.py[i] + this.oy[i]; }
+      if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(this.angle)) { this.safeX = x / (2 * this.n); this.safeY = y / (2 * this.n); return false; }
+      const b = this.bounds, r = Number.isFinite(this.o.radius) && this.o.radius > 0 ? this.o.radius : 40;
+      const cx = Number.isFinite(this.safeX) ? this.safeX : Math.min(b.right, 2000) / 2;
+      const cy = Number.isFinite(this.safeY) ? this.safeY : Math.min(b.bottom, 2000) / 2;
+      for (let i = 0; i < this.n; i++) {
+        const a = (i / this.n) * Math.PI * 2;
+        this.rx[i] = Math.cos(a) * r; this.ry[i] = Math.sin(a) * r;
+        this.px[i] = this.ox[i] = cx + this.rx[i];
+        this.py[i] = this.oy[i] = cy + this.ry[i];
+      }
+      this.angle = 0;
+      this.grab = null;
+      return true;
+    }
+
     centroid() {
       let x = 0, y = 0;
       for (let i = 0; i < this.n; i++) { x += this.px[i]; y += this.py[i]; }

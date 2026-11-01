@@ -234,3 +234,19 @@ test('morph reshapes the rest shape into a heart and back to a circle', () => {
   assert.ok(b.rx.every((v, i) => Math.abs(v - rx[i]) < 1e-9) && b.ry.every((v, i) => Math.abs(v - ry[i]) < 1e-9));
   assert.ok(Math.abs(b.restEdge - edge) < 1e-9);
 });
+
+test('a body that went to NaN is put back, round and still, where it last was', () => {
+  const b = new SoftBody(300, 200, { radius: 50 });
+  b.setBounds(0, 0, 800, 600);
+  for (let i = 0; i < 30; i++) { b.step(1 / 120); assert.strictEqual(b.heal(), false); }
+  const was = b.centroid();
+  b.px[3] = NaN;
+  assert.strictEqual(b.heal(), true);
+  const c = b.centroid();
+  assert.ok(Number.isFinite(c.x) && Number.isFinite(c.y));
+  assert.ok(Math.hypot(c.x - was.x, c.y - was.y) < 5, 'where it was');
+  const v = b.velocity(1 / 120);
+  assert.strictEqual(Math.hypot(v.x, v.y), 0);
+  for (let i = 0; i < 30; i++) b.step(1 / 120);
+  assert.ok(Number.isFinite(b.centroid().x), 'and carries on');
+});

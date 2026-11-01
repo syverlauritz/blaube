@@ -1800,6 +1800,7 @@
       const pre = body.velocity(DT);
       b.vel = pre; // (others watch it fly; see spectate)
       body.step(DT);
+      if (body.heal()) { b.vel = { x: 0, y: 0 }; console.warn('[blaube] a slime went out of shape (not a number) and was put back'); }
       updateGaze(b);
       b.look = lookOf(b);
       if (b.look !== 'none') Looks.stepLook(b, DT);
