@@ -4342,8 +4342,8 @@ app.whenReady().then(async () => {
 
   if (process.env.BLAUBE_DEMO) runDemo();
   if (TEST) {
-    const run = require(path.resolve(TEST));
-    Promise.resolve(run({ app, win, tracker, inbox, owned, startSession, PORT, talk: () => talkWin, talkId: () => talkId, pinned: () => pinnedTalks, log }))
+    // (A test that doesn't even load fails, rather than hanging till it's killed.)
+    Promise.resolve().then(() => require(path.resolve(TEST))).then((run) => run({ app, win, tracker, inbox, owned, startSession, PORT, talk: () => talkWin, talkId: () => talkId, pinned: () => pinnedTalks, log }))
       .then((code) => app.exit(code || 0), (e) => { console.error(e); app.exit(1); });
   }
 });

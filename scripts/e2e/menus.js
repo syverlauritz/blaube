@@ -102,13 +102,13 @@ module.exports = async function run({ win, tracker }) {
 	check(await until(async () => (await worn()) !== first, 3000), 'and another one, a different one');
 	// (Its menu opened from the blob knows what it wears: New look always
 	// changes it, never the same one again by chance, 1 in 8.)
-	let same = 0;
+	let unchanged = 0;
 	for (let i = 0; i < 16; i++) {
 		const was = await worn();
 		find(global.__blaubeSessionMenu('menus-a', was), 'New look').click();
-		if (!(await until(async () => (await worn()) !== was, 1500))) same++;
+		if (!(await until(async () => (await worn()) !== was, 1500))) unchanged++;
 	}
-	check(same === 0, `New look always changes it (${same} of 16 the same)`);
+	check(unchanged === 0, `New look always changes it (${unchanged} of 16 the same)`);
 	find(slime(), 'Remove look').click();
 	check(await until(async () => (await worn()) === 'none', 3000), 'Remove look takes it off');
 	check(!find(global.__blaubeSessionMenu('menus-a', 'none'), 'Remove look').enabled, 'a plain blob has nothing to remove');
