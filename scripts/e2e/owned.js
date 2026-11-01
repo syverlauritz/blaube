@@ -375,7 +375,8 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	const other = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-other-'));
 	await type('/add-dir ' + other);
 	check(await until(() => inbox.log(NID).some((e) => e.text === `It can work in ${other} too`), 10000), '/add-dir adds a folder it may work in');
-	check(owned.has(NID) && fs.readdirSync(dir).filter((f) => f.startsWith('args-')).some((f) => { const a = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); return a[a.indexOf('--resume') + 1] === NID && a[a.indexOf('--add-dir') + 1] === other; }), 'by starting it again with --add-dir, same session');
+	// (Its note comes as it's started again: the new one writes down its arguments a moment later.)
+	check(await until(() => owned.has(NID) && fs.readdirSync(dir).filter((f) => f.startsWith('args-')).some((f) => { const a = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); return a[a.indexOf('--resume') + 1] === NID && a[a.indexOf('--add-dir') + 1] === other; }), 5000), 'by starting it again with --add-dir, same session');
 	await type('/add-dir /no/such/folder');
 	check(await until(() => inbox.log(NID).some((e) => e.error && e.text === 'There’s no folder at /no/such/folder')), 'and says so when there’s no such folder');
 	await type('still there?');
