@@ -606,6 +606,7 @@ test('a worktree of Claude Code’s own: Bring into its project’s branch, then
   const main = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-tree-'));
   const g = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: 'pipe' }).toString().trim();
   g(main, 'init', '-q', '-b', 'main');
+  g(main, 'config', 'user.email', 'a@b'); g(main, 'config', 'user.name', 'a'); // (CI has no identity of its own)
   g(main, '-c', 'user.email=a@b', '-c', 'user.name=a', 'commit', '-q', '--allow-empty', '-m', 'one');
   const tree = path.join(main, '.claude', 'worktrees', 'lucky-otter');
   g(main, 'worktree', 'add', '-q', '-b', 'worktree-lucky-otter', tree);
@@ -637,6 +638,7 @@ test('Bring into: a conflict calls the merge off, nothing changed there', async 
   const g = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: 'pipe' }).toString().trim();
   const commit = (cwd, f, text) => { fs.writeFileSync(path.join(cwd, f), text); g(cwd, 'add', f); g(cwd, '-c', 'user.email=a@b', '-c', 'user.name=a', 'commit', '-q', '-m', text); };
   g(main, 'init', '-q', '-b', 'main');
+  g(main, 'config', 'user.email', 'a@b'); g(main, 'config', 'user.name', 'a'); // (CI has no identity of its own)
   commit(main, 'a.txt', 'one\n');
   const tree = path.join(main, '.claude', 'worktrees', 'x');
   g(main, 'worktree', 'add', '-q', '-b', 'worktree-x', tree);
