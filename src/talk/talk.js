@@ -586,6 +586,15 @@
         k.title = 'Save this as a command of your own, to say it again with /its-name';
         k.onclick = () => keepAsCommand(t, words.trim());
         t.append(k);
+        if (api.repeat) {
+          const r = document.createElement('button');
+          r.type = 'button';
+          r.className = 'unsend';
+          r.textContent = 'Repeat…';
+          r.title = 'Have this done again by itself, every day or hour, in a fresh session (while Blaube is open)';
+          r.onclick = () => repeatIt(t, words.trim());
+          t.append(' · ', r);
+        }
       }
       out.push(t);
     }
@@ -937,11 +946,12 @@
     requestAnimationFrame(fitWindow);
   }
   // Below the sessions: start one in a recent folder, or pick up a past one.
-  let hub = null, planFirst = false, ownTree = false, newModel = 'default', forYou = [];
+  let hub = null, planFirst = false, ownTree = false, newModel = 'default', forYou = [], routines = [];
   function loadHub() {
     if (!api.hub) return;
     const redraw = () => { if (document.body.classList.contains('overview') && current) drawOverview(current); };
     api.hub().then((h) => { hub = h; redraw(); });
+    if (api.routines) api.routines().then((list) => { routines = list || []; redraw(); });
     // (And what's waiting for you on GitHub, from your gh.)
     if (api.githubTodo) api.githubTodo().then((list) => { if (JSON.stringify(list) !== JSON.stringify(forYou)) { forYou = list || []; redraw(); } });
   }
@@ -1056,6 +1066,36 @@
           const err = await api.issue(x.url, { plan: planFirst, model: newModel, mine: x.kind === 'mine' });
           if (err) { row.disabled = false; m.textContent = err; requestAnimationFrame(fitWindow); }
         };
+        box.append(row);
+      }
+    }
+    // Routines: what's done again by itself, with Run now and Stop.
+    if (routines.length && api.routine) {
+      section('Repeating by itself');
+      for (const x of routines) {
+        const row = document.createElement('div');
+        row.className = 'row past routine';
+        const name = document.createElement('b');
+        name.textContent = x.prompt.length > 70 ? x.prompt.slice(0, 69) + '…' : x.prompt;
+        name.title = x.prompt;
+        const m = document.createElement('small');
+        m.textContent = `${x.project} · ${x.when} · next ${x.next}`;
+        m.title = x.cwd;
+        const btns = document.createElement('span');
+        btns.className = 'routinebtns';
+        const now = document.createElement('button');
+        now.type = 'button';
+        now.className = 'unsend';
+        now.textContent = 'Run now';
+        now.onclick = () => { now.disabled = true; api.routine(x.id, 'run').then(() => { now.textContent = 'Started'; }); };
+        const stop = document.createElement('button');
+        stop.type = 'button';
+        stop.className = 'unsend';
+        stop.textContent = 'Stop';
+        stop.title = 'It won’t be done again (sessions it started carry on)';
+        stop.onclick = () => api.routine(x.id, 'stop').then(() => { routines = routines.filter((y) => y.id !== x.id); if (current) drawOverview(current); });
+        btns.append(now, ' · ', stop);
+        row.append(name, m, btns);
         box.append(row);
       }
     }
@@ -2529,6 +2569,47 @@
       btn('For this project', 'project', 'In this project’s .claude/commands, so it goes along with the project'), ' · ', cancel, say);
     name.focus();
     name.select();
+  }
+  // "Repeat…": the same, again by itself (a routine), in a fresh session
+  // in this folder: every day, on weekdays or every hour.
+  function repeatIt(row, said) {
+    if (!current) return;
+    const id = current.id;
+    row.textContent = '';
+    row.classList.add('keeping');
+    const every = document.createElement('select');
+    every.className = 'cmdname';
+    every.setAttribute('aria-label', 'How often');
+    for (const [v, label] of [['day', 'Every day'], ['weekdays', 'Weekdays'], ['hour', 'Every hour']]) { const o = document.createElement('option'); o.value = v; o.textContent = label; every.append(o); }
+    const at = document.createElement('input');
+    at.type = 'time';
+    at.className = 'cmdname';
+    at.style.width = '7em';
+    at.value = '09:00';
+    at.setAttribute('aria-label', 'At');
+    const atWord = document.createElement('span');
+    atWord.textContent = 'at';
+    every.onchange = () => { at.hidden = atWord.hidden = every.value === 'hour'; };
+    const say = document.createElement('span');
+    say.className = 'cmdsay';
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'unsend';
+    go.textContent = 'Start repeating';
+    go.onclick = () => api.repeat(id, said, every.value, at.value).then((r) => {
+      if (!row.isConnected) return;
+      if (!r || r.error) { say.textContent = (r && r.error) || 'Couldn’t'; return; }
+      row.classList.remove('keeping');
+      row.textContent = `Repeats ${r.when}, in a fresh session here (next: ${r.next}). All sessions lists it, to stop it.`;
+    });
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'unsend';
+    cancel.textContent = 'Cancel';
+    cancel.onclick = () => { drawn.entries = []; render(current); };
+    row.append(every, ' ', atWord, ' ', at, ' ', go, ' · ', cancel, say);
+    row.title = 'In a fresh session in this folder, while Blaube is open; one it missed runs when Blaube is back';
+    every.focus();
   }
   function drawFiles() {
     const box = $('files');

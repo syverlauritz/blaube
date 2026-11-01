@@ -3088,6 +3088,54 @@ app.whenReady().then(async () => {
   }
   setInterval(() => carryTick(), 30e3).unref();
   if (TEST) global.__blaubeCarryTick = carryTick;
+  // Routines (src/main/routines.js): something you said, done again by
+  // itself on a schedule, each time in a fresh session in its folder.
+  const routines = require('./routines');
+  const routineList = () => (Array.isArray(prefs.routines) ? prefs.routines : []).filter(routines.valid);
+  function runRoutine(r, now = Date.now()) {
+    r.last = now;
+    savePrefs();
+    const prev = r.session && tracker.sessions.get(r.session);
+    if (prev && (prev.state === 'working' || prev.state === 'waiting')) { log(`routine in ${r.cwd}: the last one is still going, so not again`); return ''; }
+    // (Its last one, done and not open in front of you, makes way: one blob
+    // per routine, not one more every day. Past sessions still have it.)
+    if (prev && owned.has(prev.id) && !isOpen(prev.id)) owned.end(prev.id);
+    try { if (!fs.statSync(r.cwd).isDirectory()) throw new Error(); } catch { log(`routine in ${r.cwd}: the folder is gone`); return ''; }
+    const id = startSession(r.cwd, r.model ? ['--model', r.model] : [], '', '', true);
+    if (!id) return '';
+    r.session = id;
+    savePrefs();
+    inbox.add(id, { who: 'note', text: `A routine of yours, ${routines.when(r)} (All sessions lists it, to stop it)` });
+    sendMessage(id, r.prompt);
+    log(`routine in ${r.cwd} (${routines.when(r)}): started ${id}`);
+    return id;
+  }
+  function routineTick(now = Date.now()) {
+    if (TEST && !global.__blaubeRoutinesOn) return;
+    for (const r of routineList()) if (routines.due(r, now)) runRoutine(r, now);
+  }
+  setInterval(() => routineTick(), 30e3).unref();
+  if (TEST) global.__blaubeRoutineTick = routineTick;
+  const routineRows = (now = Date.now()) => routineList().map((r) => ({ id: r.id, project: path.basename(r.cwd), cwd: r.cwd, prompt: r.prompt, when: routines.when(r), next: routines.nextLabel(r, now) }));
+  ipcMain.handle('talk-routines', () => routineRows());
+  ipcMain.handle('talk-repeat', (_e, id, prompt, every, at) => {
+    const s = typeof id === 'string' && tracker.sessions.get(id);
+    if (!s || id.startsWith('demo-') || !s.cwd) return { error: 'It has no folder to work in' };
+    const r = routines.make({ cwd: s.cwd, prompt, every, at });
+    if (!r) return { error: 'Say how often' };
+    if (routineList().length >= 30) return { error: 'That’s 30 routines already: stop one first' };
+    prefs.routines = [...routineList(), r];
+    savePrefs();
+    log(`a routine in ${s.cwd}, ${routines.when(r)}`);
+    return { when: routines.when(r), next: routines.nextLabel(r, Date.now()) };
+  });
+  ipcMain.handle('talk-routine', (_e, rid, what) => {
+    const r = routineList().find((x) => x.id === rid);
+    if (!r) return false;
+    if (what === 'stop') { prefs.routines = routineList().filter((x) => x !== r); savePrefs(); log(`routine in ${r.cwd} stopped`); return true; }
+    if (what === 'run') return !!runRoutine(r);
+    return false;
+  });
   if (TEST) global.__blaubeSessionMenu = sessionMenu;
   if (TEST) global.__blaubeMoveAll = moveAllToTerminals;
   if (TEST) global.__blaubeTrayMenu = trayMenu;

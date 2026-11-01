@@ -11,7 +11,7 @@ const path = require('node:path');
 const os = require('node:os');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-module.exports = async function run({ win, tracker, inbox, talk, talkId }) {
+module.exports = async function run({ win, tracker, inbox, owned, talk, talkId }) {
 	let failed = 0;
 	const check = (ok, what) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) failed++; };
 	const js = (s) => win.webContents.executeJavaScript(s);
@@ -52,6 +52,41 @@ module.exports = async function run({ win, tracker, inbox, talk, talkId }) {
 	check(r && /already/.test(r.error || ''), `a name that’s taken isn’t written over (${r && r.error})`);
 	const own = await box(`blaubeTalk.saveCommand(${ID}, 'compact', 'x', 'project')`);
 	check(own && /Claude Code/.test(own.error || ''), 'nor one of Claude Code’s own');
+
+	// Repeat…: again by itself, listed under All sessions, with Stop.
+	inbox.add(id, { who: 'you', text: 'Look over my open pull requests and say what needs me', via: 'blaube', status: 'sent' });
+	check(await until(() => box(`[...document.querySelectorAll('.meta.edit button')].some((b) => b.textContent === 'Repeat…')`)), 'under what you said: Repeat…');
+	await box(`[...document.querySelectorAll('.meta.edit button')].filter((b) => b.textContent === 'Repeat…').pop().click()`);
+	check(await until(() => box(`!!document.querySelector('.meta.keeping select')`)), 'it asks how often');
+	await box(`(() => { const sel = document.querySelector('.meta.keeping select'); sel.value = 'weekdays'; sel.onchange(); document.querySelector('.meta.keeping input[type=time]').value = '08:30'; [...document.querySelectorAll('.meta.keeping button')].find((b) => b.textContent === 'Start repeating').click(); })()`);
+	check(await until(() => box(`[...document.querySelectorAll('.meta.edit')].some((m) => /Repeats weekdays at 08:30/.test(m.textContent))`)), 'and says when it repeats');
+	const list = await box(`blaubeTalk.routines()`);
+	check(list.length === 1 && list[0].cwd === folder && /^Look over my open/.test(list[0].prompt), 'kept, with its folder and what you said');
+	await box(`document.getElementById('allSessions').click()`);
+	check(await until(() => box(`[...document.querySelectorAll('.hubhead')].some((h) => h.textContent === 'Repeating by itself') && /weekdays at 08:30 · next/.test(document.querySelector('.row.routine')?.textContent || '')`), 5000), 'All sessions lists it, with when it’s next');
+	// Run now: a fresh session in its folder, told what you said (a
+	// stand-in for Claude Code, no tokens).
+	if (process.platform !== 'win32') {
+		const bin = path.join(folder, 'claude'), heard = path.join(folder, 'heard.txt');
+		fs.writeFileSync(bin, `#!/usr/bin/env node
+const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
+out({ type: 'system', subtype: 'init', permissionMode: 'default' });
+require('node:readline').createInterface({ input: process.stdin }).on('line', (l) => {
+  const m = JSON.parse(l);
+  if (m.type === 'user') { require('node:fs').appendFileSync(${JSON.stringify(heard)}, String(m.message.content) + '\\n'); out({ type: 'assistant', message: { content: [{ type: 'text', text: 'Two need you.' }] } }); out({ type: 'result', subtype: 'success', result: 'Two need you.' }); }
+});
+`, { mode: 0o755 });
+		owned.findClaude = () => bin;
+		const before = new Set(tracker.sessions.keys());
+		await box(`[...document.querySelectorAll('.row.routine button')].find((b) => b.textContent === 'Run now').click()`);
+		check(await until(() => { try { return /Look over my open pull requests/.test(fs.readFileSync(heard, 'utf8')); } catch { return false; } }, 8000), 'Run now starts a fresh session there, told what you said');
+		const fresh = [...tracker.sessions.keys()].find((k) => !before.has(k));
+		check(!!fresh && inbox.log(fresh).some((e) => e.who === 'note' && /A routine of yours, weekdays at 08:30/.test(e.text)), 'its box says it’s a routine, and when');
+		if (fresh) owned.end(fresh);
+	}
+	await box(`[...document.querySelectorAll('.row.routine button')].find((b) => b.textContent === 'Stop').click()`);
+	check(await until(() => box(`!document.querySelector('.row.routine')`)), 'Stop takes it away');
+	check((await box(`blaubeTalk.routines()`)).length === 0, 'and it’s gone for good');
 
 	fs.rmSync(folder, { recursive: true, force: true });
 	console.log(failed ? `\n${failed} failed` : '\nall passed');
