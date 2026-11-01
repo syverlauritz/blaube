@@ -18,6 +18,7 @@ const history = require('./history');
 const attention = require('./attention');
 const { names: sessionNames } = require('../shared/names');
 const media = require('../shared/talkMedia');
+const { writeWhole } = require('./safeWrite');
 const markdown = require('./markdown');
 const git = require('./git');
 const projectFiles = require('./files');
@@ -186,7 +187,7 @@ function savePrefs() {
   saveTimer = setTimeout(() => {
     try {
       fs.mkdirSync(path.dirname(prefsFile()), { recursive: true });
-      fs.writeFileSync(prefsFile(), JSON.stringify(prefs, null, 2));
+      writeWhole(prefsFile(), JSON.stringify(prefs, null, 2)); // (whole or not at all: see safeWrite.js)
     } catch { /* not fatal */ }
   }, 300);
 }
