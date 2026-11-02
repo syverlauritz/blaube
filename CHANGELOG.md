@@ -4,6 +4,11 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+- **Screenshot** by the talk box's field: pick a part of the screen (as ⇧⌘4 does on a Mac, or the Snipping Tool on Windows) and it goes with your message as a picture, with no saving and dragging.
+- **Repeat…** under anything you said has it done again by itself, every day, on weekdays or every hour, each time in a fresh session in that folder (while Blaube is open; one it missed runs when Blaube is back). **All sessions** lists them, with **Run now** and **Stop**.
+- A session working in its own worktree gets **Bring into main** (or whichever branch the project's folder is on) once it has commits there isn't: merged right there, no model call, and a conflict calls it off and asks Claude instead. Ending such a session takes its worktree away if nothing in it would be lost (its branch too, once merged).
+- **Read aloud** on a reply (on hover) reads it out in your computer's own voice, code and links left out; tap again to stop.
+- **Keep as a command** under anything you said: name it, keep it for you or for the project, and `/its-name` says it again in any box (or terminal).
 - Right-click a blob for New look (another accessory, at random) or Remove look.
 - About one blob in three is plain (no look), up from one in five.
 - New look always gives a blob a different look (1 in 8 times it changed nothing), and Remove look is greyed out on a plain blob.

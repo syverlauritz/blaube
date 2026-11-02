@@ -1240,6 +1240,13 @@ async function endOwned(s, what = 'End it') {
     });
     if (response !== 0) return false;
   }
+  // (Ended for good, in a worktree of its own: tidied away if nothing in it
+  // would be lost; its branch stays unless it's merged.)
+  const tree = what === 'End it' && cur && cur.cwd && /[\\/]\.claude[\\/]worktrees[\\/][^\\/]+$/.test(cur.cwd) ? cur.cwd : '';
+  if (tree) {
+    const tidy = (gone) => { if (gone !== s.id) return; owned.removeListener('exit', tidy); git.tidyTree(tree, (r) => log(`worktree ${tree}: ${r.removed ? `removed${r.branchGone ? `, and ${r.branch} (merged)` : ', its branch kept'}` : 'kept (changes in it, or git said no)'}`)); };
+    owned.on('exit', tidy);
+  }
   owned.end(s.id);
   return true;
 }
@@ -3096,6 +3103,54 @@ app.whenReady().then(async () => {
   }
   setInterval(() => carryTick(), 30e3).unref();
   if (TEST) global.__blaubeCarryTick = carryTick;
+  // Routines (src/main/routines.js): something you said, done again by
+  // itself on a schedule, each time in a fresh session in its folder.
+  const routines = require('./routines');
+  const routineList = () => (Array.isArray(prefs.routines) ? prefs.routines : []).filter(routines.valid);
+  function runRoutine(r, now = Date.now()) {
+    r.last = now;
+    savePrefs();
+    const prev = r.session && tracker.sessions.get(r.session);
+    if (prev && (prev.state === 'working' || prev.state === 'waiting')) { log(`routine in ${r.cwd}: the last one is still going, so not again`); return ''; }
+    // (Its last one, done and not open in front of you, makes way: one blob
+    // per routine, not one more every day. Past sessions still have it.)
+    if (prev && owned.has(prev.id) && !isOpen(prev.id)) owned.end(prev.id);
+    try { if (!fs.statSync(r.cwd).isDirectory()) throw new Error(); } catch { log(`routine in ${r.cwd}: the folder is gone`); return ''; }
+    const id = startSession(r.cwd, r.model ? ['--model', r.model] : [], '', '', true);
+    if (!id) return '';
+    r.session = id;
+    savePrefs();
+    inbox.add(id, { who: 'note', text: `A routine of yours, ${routines.when(r)} (All sessions lists it, to stop it)` });
+    sendMessage(id, r.prompt);
+    log(`routine in ${r.cwd} (${routines.when(r)}): started ${id}`);
+    return id;
+  }
+  function routineTick(now = Date.now()) {
+    if (TEST && !global.__blaubeRoutinesOn) return;
+    for (const r of routineList()) if (routines.due(r, now)) runRoutine(r, now);
+  }
+  setInterval(() => routineTick(), 30e3).unref();
+  if (TEST) global.__blaubeRoutineTick = routineTick;
+  const routineRows = (now = Date.now()) => routineList().map((r) => ({ id: r.id, project: path.basename(r.cwd), cwd: r.cwd, prompt: r.prompt, when: routines.when(r), next: routines.nextLabel(r, now) }));
+  ipcMain.handle('talk-routines', () => routineRows());
+  ipcMain.handle('talk-repeat', (_e, id, prompt, every, at) => {
+    const s = typeof id === 'string' && tracker.sessions.get(id);
+    if (!s || id.startsWith('demo-') || !s.cwd) return { error: 'It has no folder to work in' };
+    const r = routines.make({ cwd: s.cwd, prompt, every, at });
+    if (!r) return { error: 'Say how often' };
+    if (routineList().length >= 30) return { error: 'That’s 30 routines already: stop one first' };
+    prefs.routines = [...routineList(), r];
+    savePrefs();
+    log(`a routine in ${s.cwd}, ${routines.when(r)}`);
+    return { when: routines.when(r), next: routines.nextLabel(r, Date.now()) };
+  });
+  ipcMain.handle('talk-routine', (_e, rid, what) => {
+    const r = routineList().find((x) => x.id === rid);
+    if (!r) return false;
+    if (what === 'stop') { prefs.routines = routineList().filter((x) => x !== r); savePrefs(); log(`routine in ${r.cwd} stopped`); return true; }
+    if (what === 'run') return !!runRoutine(r);
+    return false;
+  });
   if (TEST) global.__blaubeSessionMenu = sessionMenu;
   if (TEST) global.__blaubeMoveAll = moveAllToTerminals;
   if (TEST) global.__blaubeTrayMenu = trayMenu;
@@ -3647,11 +3702,12 @@ app.whenReady().then(async () => {
     const pr = prStates.get(id);
     const cmd = s && st && s.state !== 'working' && s.state !== 'waiting' && git.command(run, st, pr);
     if (!cmd) return;
-    const as = run === 'push' ? `Pushed ${st.branch || 'it'}` : run === 'home' ? `Back on ${pr.base}, up to date, ${st.branch} deleted` : run === 'finish' ? (st.midway === 'rebase' ? 'Carried on with the rebase' : `Finished the ${st.midway}`) : run === 'abort' ? `Called off the ${st.midway}: back to how it was before` : `Pulled into ${st.branch || 'it'}`;
+    const as = run === 'bringin' ? `Brought ${st.branch} into ${st.tree.base}, in ${path.basename(st.tree.main)}’s own folder` : run === 'push' ? `Pushed ${st.branch || 'it'}` : run === 'home' ? `Back on ${pr.base}, up to date, ${st.branch} deleted` : run === 'finish' ? (st.midway === 'rebase' ? 'Carried on with the rebase' : `Finished the ${st.midway}`) : run === 'abort' ? `Called off the ${st.midway}: back to how it was before` : `Pulled into ${st.branch || 'it'}`;
     const entry = runForSession(id, cmd, as, (code) => {
       if (code === 0 && win) win.webContents.send('nod', id);
       if (code === 0 && run === 'push') pulls.forget(s.cwd, st.branch); // (its checks start again)
-      if (code !== 0) entry.text = run === 'abort' ? `git couldn’t call off the ${st.midway} (tap for why); tapping it again asks Claude to` : run === 'finish' ? 'git couldn’t finish it (tap for why); tapping it again asks Claude to' : run === 'push' ? 'git couldn’t push (tap for why); Push again asks Claude to' : run === 'home' ? `git couldn’t do all of it (tap for why): ${st.branch} may still be there` : 'git couldn’t pull without a merge (tap for why); Pull again asks Claude to';
+      if (run === 'bringin') git.forget(st.tree.main);
+      if (code !== 0) entry.text = run === 'bringin' ? `git couldn’t bring it into ${st.tree.base} by itself (tap for why), so nothing changed there; Bring into ${st.tree.base} again asks Claude to` : run === 'abort' ? `git couldn’t call off the ${st.midway} (tap for why); tapping it again asks Claude to` : run === 'finish' ? 'git couldn’t finish it (tap for why); tapping it again asks Claude to' : run === 'push' ? 'git couldn’t push (tap for why); Push again asks Claude to' : run === 'home' ? `git couldn’t do all of it (tap for why): ${st.branch} may still be there` : 'git couldn’t pull without a merge (tap for why); Pull again asks Claude to';
       if (run === 'home') { prStates.delete(id); pulls.forget(s.cwd, st.branch); }
       git.forget(s.cwd);
       git.status(s.cwd, (now) => {
@@ -3858,6 +3914,47 @@ app.whenReady().then(async () => {
   }));
   // 📎 in the box: files to go with the next message (the box stays open
   // while you pick).
+  // A screenshot for the message: the box steps aside while you pick a
+  // part of the screen (src/main/snap.js), then comes back with it by the
+  // field. A second tap (Windows, where nothing says you called it off)
+  // stops waiting.
+  let snapping = null;
+  // Something you said, kept as a command of your own (/name).
+  ipcMain.handle('talk-save-command', (_e, id, name, text, where) => {
+    const s = typeof id === 'string' && tracker.sessions.get(id);
+    if (!s || id.startsWith('demo-') || typeof text !== 'string' || text.length > 20000) return { error: 'Couldn’t keep it' };
+    if (where === 'project' && !s.cwd) return { error: 'It has no project folder' };
+    const dir = where === 'project' ? path.join(s.cwd, '.claude', 'commands') : path.join(app.getPath('home'), '.claude', 'commands');
+    const r = require('./commands').saveCommand(dir, name, text);
+    log(`kept a command for ${s.project}: ${r.error || r.file}`);
+    return r;
+  });
+  ipcMain.handle('talk-snap-ok', () => !TEST && require('./snap').supported());
+  ipcMain.handle('talk-snap', (_e, id) => new Promise((done) => {
+    const s = isOpen(id) && tracker.sessions.get(id);
+    const rec = s && talkOf(id);
+    if (snapping) { snapping.cancel(); return done(''); }
+    if (!rec || TEST) return done('');
+    const win = rec.win;
+    talkPicking = true;
+    try { win.setOpacity(0); win.setIgnoreMouseEvents(true); } catch { /* gone */ }
+    const back = () => { try { if (!win.isDestroyed()) { win.setOpacity(1); win.setIgnoreMouseEvents(false); } } catch { /* gone */ } };
+    // (Windows: the Snipping Tool has frozen the screen by now, so the box
+    // can come back while you pick, without being in the picture.)
+    const early = process.platform === 'win32' ? setTimeout(back, 1500) : null;
+    let handle = null;
+    handle = require('./snap').capture(path.join(app.getPath('temp'), 'blaube-pastes'), (file) => {
+      clearTimeout(early);
+      if (snapping === handle) snapping = null;
+      talkPicking = false;
+      back();
+      if (!win.isDestroyed() && win.isVisible()) win.focus();
+      if (file) noteTalkImages(id, [file]);
+      log(`screenshot for ${s.project}: ${file ? 'taken' : 'called off'}`);
+      done(file || '');
+    }, { clipboard });
+    snapping = handle && handle.cancel ? handle : null;
+  }));
   ipcMain.handle('talk-attach', async (_e, id) => {
     const s = isOpen(id) && tracker.sessions.get(id);
     if (!s || TEST) return [];

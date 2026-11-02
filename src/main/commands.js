@@ -210,4 +210,28 @@ function contextNote(r) {
   return { text: `Context: ${pct}% full (${kTokens(used)} of ${kTokens(r.maxTokens)})`, context: { max: r.maxTokens, parts: parts.map((p) => Object.assign(p, { label: `${p.name} ${kTokens(p.tokens)}` })) } };
 }
 
-module.exports = { blaubeCommand, skills, skillPrompt, askInWords, bugUrl, slashCommand, commandNames, expand, control, contextNote, kTokens, EFFORTS };
+// Something you said, kept as one of your own commands (a .md file in
+// .claude/commands, as Claude Code reads them), so /name says it again in
+// any box or terminal. `name` is tidied ("Check the CI!" -> check-the-ci).
+// Returns { name, file } or { error }; never writes over one that's there.
+function tidyName(name) {
+  return String(name || '').trim().replace(/^\//, '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^[-_]+|[-_]+$/g, '').replace(/-{2,}/g, '-').slice(0, 40).replace(/[-_]+$/, '');
+}
+function saveCommand(dir, name, text) {
+  const n = tidyName(name);
+  const body = String(text || '').trim();
+  if (!n || !/^[a-z]/.test(n)) return { error: 'Give it a name that starts with a letter' };
+  if (!body) return { error: 'There’s nothing to keep' };
+  if (BUILT_IN.has(n) || Object.hasOwn(BLAUBE, n)) return { error: `/${n} is one of Claude Code’s own` };
+  const file = path.join(dir, n + '.md');
+  if (fs.existsSync(file)) return { error: `There’s a /${n} already` };
+  const about = body.split('\n')[0].replace(/\s+/g, ' ').trim();
+  const desc = (about.length > 80 ? about.slice(0, 79) + '…' : about).replace(/"/g, '\'');
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(file, `---\ndescription: "${desc}"\n---\n\n${body}\n`, { flag: 'wx' });
+  } catch (e) { return { error: e.code === 'EEXIST' ? `There’s a /${n} already` : 'Couldn’t write it' }; }
+  return { name: n, file };
+}
+
+module.exports = { blaubeCommand, saveCommand, tidyName, skills, skillPrompt, askInWords, bugUrl, slashCommand, commandNames, expand, control, contextNote, kTokens, EFFORTS };

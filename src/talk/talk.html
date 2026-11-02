@@ -300,7 +300,10 @@
   .msg .copyreply, .msg .fwd { position: absolute; bottom: -4px; background: var(--paper); border-radius: 999px; padding: 2px 10px; opacity: 0; transition: opacity .15s; }
   .msg .copyreply { right: -6px; }
   .msg .fwd { right: 56px; }
-  .msg.claude:hover .copyreply, .msg .copyreply:focus-visible, .msg.claude:hover .fwd, .msg .fwd:focus-visible { opacity: 1; }
+  .msg.claude:hover .copyreply, .msg .copyreply:focus-visible, .msg.claude:hover .fwd, .msg .fwd:focus-visible, .msg.claude:hover .speak, .msg .speak:focus-visible { opacity: 1; }
+  .msg .speak { position: absolute; bottom: -4px; right: 56px; background: var(--paper); border-radius: 999px; padding: 2px 10px; opacity: 0; transition: opacity .15s; }
+  .msg .speak.withfwd { right: 136px; }
+  .msg .speak[data-label="Stop reading"] { opacity: 1; color: var(--ink); }
   .fwdmenu { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .fwdmenu button { display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 999px; padding: 4px 12px 4px 10px; background: var(--soft); font: 700 13.5px var(--ui); color: var(--ink); cursor: pointer; }
   .fwdmenu button::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
@@ -324,6 +327,12 @@
   .unsend:hover { text-decoration-color: var(--ink); }
   .msg.you + .meta.edit { opacity: 0; transition: opacity .15s; }
   .msg.you:hover + .meta.edit, .meta.edit:hover, .meta.edit:focus-within { opacity: 1; }
+  .meta.keeping { opacity: 1 !important; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 4px; justify-content: flex-end; }
+  .meta .cmdname { font: 700 13.5px var(--mono); width: 12em; border: 1px solid var(--underline); border-radius: 6px; padding: 2px 6px; background: transparent; color: var(--ink); }
+  .meta .cmdsay { flex-basis: 100%; text-align: right; color: var(--red); }
+  .meta .cmdsay:empty { display: none; }
+  .row.routine { cursor: default; }
+  .row.routine .routinebtns { font: 600 13px var(--ui); color: var(--dim); }
   /* Small things that happened: centred, quiet. */
   .note { align-self: center; font: 600 14px/1.45 var(--ui); color: var(--dim); text-align: center; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px; }
   .note.error { color: var(--red); white-space: normal; background: var(--errbg); border-radius: 14px; padding: 8px 14px; align-self: stretch; text-align: left; }
@@ -688,6 +697,7 @@
       <textarea id="text" rows="2" placeholder="Message Claude…" aria-label="Message"></textarea>
       <div class="formbar">
         <button id="attach" class="attach" type="button" title="Add files to your message (or paste an image, or drop files on the box)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5 12 20a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg>Attach</button>
+        <button id="snap" class="attach" type="button" hidden title="Pick a part of the screen to add to your message"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><circle cx="12" cy="12" r="3"/></svg><span>Screenshot</span></button>
         <span class="spacer"></span>
         <button class="stop" id="stop" type="button" hidden aria-label="Stop it"><i></i><span>Stop</span></button>
         <button id="send" type="submit" disabled>Send<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
