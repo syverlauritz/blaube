@@ -28,8 +28,10 @@ function findInShell() {
 
 // Stops a process and everything it started (on Windows, claude.cmd runs
 // claude under cmd.exe: stopping cmd.exe alone would leave claude going).
+// (Not one that has already ended: on Windows its pid may be someone
+// else's by now, and taskkill /T would take that one and its children.)
 function stop(proc) {
-  if (!proc || !proc.pid) return;
+  if (!proc || !proc.pid || proc.exitCode != null || proc.signalCode != null) return;
   if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true });
   else proc.kill();
 }

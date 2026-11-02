@@ -11,6 +11,12 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 - **Keep as a command** under anything you said: name it, keep it for you or for the project, and `/its-name` says it again in any box (or terminal).
 - Right-click a blob for New look (another accessory, at random) or Remove look.
 - About one blob in three is plain (no look), up from one in five.
+- New look always gives a blob a different look (1 in 8 times it changed nothing), and Remove look is greyed out on a plain blob.
+- One bad moment in a blob's behaviour no longer freezes every blob for good, and a blob whose shape ever breaks is put back instead of vanishing.
+- Claude Code's settings.json (and Blaube's own settings) are written whole or not at all, and a settings.json that's a link (dotfiles) stays a link.
+- Pasting a picture over 20 MB, or a TIFF from Preview, in the talk box works (it did nothing before), and one that can't be added says so.
+- Sessions show up even when your login shell prints a greeting or colours before `claude agents`.
+- On Windows, stopping a session that had already ended can no longer stop another program that got its process number.
 ## [0.5.1] - 2026-10-29
 
 - Most blobs wear a look again (a bow, ears, antennas...): only about one in five is plain, down from half.

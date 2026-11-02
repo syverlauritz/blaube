@@ -24,6 +24,7 @@ function run(command, cwd, cb, { timeout = 120e3, platform = process.platform, e
   proc.stdout.setEncoding('utf8'); proc.stderr.setEncoding('utf8');
   proc.stdout.on('data', keep); proc.stderr.on('data', keep);
   const stop = () => {
+    if (done || proc.exitCode != null || proc.signalCode != null) return; // (its pid may be another's by now)
     if (win) spawnSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true });
     else try { process.kill(-proc.pid, 'SIGTERM'); } catch { /* gone */ }
   };

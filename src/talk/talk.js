@@ -2735,10 +2735,14 @@
     e.preventDefault();
     const into = current.id; // (if you hop to another slime meanwhile, it isn't theirs)
     for (const it of items) {
-      const f = it.getAsFile();
+      let f = it.getAsFile();
       if (!f) continue;
-      const [saved, pic] = await Promise.all([api.paste(into, new Uint8Array(await f.arrayBuffer()), f.type), readPic(f)]);
+      // (A kind Claude can't read, a TIFF from Preview say: made a PNG first.)
+      if (!/^image\/(png|jpeg|gif|webp)$/.test(f.type) && f.size <= 60e6) f = await createImageBitmap(f).then((bmp) => { const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height; c.getContext('2d').drawImage(bmp, 0, 0); bmp.close(); return new Promise((ok) => c.toBlob(ok, 'image/png')); }).catch(() => null) || f;
+      const [saved, pic] = await Promise.all([f.size > 60e6 ? '' : api.paste(into, new Uint8Array(await f.arrayBuffer()), f.type), readPic(f)]);
       if (saved && current && current.id === into) addFile(saved, `Image ${files.filter((x) => /^Image /.test(x.name)).length + 1}`, pic || undefined);
+      // (It used to vanish without a word.)
+      else if (!saved && current && current.id === into) toast(f.size > 60e6 ? 'That picture is too big to add (over 60 MB)' : 'Couldn’t add that picture');
     }
   });
   document.addEventListener('dragover', (e) => { if (current && !text.disabled) { e.preventDefault(); document.body.classList.add('dropping'); } });

@@ -18,6 +18,7 @@ const history = require('./history');
 const attention = require('./attention');
 const { names: sessionNames } = require('../shared/names');
 const media = require('../shared/talkMedia');
+const { writeWhole } = require('./safeWrite');
 const markdown = require('./markdown');
 const git = require('./git');
 const projectFiles = require('./files');
@@ -186,7 +187,7 @@ function savePrefs() {
   saveTimer = setTimeout(() => {
     try {
       fs.mkdirSync(path.dirname(prefsFile()), { recursive: true });
-      fs.writeFileSync(prefsFile(), JSON.stringify(prefs, null, 2));
+      writeWhole(prefsFile(), JSON.stringify(prefs, null, 2)); // (whole or not at all: see safeWrite.js)
     } catch { /* not fatal */ }
   }, 300);
 }
@@ -201,7 +202,7 @@ function saveQueue(now) {
     queueTimer = null;
     const json = JSON.stringify(inbox.snapshot());
     if (json === queueSaved) return;
-    try { fs.mkdirSync(path.dirname(queueFile()), { recursive: true }); fs.writeFileSync(queueFile(), json); queueSaved = json; } catch { /* not fatal */ }
+    try { writeWhole(queueFile(), json); queueSaved = json; } catch { /* not fatal */ }
   };
   if (now) write(); else queueTimer = setTimeout(write, 300);
 }
@@ -244,7 +245,11 @@ function applyTalkKey() {
 
 // A look picked from a blob's menu, per session (see New look).
 const LOOK_NAMES = (() => { require('../renderer/looks.js'); return globalThis.BlaubeLooks.LOOKS.map(([n]) => n).filter((n) => n !== 'none'); })();
-const newLook = (now) => { const left = LOOK_NAMES.filter((n) => n !== now); return left[Math.floor(Math.random() * left.length)]; };
+// (Not the one it was given from the menu, nor the one it's wearing now,
+// which its own blob says when its menu opens: else 1 in 8 New looks
+// changed nothing.)
+const wornLooks = new Map(); // session id -> the look its blob wore when its menu last opened
+const newLook = (id) => { const not = [(prefs.looks || {})[id], wornLooks.get(id)]; const left = LOOK_NAMES.filter((n) => !not.includes(n)); return left[Math.floor(Math.random() * left.length)]; };
 function setLook(s, look) {
   prefs.looks = Object.assign({}, prefs.looks, { [s.id]: look });
   const ids = Object.keys(prefs.looks);
@@ -1070,7 +1075,7 @@ function saveOwned() {
   });
   const json = JSON.stringify(list);
   if (json === ownedSaved) return;
-  try { fs.mkdirSync(path.dirname(ownedFile()), { recursive: true }); fs.writeFileSync(ownedFile(), json); ownedSaved = json; } catch { /* not fatal */ }
+  try { writeWhole(ownedFile(), json); ownedSaved = json; } catch { /* not fatal */ }
 }
 // Quitting for good: none come back. (And none of their stopping is saved.)
 function forgetOwned() {
@@ -2084,7 +2089,10 @@ const claudeFound = () => !!(findClaude() || owned.shellPath() || TEST);
 // tray, under a row that already says its name and how it is, so it's
 // only its own part; quick: the tray's quick actions for it, first.
 const stateWord = { working: 'Working', waiting: 'Needs you', done: 'Done', idle: 'Idle' };
-function sessionMenu(id) {
+// `look`: what its blob is wearing (said by the blob, when it's right-clicked).
+function sessionMenu(id, look) {
+  if (typeof look === 'string' && (look === 'none' || LOOK_NAMES.includes(look))) wornLooks.set(String(id), look); else wornLooks.delete(String(id));
+  if (wornLooks.size > 200) wornLooks.delete(wornLooks.keys().next().value);
   const items = sessionMenuTemplate(id);
   return items && Menu.buildFromTemplate(items);
 }
@@ -2123,8 +2131,8 @@ function sessionMenuTemplate(id, { tray = false, quick = [] } = {}) {
     ] },
     { label: 'Colour', submenu: colorMenu(colorOf(s) || prefs.config.color, (hex) => { prefs.colors[colorKey(s)] = hex; savePrefs(); pushState(); }) },
     // Its look: another one at random, or none at all (kept while it runs).
-    { label: 'New look', enabled: prefs.config.looks !== 'Off', click: () => setLook(s, newLook((prefs.looks || {})[s.id])) },
-    { label: 'Remove look', enabled: prefs.config.looks !== 'Off' && (prefs.looks || {})[s.id] !== 'none', click: () => setLook(s, 'none') },
+    { label: 'New look', enabled: prefs.config.looks !== 'Off', click: () => { setLook(s, newLook(s.id)); wornLooks.delete(s.id); } },
+    { label: 'Remove look', enabled: prefs.config.looks !== 'Off' && (wornLooks.get(s.id) || (prefs.looks || {})[s.id]) !== 'none', click: () => { setLook(s, 'none'); wornLooks.delete(s.id); } },
     // (Its session carries on, still tracked; Blobs… shows it again.)
     onStage(id) ? { label: 'Hide', toolTip: 'Takes its blob off the screen; its session carries on, and Blobs… shows it again', click: () => setBlobHidden(id, true) }
       : { label: 'Show', toolTip: 'Puts its blob back on the screen', click: () => setBlobHidden(id, false) },
@@ -3789,7 +3797,7 @@ app.whenReady().then(async () => {
   // An image pasted into the talk box: saved where Claude can open it.
   ipcMain.handle('talk-paste', (_e, id, bytes, type) => {
     const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }[type];
-    if (!id || !isOpen(id) || !ext || !(bytes instanceof Uint8Array) || bytes.length > 20e6) return '';
+    if (!id || !isOpen(id) || !ext || !(bytes instanceof Uint8Array) || bytes.length > 60e6) return ''; // (as big as the box takes: see readPic)
     try {
       const dir = path.join(app.getPath('temp'), 'blaube-pastes');
       fs.mkdirSync(dir, { recursive: true });
@@ -4424,15 +4432,15 @@ app.whenReady().then(async () => {
     if (s && !s.id.startsWith('demo-')) goToSession(s);
   });
   ipcMain.on('app-menu', () => appMenu().popup({ window: win }));
-  ipcMain.on('session-menu', (_e, id) => {
-    const m = sessionMenu(id);
+  ipcMain.on('session-menu', (_e, id, look) => {
+    const m = sessionMenu(id, look);
     if (m) m.popup({ window: win });
   });
 
   if (process.env.BLAUBE_DEMO) runDemo();
   if (TEST) {
-    const run = require(path.resolve(TEST));
-    Promise.resolve(run({ app, win, tracker, inbox, owned, startSession, PORT, talk: () => talkWin, talkId: () => talkId, pinned: () => pinnedTalks, log }))
+    // (A test that doesn't even load fails, rather than hanging till it's killed.)
+    Promise.resolve().then(() => require(path.resolve(TEST))).then((run) => run({ app, win, tracker, inbox, owned, startSession, PORT, talk: () => talkWin, talkId: () => talkId, pinned: () => pinnedTalks, log }))
       .then((code) => app.exit(code || 0), (e) => { console.error(e); app.exit(1); });
   }
 });

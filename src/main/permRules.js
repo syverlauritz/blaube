@@ -4,6 +4,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { writeWhole } = require('./safeWrite');
 
 // Its settings files, the most local first.
 function files(dirs, home = os.homedir()) {
@@ -37,9 +38,7 @@ function remove(file, rule) {
   const j = readJson(file);
   if (!j || !j.permissions || !Array.isArray(j.permissions.allow) || !j.permissions.allow.includes(rule)) return false;
   j.permissions.allow = j.permissions.allow.filter((r) => r !== rule);
-  const tmp = `${file}.blaube-${process.pid}`;
-  fs.writeFileSync(tmp, JSON.stringify(j, null, 2) + '\n');
-  fs.renameSync(tmp, file);
+  writeWhole(file, JSON.stringify(j, null, 2) + '\n');
   return true;
 }
 
@@ -58,9 +57,7 @@ function add(file, rule) {
   if (allow.includes(rule)) return false;
   j.permissions.allow = [...allow, rule];
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.blaube-${process.pid}`;
-  fs.writeFileSync(tmp, JSON.stringify(j, null, 2) + '\n');
-  fs.renameSync(tmp, file);
+  writeWhole(file, JSON.stringify(j, null, 2) + '\n');
   return true;
 }
 

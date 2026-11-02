@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { DEFAULT_PORT, HOOK_PATH, INBOX_PATH, PERMISSION_PATH } = require('./hookServer');
+const { writeWhole } = require('./safeWrite');
 
 const EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'Stop', 'SubagentStart', 'SubagentStop', 'SessionEnd'];
 const TOOL_EVENTS = new Set(['PreToolUse', 'PostToolUse', 'PostToolUseFailure']);
@@ -101,8 +102,8 @@ function read(file) {
 
 function write(file, data) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  if (fs.existsSync(file)) fs.copyFileSync(file, file + '.blaube-backup');
-  fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
+  if (fs.existsSync(file)) fs.copyFileSync(file, file + '.blaube-backup'); // (the link's target's text, beside the link)
+  writeWhole(file, JSON.stringify(data, null, 2) + '\n');
 }
 
 function isInstalled(file = settingsPath(), port = DEFAULT_PORT) {
