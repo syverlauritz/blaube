@@ -26,7 +26,7 @@ module.exports = async function run({ win, tracker, talk, talkId }) {
 
 	// Eight sessions, each its own project, in all four states.
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-blobs-'));
-	const names = ['blaube', 'kalkis', 'paintbox', 'garden', 'ledger', 'notes', 'studio', 'website'];
+	const names = ['blaube', 'shop', 'paintbox', 'garden', 'ledger', 'notes', 'studio', 'website'];
 	const ids = names.map((n) => `blobs-${n}`);
 	const ev = (i, hook_event_name, extra) => tracker.handle(Object.assign({ session_id: ids[i], cwd: path.join(root, names[i]), hook_event_name }, extra));
 	for (const n of names) fs.mkdirSync(path.join(root, n));
@@ -169,7 +169,7 @@ module.exports = async function run({ win, tracker, talk, talkId }) {
 		tracker.handle({ session_id: ids[4], cwd: path.join(root, names[4]), hook_event_name: 'PreToolUse', agent_id: 'h3', tool_name: 'Grep', tool_input: { pattern: 'maxBlobs' } });
 		await until(async () => (await rows()).length === 8);
 		await sleep(400);
-		// (kalkis hidden by hand, the rest as the max of 5 leaves them)
+		// (shop hidden by hand, the rest as the max of 5 leaves them)
 		if (!(await row(ids[1])).open) { await eye(ids[1]); await until(async () => (await row(ids[1])).open); }
 		await eye(ids[1]);
 		await until(async () => /· hidden$/.test((await row(ids[1])).how));

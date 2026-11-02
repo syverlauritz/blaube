@@ -6,21 +6,21 @@ const at = new Date(2026, 9, 26, 9, 5).getTime();
 
 test('a conversation becomes Markdown: you quoted, Claude as written, steps as a list', () => {
   const md = toMarkdown({
-    project: 'kalkis',
-    cwd: '/Users/s/kalkis',
+    project: 'shop',
+    cwd: '/Users/s/shop',
     log: [
       { who: 'you', text: 'add the 2027 brackets\nand tests', at },
       { who: 'step', text: 'Read tax.js', at },
       { who: 'step', text: 'Ran npm test', ok: false, at },
-      { who: 'claude', text: 'Done! The **brackets** are in.', at: at + 4 * 60e3, turn: { took: 4 * 60e3, steps: 2, files: ['/Users/s/kalkis/src/tax.js'] } },
+      { who: 'claude', text: 'Done! The **brackets** are in.', at: at + 4 * 60e3, turn: { took: 4 * 60e3, steps: 2, files: ['/Users/s/shop/src/tax.js'] } },
       { who: 'note', text: 'You asked it to stop', at },
       { who: 'you', text: 'also 2028', status: 'unsent', at },
     ],
   }, at);
   assert.equal(md, [
-    '# kalkis',
+    '# shop',
     '',
-    '_/Users/s/kalkis · 2026-10-26 09:05 · from Blaube_',
+    '_/Users/s/shop · 2026-10-26 09:05 · from Blaube_',
     '',
     '**You** · 09:05',
     '',

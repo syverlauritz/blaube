@@ -12,12 +12,12 @@ test('the talk shortcut goes to whoever needs you most', () => {
 });
 
 test('notifications only when the slimes can’t be seen, and finishing only after a wait', () => {
-  assert.deepEqual(notification({ event: 'waiting', project: 'kalkis', text: 'Claude needs your permission to use Bash' }),
-    { title: 'kalkis needs you', body: 'Claude needs your permission to use Bash' });
-  assert.equal(notification({ event: 'waiting', project: 'kalkis', seen: true }), null);
-  assert.equal(notification({ event: 'waiting', project: 'kalkis', enabled: false }), null);
-  assert.equal(notification({ event: 'done', project: 'kalkis', secs: 5 }), null);
-  assert.deepEqual(notification({ event: 'done', project: 'kalkis', name: 'kalkis · Fix login', text: '**All** tests pass.', secs: 90 }), { title: 'kalkis · Fix login is done', body: 'All tests pass.' });
+  assert.deepEqual(notification({ event: 'waiting', project: 'shop', text: 'Claude needs your permission to use Bash' }),
+    { title: 'shop needs you', body: 'Claude needs your permission to use Bash' });
+  assert.equal(notification({ event: 'waiting', project: 'shop', seen: true }), null);
+  assert.equal(notification({ event: 'waiting', project: 'shop', enabled: false }), null);
+  assert.equal(notification({ event: 'done', project: 'shop', secs: 5 }), null);
+  assert.deepEqual(notification({ event: 'done', project: 'shop', name: 'shop · Fix login', text: '**All** tests pass.', secs: 90 }), { title: 'shop · Fix login is done', body: 'All tests pass.' });
 });
 
 test('a session at a glance, in words', () => {
@@ -55,7 +55,7 @@ test('the day so far, across sessions', () => {
 test('search finds what was said in any session, most hits first, with a snippet', () => {
   const { search } = require('../src/main/attention.js');
   const sessions = [
-    { id: 'a', project: 'kalkis', log: [{ who: 'you', text: 'add the tax brackets' }, { who: 'claude', text: 'The brackets for 2027 are in src/tax.js now.' }] },
+    { id: 'a', project: 'shop', log: [{ who: 'you', text: 'add the tax brackets' }, { who: 'claude', text: 'The brackets for 2027 are in src/tax.js now.' }] },
     { id: 'b', project: 'website', log: [{ who: 'step', text: 'Ran npm test', detail: '$ npm test\nbrackets.test.js failed' }, { who: 'claude', text: 'Fixed the footer.' }] },
     { id: 'c', project: 'other', log: [{ who: 'claude', text: 'Nothing here.' }] },
   ];
@@ -68,20 +68,20 @@ test('search finds what was said in any session, most hits first, with a snippet
 
 test('a permission it asks for can be answered from the notification', () => {
   const { notification } = require('../src/main/attention.js');
-  const n = notification({ event: 'waiting', project: 'kalkis', text: 'Claude needs your permission to use Bash', ask: { kind: 'tool', tool: 'Bash', detail: 'Run `npm test`' } });
-  assert.deepEqual(n, { title: 'kalkis asks to use Bash', body: 'Run npm test', actions: ['Allow', 'Deny'] });
-  assert.equal(notification({ event: 'waiting', project: 'kalkis', text: 'Pick one', ask: { kind: 'question' } }).actions, undefined, 'a question needs the box');
+  const n = notification({ event: 'waiting', project: 'shop', text: 'Claude needs your permission to use Bash', ask: { kind: 'tool', tool: 'Bash', detail: 'Run `npm test`' } });
+  assert.deepEqual(n, { title: 'shop asks to use Bash', body: 'Run npm test', actions: ['Allow', 'Deny'] });
+  assert.equal(notification({ event: 'waiting', project: 'shop', text: 'Pick one', ask: { kind: 'question' } }).actions, undefined, 'a question needs the box');
 });
 
 test('an API error is worth a notification', () => {
   const { notification } = require('../src/main/attention.js');
-  assert.deepEqual(notification({ event: 'error', project: 'kalkis', text: '5-hour limit reached ∙ resets 3pm' }), { title: 'kalkis couldn’t go on', body: '5-hour limit reached ∙ resets 3pm' });
+  assert.deepEqual(notification({ event: 'error', project: 'shop', text: '5-hour limit reached ∙ resets 3pm' }), { title: 'shop couldn’t go on', body: '5-hour limit reached ∙ resets 3pm' });
 });
 
 test('a background task that crashed is worth a notification', () => {
   const { notification } = require('../src/main/attention');
-  assert.deepEqual(notification({ event: 'task', project: 'kalkis', text: 'Dev server' }), { title: 'kalkis: Dev server stopped', body: 'It ended with an error. Its last lines are in its box.' });
-  assert.equal(notification({ event: 'task', project: 'kalkis', text: 'Dev server', seen: true }), null);
+  assert.deepEqual(notification({ event: 'task', project: 'shop', text: 'Dev server' }), { title: 'shop: Dev server stopped', body: 'It ended with an error. Its last lines are in its box.' });
+  assert.equal(notification({ event: 'task', project: 'shop', text: 'Dev server', seen: true }), null);
 });
 
 test('the overview says how long it has been waiting on you', () => {
@@ -94,27 +94,27 @@ test('the overview says how long it has been waiting on you', () => {
 
 test('a question in a notification: what it asks, its answers a tap away', () => {
   const ask = (questions) => ({ kind: 'question', input: { questions } });
-  const n = notification({ event: 'waiting', project: 'kalkis', ask: ask([{ question: 'Which year?', options: [{ label: '2027' }, { label: '2028' }] }]) });
-  assert.deepEqual(n, { title: 'kalkis asks', body: 'Which year?', question: 'Which year?', actions: ['2027', '2028'] });
-  const many = notification({ event: 'waiting', project: 'kalkis', ask: ask([{ question: 'Pick some', multiSelect: true, options: [{ label: 'a' }] }]) });
-  assert.deepEqual(many, { title: 'kalkis asks', body: 'Pick some' }, 'several picks: answered in its box');
-  const four = notification({ event: 'waiting', project: 'kalkis', ask: ask([{ question: 'Which?', options: [{ label: 'a' }, { label: 'b' }, { label: 'c' }, { label: 'd' }] }]) });
+  const n = notification({ event: 'waiting', project: 'shop', ask: ask([{ question: 'Which year?', options: [{ label: '2027' }, { label: '2028' }] }]) });
+  assert.deepEqual(n, { title: 'shop asks', body: 'Which year?', question: 'Which year?', actions: ['2027', '2028'] });
+  const many = notification({ event: 'waiting', project: 'shop', ask: ask([{ question: 'Pick some', multiSelect: true, options: [{ label: 'a' }] }]) });
+  assert.deepEqual(many, { title: 'shop asks', body: 'Pick some' }, 'several picks: answered in its box');
+  const four = notification({ event: 'waiting', project: 'shop', ask: ask([{ question: 'Which?', options: [{ label: 'a' }, { label: 'b' }, { label: 'c' }, { label: 'd' }] }]) });
   assert.equal(four.actions, undefined);
   assert.equal(four.question, 'Which?', 'still answerable in words');
 });
 
 test('a finished turn says what it came to in the title', () => {
   const { notification } = require('../src/main/attention');
-  assert.equal(notification({ event: 'done', project: 'kalkis', text: 'Done.', secs: 90, turn: { files: 3, failed: false } }).title, 'kalkis is done · 3 files changed');
-  assert.equal(notification({ event: 'done', project: 'kalkis', text: 'Done.', secs: 90, turn: { files: 1, failed: true } }).title, 'kalkis is done, but its tests fail · 1 file changed');
-  assert.equal(notification({ event: 'done', project: 'kalkis', text: 'Done.', secs: 90, turn: { files: 0, failed: false } }).title, 'kalkis is done');
+  assert.equal(notification({ event: 'done', project: 'shop', text: 'Done.', secs: 90, turn: { files: 3, failed: false } }).title, 'shop is done · 3 files changed');
+  assert.equal(notification({ event: 'done', project: 'shop', text: 'Done.', secs: 90, turn: { files: 1, failed: true } }).title, 'shop is done, but its tests fail · 1 file changed');
+  assert.equal(notification({ event: 'done', project: 'shop', text: 'Done.', secs: 90, turn: { files: 0, failed: false } }).title, 'shop is done');
 });
 
 test('news of its pull request is a notification when its slime can’t be seen', () => {
   const { notification } = require('../src/main/attention');
-  assert.deepEqual(notification({ event: 'pr', project: 'kalkis', text: 'PR #12: 1 check failed' }), { title: 'kalkis: PR #12: 1 check failed', body: 'Its box has a quick action for it.' });
-  assert.deepEqual(notification({ event: 'pr', project: 'kalkis', text: 'PR #12 is merged' }), { title: 'kalkis: PR #12 is merged', body: 'On GitHub.' });
-  assert.equal(notification({ event: 'pr', project: 'kalkis', text: 'PR #12 is merged', seen: true }), null);
+  assert.deepEqual(notification({ event: 'pr', project: 'shop', text: 'PR #12: 1 check failed' }), { title: 'shop: PR #12: 1 check failed', body: 'Its box has a quick action for it.' });
+  assert.deepEqual(notification({ event: 'pr', project: 'shop', text: 'PR #12 is merged' }), { title: 'shop: PR #12 is merged', body: 'On GitHub.' });
+  assert.equal(notification({ event: 'pr', project: 'shop', text: 'PR #12 is merged', seen: true }), null);
 });
 
 test('changes left uncommitted a while after it finished are mentioned, once per set', () => {

@@ -18,6 +18,8 @@ Every session is a soft little blob on your screen. It shows you what Claude is 
   <a href="https://github.com/syverlauritz/blaube/releases/latest/download/Blaube-Setup-windows.exe"><b>Download for Windows</b></a>
 </p>
 
+<p align="center">Or install with one line (no security warnings to click through): <a href="#install-with-one-line">see how</a></p>
+
 ---
 
 ## What Claude is doing, at a glance
@@ -80,6 +82,26 @@ They babble what's in their speech bubbles in a little made-up language, and rea
 
 ## Getting started
 
+### Install with one line
+
+The quickest way, and it skips the "unverified developer" warnings below. Paste this into **Terminal** (Mac):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/syverlauritz/blaube/main/install.sh | bash
+```
+
+or into **PowerShell** (Windows):
+
+```powershell
+irm https://raw.githubusercontent.com/syverlauritz/blaube/main/install.ps1 | iex
+```
+
+It downloads the newest release for your computer from this page's [Releases](https://github.com/syverlauritz/blaube/releases), installs it (into Applications on a Mac, just for you on Windows, no admin needed), and opens Blaube. Run it again any time to update. Read what it does first: [install.sh](install.sh), [install.ps1](install.ps1).
+
+Then skip to step 3 below.
+
+### Or download it
+
 1. **Download** Blaube for [Mac (Apple Silicon)](https://github.com/syverlauritz/blaube/releases/latest/download/Blaube-mac-arm64.dmg), [Mac (Intel)](https://github.com/syverlauritz/blaube/releases/latest/download/Blaube-mac-x64.dmg) or [Windows](https://github.com/syverlauritz/blaube/releases/latest/download/Blaube-Setup-windows.exe). On a Mac, drag it into Applications; on Windows, run the installer (no admin needed).
 2. **Open it** (the first time needs one extra click, see below).
 3. **Connect:** right-click the blob and choose **Connect Claude Code…**. Then start or restart a Claude Code session, and its blob pops out.
@@ -98,6 +120,8 @@ Want to see it without Claude running? Choose **Play → Demo sessions** from th
 
 ### First launch (builds aren't notarized yet)
 
+Installed with the one line above? Nothing to do here. Downloaded it from the browser:
+
 - **macOS:** open Blaube once and dismiss the warning ("Apple could not verify…"). Then go to **System Settings → Privacy & Security**, scroll down to "Blaube was blocked" and click **Open Anyway**. (On recent macOS, right-click → Open no longer skips this.) Or in Terminal: `xattr -dr com.apple.quarantine /Applications/Blaube.app`
 - **Windows:** SmartScreen may warn you. Choose **More info → Run anyway**.
 
@@ -106,7 +130,7 @@ Want to see it without Claude running? Choose **Play → Demo sessions** from th
 Blaube looks for a new version when it starts and every four hours after that; **Check for updates…**, under the version at the top of its menu, looks right away.
 
 - **Windows:** the new version downloads in the background and is installed the next time you quit Blaube, or now with **Restart to update to x.y.z**.
-- **macOS:** the menu says **Download Blaube x.y.z…**, which opens the release to download it and drag it over the old one. (macOS only lets an app replace itself when it's signed with a Developer ID; once the build is signed ([see how](docs/DEVELOPMENT.md#signing-and-notarizing-the-mac-build)), Macs update like Windows does.)
+- **macOS:** the menu says **Download Blaube x.y.z…**, which opens the release to download it and drag it over the old one (or run the [one-line install](#install-with-one-line) again, which does that for you). (macOS only lets an app replace itself when it's signed with a Developer ID; once the build is signed ([see how](docs/DEVELOPMENT.md#signing-and-notarizing-the-mac-build)), Macs update like Windows does.)
 
 ## No API tokens, nothing leaves your computer
 

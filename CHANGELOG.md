@@ -11,6 +11,8 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 - **Keep as a command** under anything you said: name it, keep it for you or for the project, and `/its-name` says it again in any box (or terminal).
 - Right-click a blob for New look (another accessory, at random) or Remove look.
 - About one blob in three is plain (no look), up from one in five.
+- Install with one line: `install.sh` (Mac) and `install.ps1` (Windows) download the newest release, install it and open it, with no "unverified developer" step. Run again to update.
+- The demo sessions, screenshots and tests use made-up project names.
 - New look always gives a blob a different look (1 in 8 times it changed nothing), and Remove look is greyed out on a plain blob.
 - One bad moment in a blob's behaviour no longer freezes every blob for good, and a blob whose shape ever breaks is put back instead of vanishing.
 - Claude Code's settings.json (and Blaube's own settings) are written whole or not at all, and a settings.json that's a link (dotfiles) stays a link.
