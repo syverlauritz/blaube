@@ -51,15 +51,19 @@ function runOne(dir, cb) {
   execFile(shell, ['-ilc', 'claude agents --json'], opts, cb);
 }
 
+// The list, from what the command printed. (Run through a login shell, a
+// prompt theme or a greeting can come first, often with colour codes like
+// "\x1b[0m" whose "[" isn't the list's: so each "[" is tried in turn,
+// up to the last "]".)
 function parse(stdout) {
-  const start = stdout.indexOf('[');
-  if (start < 0) return null;
-  try {
-    const list = JSON.parse(stdout.slice(start));
-    return Array.isArray(list) ? list : null;
-  } catch {
-    return null;
+  const text = String(stdout || ''), end = text.lastIndexOf(']') + 1;
+  for (let start = text.indexOf('['), tries = 0; start >= 0 && tries < 50; start = text.indexOf('[', start + 1), tries++) {
+    try {
+      const list = JSON.parse(text.slice(start, end));
+      if (Array.isArray(list)) return list;
+    } catch { /* not this one */ }
   }
+  return null;
 }
 
 // Calls onAgents(list) every few seconds while enabled() is true. After a

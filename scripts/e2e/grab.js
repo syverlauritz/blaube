@@ -172,7 +172,8 @@ module.exports = async function run({ win, tracker }) {
 		check(!r.after.busy, `${name}: let go, nothing it was about to do fires late (${r.after.busy || 'none'})`);
 		check(h.omega < Math.max(2, rest.omega * 3), `${name}: held, it doesn't whirl round (ω ${f(h.omega)} vs ${f(rest.omega)} at rest)`);
 		check(h.churnStill < Math.max(200, rest.churnStill * 2.5), `${name}: held still, its skin settles (churn ${f(h.churnStill, 0)} vs ${f(rest.churnStill, 0)})`);
-		check(h.areaMin > 0.8 && h.areaMax < 1.2, `${name}: held, it keeps its size (${f(h.areaMin, 2)}-${f(h.areaMax, 2)})`);
+		// (Against itself held at rest: a blob's breath and how full its context is puff it up a little, about 1.2 of its rest area, whatever it was doing.)
+		check(h.areaMin > rest.areaMin * 0.8 && h.areaMax < rest.areaMax * 1.08, `${name}: held, it keeps its size (${f(h.areaMin, 2)}-${f(h.areaMax, 2)} vs ${f(rest.areaMin, 2)}-${f(rest.areaMax, 2)} at rest)`);
 		check(h.aspect < Math.max(1.9, rest.aspect + 0.4), `${name}: held, it isn't left stretched (${f(h.aspect, 2)} vs ${f(rest.aspect, 2)})`);
 		check(h.lagStill < Math.max(15, rest.lagStill * 2), `${name}: held still, the spot you hold stays under the cursor (${f(h.lagStill)} px)`);
 	}

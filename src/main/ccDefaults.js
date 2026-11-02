@@ -4,6 +4,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { writeWhole } = require('./safeWrite');
 
 const MODES = [['default', 'Ask before acting'], ['acceptEdits', 'Accept edits'], ['plan', 'Plan first']];
 const fileOf = (home = os.homedir()) => path.join(home, '.claude', 'settings.json');
@@ -36,9 +37,7 @@ function write(change, home) {
     if (Object.keys(p).length) j.permissions = p; else delete j.permissions;
   }
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.blaube-${process.pid}`;
-  fs.writeFileSync(tmp, JSON.stringify(j, null, 2) + '\n');
-  fs.renameSync(tmp, file);
+  writeWhole(file, JSON.stringify(j, null, 2) + '\n');
   return true;
 }
 

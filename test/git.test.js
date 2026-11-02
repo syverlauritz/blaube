@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { parseStatus, summary, quickActions, status } = require('../src/main/git.js');
+const git = require('../src/main/git.js');
 
 const OUT = `# branch.oid 4b89ff7
 # branch.head feature/talk
@@ -598,4 +599,58 @@ test('changes you set aside yourself (git stash), and bringing them back', async
     assert.equal(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8'), '2\n');
     assert.deepEqual((await list()).map((x) => x.subject), ['try the tax idea']);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a worktree of Claude Code’s own: Bring into its project’s branch, then tidied away', async (t) => {
+  if (process.platform === 'win32') return t.skip('sh');
+  const main = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-tree-'));
+  const g = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: 'pipe' }).toString().trim();
+  g(main, 'init', '-q', '-b', 'main');
+  g(main, 'config', 'user.email', 'a@b'); g(main, 'config', 'user.name', 'a'); // (CI has no identity of its own)
+  g(main, '-c', 'user.email=a@b', '-c', 'user.name=a', 'commit', '-q', '--allow-empty', '-m', 'one');
+  const tree = path.join(main, '.claude', 'worktrees', 'lucky-otter');
+  g(main, 'worktree', 'add', '-q', '-b', 'worktree-lucky-otter', tree);
+  g(main, 'worktree', 'lock', tree);
+  fs.writeFileSync(path.join(tree, 'a.txt'), 'hi\n');
+  g(tree, 'add', 'a.txt');
+  g(tree, '-c', 'user.email=a@b', '-c', 'user.name=a', 'commit', '-q', '-m', 'two');
+  const st = await new Promise((r) => git.status(tree, r, Date.now() + 1e7));
+  assert.equal(fs.realpathSync(st.tree.main), fs.realpathSync(main));
+  assert.equal(st.tree.base, 'main');
+  assert.equal(st.tree.ahead, 1);
+  const q = git.quickActions(st, 'idle').find((x) => /^Bring into main/.test(x.label));
+  assert.ok(q && q.run === 'bringin', 'Bring into main, run right there');
+  assert.ok(!git.quickActions(st, 'idle', { gitFailed: 'bringin' }).find((x) => /^Bring into/.test(x.label)).run, 'after git couldn’t: asks Claude');
+  const cmd = git.command('bringin', st, null, 'linux');
+  execFileSync('sh', ['-c', cmd], { cwd: tree, stdio: 'pipe' });
+  assert.ok(fs.existsSync(path.join(main, 'a.txt')), 'merged into the project’s own folder');
+  // Ended for good: the worktree goes, and its (merged) branch.
+  const r = await new Promise((done) => git.tidyTree(tree, done));
+  assert.ok(r.removed && r.branchGone, JSON.stringify(r));
+  assert.ok(!fs.existsSync(tree) && !g(main, 'branch').includes('worktree-lucky-otter'));
+  // Not in a Claude worktree: nothing.
+  assert.equal(git.claudeTree(main, path.join(main, '.git')), null);
+});
+
+test('Bring into: a conflict calls the merge off, nothing changed there', async (t) => {
+  if (process.platform === 'win32') return t.skip('sh');
+  const main = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-tree-'));
+  const g = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: 'pipe' }).toString().trim();
+  const commit = (cwd, f, text) => { fs.writeFileSync(path.join(cwd, f), text); g(cwd, 'add', f); g(cwd, '-c', 'user.email=a@b', '-c', 'user.name=a', 'commit', '-q', '-m', text); };
+  g(main, 'init', '-q', '-b', 'main');
+  g(main, 'config', 'user.email', 'a@b'); g(main, 'config', 'user.name', 'a'); // (CI has no identity of its own)
+  commit(main, 'a.txt', 'one\n');
+  const tree = path.join(main, '.claude', 'worktrees', 'x');
+  g(main, 'worktree', 'add', '-q', '-b', 'worktree-x', tree);
+  commit(tree, 'a.txt', 'tree\n');
+  commit(main, 'a.txt', 'main\n');
+  const st = await new Promise((r) => git.status(tree, r, Date.now() + 2e7));
+  let failed = false;
+  try { execFileSync('sh', ['-c', git.command('bringin', st, null, 'linux')], { cwd: tree, stdio: 'pipe' }); } catch { failed = true; }
+  assert.ok(failed, 'it says it couldn’t');
+  assert.ok(!fs.existsSync(path.join(main, '.git', 'MERGE_HEAD')) && fs.readFileSync(path.join(main, 'a.txt'), 'utf8') === 'main\n', 'and the project’s folder is as it was');
+  // A worktree with changes in it stays.
+  fs.writeFileSync(path.join(tree, 'new.txt'), 'x');
+  const r = await new Promise((done) => git.tidyTree(tree, done));
+  assert.ok(!r.removed && fs.existsSync(tree));
 });

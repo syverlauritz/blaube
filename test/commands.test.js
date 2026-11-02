@@ -88,7 +88,6 @@ test('built-in commands the box handles itself say what they do', () => {
 
 test('lists your skills and the project’s, with what each is for', () => {
   const { skills } = require('../src/main/commands.js');
-  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-home-')), proj = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-proj-'));
   const put = (root, name, body) => { fs.mkdirSync(path.join(root, '.claude', 'skills', name), { recursive: true }); if (body) fs.writeFileSync(path.join(root, '.claude', 'skills', name, 'SKILL.md'), body); };
   put(proj, 'deploy', '---\nname: deploy\ndescription: "Ships the site"\n---\nDo it.');
@@ -101,7 +100,6 @@ test('lists your skills and the project’s, with what each is for', () => {
 
 test('a skill by name: in / suggestions, and asked for in words where only the terminal could start it', () => {
   const { skillPrompt, commandNames } = require('../src/main/commands.js');
-  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-home-')), proj = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-proj-'));
   fs.mkdirSync(path.join(proj, '.claude', 'skills', 'release'), { recursive: true });
   fs.writeFileSync(path.join(proj, '.claude', 'skills', 'release', 'SKILL.md'), '---\ndescription: Tags and ships\n---\n');
@@ -143,7 +141,6 @@ test('/bug: a new Claude Code issue with what you said, its version and system',
 });
 
 test('/run is the box’s own, unless you have a /run of your own', () => {
-  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
   const { blaubeCommand, commandNames } = require('../src/main/commands');
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-cmd-'));
   try {
@@ -155,4 +152,19 @@ test('/run is the box’s own, unless you have a /run of your own', () => {
     assert.equal(blaubeCommand('run', '', home), false);
     assert.deepEqual(commandNames('ru', '', home).map((c) => `${c.name}${c.mine ? '*' : ''}`), ['run*']);
   } finally { fs.rmSync(home, { recursive: true, force: true }); }
+});
+
+test('keeps something you said as a command of your own', () => {
+  const { saveCommand, tidyName, commandNames } = require('../src/main/commands');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-keep-'));
+  const dir = path.join(home, '.claude', 'commands');
+  assert.equal(tidyName(' /Check the CI! '), 'check-the-ci');
+  const r = saveCommand(dir, 'Check the CI!', 'Look at "the" CI\nand fix it');
+  assert.equal(r.name, 'check-the-ci');
+  assert.match(fs.readFileSync(r.file, 'utf8'), /^---\ndescription: "Look at 'the' CI"\n---\n\nLook at "the" CI\nand fix it\n$/);
+  assert.ok(commandNames('check', '', home).some((c) => c.name === 'check-the-ci' && c.mine));
+  assert.match(saveCommand(dir, 'check-the-ci', 'other').error, /already/);
+  assert.match(saveCommand(dir, 'compact', 'x').error, /Claude Code/);
+  assert.match(saveCommand(dir, '42', 'x').error, /letter/);
+  assert.match(saveCommand(dir, 'empty', '  ').error, /nothing/);
 });

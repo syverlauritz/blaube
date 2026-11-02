@@ -4,10 +4,21 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+- **Screenshot** by the talk box's field: pick a part of the screen (as ⇧⌘4 does on a Mac, or the Snipping Tool on Windows) and it goes with your message as a picture, with no saving and dragging.
+- **Repeat…** under anything you said has it done again by itself, every day, on weekdays or every hour, each time in a fresh session in that folder (while Blaube is open; one it missed runs when Blaube is back). **All sessions** lists them, with **Run now** and **Stop**.
+- A session working in its own worktree gets **Bring into main** (or whichever branch the project's folder is on) once it has commits there isn't: merged right there, no model call, and a conflict calls it off and asks Claude instead. Ending such a session takes its worktree away if nothing in it would be lost (its branch too, once merged).
+- **Read aloud** on a reply (on hover) reads it out in your computer's own voice, code and links left out; tap again to stop.
+- **Keep as a command** under anything you said: name it, keep it for you or for the project, and `/its-name` says it again in any box (or terminal).
 - Right-click a blob for New look (another accessory, at random) or Remove look.
 - About one blob in three is plain (no look), up from one in five.
 - Install with one line: `install.sh` (Mac) and `install.ps1` (Windows) download the newest release, install it and open it, with no "unverified developer" step. Run again to update.
 - The demo sessions, screenshots and tests use made-up project names.
+- New look always gives a blob a different look (1 in 8 times it changed nothing), and Remove look is greyed out on a plain blob.
+- One bad moment in a blob's behaviour no longer freezes every blob for good, and a blob whose shape ever breaks is put back instead of vanishing.
+- Claude Code's settings.json (and Blaube's own settings) are written whole or not at all, and a settings.json that's a link (dotfiles) stays a link.
+- Pasting a picture over 20 MB, or a TIFF from Preview, in the talk box works (it did nothing before), and one that can't be added says so.
+- Sessions show up even when your login shell prints a greeting or colours before `claude agents`.
+- On Windows, stopping a session that had already ended can no longer stop another program that got its process number.
 ## [0.5.1] - 2026-10-29
 
 - Most blobs wear a look again (a bow, ears, antennas...): only about one in five is plain, down from half.
