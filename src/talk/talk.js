@@ -1913,10 +1913,18 @@
   }
 
   // Its MCP servers that couldn't connect (or need you to sign in), as /mcp
-  // would show them, with Reconnect.
+  // would show them, with Reconnect. Hide takes one out of every box for
+  // good (Hide all, all of them); /mcp still lists them.
+  let mcpHidden = new Set();
+  try { mcpHidden = new Set(JSON.parse(localStorage.getItem('mcpHidden')) || []); } catch {}
+  function hideMcp(names) {
+    for (const n of names) mcpHidden.add(n);
+    try { localStorage.setItem('mcpHidden', JSON.stringify([...mcpHidden])); } catch {}
+    if (current) renderMcp(current);
+  }
   function renderMcp(s) {
     const box = $('mcp');
-    const list = s.ended || s.demo ? [] : (s.mcp || []);
+    const list = s.ended || s.demo ? [] : (s.mcp || []).filter((m) => !mcpHidden.has(m.name));
     const key = JSON.stringify(list) + s.id;
     box.hidden = !list.length;
     if (box.dataset.key === key) return;
@@ -1935,7 +1943,23 @@
       again.textContent = word;
       again.title = auth ? `Sign in to ${m.name}, in your browser` : `Try connecting to ${m.name} again`;
       again.onclick = async () => { if (!current) return; again.disabled = true; again.textContent = auth ? 'Signing in…' : 'Connecting…'; if (!(await (auth ? api.mcpSignIn : api.mcpReconnect)(current.id, m.name))) { again.disabled = false; again.textContent = word; } };
-      li.append(name, again);
+      const hide = document.createElement('button');
+      hide.type = 'button';
+      hide.textContent = 'Hide';
+      hide.title = `Stop showing ${m.name} here (/mcp still lists it)`;
+      hide.onclick = () => hideMcp([m.name]);
+      li.append(name, again, hide);
+      box.append(li);
+    }
+    if (list.length > 1) {
+      const li = document.createElement('li');
+      li.className = 'all';
+      const all = document.createElement('button');
+      all.type = 'button';
+      all.textContent = 'Hide all';
+      all.title = 'Stop showing these here (/mcp still lists them)';
+      all.onclick = () => hideMcp(list.map((m) => m.name));
+      li.append(all);
       box.append(li);
     }
     requestAnimationFrame(fitWindow);

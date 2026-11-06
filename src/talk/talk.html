@@ -193,6 +193,8 @@
   .bg li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 34px; padding: 2px 8px; font: 600 14px var(--ui); color: var(--ink); }
   .bg li::before { content: "Running"; flex: none; width: 74px; font: 800 12px/1.2 var(--ui); color: var(--faint); text-transform: uppercase; letter-spacing: .04em; }
   .mcp li::before { content: "Tools"; color: var(--red); }
+  .mcp li.all { justify-content: flex-end; }
+  .mcp li.all::before { content: none; }
   .bg li span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bg button { border: 0; border-radius: 999px; padding: 3px 11px; background: var(--paper); font: 700 13px var(--ui); color: var(--ink); cursor: pointer; }
   .bg button:hover { background: var(--hover); }

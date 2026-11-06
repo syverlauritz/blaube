@@ -135,7 +135,7 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await box(`document.querySelector('#mcp button').click()`);
 	check(await until(() => box(`document.getElementById('mcp').hidden`)) && inbox.log(id).some((e) => e.text === 'Reconnected github'), 'and Reconnect connects it, asked of Claude Code itself');
 	await type('need linear');
-	check(await until(() => box(`!document.getElementById('mcp').hidden && document.getElementById('mcp').textContent === 'linear needs you to sign inSign in'`)), 'one that needs you to sign in offers Sign in');
+	check(await until(() => box(`!document.getElementById('mcp').hidden && document.getElementById('mcp').textContent === 'linear needs you to sign inSign inHide'`)), 'one that needs you to sign in offers Sign in');
 	await box(`document.querySelector('#mcp button').click()`);
 	check(await until(() => global.__blaubeMcpAuthUrl === 'https://mcp.linear.app/authorize?state=fake' && inbox.log(id).some((e) => e.text === 'Finish signing in to linear in your browser')), 'which opens its sign-in in your browser (mcp_authenticate)');
 	check(await until(() => inbox.log(id).some((e) => e.text === 'Signed in to linear: it’s connected') && box(`document.getElementById('mcp').hidden`)), 'and says when it’s connected');
