@@ -1715,6 +1715,8 @@
     if (!unseen(m)) return false;
     // Its talk box is open (or opening): it has your attention.
     if (talkingTo === m.key || tails.has(m.key) || time < (m.talkHold || 0)) return false;
+    // You're in another one's talk box: it waits its turn (its "!" stays up).
+    if (inTalk) return false;
     if (b.state === 'waiting') return true;
     // Done: it bounces a little while, then settles (still grinning, its
     // "!" up) until you look. Not at all if its turn ended with a job still
@@ -6484,6 +6486,7 @@
   // The slime under the mouse, if any (not while dragging).
   let hovered = null, hoverSeen = 0;
   let talkingTo = null; // the session whose talk box is open: its balloons would sit under it
+  let inTalk = false; // you're in a talk box (any one): nobody hops for you then
 
   // What a slime says when you hover over it: its name, and what it's doing.
   const STATE_WORDS = { working: 'Working', waiting: 'Needs you', done: 'Done', idle: 'Idle' };
@@ -7559,6 +7562,7 @@
 		if (c.burst) b.oohWant = true;
 	});
   if (api.onTalking) api.onTalking((id) => { talkingTo = id; });
+  if (api.onTalkFocus) api.onTalkFocus((on) => { inTalk = !!on; });
   // The app wants a slime's talk box open (a session you just started).
   if (api.onOpenTalk) api.onOpenTalk((id) => {
     let tries = 0;

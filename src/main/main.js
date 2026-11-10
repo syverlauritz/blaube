@@ -598,6 +598,12 @@ function makeTalkWin() {
   // it again (when they're in front of everything).
   w.on('show', raiseStage);
   w.on('focus', raiseStage);
+  // While you're in a talk box (any one, pinned too) the other slimes keep
+  // still instead of hopping for you: you're busy.
+  const typingIn = (on) => () => { if (win && !win.isDestroyed()) win.webContents.send('talk-focus', on); };
+  w.on('focus', typingIn(true));
+  w.on('blur', typingIn(false));
+  w.on('hide', typingIn(false));
   w.on('closed', () => {
     if (w === talkWin) { talkWin = null; talkId = null; return; }
     for (const r of pinnedTalks.values()) if (r.win === w) { pinnedTalks.delete(r.id); sendTalkRect(); }
