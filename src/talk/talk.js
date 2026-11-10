@@ -605,6 +605,7 @@
       const t = document.createElement('div');
       t.className = 'turnmeta';
       const bits = [];
+      if (m.at > 0) bits.push(sentAt(m.at));
       if (m.turn && m.turn.took >= 60e3) bits.push('Took ' + took(m.turn.took));
       if (m.turn && m.turn.steps) bits.push(`${m.turn.steps} step${m.turn.steps === 1 ? '' : 's'}`);
       t.append(bits.join(' · '));
@@ -705,6 +706,13 @@
     const l = (current && current.log) || [];
     for (let i = l.length - 1; i >= 0; i--) if (l[i].who === 'claude' && l[i].turn) return l[i].turn.rewind === m.turn.rewind;
     return false;
+  };
+  // When a reply came: "14:32" today, "Yesterday 14:32", "3 Nov 14:32" before.
+  const sentAt = (at) => {
+    const d = new Date(at), now = new Date(), day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const ago = Math.round((day(now) - day(d)) / 864e5);
+    return ago <= 0 ? time : ago === 1 ? `Yesterday ${time}` : `${d.toLocaleDateString([], { day: 'numeric', month: 'short', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) })} ${time}`;
   };
   const took = (ms) => { const m = Math.round(ms / 60e3); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
 

@@ -4,6 +4,9 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+- Under each reply in the talk box, the time it came ("14:32", "Yesterday 14:32", "3 Nov 14:32"), before how long it took.
+- While you're typing in any talk box, the other blobs keep still (their "!" stays up) instead of hopping for you.
+
 ## [0.6.0] - 2026-11-10
 
 - A blob that's done bounces for a few seconds, then rests with its "!" until you look (it used to bounce until you did). One whose turn ended with a build or other job still running in the background doesn't bounce at all: it's only paused. **Done bounces for** in the tuning panel sets how long.
