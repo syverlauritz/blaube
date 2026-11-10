@@ -3,7 +3,7 @@ const os = require('node:os');
 const fs = require('node:fs');
 const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, shell, clipboard, globalShortcut, systemPreferences, powerMonitor } = require('electron');
 const { SessionTracker, pidAlive } = require('./sessions');
-const { Inbox, STYLE } = require('./inbox');
+const { Inbox, STYLE, PICTURES } = require('./inbox');
 const { classify } = require('../shared/actions');
 const { SONGS } = require('../shared/songs');
 const { placeTalk, resizeTalk, moveTalk, PAD } = require('./talkPlace');
@@ -28,6 +28,7 @@ const { Notification } = require('electron');
 const { skills: skillList, skillPrompt, slashCommand, commandNames, expand: expandCommand, control: controlFor, contextNote, EFFORTS } = require('./commands');
 const limits = require('./limits');
 const usageProbe = require('./usageProbe');
+const titles = require('./titles');
 const { claudeEnv } = require('./claudeEnv');
 const auth = require('./auth');
 const renamer = require('./rename');
@@ -1022,7 +1023,7 @@ function startSession(cwd, extra = [], resume = '', fork = '', quiet = false) {
     settings = claudeHooks.withBlaube({}, PORT);
     settings.hooks.Stop = settings.hooks.Stop.filter((g) => !g.hooks.some((h) => h.asyncRewake));
   }
-  const id = owned.start(cwd, ['--append-system-prompt', replyStyle(), ...extra], settings, resume, fork);
+  const id = owned.start(cwd, ['--append-system-prompt', `${replyStyle()}\n\n${PICTURES}`, ...extra], settings, resume, fork);
   startedAt.set(id, Date.now());
   prefs.recentFolders = [cwd, ...(prefs.recentFolders || []).filter((f) => f !== cwd)].slice(0, 5);
   savePrefs();
@@ -1383,6 +1384,7 @@ function shownNames() {
   return sessionNames(live, (o) => usage.sessionInfo(transcriptPath(o)).title);
 }
 const shownOf = (s) => shownNames().get(s.id) || { name: s.project, sub: '', full: s.project };
+const nameSession = titles.namer(() => owned.findClaude() || owned.shellPath());
 
 function checkSeededTasks(s) {
   if (checkedTasks.has(s.id) || checkingTasks.has(s.id)) return;
@@ -1674,6 +1676,8 @@ function refreshUsage() {
       else checkSeededTasks(s);
       if (checkedTasks.has(s.id)) { readySessions.add(s.id); changed = true; }
     }
+    // One Claude Code didn't name gets a name of Blaube's (titles.js).
+    if (!TEST && readySessions.has(s.id) && file && !s.id.startsWith('demo-')) nameSession({ id: s.id, file, title: usage.sessionInfo(file).title }, () => { pushState(); for (const id of openTalks()) pushTalk(id); });
     // What it's changed and not committed yet (pushed when it comes in).
     if (s.cwd && !s.id.startsWith('demo-')) gitChanges.refresh(s.cwd, (c) => { if (c) pushState(); });
     const old = tokens.get(s.id);
@@ -3008,14 +3012,6 @@ app.whenReady().then(async () => {
   win.webContents.on('console-message', (e) => {
     const msg = String(e.message || '');
     if (msg.startsWith('[blaube]')) log(msg.slice(9));
-    // (With its faces note: what the stage looks like, kept as stage.png.)
-    if (msg.startsWith('[blaube] faces:') && win && !win.isDestroyed()) win.webContents.capturePage().then((img) => {
-      const dir = path.join(app.getPath('userData'), 'stage');
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFile(path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-')}.png`), img.toPNG(), () => {});
-      const old = fs.readdirSync(dir).sort(); // (the last 30 kept)
-      for (const f of old.slice(0, Math.max(0, old.length - 30))) fs.unlink(path.join(dir, f), () => {});
-    }).catch(() => {});
     else if (e.level === 'error') log(`stage error: ${msg.slice(0, 300)}${e.sourceId ? ` (${path.basename(e.sourceId)}:${e.lineNumber})` : ''}`);
   });
   ipcMain.on('acknowledge', (_e, id) => {

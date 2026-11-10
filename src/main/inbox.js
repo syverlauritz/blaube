@@ -25,10 +25,15 @@ const TAIL = 4 << 20; // the most of a transcript read at once (only its new end
 const FIRST = 256 << 10; // how far back a transcript first seen mid-turn is read
 const QUIET = 30 * 60e3; // a turn heard nothing from for this long has stopped (it crashed, say)
 
+// What the bubble can do that Claude can't guess: it shows an image file
+// as a picture when the reply names that file (not just its folder).
+// (Said always, whatever voice you picked in Settings.)
+const PICTURES = 'The bubble shows images: when you want the user to see an image file, name its full path in your reply (for example `~/shots/a.png`, or ![a](~/shots/a.png)), one per image, and the bubble shows it as a picture. Naming only the folder shows nothing.';
+
 // How a message from the slime reaches Claude: as a system reminder, so it
 // says plainly that it's the user talking, and that the answer will be read
 // in a small bubble (so: short and plain).
-const frame = (text) => `The user sent you this message from Blaube, their desktop buddy for Claude Code. Treat it as their next prompt. They'll read your reply in a small chat bubble, so keep the reply itself short and plain (a few sentences, no headings or tables, little or no code) unless they ask for detail; do the work as usual:\n\n${text}`;
+const frame = (text) => `The user sent you this message from Blaube, their desktop buddy for Claude Code. Treat it as their next prompt. They'll read your reply in a small chat bubble, so keep the reply itself short and plain (a few sentences, no headings or tables, little or no code) unless they ask for detail; do the work as usual. ${PICTURES}\n\n${text}`;
 
 // The same, for a message that goes in while Claude works (at its next
 // step): as with something typed in the terminal then, it answers right
@@ -756,4 +761,4 @@ function alwaysLabel(updates, max = 70) {
   return text.length > max ? text.slice(0, max - 2) + '…' : text;
 }
 
-module.exports = { Inbox, frame, midFrame, describe, toolName, alwaysLabel, stepText, stepDetail, stepEntry, turnOf, failedTests, stoppedLast, erredLast, runFailed, STYLE };
+module.exports = { Inbox, frame, midFrame, describe, toolName, alwaysLabel, stepText, stepDetail, stepEntry, turnOf, failedTests, stoppedLast, erredLast, runFailed, STYLE, PICTURES };

@@ -318,13 +318,10 @@
 		// (Full of air, they puff out: bigger, rounder, further out, and they show
 		// even on a face that has none.)
 		const puffed = face.puffed || 0;
-		const wt = ctx.getTransform();
-		b.cheekSeen = { cheeks: s.cheeks, sides: 0, alpha: ctx.globalAlpha, op: ctx.globalCompositeOperation, filter: ctx.filter, angle: +b.angle.toFixed(2), world: [wt.a, wt.b, wt.c, wt.d, wt.e, wt.f].map((v) => +v.toFixed(2)), st: [+st.x.toFixed(2), +st.y.toFixed(2)], fill: ctx.fillStyle }; // (for blaube.log: see faceNote)
 		if (s.cheeks > 0 || puffed > 0) {
       ctx.save();
       const warm = isWarm(face.bodyColor);
 			ctx.globalAlpha = Math.max(warm ? s.cheeks : Math.max(s.cheeks, 0.7), 0.55 * puffed);
-			b.cheekSeen.alpha = ctx.globalAlpha; b.cheekSeen.warm = warm; b.cheekSeen.fill = ctx.fillStyle;
       ctx.fillStyle = warm ? s.cheekColor : '#ff86a6';
       // Cheeks sit on a round head, so they turn on a ball instead of
       // sliding with the rest of the face: one turning toward the edge moves
@@ -340,8 +337,6 @@
 				const ax = angleOf(side * r * (0.55 + 0.14 * puffed) * s.eyeSpacing), ay = angleOf(r * (0.14 + 0.1 * puffed));
         const tx = ax + yaw, ty = ay + pitch;
         if (Math.abs(tx) > Math.PI / 2) continue; // turned out of sight
-        b.cheekSeen.sides++;
-        b.cheekSeen['s' + side] = { tx: +tx.toFixed(2), ty: +ty.toFixed(2), yaw: +yaw.toFixed(2), pitch: +pitch.toFixed(2), r: Math.round(r) };
         const w = Math.min(1.1, Math.cos(tx) / Math.cos(ax)), h = Math.min(1.1, Math.cos(ty) / Math.cos(ay));
         const cx = R * Math.sin(tx), cy = R * Math.sin(ty), cw = r * (0.12 + 0.11 * puffed) * w, ch = r * (0.07 + 0.15 * puffed) * h; // (full of air: big round cheeks)
         // face.cheekKind picks a blush (to tell models apart): soft 'oval's,
@@ -1112,7 +1107,8 @@
   //   emoji.
   // - a status list (the hover bubble, a summary), in the readable font:
   //   the first line (a name) bold, a coloured dot before a state, dim
-  //   lines in grey. A line with a small size is a dim one.
+  //   lines in grey, a sub line (small and grey) tucked under the name. A
+  //   line with a small size is a dim one.
   const PAD_X = 16, PAD_Y = 12, ICON_W = 58, ICON_H = 44;
   const SPEECH_LINE = 20, SPEECH_MAX = 220, SPEECH_LINES = 3;
   const EMOJI = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
@@ -1163,10 +1159,10 @@
 
   function drawStatus(ctx, b, lines, W) {
     const named = lines.length > 1;
-    const dim = (l) => l.dim || (l.size && !emoji(l));
+    const dim = (l) => l.dim || l.sub || (l.size && !emoji(l));
     const font = (l, i) => (emoji(l) ? `${l.size}px ${EMOJI}`
-      : named && i === 0 ? `700 17px ${TEXT_FONT}` : dim(l) ? `600 14px ${TEXT_FONT}` : `600 15px ${TEXT_FONT}`);
-    const lineH = (l, i) => (emoji(l) ? l.size + 8 : named && i === 0 ? 24 : 22);
+      : named && i === 0 ? `700 17px ${TEXT_FONT}` : l.sub ? `500 14px ${TEXT_FONT}` : dim(l) ? `600 14px ${TEXT_FONT}` : `600 15px ${TEXT_FONT}`);
+    const lineH = (l, i) => (emoji(l) ? l.size + 8 : named && i === 0 ? (lines[1] && lines[1].sub ? 22 : 24) : 22);
     const w = Math.min(360, Math.max(ICON_W, Math.max(...lines.map((l, i) => { ctx.font = font(l, i); return ctx.measureText(l.text).width + (l.color ? 16 : 0); })) + PAD_X * 2));
     const h = Math.max(ICON_H, lines.reduce((sum, l, i) => sum + lineH(l, i), 0) + PAD_Y * 2 - 2);
     const p = settle(b, placeBalloon(b, w, h, W), w, h);

@@ -551,6 +551,8 @@ const SCENES = {
 		size: [1100, 520],
 	},
 	hover: { sessions: [session('a', 'blaube', 'working', { activity: 'tool', tokens: { total: 400000, context: 124000, limit: 200000 } })], hover: true },
+	// A session with a title goes by it on hover, its repo small underneath.
+	hoverTitled: { sessions: [session('a', 'vergence-studios-playground', 'working', { activity: 'tool', info: { title: 'Story globe slow on Mac', branch: 'main · 2 changed', model: 'claude-opus-5-5' }, tokens: { total: 400000, context: 124000, limit: 200000 } })], hover: true },
 	// Hovering a busy slime: its squeezed-shut working eyes open wide and
 	// follow the cursor (on its left, its right, its top), easing open and,
 	// once you move off, shut again.
