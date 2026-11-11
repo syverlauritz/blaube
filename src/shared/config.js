@@ -63,6 +63,7 @@
     ['Behaviour', [
       ['doneHopStrength', 750, 0, 2000, 10, 'Done bounce strength'],
       ['doneHopEvery', 0.8, 0.3, 4, 0.05, 'Done bounce interval (s)'],
+      ['doneBounceFor', 4, 0, 60, 0.5, 'Done bounces for (s), then rests'],
       ['waitingHopStrength', 600, 0, 2000, 10, 'Needs-you hop strength'],
       ['splitImpulse', 1120, 0, 2000, 10, 'Split launch speed'],
       ['dizzySpeed', 2300, 500, 8000, 50, 'Dizzy after impact over (px/s)'],

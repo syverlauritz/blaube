@@ -107,17 +107,6 @@
   }
 
   const buddies = new Map();
-  // (For blaube.log: what each slime's face is made of, a little after the
-  // start and every ten minutes; to see why one shows without its blush or
-  // its look.)
-  const faceNote = () => {
-    try {
-      const list = [...buddies.values()].filter((b) => !b.dying).map((b) => `${b.key.slice(0, 8)} ${b.kind} r${Math.round(b.body.o.radius)} look=${b.look || '?'} effort=${b.effort} glasses=${b.glasses ? 'off' : '-'} model=${b.modelFam || (b.mother && b.mother.modelFam) || '?'} blush=${(b.blush || 0).toFixed(2)} colour=${b.color} cheeks=${JSON.stringify(b.body.cheekSeen || null)}`);
-      console.log(`[blaube] faces: cheeks ${CFG.cheeks} ${CFG.cheekColor}, looks ${CFG.looks}; ${list.join(' | ') || 'none'}`);
-    } catch (e) { console.log(`[blaube] faces: ${e.message}`); }
-  };
-  setTimeout(faceNote, 20e3);
-  setInterval(faceNote, 60e3);
 
   // How much they say. What you need to know (a session needs you, is done,
   // an error, its context full) always gets its balloon. The rest is
@@ -1504,7 +1493,7 @@
         break;
       case 'done': {
         const took = b.session && b.session.turnStart ? (Date.now() - b.session.turnStart) / 1000 : 0;
-        if (took > 300) {
+        if (took > 300 && !stillGoing(b)) {
           // A long one: it's earned a little party.
           // The hearts come out of the top of its head as it jumps, wherever
           // that is by then.
@@ -1514,7 +1503,7 @@
         } else if (wantsAttention(b)) b.hop((Math.random() - 0.5) * 200, -CFG.doneHopStrength * 1.1);
         b.happyUntil = time + 2.5;
         b.nextHop = time + CFG.doneHopEvery + (b.stretchAt ? 3 : 0); // (room for the stretch)
-        cheerOn(b, took > 300);
+        cheerOn(b, took > 300 && !stillGoing(b));
         if (b.kind === 'mother') {
           setTimeout(allDone, 1500);
           // Another session finished just now too: a high five.
@@ -1726,8 +1715,18 @@
     if (!unseen(m)) return false;
     // Its talk box is open (or opening): it has your attention.
     if (talkingTo === m.key || tails.has(m.key) || time < (m.talkHold || 0)) return false;
-    return b.state === 'waiting' || (b.state === 'done' && b.kind !== 'child');
+    // You're in another one's talk box: it waits its turn (its "!" stays up).
+    if (inTalk) return false;
+    if (b.state === 'waiting') return true;
+    // Done: it bounces a little while, then settles (still grinning, its
+    // "!" up) until you look. Not at all if its turn ended with a job still
+    // going (a build, not a server): it's only paused, it'll be back.
+    return b.state === 'done' && b.kind !== 'child' && !stillGoing(m) && time - (b.stateSince ?? time) < CFG.doneBounceFor;
   }
+
+  // A background job of its own still running that will finish by itself
+  // (one with a web address is a server: those just keep going).
+  function stillGoing(m) { return !!(m.session && (m.session.tasks || []).some((t) => !t.url && !t.mine)); }
 
   // --- Simulation ---------------------------------------------------------
 
@@ -6487,6 +6486,7 @@
   // The slime under the mouse, if any (not while dragging).
   let hovered = null, hoverSeen = 0;
   let talkingTo = null; // the session whose talk box is open: its balloons would sit under it
+  let inTalk = false; // you're in a talk box (any one): nobody hops for you then
 
   // What a slime says when you hover over it: its name, and what it's doing.
   const STATE_WORDS = { working: 'Working', waiting: 'Needs you', done: 'Done', idle: 'Idle' };
@@ -6496,45 +6496,29 @@
     // The last status update, while it still matches what the slime is doing.
     const text = st && st.state === b.state && (b.state !== 'working' || time - st.at < 20) ? st.text : STATE_WORDS[b.state] || b.state;
     const info = (b.kind === 'mother' && b.session && b.session.info) || {};
-    const lines = [{ text: label(b) }, { text, color: D.STATE_COLORS[b.state] }];
-    const extra = [info.branch, modelName(info.model)].filter(Boolean).join(' · ');
-    if (extra) lines.push({ text: extra, dim: true });
-    // How long it's been waiting on you.
-    const waited = b.state === 'waiting' && b.stateSince !== undefined ? Math.floor((time - b.stateSince) / 60) : 0;
-    if (waited >= 1) lines.push({ text: `Waiting ${waited} min`, dim: true });
-    // How long since it finished, or since it last did anything.
-    const quiet = (b.state === 'done' || b.state === 'idle') && b.kind === 'mother' && b.stateSince !== undefined ? Math.floor((time - b.stateSince) / 60) : 0;
-    if (quiet >= 1) lines.push({ text: b.state === 'done' ? `Finished ${ago(quiet)}` : `Idle for ${ago(quiet, true)}`, dim: true });
-    // How long this turn has been going.
+    // A session with a title goes by it, its repo small underneath.
+    const title = b.kind === 'mother' && info.title && info.title !== b.session.project && info.title;
+    const lines = title ? [{ text: title }, { text: b.session.project, sub: true }, { text, color: D.STATE_COLORS[b.state] }]
+      : [{ text: label(b) }, { text, color: D.STATE_COLORS[b.state] }];
+    // Only what helps you pick which one to look at: where its git stands,
+    // how long it's been at it (or waiting), how far through its plan, and
+    // its context once it's nearly full. (Its model shows in its face.)
+    if (info.branch) lines.push({ text: info.branch, dim: true });
+    const mins = () => b.stateSince !== undefined ? Math.floor((time - b.stateSince) / 60) : 0;
+    const waited = b.state === 'waiting' ? mins() : 0;
+    const quiet = (b.state === 'done' || b.state === 'idle') && b.kind === 'mother' ? mins() : 0;
     const turn = b.state === 'working' && b.kind === 'mother' && b.session && b.session.turnStart ? Math.floor((Date.now() - b.session.turnStart) / 60000) : 0;
-    if (turn >= 1) lines.push({ text: `Working for ${turn} min`, dim: true });
-    // What its turn has done: files edited, commands run.
-    const tw = b.kind === 'mother' && b.session && b.session.turn;
-    const did = tw ? [tw.files.length ? `${tw.files.length} file${tw.files.length > 1 ? 's' : ''} edited` : '', tw.cmds ? `${tw.cmds} command${tw.cmds > 1 ? 's' : ''} run` : '', tw.fails ? `${tw.fails} failed` : ''].filter(Boolean) : [];
-    if (did.length && (b.state === 'working' || b.state === 'done' || b.state === 'waiting')) lines.push({ text: (b.state === 'done' ? 'Did: ' : 'So far: ') + did.join(' \u00b7 '), dim: true });
-    if (tw && tw.lastFail && b.state !== 'idle') lines.push({ text: `Last failed: ${tw.lastFail}`, dim: true });
-    // What it's changed in its folder and not committed yet.
-    const ch = b.kind === 'mother' && b.session && b.session.changes;
-    if (ch && ch.files) lines.push({ text: `Not committed: ${ch.files} file${ch.files > 1 ? 's' : ''}${ch.add || ch.del ? ` (+${ch.add} \u2212${ch.del})` : ''}`, dim: true });
-    // Today's tally, once there's something to tally.
-    const day = b.kind === 'mother' && b.session && b.session.today;
-    if (day && day.turns && day.day === new Date().toDateString()) {
-      lines.push({ text: `Today: ${day.turns} turn${day.turns > 1 ? 's' : ''} · ${workedFor(day.workMs)} of work`, dim: true });
-    }
-    // How far through its todo list.
+    if (waited >= 1) lines.push({ text: `Waiting ${waited} min`, dim: true });
+    else if (quiet >= 1) lines.push({ text: b.state === 'done' ? `Finished ${ago(quiet)}` : `Idle for ${ago(quiet, true)}`, dim: true });
+    else if (turn >= 1) lines.push({ text: `Working for ${turn} min`, dim: true });
     const pr = b.kind === 'mother' && b.session && b.session.progress;
-    if (pr && pr.total) lines.push({ text: `Plan: ${pr.done} of ${pr.total}${pr.current ? ' \u00b7 ' + pr.current : ''}`, dim: true });
-    // How full its context window is.
-    const tk = b.kind === 'mother' && b.session && b.session.tokens;
-    if (tk && tk.limit && tk.context) lines.push({ text: `${Math.min(100, Math.round((tk.context / tk.limit) * 100))}% of context used`, dim: true });
-    // How far down its to-do list it is.
     const todo = b.kind === 'mother' && b.session && b.session.todo;
-    if (todo) lines.push({ text: `${todo.done} of ${todo.of} on its list done`, dim: true });
-    // Until you've talked to one, say you can.
-    if (b.session && !String(b.session.id).startsWith('demo-')) {
-      if (settings.hooksInstalled === false) lines.push({ text: 'Connect Claude Code in my menu for more', dim: true });
-      else if (!settings.talked) lines.push({ text: 'Click to talk', dim: true });
-    }
+    if (pr && pr.total) lines.push({ text: `Plan: ${pr.done} of ${pr.total}${pr.current ? ' \u00b7 ' + pr.current : ''}`, dim: true });
+    else if (todo) lines.push({ text: `Plan: ${todo.done} of ${todo.of}`, dim: true });
+    const tk = b.kind === 'mother' && b.session && b.session.tokens;
+    const full = tk && tk.limit && tk.context ? Math.min(100, Math.round((tk.context / tk.limit) * 100)) : 0;
+    if (full >= 75) lines.push({ text: `Context ${full}% full`, dim: true });
+    if (b.session && !String(b.session.id).startsWith('demo-') && settings.hooksInstalled === false) lines.push({ text: 'Connect Claude Code in my menu for more', dim: true });
     return lines;
   }
 
@@ -6550,7 +6534,6 @@
     return span ? t : t + ' ago';
   }
 
-  // "claude-opus-5-5" -> "Opus 5.5", "claude-haiku-4-5-20251001" -> "Haiku 4.5".
   // Which model a session runs on shows in its face: its eye shape and its
   // blush (all eyes stay black). Opus is the original look; a helper wears
   // its own model's face (like its mother's until its transcript says).
@@ -6568,12 +6551,6 @@
     if (mine) return MODEL_LOOKS[mine];
     if (!m) return {};
     return MODEL_LOOKS[fam(m, m.session && m.session.info && m.session.info.model)] || {};
-  }
-  function modelName(id) {
-    const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(String(id || ''));
-    if (!m) return '';
-    const minor = m[3] && m[3].length < 3 ? '.' + m[3] : '';
-    return m[1][0].toUpperCase() + m[1].slice(1) + ' ' + m[2] + minor;
   }
 
 	// Its stream of consciousness while you hover it working: the end of its
@@ -7585,6 +7562,7 @@
 		if (c.burst) b.oohWant = true;
 	});
   if (api.onTalking) api.onTalking((id) => { talkingTo = id; });
+  if (api.onTalkFocus) api.onTalkFocus((on) => { inTalk = !!on; });
   // The app wants a slime's talk box open (a session you just started).
   if (api.onOpenTalk) api.onOpenTalk((id) => {
     let tries = 0;

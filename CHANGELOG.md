@@ -4,6 +4,16 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+- Under each reply in the talk box, the time it came ("14:32", "Yesterday 14:32", "3 Nov 14:32"), before how long it took.
+- While you're typing in any talk box, the other blobs keep still (their "!" stays up) instead of hopping for you.
+
+## [0.6.0] - 2026-11-10
+
+- A blob that's done bounces for a few seconds, then rests with its "!" until you look (it used to bounce until you did). One whose turn ended with a build or other job still running in the background doesn't bounce at all: it's only paused. **Done bounces for** in the tuning panel sets how long.
+- A session Claude Code didn't name gets a short name from Haiku, once, from what you first said, so two sessions in one repo are easy to tell apart (a `/rename` still wins).
+- Hovering a blob shows only what helps you pick one: its title with the repo under it, its branch, how long it's been at it, its plan, and its context once it's nearly full.
+- Sessions are told the talk box shows pictures, so they name the image file instead of its folder.
+- Blaube no longer logs a faces note every minute or keeps pictures of the stage (they were for hunting the missing blush).
 - **Screenshot** by the talk box's field: pick a part of the screen (as ⇧⌘4 does on a Mac, or the Snipping Tool on Windows) and it goes with your message as a picture, with no saving and dragging.
 - **Repeat…** under anything you said has it done again by itself, every day, on weekdays or every hour, each time in a fresh session in that folder (while Blaube is open; one it missed runs when Blaube is back). **All sessions** lists them, with **Run now** and **Stop**.
 - A session working in its own worktree gets **Bring into main** (or whichever branch the project's folder is on) once it has commits there isn't: merged right there, no model call, and a conflict calls it off and asks Claude instead. Ending such a session takes its worktree away if nothing in it would be lost (its branch too, once merged).
