@@ -10,6 +10,9 @@ if (-not (Test-Path (Join-Path $run '.git'))) {
 	git -C $repo worktree add -q --detach $run origin/main
 	if ($LASTEXITCODE) { throw "Couldn't make $run" }
 }
+# (Not something to commit, whichever branch your checkout is on.)
+$exclude = Join-Path $repo '.git\info\exclude'
+if (-not (Select-String -Path $exclude -SimpleMatch '/.run-main/' -Quiet -ErrorAction SilentlyContinue)) { Add-Content -Path $exclude -Value '/.run-main/' -Encoding ascii }
 # (The shortcut runs the launcher in .run-main, so it's always main's.)
 $launch = Join-Path $run 'scripts\dev\launch.ps1'
 $shell = New-Object -ComObject WScript.Shell

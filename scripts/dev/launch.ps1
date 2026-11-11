@@ -46,6 +46,11 @@ try {
 	if ($had -ne $lock -or -not (Test-Path (Join-Path $run 'node_modules\electron\dist\electron.exe'))) {
 		$p = Start-Process cmd.exe -ArgumentList '/c', 'title Updating Blaube... && npm ci' -WorkingDirectory $run -Wait -PassThru
 		if ($p.ExitCode) { throw 'npm ci failed' }
+		# (Newer npm can leave out Electron's own download: fetched here then.)
+		if (-not (Test-Path (Join-Path $run 'node_modules\electron\dist\electron.exe'))) {
+			$p = Start-Process cmd.exe -ArgumentList '/c', 'title Updating Blaube... && node node_modules\electron\install.js' -WorkingDirectory $run -Wait -PassThru
+			if ($p.ExitCode) { throw "Couldn't download Electron" }
+		}
 		Set-Content -Path $mark -Value $lock -Encoding ascii
 	}
 
