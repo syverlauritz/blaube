@@ -230,7 +230,7 @@
 	// base swings when the head is shoved, and the tip (leaves, antenna
 	// ball, ear tips) trails behind the base. It all runs in the fixed
 	// physics step (b.look's springs never see the frame rate).
-	const LOOSE = { antenna: 1.8, sprout: 2.2, bunny: 1.7, beret: 0.8 }; // (a beret sits snug: stiffer)
+	const LOOSE = { antenna: 1.8, sprout: 2.2, bunny: 1.7, beret: 1.3 }; // (a beret is soft felt: it slides and flops, but has no stalk to swing on)
 	function stepLook(b, dt) {
 		const L = b.lookState || (b.lookState = newState());
 		L.clock += dt;
@@ -259,6 +259,12 @@
 		L.hx += L.hvx * dt;
 		L.hy += L.hvy * dt;
 		if (b.look === 'bunny') stepEars(b, L, dt);
+		if (b.look === 'beret') {
+			// Soft felt with a little weight: the head pushing up under it (a take-off, a landing) squashes it flat; the head dropping away lets it puff.
+			const out = L.ax * Math.cos(up) + L.ay * Math.sin(up);
+			L.bv = (L.bv || 0) + (-110 * (L.bs || 0) - 9 * (L.bv || 0) - out * 0.006) * dt;
+			L.bs = Math.max(-0.7, Math.min(0.8, (L.bs || 0) + L.bv * dt));
+		}
 	}
 
 	// Bunny ears are chains of stiff-ish joints with real weight: gravity
@@ -481,45 +487,62 @@
 				case 'beret':
 					// A French beret: a soft flat felt disc tilted over to one
 					// side, overhanging it a little, with the little stalk on top.
-					// Its band hugs the head (the head's own curve, so it never
-					// floats off the sides); on a shove it slides and tips a little
-					// rather than swinging like a stalk, and the overhang flops
-					// after it.
-					if (front) at(0, () => {
-						const s = part.side, R = r / (u * part.scale); // the head's curve, in u
-						const head = (x) => x * x / (2 * R * u); // how far the skin drops x out from the crown
-						ctx.rotate(-swing * 0.6);
-						ctx.translate(swing * u * 0.9, 0);
-						ctx.scale(s, 1); // (drawn tilted right; mirrored for the left)
-						ctx.fillStyle = '#2b2f4e'; // deep navy felt
-						const flop = soft(tip, 0.5) * s * u * 0.5;
-						// The band, snug down over the crown, its ends curving up
-						// into the disc.
-						const a = -2.2 * u, z = 2.4 * u;
-						ctx.beginPath();
-						ctx.moveTo(-2.7 * u, -u * 0.75);
-						ctx.quadraticCurveTo(-2.75 * u, head(a) + u * 0.2, a, head(a) + u * 0.3);
-						ctx.quadraticCurveTo(0.1 * u, u * 0.6 + head(0.1 * u), z, head(z) + u * 0.35);
-						ctx.quadraticCurveTo(2.8 * u, head(z) + u * 0.3, 3.0 * u, u * 0.05);
-						ctx.closePath();
-						ctx.fill();
-						// The disc: wide and flat, tilted down toward the overhanging
-						// side.
-						ctx.beginPath();
-						ctx.ellipse(0.4 * u, -u * 0.6, 3.4 * u, 0.95 * u, 0.17, 0, Math.PI * 2);
-						ctx.fill();
-						// Its soft overhanging edge.
-						ctx.beginPath();
-						ctx.ellipse(3.15 * u, u * 0.05 + flop, 0.85 * u, 0.55 * u, 0.45, 0, Math.PI * 2);
-						ctx.fill();
-						// The stalk.
-						ctx.strokeStyle = '#2b2f4e';
-						ctx.lineWidth = u * 0.34;
-						ctx.beginPath();
-						ctx.moveTo(0.2 * u, -u * 1.35);
-						ctx.lineTo(0.2 * u + tip * u * 0.4, -u * 2.0);
-						ctx.stroke();
-					}, 0);
+					// Its band is drawn along the skin as it is right now (squashed
+					// flat, stretched tall, leaning), so it never floats off the
+					// head. The felt is soft and has weight: a shove slides it round
+					// the crown a little and its overhang flops after it; a landing
+					// or a take-off squashes it flat, and falling lets it puff up.
+					if (front) {
+						const outer = ctx.getTransform();
+						at(0, () => {
+							const s = part.side, A0 = anchorsOf(b).get(part.shift.toFixed(4));
+							const puff = Math.max(-0.6, Math.min(0.7, L.bs || 0));
+							ctx.rotate(-swing * 0.75); // (the frame swings like a stalk; a hat only tips a little)
+							ctx.scale(s, 1); // (drawn tilted right; mirrored for the left)
+							// The skin under it, in the hat's own frame (slid round the crown by the swing).
+							const inv = ctx.getTransform().inverse().multiply(outer), slide = -swing * 0.3;
+							const reach = 2.75 * u * part.scale / r, N = 6;
+							const skin = [];
+							for (let i = -N; i <= N; i++) {
+								const p = skinAt(body, (A0 ? A0.a : -Math.PI / 2) + slide + (i / N) * reach * s);
+								skin.push(inv.transformPoint(new DOMPoint(p.x, p.y)));
+							}
+							const crown = skin[N], lo = skin[0], hi = skin[2 * N];
+							ctx.fillStyle = '#2b2f4e'; // deep navy felt
+							const flop = soft(tip, 0.5) * s * u * 0.8 - puff * u * 0.35;
+							// The disc: wide and flat, tilted down toward the overhanging side.
+							const cx = crown.x + 0.4 * u, cy = crown.y - u * (0.55 + Math.max(0, puff) * 0.5);
+							const dw = 3.4 * u * (1 - puff * 0.22), dh = 0.95 * u * (1 + puff * 0.8), tilt = 0.17 + soft(tip, 0.5) * s * 0.12;
+							// The band: from the skin (a little into the head, so no gap
+							// ever shows) up into the disc.
+							const sink = u * 0.3;
+							ctx.beginPath();
+							ctx.moveTo(lo.x - u * 0.15, lo.y - u * 0.5);
+							ctx.lineTo(lo.x, lo.y + sink);
+							for (let i = 1; i < skin.length - 1; i++) ctx.quadraticCurveTo(skin[i].x, skin[i].y + sink, (skin[i].x + skin[i + 1].x) / 2, (skin[i].y + skin[i + 1].y) / 2 + sink);
+							ctx.lineTo(hi.x, hi.y + sink);
+							ctx.lineTo(hi.x + u * 0.25, hi.y - u * 0.4);
+							ctx.lineTo(cx + dw * 0.8, cy);
+							ctx.lineTo(cx - dw * 0.8, cy);
+							ctx.closePath();
+							ctx.fill();
+							ctx.beginPath();
+							ctx.ellipse(cx, cy, dw, dh, tilt, 0, Math.PI * 2);
+							ctx.fill();
+							// Its soft overhanging edge.
+							ctx.beginPath();
+							ctx.ellipse(cx + dw * 0.81, cy + u * 0.62 + flop, 0.85 * u, 0.55 * u, 0.45 + flop / (u * 2.5), 0, Math.PI * 2);
+							ctx.fill();
+							// The stalk.
+							ctx.strokeStyle = '#2b2f4e';
+							ctx.lineWidth = u * 0.34;
+							ctx.lineCap = 'round';
+							ctx.beginPath();
+							ctx.moveTo(cx - 0.2 * u, cy - dh * 0.8);
+							ctx.lineTo(cx - 0.2 * u + tip * s * u * 0.6, cy - dh * 0.8 - u * 0.65);
+							ctx.stroke();
+						}, 0);
+					}
 					break;
 				case 'bunny':
 					// Long ears in the body's colour, one smooth shape each,

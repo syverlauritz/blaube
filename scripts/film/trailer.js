@@ -6,7 +6,7 @@
 //   FILM_ONLY=pipe,lift   just those shots
 //   FILM_NO_REC=1         play it without recording
 //   FILM_SKY=<file>       another sky (next to this file)
-//   FILM_SONG=<id>        the choir's song (src/shared/songs.js)
+//   FILM_SONG=<id>        another song for the choir (src/shared/songs.js)
 //   BLAUBE_TEST instead of BLAUBE_FILM plays it unseen (a dry run).
 //
 // Everything is the real app. The blobs only ever move by their physics:
@@ -31,7 +31,13 @@ const HERE = __dirname;
 const OUT = path.join(HERE, 'out');
 const FILM = !!process.env.BLAUBE_FILM;
 const ONLY = (process.env.FILM_ONLY || '').split(',').filter(Boolean);
-const SONG = process.env.FILM_SONG || 'ode-to-joy';
+const SONG = process.env.FILM_SONG || 'film-waltz';
+// The choir sings along with the film's music: a few bars written to its
+// key, chords and beat (bars 22 to 26 of "Waltzing in Paris": D flat, A flat
+// seventh, back and forth; cut.js lays it on those bars).
+const WALTZ = { id: 'film-waltz', title: 'The film\x27s waltz', bpm: 60 / (1.0738 / 3),
+	notes: 'F4:2:oh F4:1:la G#4:2:la A#4:1:la F4:1:oh G#4:1:la C#5:1:la A#4:2:la C5:1:la C#5:3:la F4:2:oh F4:1:la G#4:2:la A#4:1:la C#5:3:la',
+	chords: 'C#:3 G#7:3 C#:3 G#7:3 C#:3 C#:3 G#7:3 C#:3' };
 const BAR = 1073.8; // ms: a bar of the waltz the film is cut to
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const hex = (name) => PALETTE.find(([n]) => n === name)[1];
@@ -87,6 +93,10 @@ module.exports = async function run({ win, tracker, moveToDisplay, otherWindows,
 			return out;
 		};
 	})()`);
+	await js(`BlaubeSongs.SONGS.push(${JSON.stringify(WALTZ)})`);
+	// They say what they have to say: the little exclamations (a game's "tower!",
+	// a "bleh!") are rationed to one every few minutes; here each one is heard.
+	const chatty = setInterval(() => js('__blaube.spoken.flavour = -1e9; __blaube.spoken.react = -1e9').catch(() => {}), 250);
 	await sleep(1000);
 	const wb = () => win.getBounds();
 	const floor = await js('innerHeight');
@@ -188,6 +198,8 @@ module.exports = async function run({ win, tracker, moveToDisplay, otherWindows,
 	let helpers = 0;
 	const helper = (id, type = 'Explore') => { const a = `h${++helpers}`; ev(id, 'SubagentStart', { agent_id: a, agent_type: type }); return a; };
 	const helperDone = (id, a) => ev(id, 'SubagentStop', { agent_id: a });
+	// A word in its bubble, said out loud in its own voice.
+	const say = (id, text, seconds = 1.4) => js(`${B(id)}.say([{ text: ${JSON.stringify(text)} }], ${seconds}, false, { minor: true })`);
 	const where = () => js(`[...__blaube.buddies.entries()].map(([k, b]) => k + '@' + Math.round(b.body.centroid().x) + ',' + Math.round(b.body.centroid().y) + (b.body.onLedge ? '^' : '')).join(' ')`);
 
 	// --- Recording ----------------------------------------------------------
@@ -231,7 +243,9 @@ module.exports = async function run({ win, tracker, moveToDisplay, otherWindows,
 		await lookAway();
 		await sleep(500);
 		cue();
-		await yank(c); // (and it’s left in the air)
+		yank(c); // (and it’s left in the air)
+		await sleep(180);
+		say('blaube', 'oh la la!', 1.3);
 		await sleep(2600);
 	});
 
@@ -325,8 +339,9 @@ module.exports = async function run({ win, tracker, moveToDisplay, otherWindows,
 		await onFloor('web', 0.17); await onFloor('shop', 0.5); await onFloor('game', 0.83);
 		return { c };
 	}, async () => {
+		cue('sing');
 		win.webContents.send('command', `choir:${SONG}`);
-		await sleep(7000);
+		await sleep(800 + 6.5 * BAR);
 		win.webContents.send('command', 'choir-stop');
 		await sleep(500);
 	});
@@ -379,7 +394,9 @@ module.exports = async function run({ win, tracker, moveToDisplay, otherWindows,
 		return { c, mac, pc };
 	}, async () => {
 		await look(360, 420);
-		await sleep(1200);
+		await sleep(900);
+		say('blaube', 'voilà!', 1.5);
+		await sleep(700);
 		const a = helper('blaube');
 		await sleep(3200);
 		helperDone('blaube', a);
@@ -409,6 +426,7 @@ module.exports = async function run({ win, tracker, moveToDisplay, otherWindows,
 		}
 	} finally {
 		clearInterval(ledgeTimer);
+		clearInterval(chatty);
 		closeAll();
 		const sound = await js(`(async () => {
 			const f = window.__film;
