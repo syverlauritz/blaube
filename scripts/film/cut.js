@@ -33,8 +33,8 @@ const CUT = [
 	["choir", 4, { cue: "sing", lead: -0.8 / BAR, onset: true, bar: 22 }], // (they sing along: their first note on the song’s bar 22, which it was written for)
 	["family", 2, { cue: "cue", lead: 1 / 3 }],
 	["family", 2, { cue: "home", lead: 0 }],
-	["dizzy", 2, { from: 1.3 }],
-	["dizzy", 2, { cue: "barf", lead: 2 / 3 }],
+	["dizzy", 2, { cue: "lift", lead: 1 / 3 }],
+	["dizzy", 3, { cue: "barf", lead: 2 / 3 }],
 	["end", 5, { from: 0.3 }],
 ];
 
@@ -93,12 +93,21 @@ function render(list, file, music) {
 			run(["-i", path.join(tmp, "sound.wav"), "-ac", "1", "-ar", "8000", "-f", "s16le", path.join(tmp, "sound.pcm")]);
 			const pcm = fs.readFileSync(path.join(tmp, "sound.pcm"));
 			const onsetNear = (t) => { for (let i = Math.max(0, Math.floor((t - 0.4) * 8000)); i < (t + 0.6) * 8000 && i * 2 + 1 < pcm.length; i++) if (Math.abs(pcm.readInt16LE(i * 2)) > 400) return i / 8000; return t; };
+			// Each piece’s sound runs on a moment past its cut and fades (a voice
+			// is never chopped off mid-word), laid over the next one’s.
+			const TAIL = 0.35;
+			let at = 0;
+			const laid = [];
 			list.forEach((p, i) => {
-				const d = (p.b - p.a).toFixed(3), s0 = p.onset ? onsetNear(inSound(p.a)) : inSound(p.a);
+				const len = p.b - p.a, s0 = p.onset ? onsetNear(inSound(p.a)) : inSound(p.a), start = at;
+				at += len;
 				if (p.onset) console.log(`  ${p.name}: first sound ${((s0 - inSound(p.a)) * 1000).toFixed(0)} ms from where the script put it`);
-				parts.push(s0 >= 0 && !p.mute ? `[0:a]atrim=${s0.toFixed(3)}:${(s0 + (p.b - p.a)).toFixed(3)},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,volume=${p.name === "choir" ? SING : TALK},apad=whole_dur=${d},atrim=0:${d}[a${i}]` : `aevalsrc=0|0:d=${d}:s=48000,aformat=channel_layouts=stereo[a${i}]`);
+				if (s0 < 0 || p.mute) return;
+				const d = len + TAIL;
+				parts.push(`[0:a]atrim=${s0.toFixed(3)}:${(s0 + d).toFixed(3)},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,volume=${p.name === "choir" ? SING : TALK},afade=t=in:st=0:d=${p.onset ? 0.005 : 0.05},afade=t=out:st=${(len - 0.05).toFixed(3)}:d=${(TAIL + 0.05).toFixed(3)},adelay=${Math.round(start * 1000)}:all=1[a${i}]`);
+				laid.push(`[a${i}]`);
 			});
-			parts.push(list.map((_, i) => `[a${i}]`).join("") + `concat=n=${list.length}:v=0:a=1,volume=${withMusic ? 11 : 9}dB${withMusic ? ",asplit[blobs][key]" : "[blobs]"}`);
+			parts.push(laid.join("") + `amix=inputs=${laid.length}:normalize=0,apad=whole_dur=${total.toFixed(3)},atrim=0:${total.toFixed(3)},volume=${withMusic ? 11 : 9}dB${withMusic ? ",asplit[blobs][key]" : "[blobs]"}`);
 		}
 		if (withMusic) {
 			ins.push("-i", MUSIC);

@@ -54,7 +54,7 @@ const CAST = {
 const ALL = Object.keys(CAST);
 
 // What the props say: Frenglish, all in good humour. (Only the first card is a "Ceci n’est pas".)
-const SAY = { chat: 'le chat (not le cat)', flick: 'la catapulte (oops)', shelf: 'le shelf', yank: 'le tablecloth trick', floor2: 'le plan B', tower: 'un petit tower', frog: 'le leapfrog', rain: ['il pleut', 'des', 'blobs'], balloon: 'le balloon', choir: 'la chorale, very pro', family: 'la petite family', dizzy: 'une very bad idée' };
+const SAY = { chat: 'le chat (not le cat)', flick: 'la catapulte (oops)', shelf: 'le shelf', yank: 'le tablecloth trick', floor2: 'le plan B', tower: 'un petit tower', frog: 'le leapfrog', rain: ['le', 'rain', 'of blobs'], balloon: 'le balloon', choir: 'la chorale, very pro', family: 'la petite family', dizzy: 'une very bad idée' };
 
 module.exports = async function run({ win, tracker, inbox, talk, talkId, pinned, talkSize, moveTalk, moveToDisplay, otherWindows, demoTokens, demoEfforts, pickedModel, pushState, setBlobHidden, setColor }) {
 	win.webContents.on('console-message', (e) => { if (e.level === 'error') console.log('[film] renderer:', e.message); });
@@ -356,9 +356,9 @@ module.exports = async function run({ win, tracker, inbox, talk, talkId, pinned,
 
 	// 7. It rains blobs: all of them from the top, down a staircase of words.
 	shot('rain', ALL, async () => {
-		const a = await card({ title: 'il pleut', text: SAY.rain[0], size: 60, w: 250, h: 130, x: 40, y: 420 });
-		const b = await card({ title: 'des', text: SAY.rain[1], size: 60, w: 270, h: 130, x: 410, y: 640 });
-		const c = await card({ title: 'blobs', text: SAY.rain[2], size: 60, w: 270, h: 130, x: 90, y: 880 });
+		const a = await card({ title: 'le', text: SAY.rain[0], size: 60, w: 250, h: 130, x: 40, y: 420 });
+		const b = await card({ title: 'rain', text: SAY.rain[1], size: 60, w: 270, h: 130, x: 410, y: 640 });
+		const c = await card({ title: 'of blobs', text: SAY.rain[2], size: 60, w: 270, h: 130, x: 90, y: 880 });
 		for (const [i, id] of ALL.entries()) await place(id, SW * (0.12 + 0.152 * i), -P(140) - P(260) * ((i * 5) % 6));
 		return { a, b, c };
 	}, async () => {
@@ -404,13 +404,16 @@ module.exports = async function run({ win, tracker, inbox, talk, talkId, pinned,
 		await sleep(3000);
 	});
 
-	// 11. A bad idea: shaken till it's green (and then some).
+	// 11. A bad idea: the two stand there; one is picked up and shaken till it's
+	// green, right over the other one (and then some).
 	shot('dizzy', ['game', 'shop'], async () => {
 		const c = await card({ title: 'bad idée', text: SAY.dizzy, size: 58, w: 660, h: 150, y: 960 });
 		await onCard('game', c, 0.3); await onCard('shop', c, 0.72);
 		return { c };
 	}, async () => {
-		const p = await at('game'), hx = SW * 0.42, hy = P(520);
+		await sleep(600);
+		cue('lift');
+		const p = await at('game'), o = await at('shop'), hx = o.x + P(25), hy = P(540); // (right over the other one: what comes out comes down on it)
 		await carry('game', [[p.x, p.y - P(200)], [hx, hy]], 500);
 		await js(`(async () => {
 			const b = ${B('game')}, raf = () => new Promise((r) => requestAnimationFrame(r));
@@ -421,9 +424,9 @@ module.exports = async function run({ win, tracker, inbox, talk, talkId, pinned,
 		})()`);
 		cue('barf');
 		console.log('[film]   barfed:', await js(`!!${B('game')}.barf`));
-		await sleep(1800);
+		await sleep(1500);
 		await js(`${B('game')}.body.endGrab()`);
-		await sleep(2200);
+		await sleep(3000);
 	});
 
 	// 12. The end.
