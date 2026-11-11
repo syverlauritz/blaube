@@ -117,7 +117,9 @@ function render(list, file, music) {
 		parts.push(sound && withMusic ? "[song][key]sidechaincompress=threshold=0.03:ratio=4:attack=15:release=350[duck];[duck][blobs]amix=inputs=2:normalize=0,alimiter=limit=0.95[aout]" : `[${sound ? "blobs" : "song"}]alimiter=limit=0.95[aout]`);
 		run([...ins, "-filter_complex", parts.join(";"), "-map", "[aout]", "-c:a", "aac", "-b:a", "256k", path.join(tmp, "a.m4a")]);
 	}
-	run(["-f", "concat", "-safe", "0", "-i", path.join(tmp, "list.txt"), ...(audio ? ["-i", path.join(tmp, "a.m4a")] : []), "-map", "0:v", ...(audio ? ["-map", "1:a", "-c:a", "copy"] : []), "-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p", "-t", total.toFixed(3), "-movflags", "+faststart", file]);
+	// (out/taskbar.png, if it’s there: one clean taskbar laid over every frame, in place of the one that was filmed)
+	const bar = path.join(OUT, "taskbar.png"), barred = music && fs.existsSync(bar);
+	run(["-f", "concat", "-safe", "0", "-i", path.join(tmp, "list.txt"), ...(audio ? ["-i", path.join(tmp, "a.m4a")] : []), ...(barred ? ["-i", bar, "-filter_complex", `[${audio ? 2 : 1}:v]scale=1080:-1:flags=lanczos[bar];[0:v][bar]overlay=0:H-h[v]`, "-map", "[v]"] : ["-map", "0:v"]), ...(audio ? ["-map", "1:a", "-c:a", "copy"] : []), "-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p", "-t", total.toFixed(3), "-movflags", "+faststart", file]);
 	fs.rmSync(tmp, { recursive: true, force: true });
 	return total;
 }
