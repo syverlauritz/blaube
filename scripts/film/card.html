@@ -1,0 +1,33 @@
+<!doctype html>
+<!-- A card for the film: painted cream canvas and a line in Magritte's hand,
+     maybe with a small plain line under it. ?text=…&size=…&sub=… -->
+<html><head><meta charset="utf-8">
+<style>
+	@font-face { font-family: 'Aurore'; src: url('LaBelleAurore.ttf'); }
+	html, body { margin: 0; height: 100%; overflow: hidden; user-select: none; cursor: default; }
+	body { display: flex; flex-direction: column; align-items: center; justify-content: center; color: #1b1612; background: #eadfc6; }
+	/* (the canvas: a soft light from the top left, and a fine weave) */
+	body::before { content: ''; position: fixed; inset: 0; background: radial-gradient(120% 140% at 20% 0%, #f3ead6 0%, #eadfc6 55%, #dccfb1 100%); }
+	svg { position: fixed; inset: 0; width: 100%; height: 100%; opacity: 0.22; mix-blend-mode: multiply; }
+	#t, #s { position: relative; }
+	#t { font-family: 'Aurore', cursive; white-space: nowrap; line-height: 1.1; padding-top: 0.14em; }
+	#s { font-family: 'Segoe UI', sans-serif; color: #4a4036; margin-top: 2px; white-space: pre-line; text-align: center; line-height: 1.4; }
+</style></head>
+<body>
+<svg><filter id="w"><feTurbulence type="fractalNoise" baseFrequency="0.9 0.9" numOctaves="2" seed="7"/><feColorMatrix values="0 0 0 0 0.45  0 0 0 0 0.38  0 0 0 0 0.28  0 0 0 0.9 0"/></filter><rect width="100%" height="100%" filter="url(#w)"/></svg>
+<div id="t"></div><div id="s"></div>
+<script>
+	const q = new URLSearchParams(location.search);
+	const t = document.getElementById('t'), s = document.getElementById('s');
+	t.textContent = q.get('text') || '';
+	t.style.fontSize = (q.get('size') || 60) + 'px';
+	s.textContent = q.get('sub') || '';
+	s.style.fontSize = (q.get('subSize') || 17) + 'px';
+	if (!s.textContent) s.remove();
+	// (too wide for the card: smaller, once the font is in)
+	document.fonts.ready.then(() => {
+		let px = parseFloat(t.style.fontSize);
+		while (t.scrollWidth > innerWidth * 0.9 && px > 12) t.style.fontSize = (px -= 1) + 'px';
+		document.title = document.title; // (painted)
+	});
+</script></body></html>

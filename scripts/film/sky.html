@@ -1,0 +1,11 @@
+<!doctype html>
+<!-- The film's backdrop: a painted sky over the whole work area, behind
+     everything the film puts up. ?sky=<file> picks another one. -->
+<html><head><meta charset="utf-8">
+<style>
+	html, body { margin: 0; height: 100%; overflow: hidden; background: #a9cbe6; cursor: none; }
+	img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+</style></head>
+<body><img id="i">
+<script>document.getElementById('i').src = new URLSearchParams(location.search).get('sky') || 'sky.jpg';</script>
+</body></html>
