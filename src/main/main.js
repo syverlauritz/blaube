@@ -1088,7 +1088,7 @@ function ownedBusy(id) {
   // for ever.)
   return owned.busy(id) || BUSY.has(s.state) || (s.agents || []).some((a) => Date.now() - (a.updatedAt || a.startedAt || 0) < 15 * 60e3);
 }
-let ownedSaved = '', ownedHeld = false;
+let ownedSaved = '', ownedHeld = false, ownedBack = false; // (ownedBack: last time's brought back)
 const revived = new Set(); // ids brought back: no "couldn't start" dialog if one can't be
 function saveOwned() {
   if (TEST || ownedHeld) return;
@@ -1115,7 +1115,7 @@ function forgetOwned() {
 function bringBackOwned() {
   if (TEST) return;
   let list = [];
-  try { list = JSON.parse(fs.readFileSync(ownedFile(), 'utf8')); } catch { return; }
+  try { list = JSON.parse(fs.readFileSync(ownedFile(), 'utf8')); } catch { ownedBack = true; return; }
   for (const o of Array.isArray(list) ? list : []) {
     if (!o || typeof o.id !== 'string' || typeof o.cwd !== 'string' || owned.has(o.id)) continue;
     // (Running somewhere already, in a terminal say: left be. Just listed,
@@ -1140,6 +1140,7 @@ function bringBackOwned() {
     owned.send(id, 'Blaube (the desktop app this session runs in) restarted while you were working, which cut your last turn off. Carry on where you left off. If you were waiting on the user for something, ask again.');
     tracker.handle({ session_id: id, hook_event_name: 'UserPromptSubmit' }, 'blaube');
   }
+  ownedBack = true;
   saveOwned();
 }
 
@@ -4516,7 +4517,9 @@ app.whenReady().then(async () => {
 app.on('second-instance', (_e, argv) => {
   if (!(argv || []).includes('--blaube-restart')) { send('come-here'); return; }
   log('restarting for Blaube (dev), sessions kept');
-  saveOwned();
+  // (Asked before its own were brought back: the file still lists them, and
+  // saving now would write none.)
+  if (ownedBack) saveOwned();
   ownedHeld = true;
   saveQueue(true);
   owned.killAll();
