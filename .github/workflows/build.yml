@@ -5,6 +5,9 @@ on:
     branches: [main]
     tags: ['v*']
   pull_request:
+  # Run by hand on main to publish the version in package.json as a release,
+  # for when a v* tag can't be pushed (the release job makes the tag).
+  workflow_dispatch:
 
 jobs:
   test:
@@ -67,6 +70,32 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
       - if: runner.os == 'Windows'
         run: npx electron-builder --win --x64 --arm64 --publish never
+      # What someone downloading it gets: the installer, run the way
+      # install.ps1 runs it (quietly, just for this user), installs Blaube,
+      # and the installed app starts and answers on its port.
+      - if: runner.os == 'Windows'
+        name: The Windows installer installs a Blaube that starts
+        shell: pwsh
+        env:
+          BLAUBE_PORT: 47873
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Start-Process -FilePath dist\Blaube-Setup-windows.exe -ArgumentList '/S' -Wait
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\blaube\Blaube.exe'
+          if (-not (Test-Path $exe)) { throw "The installer didn't put Blaube at $exe" }
+          $p = Start-Process -FilePath $exe -PassThru
+          $ok = $false
+          foreach ($i in 1..60) {
+            Start-Sleep -Seconds 1
+            if ($p.HasExited) { throw "Blaube quit by itself (exit code $($p.ExitCode))" }
+            try {
+              $r = Invoke-RestMethod -Uri "http://127.0.0.1:$env:BLAUBE_PORT/blaube/ping" -TimeoutSec 2
+              if ($r.app -eq 'blaube') { $ok = $true; break }
+            } catch {}
+          }
+          Get-Process -Name Blaube -ErrorAction SilentlyContinue | Stop-Process -Force
+          if (-not $ok) { throw 'The installed Blaube never answered on its port' }
+          Write-Host "The installed Blaube started and answered in about $i s"
       # The installers, the zips the Mac updater downloads, and the update
       # feeds (latest*.yml) with their blockmaps.
       - uses: actions/upload-artifact@v4
@@ -80,23 +109,32 @@ jobs:
             dist/latest*.yml
           if-no-files-found: error
 
-  # A v* tag (npm run release) publishes a real release. The app checks
+  # A v* tag (npm run release), or running this workflow by hand on main,
+  # publishes a real release. The app checks
   # GitHub's newest release for updates, and the README links download from
   # it with plain links, e.g.
   # https://github.com/syverlauritz/blaube/releases/latest/download/Blaube-mac-arm64.dmg
   release:
     needs: [package, life]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
       GH_TOKEN: ${{ github.token }}
-      TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
       - name: The tag matches package.json
-        run: test "v$(node -p 'require(`./package.json`).version')" = "$TAG"
+        run: |
+          v="v$(node -p 'require(`./package.json`).version')"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            test "$v" = "$GITHUB_REF_NAME"
+            echo "TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          else
+            # By hand: never publish over a version that's out already.
+            if gh release view "$v" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo "$v is out already"; exit 1; fi
+            echo "TAG=$v" >> "$GITHUB_ENV"
+          fi
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -108,7 +146,7 @@ jobs:
       - name: Publish the release
         run: |
           if [ -s notes.md ]; then notes=(--notes-file notes.md); else notes=(--generate-notes); fi
-          gh release create "$TAG" artifacts/* -R "$GITHUB_REPOSITORY" --title "Blaube ${TAG#v}" --verify-tag "${notes[@]}"
+          gh release create "$TAG" artifacts/* -R "$GITHUB_REPOSITORY" --title "Blaube ${TAG#v}" --target "$GITHUB_SHA" "${notes[@]}"
 
   # Every push to main: a rolling "nightly" pre-release to try what's next.
   # (Pre-releases are never offered as updates.)
