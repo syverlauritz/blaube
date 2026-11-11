@@ -54,9 +54,9 @@ const CAST = {
 const ALL = Object.keys(CAST);
 
 // What the props say: Frenglish, all in good humour. (Only the first card is a "Ceci n’est pas".)
-const SAY = { lift: 'le lift', flick: 'la catapulte (oops)', shelf: 'le shelf', yank: 'le tablecloth trick', floor2: 'le plan B', tower: 'un petit tower', frog: 'le leapfrog', rain: ['il pleut', 'des', 'blobs'], balloon: 'le balloon', choir: 'la chorale, very pro', family: 'la petite family', dizzy: 'une very bad idée' };
+const SAY = { chat: 'le chat (not le cat)', flick: 'la catapulte (oops)', shelf: 'le shelf', yank: 'le tablecloth trick', floor2: 'le plan B', tower: 'un petit tower', frog: 'le leapfrog', rain: ['il pleut', 'des', 'blobs'], balloon: 'le balloon', choir: 'la chorale, very pro', family: 'la petite family', dizzy: 'une very bad idée' };
 
-module.exports = async function run({ win, tracker, moveToDisplay, otherWindows, demoTokens, demoEfforts, pickedModel, pushState, setBlobHidden, setColor }) {
+module.exports = async function run({ win, tracker, inbox, talk, talkId, pinned, talkSize, moveTalk, moveToDisplay, otherWindows, demoTokens, demoEfforts, pickedModel, pushState, setBlobHidden, setColor }) {
 	win.webContents.on('console-message', (e) => { if (e.level === 'error') console.log('[film] renderer:', e.message); });
 	const js = (s) => win.webContents.executeJavaScript(s).catch((err) => { console.log('[film] failed:', s.slice(0, 160)); throw err; });
 	const until = async (fn, ms = 4000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return true; await sleep(50); } return false; };
@@ -225,7 +225,7 @@ module.exports = async function run({ win, tracker, moveToDisplay, otherWindows,
 	let cues = {};
 	const cue = (name = 'cue') => { cues[name] = (Date.now() - t0) / 1000; };
 	// A shot: who's in it, setting it up (off camera), and playing it (on camera).
-	const shot = (name, cast, setup, play) => SHOTS.push({ name, cast, setup, play });
+	const shot = (name, cast, setup, play, after) => SHOTS.push({ name, cast, setup, play, after });
 
 	// 1. The painting. It sits on "Ceci n’est pas un blob."; then the card is
 	// yanked from under it, and it’s left in the air.
@@ -249,23 +249,66 @@ module.exports = async function run({ win, tracker, moveToDisplay, otherWindows,
 		await sleep(2600);
 	});
 
-	// 2. A lift: up they go, and it stops.
-	shot('lift', ['api', 'web', 'docs'], async () => {
-		const c = await card({ title: 'lift', text: SAY.lift, size: 64, w: 660, h: 150, y: 1010 });
-		await onCard('api', c, 0.2); await onCard('web', c, 0.5); await onCard('docs', c, 0.8);
-		return { c };
-	}, async ({ c }) => {
-		await sleep(500);
+	// 2. Le chat: two of them with their talk boxes open (made-up projects), one
+	// up on a card, and a little one that hops up onto a box.
+	shot('chat', ['blaube', 'docs'], async () => {
+		const c = await card({ title: 'le chat', text: SAY.chat, size: 34, w: 240, h: 120, x: 474, y: 800 });
+		await onCard('docs', c, 0.5); await onFloor('blaube', 0.3);
+		for (const id of ['blaube', 'docs']) inbox.reachable.add(id); // (as if their hooks were connected: no "connect" note)
+		inbox.add('docs', { who: 'you', text: 'why is le build so slow?' });
+		inbox.add('docs', { who: 'step', text: 'Ran npm run build · 41 s' });
+		inbox.add('docs', { who: 'claude', text: 'It bundles the fonts twice. Fixed: 9 seconds now.' });
+		inbox.add('blaube', { who: 'you', text: 'make le logo bigger, s’il te plaît' });
+		inbox.add('blaube', { who: 'step', text: 'Edited logo.css' });
+		await settled(['blaube', 'docs'], 5000);
+		// Each one's box is opened as a click on it would, pinned, and put in its place.
+		const open = async (id, box) => {
+			const p = await at(id), rr = await r(id);
+			await js(`window.blaube.talk(${JSON.stringify(id)}, { x: ${Math.round(p.x)}, y: ${Math.round(p.y - rr)}, r: ${Math.round(rr)} })`);
+			await until(() => talkId() === id && talk() && talk().isVisible(), 5000);
+			await sleep(600);
+			await talk().webContents.executeJavaScript("document.getElementById('pin').click()");
+			await until(() => !!pinned().get(id), 4000);
+			moveTalk(id, { x: X0 + P(box.x), y: Y0 + P(box.y), w: P(box.w), h: P(box.h) });
+			await sleep(300);
+		};
+		talkSize(P(450), P(540));
+		await open('docs', { x: 250, y: 16, w: 450, h: 540 });
+		await open('blaube', { x: 16, y: 590, w: 450, h: 540 });
+		// Blaube up on its own box; docs at work on its card (busy, so it stays put).
+		const top = await js(`__blaube.ledges().find((l) => l.talk === 'blaube')`);
+		await place('blaube', top.x0 + P(95), top.y - (await r('blaube')) * 1.3);
+		ev('docs', 'UserPromptSubmit', { prompt: 'and le tests?' });
+		ev('docs', 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'npm test' } });
+		const kid = helper('blaube');
+		await until(() => has(`blaube/${kid}`), 6000);
+		await sleep(1500);
+		await place(`blaube/${kid}`, P(330), floor - P(60));
+		await settled(['blaube', 'docs', `blaube/${kid}`], 4000);
+		return { c, kid };
+	}, async ({ kid }) => {
+		await sleep(350);
 		cue();
-		await slide(c, 0, -620, 800, line);
-		await sleep(2000);
+		// The little one is lobbed up onto the box (as a hand would), and a reply comes in.
+		const k = `blaube/${kid}`, p = await at(k);
+		carry(k, [[p.x + P(60), P(900)], [P(420), P(520)], [P(350), P(440)]], 620);
+		await sleep(700);
+		inbox.add('blaube', { who: 'claude', text: 'Voilà! 20% bigger. The tests pass.' });
+		await sleep(2600);
+	}, async ({ kid }) => {
+		helperDone('blaube', kid);
+		ev('docs', 'Stop');
+		// (each box closed by its own ✕, as you would)
+		for (const id of ['blaube', 'docs']) { const rec = pinned().get(id); if (rec && !rec.win.isDestroyed()) await rec.win.webContents.executeJavaScript("document.getElementById('close').click()").catch(() => {}); }
+		await until(() => !pinned().get('blaube') && !pinned().get('docs'), 3000);
+		await sleep(600);
 	});
 
 	// 3. A catapult: flicked, and (some of) them land on the shelf.
-	shot('flick', ['blaube', 'shop', 'game'], async () => {
+	shot('flick', ['shop', 'game'], async () => {
 		const c = await card({ title: 'catapulte', text: SAY.flick, size: 56, w: 600, h: 150, x: 30, y: 960 });
 		const shelf = await card({ title: 'shelf', text: SAY.shelf, size: 60, w: 660, h: 140, y: 400 });
-		await onCard('blaube', c, 0.2); await onCard('shop', c, 0.5); await onCard('game', c, 0.8);
+		await onCard('shop', c, 0.3); await onCard('game', c, 0.7);
 		return { c, shelf };
 	}, async ({ c }) => {
 		await sleep(600);
@@ -277,10 +320,10 @@ module.exports = async function run({ win, tracker, moveToDisplay, otherWindows,
 	});
 
 	// 4. A tablecloth: yanked from under a row of them, and then the net too.
-	shot('yank', ['api', 'docs', 'web'], async () => {
+	shot('yank', ['api'], async () => {
 		const c = await card({ title: 'tablecloth', text: SAY.yank, size: 64, w: 660, h: 150, y: 380 });
 		const net = await card({ title: 'plan B', text: SAY.floor2, size: 60, w: 660, h: 140, y: 800 });
-		await onCard('api', c, 0.2); await onCard('docs', c, 0.5); await onCard('web', c, 0.8);
+		await onCard('api', c, 0.5);
 		return { c, net };
 	}, async ({ c, net }) => {
 		await sleep(700);
@@ -320,7 +363,7 @@ module.exports = async function run({ win, tracker, moveToDisplay, otherWindows,
 		return { a, b, c };
 	}, async () => {
 		await sleep(4200);
-	}, { live: true });
+	});
 
 	// 8. A balloon: it blows itself up and floats off.
 	shot('balloon', ['web', 'api'], async () => {
@@ -421,6 +464,7 @@ module.exports = async function run({ win, tracker, moveToDisplay, otherWindows,
 			await s.play(props);
 			marks.push({ name: s.name, start, end: (Date.now() - t0) / 1000, cues });
 			console.log('[film]   blobs:', await where());
+			if (typeof s.after === 'function') await s.after(props);
 			closeAll();
 			await sleep(600);
 		}

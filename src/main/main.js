@@ -4630,7 +4630,7 @@ app.whenReady().then(async () => {
     // (A test that doesn’t even load fails, rather than hanging till it’s killed.)
     Promise.resolve().then(() => require(path.resolve(TEST))).then((run) => run({ app, win, tracker, inbox, owned, startSession, PORT, talk: () => talkWin, talkId: () => talkId, pinned: () => pinnedTalks, mcpStates, pushTalk, log,
 			// (film: which screen, the windows it puts up as ledges, made-up usage and sizes)
-			moveToDisplay, otherWindows: (list) => { otherWindows = { list, at: Date.now() }; sendLedges(); }, demoTokens, demoEfforts, pickedModel, pushState, setBlobHidden, setColor: (cwd, hex) => { prefs.colors[cwd] = hex; },
+			moveToDisplay, otherWindows: (list) => { otherWindows = { list, at: Date.now() }; sendLedges(); }, demoTokens, demoEfforts, pickedModel, pushState, setBlobHidden, setColor: (cwd, hex) => { prefs.colors[cwd] = hex; }, moveTalk: (id, box) => { const r = pinnedTalks.get(id); if (r) { Object.assign(r.box, box); applyBounds(r); } },
 			talkSize: (w, h) => { prefs.talkSizes = Object.assign({}, prefs.talkSizes, { [talkSizeKey(currentDisplay().workArea)]: { w, h } }); } }))
       .then((code) => app.exit(code || 0), (e) => { console.error(e); app.exit(1); });
   }

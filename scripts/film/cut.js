@@ -16,6 +16,7 @@ const RAW = path.join(OUT, 'raw.mp4'), SOUND = path.join(OUT, 'sound.webm');
 // The film is cut to a waltz: downbeats at FIRST + k * BAR seconds into the song.
 const MUSIC = path.join(HERE, "music", "waltzing-in-paris.mp3");
 const BAR = 1.0738, FIRST = 0.44;
+const TALK = 0.3, SING = 0.8; // how loud the blobs’ talking and their singing are (1: as in draft 2)
 const SKIP = 3; // bars of the song’s intro left out: the film starts on its fourth downbeat
 const MUSIC_START = FIRST + SKIP * BAR;
 // [shot, how many bars it gets, where to cut in]. Where: { from } seconds
@@ -23,11 +24,11 @@ const MUSIC_START = FIRST + SKIP * BAR;
 // lead bars into its slot (a beat is a third of a bar). mute: no blob sound.
 const CUT = [
 	["pipe", 5, { cue: "cue", lead: 3 }], // (the yank on the fourth downbeat)
-	["lift", 2, { cue: "cue", lead: 1 / 3 }],
+	["chat", 3, { cue: "cue", lead: 1 / 3 }],
 	["flick", 2, { cue: "cue", lead: 1 / 3 }],
 	["yank", 2, { cue: "cue", lead: 1 / 3 }],
 	["tower", 2, { from: 0.35 }],
-	["rain", 3, { from: 0 }],
+	["rain", 2, { from: 0.1 }],
 	["balloon", 3, { from: 1.6 }],
 	["choir", 4, { cue: "sing", lead: -0.8 / BAR, onset: true, bar: 22 }], // (they sing along: their first note on the song’s bar 22, which it was written for)
 	["family", 2, { cue: "cue", lead: 1 / 3 }],
@@ -95,7 +96,7 @@ function render(list, file, music) {
 			list.forEach((p, i) => {
 				const d = (p.b - p.a).toFixed(3), s0 = p.onset ? onsetNear(inSound(p.a)) : inSound(p.a);
 				if (p.onset) console.log(`  ${p.name}: first sound ${((s0 - inSound(p.a)) * 1000).toFixed(0)} ms from where the script put it`);
-				parts.push(s0 >= 0 && !p.mute ? `[0:a]atrim=${s0.toFixed(3)}:${(s0 + (p.b - p.a)).toFixed(3)},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,apad=whole_dur=${d},atrim=0:${d}[a${i}]` : `aevalsrc=0|0:d=${d}:s=48000,aformat=channel_layouts=stereo[a${i}]`);
+				parts.push(s0 >= 0 && !p.mute ? `[0:a]atrim=${s0.toFixed(3)}:${(s0 + (p.b - p.a)).toFixed(3)},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,volume=${p.name === "choir" ? SING : TALK},apad=whole_dur=${d},atrim=0:${d}[a${i}]` : `aevalsrc=0|0:d=${d}:s=48000,aformat=channel_layouts=stereo[a${i}]`);
 			});
 			parts.push(list.map((_, i) => `[a${i}]`).join("") + `concat=n=${list.length}:v=0:a=1,volume=${withMusic ? 11 : 9}dB${withMusic ? ",asplit[blobs][key]" : "[blobs]"}`);
 		}
