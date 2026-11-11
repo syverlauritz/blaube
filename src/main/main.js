@@ -736,6 +736,7 @@ function pushTalk(id, focusField = false) {
     tail: talkTail,
     pinned: rec.pinned,
     dark: !!prefs.talkDark,
+    side: prefs.talkSide || 'less', // (its git and tools panel: one line, opened, or hidden)
     asks: inbox.asks.has(id) ? inbox.asks.get(id).length : 0,
     // No inbox hook, but Blaube can type into its terminal for it.
     typeable: process.platform === 'darwin' && !!s.pid && (s.term === 'Apple_Terminal' || s.term === 'iTerm.app'),
@@ -4439,6 +4440,14 @@ app.whenReady().then(async () => {
     pushBlobs(); // (Blobs follows the talk box's dark mode)
     sendTalkRect(); // (dark boxes have no tail)
   });
+  // Its git and tools panel: one line (less), opened (more) or hidden
+  // (off), for every box, kept.
+  ipcMain.on('talk-side', (_e, mode) => {
+    if (!['less', 'more', 'off'].includes(mode) || prefs.talkSide === mode) return;
+    prefs.talkSide = mode;
+    savePrefs();
+    pushTalks();
+  });
   // Where the tail leaves the box now (its slime moved): the box stays put,
   // but it shrinks shut into its tail, wherever that is.
   ipcMain.on('talk-at', (_e, id, at) => {
@@ -4513,7 +4522,7 @@ app.whenReady().then(async () => {
   if (process.env.BLAUBE_DEMO) runDemo();
   if (TEST) {
     // (A test that doesn't even load fails, rather than hanging till it's killed.)
-    Promise.resolve().then(() => require(path.resolve(TEST))).then((run) => run({ app, win, tracker, inbox, owned, startSession, PORT, talk: () => talkWin, talkId: () => talkId, pinned: () => pinnedTalks, log }))
+    Promise.resolve().then(() => require(path.resolve(TEST))).then((run) => run({ app, win, tracker, inbox, owned, startSession, PORT, talk: () => talkWin, talkId: () => talkId, pinned: () => pinnedTalks, mcpStates, pushTalk, log }))
       .then((code) => app.exit(code || 0), (e) => { console.error(e); app.exit(1); });
   }
 });

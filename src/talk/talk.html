@@ -135,11 +135,22 @@
   .side:hover::-webkit-scrollbar-thumb { background: var(--line); }
   .side .label, .git::before, #todoHead::before { flex: none; width: 74px; font: 800 12px/1.2 var(--ui); color: var(--faint); text-transform: uppercase; letter-spacing: .04em; }
   .git { display: flex; align-items: center; width: 100%; min-height: 34px; border: 0; border-radius: 12px; background: none; padding: 4px 8px; font: 600 14px var(--ui); color: var(--ink); text-align: left; cursor: default; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .git::before { content: "Git"; }
+  .git::before { content: attr(data-label); }
   button.git.opens { cursor: pointer; }
   button.git.opens::after { content: "Show"; margin-left: auto; padding-left: 12px; font: 700 13px var(--ui); color: var(--dim); }
-  button.git.opens[aria-expanded="true"]::after { content: "Hide"; }
+  button.git.opens[aria-expanded="true"]::after { content: "Less"; }
   button.git.opens:hover { background: var(--soft); }
+  /* Its one line (the details a tap away), and Hide: the panel gone, in
+     every box, till the branch button by All sessions brings it back. */
+  .sidehead { display: flex; align-items: center; gap: 2px; min-width: 0; }
+  .sidehead .git { flex: 1; min-width: 0; width: auto; }
+  .git > span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+  .git > span.sideneed { flex: 0 100 auto; color: var(--dim); }
+  .sidehide { flex: none; border: 0; border-radius: 999px; padding: 3px 10px; background: none; font: 700 13px var(--ui); color: var(--faint); cursor: pointer; }
+  .sidehide:hover { background: var(--soft); color: var(--ink); }
+  .tbtn.sideback { height: 28px; max-width: 160px; padding: 0 11px; gap: 5px; background: var(--softer); color: var(--dim); font-size: 13px; }
+  .tbtn.sideback span { overflow: hidden; text-overflow: ellipsis; }
+  .tbtn.sideback:hover { background: var(--hover); color: var(--ink); }
   .gitfiles { margin: 0 0 6px 82px; padding: 0; list-style: none; max-height: 220px; overflow-y: auto; }
   .gitfiles button { display: flex; gap: 8px; width: 100%; border: 0; background: none; padding: 3px 0; font: 600 14px var(--ui); color: var(--body); text-align: left; cursor: pointer; }
   .gitfiles button:hover { color: var(--ink); }
@@ -166,6 +177,10 @@
   .branches > button.on { background: var(--ink); color: var(--paper); opacity: 1; cursor: default; }
   .branches > button.parked::after { content: ' •'; color: #d97757; }
   .branches > button.dim { background: none; color: var(--dim); }
+  .branches > button.agent { background: none; color: var(--dim); padding: 3px 8px; }
+  .branches > button.agent:hover { background: var(--paper); color: var(--ink); }
+  .branches > button.sidemore { background: none; color: var(--dim); font-weight: 700; }
+  .branches > button.sidemore:hover { background: var(--paper); color: var(--ink); }
   .branches > button:disabled:not(.on) { opacity: .5; cursor: default; }
   .branches .cloneform { width: auto; flex: 1; min-width: 220px; }
   .branches .cloneform input { padding: 4px 12px; font-size: 14px; background: var(--paper); }
@@ -187,6 +202,8 @@
   .branches .behindrow.stashed span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .branches .behindrow button.sure { background: #d04a3c; color: #fff; }
   .branches .commits { flex-basis: 100%; margin: 4px 0 0; max-height: 220px; }
+  .gitfiles li.sidemore > button:first-child { flex: none; color: var(--dim); font-weight: 700; }
+  .gitfiles li.sidemore > button:first-child:hover { color: var(--ink); }
   /* What it left running in the background (a dev server, a watcher), and
      its tools that couldn't connect. */
   .bg { margin: 0; padding: 0; list-style: none; }
@@ -194,6 +211,12 @@
   .bg li::before { content: "Running"; flex: none; width: 74px; font: 800 12px/1.2 var(--ui); color: var(--faint); text-transform: uppercase; letter-spacing: .04em; }
   .mcp li::before { content: "Tools"; color: var(--red); }
   .mcp li.all { justify-content: flex-end; }
+  /* (Many of them: one row saying how many, the list a tap away.) */
+  .mcp li.fold::before { color: var(--faint); }
+  .mcp li.fold span { color: var(--dim); }
+  .mcp li.fold button { background: none; color: var(--dim); }
+  .mcp li.fold button:hover { background: var(--paper); color: var(--ink); }
+  .mcp li.sub::before { content: ""; }
   .mcp li.all::before { content: none; }
   .bg li span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bg button { border: 0; border-radius: 999px; padding: 3px 11px; background: var(--paper); font: 700 13px var(--ui); color: var(--ink); cursor: pointer; }
@@ -658,12 +681,16 @@
         <span class="state" id="stateChip"><i id="dot"></i><span id="state"></span></span>
         <span class="subname" id="subname" hidden title="Its name (double-click to rename it)"></span>
         <span class="spacer"></span>
+        <button class="tbtn sideback" id="sideBack" type="button" hidden title="Show its git and tools again"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.5" cy="5.5" r="2.2"/><circle cx="6.5" cy="18.5" r="2.2"/><circle cx="17.5" cy="7.5" r="2.2"/><path d="M6.5 7.7v8.6M17.5 9.7c0 4-4.5 4.5-9.5 7"/></svg><span></span></button>
         <button class="tbtn all" id="allSessions" type="button" aria-expanded="false"><span>All sessions</span><span class="count" id="sessionCount" hidden></span></button>
       </div>
       <nav class="others" id="others" aria-label="Sessions"></nav>
     </header>
     <div class="side" id="side">
-      <button class="git" id="git" type="button" hidden aria-expanded="false"></button>
+      <div class="sidehead" id="sideHead" hidden>
+        <button class="git" id="git" type="button" hidden aria-expanded="false"></button>
+        <button class="sidehide" id="sideHide" type="button" title="Hide this panel in every box (the button by All sessions brings it back)">Hide</button>
+      </div>
       <ul class="gitfiles" id="gitFiles" hidden></ul>
       <div class="branches" id="branches" hidden></div>
       <div class="todo" id="todo" hidden>

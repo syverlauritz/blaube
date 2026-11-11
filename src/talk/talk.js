@@ -801,8 +801,8 @@
     renderTodo(s);
     renderOthers(s);
     if (document.body.classList.contains('overview')) drawOverview(s);
-    $('git').textContent = s.git || '';
-    $('git').hidden = !s.git || !!s.ended;
+    if (Date.now() - sideSetAt > 1500) sideMode = SIDE_MODES.includes(s.side) ? s.side : 'less';
+    renderSideHead(s);
     renderGitFiles(s);
     renderTasks(s);
     renderMcp(s);
@@ -1428,19 +1428,69 @@
     t.setSelectionRange(8, t.value.length);
   });
 
-  // Tap the git line for the files it's changed; tap one to see it.
+  // The panel under the top (its git, and its tools that need you) is
+  // one quiet line: its branch, what's changed, how many tools want a
+  // sign-in. Show opens the details under it, Less folds them back, Hide
+  // takes the panel away (the branch button by All sessions brings it
+  // back). Kept for every box: less (the default), more or off.
+  const SIDE_MODES = ['less', 'more', 'off'];
+  let sideMode = 'less', sideSetAt = 0;
+  let gitOpen = false;
+  function setSide(mode) {
+    sideMode = mode;
+    sideSetAt = Date.now(); // (a state already on its way says the old one)
+    if (api.side) api.side(mode);
+    if (!current) return;
+    renderSideHead(current);
+    renderGitFiles(current);
+    renderMcp(current);
+    requestAnimationFrame(fitWindow);
+  }
+  const toolsOf = (s) => (s.ended || s.demo ? [] : (s.mcp || []).filter((m) => !mcpHidden.has(m.name)));
+  function renderSideHead(s) {
+    const git = !s.ended && s.git ? s.git : '';
+    const tools = toolsOf(s);
+    const signIns = tools.filter((m) => m.status === 'needs-auth').length, broken = tools.length - signIns;
+    const any = !!git || tools.length > 0;
+    const off = sideMode === 'off';
+    const head = $('git');
+    head.textContent = '';
+    if (git) {
+      const g = document.createElement('span');
+      g.textContent = git;
+      head.append(g);
+    }
+    head.dataset.label = git ? 'Git' : 'Tools';
+    const need = [signIns ? `${signIns} tool${signIns === 1 ? '' : 's'} need${signIns === 1 ? 's' : ''} sign-in` : '', broken ? `${broken} tool${broken === 1 ? '' : 's'} couldn’t connect` : ''].filter(Boolean).join(' · ');
+    if (need) {
+      const t = document.createElement('span');
+      t.className = 'sideneed';
+      t.textContent = (git ? ' · ' : '') + need;
+      head.append(t);
+    }
+    head.hidden = !any;
+    const opens = (!!git && !String(s.id).startsWith('demo-')) || tools.length > 0;
+    gitOpen = opens && sideMode === 'more';
+    head.classList.toggle('opens', opens);
+    head.setAttribute('aria-expanded', String(gitOpen));
+    head.title = opens ? (gitOpen ? 'Fold the details away' : git ? 'Show the changed files, branches and versions' : 'Show the tools') : '';
+    $('sideHead').hidden = !any || off;
+    // (Hidden: a quiet button by All sessions, its branch on it, brings it back.)
+    const back = $('sideBack');
+    back.hidden = !any || !off;
+    back.lastChild.textContent = git ? git.split(' · ')[0] : 'Tools';
+  }
+  $('git').addEventListener('click', () => { if (!current || !$('git').classList.contains('opens')) return; setSide(sideMode === 'more' ? 'less' : 'more'); });
+  $('sideHide').addEventListener('click', () => setSide('off'));
+  $('sideBack').addEventListener('click', () => setSide('less'));
+
+  // Opened, the git line has the files it's changed; tap one to see it.
   // (Its branches too: switch to one, or start a new one.)
-  let gitOpen = false, gitFor = '';
   const discardSure = new Map(); // file (or commit) -> when its ↺ (or Undo) was tapped once
-  $('git').addEventListener('click', () => { if (!current || !current.git || current.ended) return; gitOpen = !gitOpen; renderGitFiles(current); });
+  let branchesAll = false, commitsAll = false; // (all of them shown, till it's another session)
   function renderGitFiles(s) {
     const list = s.ended ? [] : (s.gitFiles || []);
-    if (gitFor !== s.id) { gitFor = s.id; gitOpen = false; }
     if (!s.git || s.ended) gitOpen = false;
-    const opens = !!s.git && !s.ended && !String(s.id).startsWith('demo-');
-    $('git').classList.toggle('opens', opens);
-    $('git').setAttribute('aria-expanded', String(gitOpen));
-    $('git').title = opens ? (gitOpen ? 'Hide the files and branches' : list.length ? 'Show the changed files and branches' : 'Show its branches') : '';
     renderBranches(s, list);
     const box = $('gitFiles');
     const was = box.hidden;
@@ -1566,7 +1616,7 @@
     const box = $('branches');
     const busy = s.state === 'working' || s.state === 'waiting';
     const dirty = list.some((f) => f.how !== 'new');
-    const key = [s.id, gitOpen, s.git, busy, dirty, s.pr ? s.pr.url : '', (s.scripts || []).join()].join('|');
+    const key = [s.id, gitOpen, s.git, busy, dirty, s.pr ? s.pr.url : '', (s.scripts || []).join(), branchesAll].join('|');
     box.hidden = !gitOpen;
     if (!gitOpen) { box.dataset.key = ''; return; }
     if (box.dataset.key === key) return;
@@ -1611,10 +1661,19 @@
       label.className = 'branchon';
       label.textContent = 'Branches';
       box.append(label);
-      for (const n of names.slice(0, 8)) {
+      // (The one it's on first, then the three newest of yours; the rest,
+      // agents' worktree branches among them, behind +N more.)
+      const agent = (n) => /^worktree-agent-/.test(n);
+      const few = names.filter((n) => n !== on && !agent(n)).slice(0, 3);
+      const rest = names.filter((n) => n !== on && !few.includes(n));
+      const shown = [...(names.includes(on) ? [on] : []), ...few, ...(branchesAll ? rest : [])];
+      for (const n of shown) {
         const b = document.createElement('button');
         b.type = 'button';
         b.textContent = n;
+        b.dataset.name = n;
+        // (An agent's: just "agent" and the start of its id, quietly.)
+        if (agent(n) && n !== on) { b.textContent = 'agent ' + n.slice(15, 23); b.classList.add('agent'); }
         if (n === on) { b.className = 'on'; b.disabled = true; b.title = 'It’s on this branch'; } else {
           b.disabled = !!why;
           b.title = why || (dirty ? `Switch to ${n}: your changes here are set aside, and come back when you switch back` : `Switch to ${n}`);
@@ -1622,7 +1681,18 @@
           if (parked.includes(n)) { b.classList.add('parked'); b.title += '\nIt has changes set aside: they come back when you switch to it'; }
           b.onclick = () => switchTo(n, false, b);
         }
+        if (b.classList.contains('agent')) b.title = n + '\n' + b.title;
         box.append(b);
+      }
+      if (rest.length) {
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'sidemore';
+        const agents = rest.filter(agent).length;
+        more.textContent = branchesAll ? 'Fewer' : `+${rest.length} more`;
+        more.title = branchesAll ? 'Show just the newest' : agents ? `${agents} of them ${agents === 1 ? 'is an agent’s' : 'are agents’'} worktree branch${agents === 1 ? '' : 'es'}` : 'Show every branch';
+        more.onclick = () => { branchesAll = !branchesAll; if (current) renderBranches(current, current.ended ? [] : (current.gitFiles || [])); };
+        box.append(more);
       }
       // (Branches already merged: tidied away in a tap, two to be sure.)
       const extra = [];
@@ -1643,7 +1713,7 @@
           const gone = await api.deleteMerged(s.id, done.names);
           if (!gone.length) { go.disabled = false; go.textContent = 'Delete them'; go.classList.remove('sure'); said.textContent = 'git wouldn’t delete them'; return; }
           if (row.isConnected) row.remove();
-          for (const c of [...box.querySelectorAll(':scope > button')]) if (gone.includes(c.textContent)) c.remove();
+          for (const c of [...box.querySelectorAll(':scope > button')]) if (gone.includes(c.dataset.name || c.textContent)) c.remove();
           requestAnimationFrame(fitWindow);
         };
         row.append(said, go);
@@ -1718,8 +1788,10 @@
       if (box.dataset.key !== key || box.dataset.draw !== draw || !list || !list.length) return;
       const ul = document.createElement('ul');
       ul.className = 'gitfiles commits';
-      for (const c of list) {
+      const FEW = 3;
+      for (const [i, c] of list.entries()) {
         const li = document.createElement('li');
+        if (i >= FEW) { li.className = 'older'; li.hidden = !commitsAll; }
         const b = document.createElement('button');
         b.type = 'button';
         const name = document.createElement('span');
@@ -1776,6 +1848,22 @@
           li.append(rv);
         }
         li.append(pre);
+        ul.append(li);
+      }
+      if (list.length > FEW) {
+        const li = document.createElement('li');
+        li.className = 'sidemore';
+        const b = document.createElement('button');
+        b.type = 'button';
+        const say = () => { b.textContent = commitsAll ? 'Fewer' : `${list.length - FEW} older`; };
+        say();
+        b.onclick = () => {
+          commitsAll = !commitsAll;
+          for (const o of ul.querySelectorAll('li.older')) o.hidden = !commitsAll;
+          say();
+          requestAnimationFrame(fitWindow);
+        };
+        li.append(b);
         ul.append(li);
       }
       box.append(ul);
@@ -1925,21 +2013,45 @@
   // good (Hide all, all of them); /mcp still lists them.
   let mcpHidden = new Set();
   try { mcpHidden = new Set(JSON.parse(localStorage.getItem('mcpHidden')) || []); } catch {}
+  // They show with the details (Show on the panel's line, which counts
+  // them); more than one fold into a row saying how many, the list a tap
+  // away: they're not urgent.
+  let toolsOpen = false;
   function hideMcp(names) {
     for (const n of names) mcpHidden.add(n);
     try { localStorage.setItem('mcpHidden', JSON.stringify([...mcpHidden])); } catch {}
-    if (current) renderMcp(current);
+    if (current) { renderSideHead(current); renderMcp(current); }
   }
   function renderMcp(s) {
     const box = $('mcp');
-    const list = s.ended || s.demo ? [] : (s.mcp || []).filter((m) => !mcpHidden.has(m.name));
-    const key = JSON.stringify(list) + s.id;
-    box.hidden = !list.length;
+    const list = toolsOf(s);
+    const open = sideMode === 'more';
+    const key = JSON.stringify(list) + s.id + open + toolsOpen;
+    box.hidden = !list.length || !open;
     if (box.dataset.key === key) return;
     box.dataset.key = key;
     box.textContent = '';
+    if (!open) return;
+    if (list.length > 1) {
+      const li = document.createElement('li');
+      li.className = 'fold';
+      const said = document.createElement('span');
+      const signIns = list.filter((m) => m.status === 'needs-auth').length;
+      said.textContent = signIns === list.length ? `${list.length} tools need you to sign in` : signIns ? `${list.length} tools need you (${signIns} to sign in)` : `${list.length} tools couldn’t connect`;
+      said.title = list.map((m) => m.name).join('\n');
+      const tap = document.createElement('button');
+      tap.type = 'button';
+      tap.textContent = toolsOpen ? 'Less' : 'Show';
+      tap.title = toolsOpen ? 'Fold them away' : 'Show each one, to sign in or hide it';
+      tap.setAttribute('aria-expanded', String(toolsOpen));
+      tap.onclick = () => { toolsOpen = !toolsOpen; renderMcp(s); };
+      li.append(said, tap);
+      box.append(li);
+      if (!toolsOpen) { requestAnimationFrame(fitWindow); return; }
+    }
     for (const m of list) {
       const li = document.createElement('li');
+      if (list.length > 1) li.className = 'sub'; // (under the row that says how many)
       const name = document.createElement('span');
       name.textContent = m.status === 'needs-auth' ? `${m.name} needs you to sign in` : `${m.name} couldn’t connect`;
       name.title = m.error || '';
@@ -2322,7 +2434,7 @@
   api.onState((s) => {
     const first = !current || current.id !== s.id;
     if (first && current) drafts.set(current.id, text.value);
-    if (first) { showOverview(false); $('find').value = ''; $('findBar').hidden = true; document.body.classList.remove('searching'); $('toast').hidden = true; gitOpen = false; recall = -1; suggAsked++; drawSuggest([]); }
+    if (first) { showOverview(false); $('find').value = ''; $('findBar').hidden = true; document.body.classList.remove('searching'); $('toast').hidden = true; branchesAll = false; commitsAll = false; toolsOpen = false; recall = -1; suggAsked++; drawSuggest([]); }
     if (first) { seen = s.log.length; text.value = drafts.get(s.id) || ''; if (files.length) { files = []; drawFiles(); } } // before the card reads it
     render(s);
     if (first) { fit(); send.disabled = text.disabled || (!text.value.trim() && !files.length); }

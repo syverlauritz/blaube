@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('blaubeTalk', {
   resize: (phase, edge, x, y) => ipcRenderer.send('talk-resize', phase, edge, x, y),
   pin: (on) => ipcRenderer.send('talk-pin', on),
   dark: (on) => ipcRenderer.send('talk-dark', on),
+  side: (mode) => ipcRenderer.send('talk-side', mode), // (its git and tools panel: less, more or off)
   send: (id, text) => ipcRenderer.send('talk-send', id, text),
   paste: (id, bytes, type) => ipcRenderer.invoke('talk-paste', id, bytes, type),
   pathOf: (file) => { try { return webUtils.getPathForFile(file); } catch { return ''; } },

@@ -130,7 +130,10 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await type('thoughts?');
 	check(await until(() => inbox.log(id).some((e) => e.who === 'you' && /^\(I ran `echo hi there` myself\. It printed:\n```\nhi there\n```\)\n\nthoughts\?$/.test(e.text))), 'which then carries it');
 	await until(() => tracker.sessions.get(id).state === 'done');
-	// An MCP server that couldn't connect, as /mcp shows it, with Reconnect.
+	// An MCP server that couldn't connect, as /mcp shows it, with Reconnect:
+	// counted on the panel's one line, there with its details.
+	check(await until(() => box(`/1 tool couldn’t connect/.test(document.getElementById('git').textContent) && document.getElementById('mcp').hidden`)), 'the panel’s line counts a tool that couldn’t connect');
+	await box(`document.getElementById('git').click()`);
 	check(await until(() => box(`!document.getElementById('mcp').hidden && document.getElementById('mcp').textContent.startsWith('github couldn’t connect')`)), 'an MCP server that couldn’t connect shows in its box');
 	await box(`document.querySelector('#mcp button').click()`);
 	check(await until(() => box(`document.getElementById('mcp').hidden`)) && inbox.log(id).some((e) => e.text === 'Reconnected github'), 'and Reconnect connects it, asked of Claude Code itself');
