@@ -353,7 +353,7 @@
         } else if (ck === 'freckles') {
           ctx.save();
           ctx.globalAlpha = Math.min(1, ctx.globalAlpha * 2.2);
-          for (const [fx, fy] of [[-0.45, -0.2], [0.1, 0.25], [0.5, -0.25]]) { ctx.moveTo(cx + fx * cw + r * 0.03, cy + fy * ch); ctx.arc(cx + fx * cw, cy + fy * ch, r * 0.03, 0, Math.PI * 2); }
+          for (const [fx, fy] of [[-0.85, -0.6], [0.05, 0.7], [0.85, -0.5]]) { ctx.moveTo(cx + fx * cw + r * 0.03, cy + fy * ch); ctx.arc(cx + fx * cw, cy + fy * ch, r * 0.03, 0, Math.PI * 2); }
           ctx.fill();
           ctx.restore();
         } else if (ck === 'hearts') {
