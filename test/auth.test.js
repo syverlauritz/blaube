@@ -37,3 +37,17 @@ test('signs in with claude auth login, passing on the page it names', async (t) 
   const late = await new Promise((done) => auth.login(fake(`setInterval(() => {}, 1000);`), (o, why) => done([o, why]), () => {}, 300));
   assert.equal(late[0], false);
 });
+
+test('signs in and asks about one account, in its own folder only', async (t) => {
+  if (process.platform === 'win32') return t.skip('a script as the binary');
+  const dir = '/tmp/blaube-personal-account';
+  const who = fake(`console.log(JSON.stringify({ loggedIn: true, email: process.env.CLAUDE_CONFIG_DIR === '${dir}' ? 'me@example.com' : 'work@example.com' }));`);
+  const ask = (d) => new Promise((done) => auth.status(who, (ok, email) => done([ok, email]), d));
+  assert.deepEqual(await ask(dir), [true, 'me@example.com']);
+  assert.deepEqual(await ask(''), [true, 'work@example.com']);
+  const login = fake(`process.exit(a === 'auth login' && process.env.CLAUDE_CONFIG_DIR === '${dir}' ? 0 : 3);`);
+  const ok = await new Promise((done) => auth.login(login, (o) => done(o), () => {}, 5000, dir));
+  assert.equal(ok, true);
+  const def = await new Promise((done) => auth.login(login, (o) => done(o), () => {}, 5000, ''));
+  assert.equal(def, false, 'the default account gets no CLAUDE_CONFIG_DIR');
+});
