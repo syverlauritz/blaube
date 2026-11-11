@@ -5,6 +5,9 @@ on:
     branches: [main]
     tags: ['v*']
   pull_request:
+  # Run by hand on main to publish the version in package.json as a release,
+  # for when a v* tag can't be pushed (the release job makes the tag).
+  workflow_dispatch:
 
 jobs:
   test:
@@ -106,23 +109,32 @@ jobs:
             dist/latest*.yml
           if-no-files-found: error
 
-  # A v* tag (npm run release) publishes a real release. The app checks
+  # A v* tag (npm run release), or running this workflow by hand on main,
+  # publishes a real release. The app checks
   # GitHub's newest release for updates, and the README links download from
   # it with plain links, e.g.
   # https://github.com/syverlauritz/blaube/releases/latest/download/Blaube-mac-arm64.dmg
   release:
     needs: [package, life]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
       GH_TOKEN: ${{ github.token }}
-      TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
       - name: The tag matches package.json
-        run: test "v$(node -p 'require(`./package.json`).version')" = "$TAG"
+        run: |
+          v="v$(node -p 'require(`./package.json`).version')"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            test "$v" = "$GITHUB_REF_NAME"
+            echo "TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          else
+            # By hand: never publish over a version that's out already.
+            if gh release view "$v" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo "$v is out already"; exit 1; fi
+            echo "TAG=$v" >> "$GITHUB_ENV"
+          fi
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -134,7 +146,7 @@ jobs:
       - name: Publish the release
         run: |
           if [ -s notes.md ]; then notes=(--notes-file notes.md); else notes=(--generate-notes); fi
-          gh release create "$TAG" artifacts/* -R "$GITHUB_REPOSITORY" --title "Blaube ${TAG#v}" --verify-tag "${notes[@]}"
+          gh release create "$TAG" artifacts/* -R "$GITHUB_REPOSITORY" --title "Blaube ${TAG#v}" --target "$GITHUB_SHA" "${notes[@]}"
 
   # Every push to main: a rolling "nightly" pre-release to try what's next.
   # (Pre-releases are never offered as updates.)
