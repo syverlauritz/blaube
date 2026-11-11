@@ -1315,7 +1315,11 @@ function snippet(text) {
   return sentence.length > 70 ? sentence.slice(0, 68).trimEnd() + '…' : sentence;
 }
 
-if (!TEST && !app.requestSingleInstanceLock()) app.quit();
+// A second Blaube hands its arguments to the one running (see
+// 'second-instance') and is gone at once: app.exit, not app.quit, so none of
+// the quit handlers below run in it. (Its before-quit, with no sessions of
+// its own, would empty the list of the running one's to bring back.)
+if (!TEST && !app.requestSingleInstanceLock()) app.exit(0);
 
 // While developing (not in the packaged app): any code change restarts the
 // app. A file with a syntax error is skipped, so a half-saved edit can't
@@ -4506,7 +4510,19 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on('second-instance', () => send('come-here'));
+// Opened again: it comes to you. Or, from Blaube (dev) (--blaube-restart),
+// it stops so the newest main can start, keeping the sessions it started:
+// they come back in the new one, as after a reload.
+app.on('second-instance', (_e, argv) => {
+  if (!(argv || []).includes('--blaube-restart')) { send('come-here'); return; }
+  log('restarting for Blaube (dev), sessions kept');
+  saveOwned();
+  ownedHeld = true;
+  saveQueue(true);
+  owned.killAll();
+  runs.stopAll();
+  app.exit(0);
+});
 app.on('window-all-closed', () => app.quit());
 // Messages still waiting to go in would be lost: ask first.
 let quitAnyway = false;

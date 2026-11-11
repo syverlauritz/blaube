@@ -21,12 +21,22 @@ try {
 		if ($LASTEXITCODE) { throw "Couldn't make $run" }
 	}
 
-	# Already going? Then this one isn't started twice.
+	# Already going? Then it's asked to stop, keeping the sessions it started
+	# (they come back in the new one), and the newest main starts in its
+	# place. (It's asked by a second Blaube, which hands it --blaube-restart
+	# and is gone at once.)
 	$going = Get-CimInstance Win32_Process -Filter "Name='electron.exe' or Name='Blaube.exe'" |
 		Where-Object { $_.CommandLine -notmatch '--type=' -and $_.CommandLine -notmatch 'BLAUBE_TEST' }
 	if ($going) {
-		Say "Blaube is already running.`n`nQuit it from its menu (Quit), then open Blaube (dev) again to get the newest main.`n`nThe sessions it started come back by themselves."
-		exit
+		$ask = Join-Path $run 'node_modules\electron\dist\electron.exe'
+		if (Test-Path $ask) { Start-Process $ask -ArgumentList '.', '--blaube-restart' -WorkingDirectory $run }
+		$until = (Get-Date).AddSeconds(20)
+		while ((Get-Process -Id $going.ProcessId -ErrorAction SilentlyContinue) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 250 }
+		if (Get-Process -Id $going.ProcessId -ErrorAction SilentlyContinue) {
+			# (One from before this, or from another checkout: it can't be asked.)
+			Say "Blaube is already running, and it didn't stop when asked.`n`nQuit it from its menu (Quit), then open Blaube (dev) again to get the newest main."
+			exit
+		}
 	}
 
 	# The newest main. (Offline: the last one fetched.)
