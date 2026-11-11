@@ -108,6 +108,8 @@ Then skip to step 3 below.
 
 Connecting adds Blaube's hooks to `~/.claude/settings.json` (a backup is saved as `settings.json.blaube-backup`, and your existing hooks are kept). Restart any running Claude Code sessions to pick them up. **Claude Code → Disconnect…** removes exactly what was added. If Claude Code isn't installed, Blaube says so and offers **Install Claude Code…**: after a dialog that shows what it runs, Blaube runs Claude Code's official installer itself (`curl -fsSL https://claude.ai/install.sh | bash`, or its PowerShell twin on Windows, as the setup page has you paste into a terminal), then has you sign in through your browser. No terminal needed (**Show me how instead** opens the setup page).
 
+**More than one Claude account** (work and personal, say, each with its own `CLAUDE_CONFIG_DIR` folder such as `~/.claude-personal`): Blaube finds every `~/.claude-<name>` folder Claude Code has used. Connecting asks which accounts to connect, and **Claude Code** in Blaube's menu then has a checkbox per account, **New sessions start as** (the account sessions Blaube starts run as), and **Sign in…** per account. Each account is connected and signed in in its own folder only, so signing one in never touches another's sign-in. Your browser signs in whichever claude.ai account it's on, so Blaube says so first, and afterwards tells you who it signed in as (and warns if that's the same account as another folder). Past sessions from every account can be picked up.
+
 Want to see it without Claude running? Choose **Play → Demo sessions** from the menu.
 
 ### Your first five minutes

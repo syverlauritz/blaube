@@ -66,7 +66,9 @@ class Owned extends EventEmitter {
   // `once`: arguments for this start only (not kept for a restart).
   // `keep`: an id to start under again (one that never got going: see
   // main.js, a sign-in still being refreshed).
-  start(cwd, extra = [], settings = null, resume = '', fork = '', once = [], keep = '') {
+  // `configDir`: the account it runs as (its Claude Code config folder, ''
+  // for the default one: see accounts.js).
+  start(cwd, extra = [], settings = null, resume = '', fork = '', once = [], keep = '', configDir = '') {
     const id = keep || (!fork && resume) || crypto.randomUUID();
     const bin = this.findClaude() || shellClaude || 'claude';
     const from = fork ? ['--resume', fork, '--fork-session', '--session-id', id] : resume ? ['--resume', id] : ['--session-id', id];
@@ -78,14 +80,14 @@ class Owned extends EventEmitter {
       fs.writeFileSync(settingsFile, JSON.stringify(settings));
       args.push('--settings', settingsFile);
     }
-    const env = claudeEnv(); // (your Claude login, never an API key: see claudeEnv.js)
+    const env = claudeEnv(process.env, configDir ? { CLAUDE_CONFIG_DIR: configDir } : {}); // (your Claude login, never an API key: see claudeEnv.js)
     env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING = '1'; // (so a turn's changes can be put back: rewind_files)
     const opts = { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true };
     const viaCmd = process.platform === 'win32' && (!path.isAbsolute(bin) || /\.(cmd|bat)$/i.test(bin));
     const proc = viaCmd
       ? spawn('cmd.exe', ['/d', '/s', '/c', `"${[quote(bin), ...args.map(quote)].join(' ')}"`], Object.assign(opts, { windowsVerbatimArguments: true }))
       : spawn(bin, args, opts);
-    const s = { id, proc, cwd, extra, settings, startedAt: Date.now(), err: '', buf: '', pending: new Map(), interrupted: false, alive: false, early: [] }; // (s.id can change: see read)
+    const s = { id, proc, cwd, extra, settings, configDir, startedAt: Date.now(), err: '', buf: '', pending: new Map(), interrupted: false, alive: false, early: [] }; // (s.id can change: see read)
     this.sessions.set(id, s);
     proc.stdout.setEncoding('utf8');
     proc.stdout.on('data', (chunk) => {
@@ -220,7 +222,7 @@ class Owned extends EventEmitter {
     try { s.proc.stdin.end(); } catch { /* gone */ }
     setTimeout(() => stop(s.proc), 5000).unref();
     const extra = here ? s.extra.filter((a) => a !== '--worktree') : s.extra;
-    const to = at ? this.start(here ? cwd : s.cwd, extra, s.settings, '', id, ['--resume-session-at', at]) : this.start(here ? cwd : s.cwd, extra, s.settings);
+    const to = at ? this.start(here ? cwd : s.cwd, extra, s.settings, '', id, ['--resume-session-at', at], '', s.configDir) : this.start(here ? cwd : s.cwd, extra, s.settings, '', '', [], '', s.configDir);
     this.emit('renamed', id, to);
     return to;
   }
@@ -236,7 +238,7 @@ class Owned extends EventEmitter {
     s.replaced = true;
     s.proc.once('close', () => {
       if (this.sessions.get(id) === s) this.sessions.delete(id);
-      this.start(here ? cwd : s.cwd, [...(here ? s.extra.filter((a) => a !== '--worktree') : s.extra), ...more], s.settings, id);
+      this.start(here ? cwd : s.cwd, [...(here ? s.extra.filter((a) => a !== '--worktree') : s.extra), ...more], s.settings, id, '', [], '', s.configDir);
       cb(true);
     });
     try { s.proc.stdin.end(); } catch { /* gone */ }

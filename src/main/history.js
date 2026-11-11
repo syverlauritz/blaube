@@ -78,20 +78,27 @@ function describe(file) {
   return { cwd, title: title.length > 60 ? title.slice(0, 59) + '…' : title };
 }
 
+// Where transcripts are: ~/.claude/projects, and each other account's
+// (~/.claude-<name>/projects: see accounts.js).
+function projectRoots(home = os.homedir()) {
+  return require('./accounts').list(home).map((a) => path.join(a.dir || path.join(home, '.claude'), 'projects'));
+}
+
 // The newest sessions you could pick up again (not `live` ones): [{ id,
 // cwd, title, at }], newest first.
 function pastSessions(live = new Set(), n = 8, home = os.homedir()) {
-  const root = path.join(home, '.claude', 'projects');
   const found = [];
-  let dirs = [];
-  try { dirs = fs.readdirSync(root); } catch { return []; }
-  for (const d of dirs) {
-    let names = [];
-    try { names = fs.readdirSync(path.join(root, d)); } catch { continue; }
-    for (const f of names) {
-      const id = f.replace(/\.jsonl$/, '');
-      if (id === f || live.has(id) || !/^[0-9a-f-]{36}$/i.test(id)) continue;
-      try { found.push({ id, file: path.join(root, d, f), at: fs.statSync(path.join(root, d, f)).mtimeMs }); } catch { /* gone */ }
+  for (const root of projectRoots(home)) {
+    let dirs = [];
+    try { dirs = fs.readdirSync(root); } catch { continue; }
+    for (const d of dirs) {
+      let names = [];
+      try { names = fs.readdirSync(path.join(root, d)); } catch { continue; }
+      for (const f of names) {
+        const id = f.replace(/\.jsonl$/, '');
+        if (id === f || live.has(id) || !/^[0-9a-f-]{36}$/i.test(id)) continue;
+        try { found.push({ id, file: path.join(root, d, f), at: fs.statSync(path.join(root, d, f)).mtimeMs }); } catch { /* gone */ }
+      }
     }
   }
   found.sort((a, b) => b.at - a.at);
@@ -113,17 +120,18 @@ function pastSessions(live = new Set(), n = 8, home = os.homedir()) {
 async function searchPast(q, live = new Set(), { n = 6, look = 40, home = os.homedir() } = {}) {
   q = String(q || '').trim().toLowerCase();
   if (q.length < 2) return [];
-  const root = path.join(home, '.claude', 'projects');
   const found = [];
-  let dirs = [];
-  try { dirs = await fs.promises.readdir(root); } catch { return []; }
-  for (const d of dirs) {
-    let names = [];
-    try { names = await fs.promises.readdir(path.join(root, d)); } catch { continue; }
-    for (const f of names) {
-      const id = f.replace(/\.jsonl$/, '');
-      if (id === f || live.has(id) || !/^[0-9a-f-]{36}$/i.test(id)) continue;
-      try { found.push({ id, file: path.join(root, d, f), at: (await fs.promises.stat(path.join(root, d, f))).mtimeMs }); } catch { /* gone */ }
+  for (const root of projectRoots(home)) {
+    let dirs = [];
+    try { dirs = await fs.promises.readdir(root); } catch { continue; }
+    for (const d of dirs) {
+      let names = [];
+      try { names = await fs.promises.readdir(path.join(root, d)); } catch { continue; }
+      for (const f of names) {
+        const id = f.replace(/\.jsonl$/, '');
+        if (id === f || live.has(id) || !/^[0-9a-f-]{36}$/i.test(id)) continue;
+        try { found.push({ id, file: path.join(root, d, f), at: (await fs.promises.stat(path.join(root, d, f))).mtimeMs }); } catch { /* gone */ }
+      }
     }
   }
   found.sort((a, b) => b.at - a.at);
