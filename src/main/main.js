@@ -9,6 +9,7 @@ const { SONGS } = require('../shared/songs');
 const { placeTalk, resizeTalk, moveTalk, PAD } = require('./talkPlace');
 const { startHookServer, DEFAULT_PORT } = require('./hookServer');
 const claudeHooks = require('./claudeHooks');
+const accounts = require('./accounts');
 const { toneOf } = require('./tone');
 const { openResumeTerminal, resumeCommand, focusSessionApp, typeIntoSession } = require('./terminal');
 const { startAgentsPoller, listAgents, findClaude } = require('./agents');
@@ -705,7 +706,7 @@ function pressedAway(p) {
 }
 if (TEST) global.__blaubePressAt = pressedAway;
 
-let hooksOk = null; // whether Claude Code is connected, checked when the box opens
+const hooksOk = new Map(); // account folder -> whether it's connected, checked when the box opens
 const talkLasts = new Map(); // session id -> what its box last showed of it, for when it ends
 const lastOf = (id) => talkLasts.get(id) || null;
 function pushTalk(id, focusField = false) {
@@ -713,8 +714,9 @@ function pushTalk(id, focusField = false) {
   if (!rec || rec.win.isDestroyed()) return;
   if (!rec.pinned && !rec.win.isVisible() && !talkReady) return; // it catches up when it opens
   const talkWin = rec.win, talkTail = rec.tail; // (this session's box)
-  if (hooksOk === null || talkReady) hooksOk = claudeHooks.isInstalled(undefined, PORT);
   const s = tracker.sessions.get(id);
+  const acct = s ? accountOf(id) : '';
+  if (!hooksOk.has(acct) || talkReady) hooksOk.set(acct, isConnected(acct));
   // It ended while you were talking to it: say so, keep what you'd typed.
   if (!s) {
     const talkLast = lastOf(id);
@@ -743,7 +745,7 @@ function pushTalk(id, focusField = false) {
     demo: id.startsWith('demo-'),
     // Connected if the settings say so, or if this session's hooks already
     // reached us (it was started with them, whatever the file says now).
-    connected: hooksOk || inbox.reachable.has(id) || inbox.steerable.has(id) || inbox.asks.has(id) || inbox.owned.has(id),
+    connected: hooksOk.get(acct) || inbox.reachable.has(id) || inbox.steerable.has(id) || inbox.asks.has(id) || inbox.owned.has(id),
     doing: s.state === 'working' ? doing.get(id) || '' : '',
     mode: s.mode || '', // (its permission mode)
     model: modelName(pickedModel.get(id) || (id.startsWith('demo-') ? '' : usage.sessionInfo(transcriptPath(s)).model)),
@@ -791,6 +793,7 @@ let usageFailed = false; // (asked, and no answer: Couldn't check usage)
 function sendLimits() { if (win && !win.isDestroyed()) win.webContents.send('limits', { lim: usageLimits, noPlan: noPlanLimits, checking: !usageLimits && !noPlanLimits && !usageFailed }); }
 const jarSpotNow = () => (prefs.jarSpots && prefs.jarSpots[String(currentDisplay().id)]) || null;
 let signedOutNow = false, signingInNow = () => false; // (Claude Code signed out; signing in now)
+let checkAuth = () => {}, signInAccount = () => {}; // (asking whether it's signed in, and signing an account in: set up with the box)
 const mcpStates = new Map(); // id -> its MCP servers, for a session Blaube started
 const rewound = new Map(); // id -> what Claude should hear with your next message (files you put back, notes you added)
 const tellNext = (id, what) => rewound.set(id, [rewound.get(id), what].filter(Boolean).join(' '));
@@ -1042,9 +1045,32 @@ function watchStart(id) {
   }, 3000);
   tick.unref();
 }
+// Your Claude Code accounts (config folders: see accounts.js). Tests see
+// only their own home, never yours.
+const accountHome = () => (TEST && global.__blaubeCcHome) || app.getPath('home');
+const accountList = () => accounts.list(accountHome());
+// The one new sessions start as: the one you picked, while it's still there.
+function newAccount() {
+  const want = prefs.account || '';
+  return want && accountList().some((a) => a.dir === want) ? want : '';
+}
+// The account a session runs as: Blaube's own know; any other, by where its
+// transcript is.
+function accountOf(id) {
+  if (owned.has(id)) return owned.sessions.get(id).configDir || '';
+  const s = tracker.sessions.get(id);
+  return s ? accounts.dirOfTranscript(transcriptPath(s), accountHome()) : '';
+}
+const accountName = (dir) => { const a = accountList().find((x) => x.dir === dir); return a ? accounts.label(a) : dir || 'Default (~/.claude)'; };
+const isConnected = (dir) => claudeHooks.isInstalled(accounts.settingsOf(dir, accountHome()), PORT);
+
 // `quiet`: no talk box popping open (brought back after a restart).
-function startSession(cwd, extra = [], resume = '', fork = '', quiet = false) {
+// `account`: the Claude Code config folder it runs as ('' the default one;
+// left out: the one it was in, picked up again, or the one new sessions
+// start as: see accounts.js).
+function startSession(cwd, extra = [], resume = '', fork = '', quiet = false, account = undefined) {
   if (!cwd) return null;
+  const configDir = account !== undefined ? account : (resume || fork) ? accountOf(resume || fork) : newAccount();
   // (Its own worktree needs a git repository to make one in.)
   let noTree = false;
   if (extra.includes('--worktree')) {
@@ -1053,14 +1079,14 @@ function startSession(cwd, extra = [], resume = '', fork = '', quiet = false) {
   // Not connected yet: give this session Blaube's hooks itself, so its
   // slime still knows what it's doing and can still ask you things.
   let settings = null;
-  if (!claudeHooks.isInstalled(undefined, PORT)) {
+  if (!claudeHooks.isInstalled(accounts.settingsOf(configDir), PORT)) {
     settings = claudeHooks.withBlaube({}, PORT);
     settings.hooks.Stop = settings.hooks.Stop.filter((g) => !g.hooks.some((h) => h.asyncRewake));
   }
   const args = ['--append-system-prompt', `${replyStyle()}\n\n${PICTURES}`, ...extra];
-  const id = owned.start(cwd, args, settings, resume, fork);
+  const id = owned.start(cwd, args, settings, resume, fork, [], '', configDir);
   startedAt.set(id, Date.now());
-  startArgs.set(id, [cwd, args, settings, resume, fork]);
+  startArgs.set(id, [cwd, args, settings, resume, fork, configDir]);
   watchStart(id);
   prefs.recentFolders = [cwd, ...(prefs.recentFolders || []).filter((f) => f !== cwd)].slice(0, 5);
   savePrefs();
@@ -1109,7 +1135,7 @@ function saveOwned() {
     // done: finished a turn you haven't seen yet; it comes back saying so,
     // and what it said (said: the start of its reply).
     const done = s.state === 'done' && !s.seen, reply = done && [...inbox.log(id)].reverse().find((e) => e.who === 'claude');
-    return { id, cwd: s.cwd || o.cwd, extra: extra.filter((a) => a !== '--worktree'), mode: s.mode || '', busy: ownedBusy(id), done, said: reply ? snippet(reply.text) : '' };
+    return { id, cwd: s.cwd || o.cwd, configDir: o.configDir || '', extra: extra.filter((a) => a !== '--worktree'), mode: s.mode || '', busy: ownedBusy(id), done, said: reply ? snippet(reply.text) : '' };
   });
   const json = JSON.stringify(list);
   if (json === ownedSaved) return;
@@ -1134,7 +1160,7 @@ function bringBackOwned() {
     try { if (!fs.statSync(o.cwd).isDirectory()) continue; } catch { continue; }
     const mode = modeArgs(o.mode);
     revived.add(o.id);
-    const id = startSession(o.cwd, [...(Array.isArray(o.extra) ? o.extra.filter((a) => typeof a === 'string') : []), ...mode], o.id, '', true);
+    const id = startSession(o.cwd, [...(Array.isArray(o.extra) ? o.extra.filter((a) => typeof a === 'string') : []), ...mode], o.id, '', true, typeof o.configDir === 'string' ? o.configDir : '');
     if (!id) continue;
     log(`brought back ${id} after a restart${o.busy ? ', mid-turn' : ''}`);
     if (o.done) {
@@ -1188,7 +1214,7 @@ async function pickUp(p) {
     dialog.showMessageBox({ type: 'warning', message: `Can’t find its folder any more.`, detail: p.cwd });
     return;
   }
-  const id = startSession(p.cwd, modeArgs((prefs.sessionModes || {})[p.id]), p.id);
+  const id = startSession(p.cwd, modeArgs((prefs.sessionModes || {})[p.id]), p.id, '', false, p.file ? accounts.dirOfTranscript(p.file) : undefined);
   if (!id) return null;
   // (Ended while you watched: the conversation is still here.)
   // (Its box may have notes already, from before it was brought here.)
@@ -2057,16 +2083,36 @@ function ccDefaultsMenu() {
 }
 
 // Everything about Claude Code itself in one place: the defaults new
-// sessions start with, then the connection (Disconnect last).
+// sessions start with, then the connection (Disconnect last). With more
+// than one account (a ~/.claude-<name> folder: see accounts.js), each is
+// connected on its own, new sessions start as the one you pick, and you
+// sign in to the one you pick.
 function claudeCodeMenu(installed) {
+  const all = accountList();
+  const signInItem = (a) => ({ label: all.length > 1 ? accounts.label(a) : 'Sign in again…', click: () => signInAccount(a.dir) });
+  if (all.length < 2) {
+    return { label: 'Claude Code', submenu: [
+      ...ccDefaultsMenu(),
+      { type: 'separator' },
+      ...(installed ? [
+        { label: `Connected ✓${all[0] && all[0].email ? ` (${all[0].email})` : ''}`, enabled: false },
+        { label: 'Reconnect', click: () => installHooks('') },
+      ] : []),
+      signInItem(all[0] || { dir: '' }),
+      ...(installed ? [{ label: 'Disconnect…', click: () => uninstallHooks('') }] : []),
+    ] };
+  }
+  const now = newAccount();
   return { label: 'Claude Code', submenu: [
     ...ccDefaultsMenu(),
-    ...(installed ? [
-      { type: 'separator' },
-      { label: 'Connected ✓', enabled: false },
-      { label: 'Reconnect', click: installHooks },
-      { label: 'Disconnect…', click: uninstallHooks },
-    ] : []),
+    { type: 'separator' },
+    { label: 'Connected accounts', enabled: false },
+    ...all.map((a) => ({ label: accounts.label(a), type: 'checkbox', checked: isConnected(a.dir), click: () => (isConnected(a.dir) ? uninstallHooks(a.dir) : installHooks(a.dir)).then(refreshTray) })),
+    { type: 'separator' },
+    { label: 'New sessions start as', enabled: false },
+    ...all.map((a) => ({ label: accounts.label(a), type: 'radio', checked: a.dir === now, click: () => { prefs.account = a.dir; savePrefs(); signedOutNow = false; checkAuth(true); refreshTray(); } })),
+    { type: 'separator' },
+    { label: 'Sign in…', submenu: all.map(signInItem) },
   ] };
 }
 
@@ -2087,11 +2133,11 @@ function soundItems() {
 // menu of Blaube itself, with no sessions, so its own colour (the main
 // one) is in it; elsewhere colour is each slime's, in its own part.
 function appMenuTemplate({ colour = false, blobs = true } = {}) {
-  const installed = claudeHooks.isInstalled(undefined, PORT);
+  const installed = accountList().some((a) => isConnected(a.dir));
   const noClaude = !claudeFound();
   return [
     ...(noClaude ? [{ label: installing ? 'Installing Claude Code…' : 'Install Claude Code…', enabled: !installing, click: installClaude }]
-      : installed ? [] : [{ label: claudeHooks.hasAnyBlaubeHooks() ? 'Update Claude Code connection…' : 'Connect Claude Code…', click: installHooks }]),
+      : installed ? [] : [{ label: claudeHooks.hasAnyBlaubeHooks() ? 'Update Claude Code connection…' : 'Connect Claude Code…', click: () => installHooks() }]),
     ...newSessionMenu(),
     { type: 'separator' },
     ...soundItems(),
@@ -2268,16 +2314,39 @@ async function installClaude() {
 }
 if (TEST) global.__blaubeInstall = installClaude;
 
-async function installHooks() {
-  const file = claudeHooks.settingsPath();
+// Connects one account (`dir`: its config folder, '' the default), or, left
+// out, asks which when there's more than one.
+async function installHooks(dir) {
+  const all = accountList();
+  let dirs = [dir || ''];
+  if (dir === undefined && all.length > 1) {
+    const shown = all.slice(0, 3); // (a dialog's buttons: the rest are in Claude Code's menu)
+    const { response } = await dialog.showMessageBox({
+      type: 'question',
+      buttons: ['All of them', ...shown.map(accounts.label), 'Cancel'],
+      defaultId: 0, cancelId: shown.length + 1,
+      message: 'Which Claude Code accounts should Blaube connect to?',
+      detail: `You have ${all.length} on this computer (each one’s own folder: ${all.map((a) => a.dir ? `~/${path.basename(a.dir)}` : '~/.claude').join(', ')}). You can change this any time in Blaube’s menu, under Settings, Claude Code.`,
+    });
+    if (response === shown.length + 1) return;
+    dirs = response === 0 ? all.map((a) => a.dir) : [shown[response - 1].dir];
+    for (const d of dirs) connectAccount(d);
+    return;
+  }
+  const file = accounts.settingsOf(dirs[0], accountHome());
   const { response } = await dialog.showMessageBox({
     type: 'question',
     buttons: ['Connect', 'Cancel'],
     defaultId: 0,
-    message: 'Connect Blaube to Claude Code?',
+    message: all.length > 1 ? `Connect Blaube to ${accountName(dirs[0])}?` : 'Connect Blaube to Claude Code?',
     detail: `Blaube adds a few hooks to ${file} so Claude Code tells it when a session starts, is working, needs you, or is done.\n\nThe hooks only talk to Blaube on this computer (127.0.0.1:${PORT}). No API calls, no tokens. A backup is saved next to the file.\n\nSessions already running pick them up when you restart them (on macOS, Blaube can still talk to them in Terminal or iTerm meanwhile).`,
   });
   if (response !== 0) return;
+  connectAccount(dirs[0]);
+}
+// Only its hooks: never its sign-in.
+function connectAccount(dir) {
+  const file = accounts.settingsOf(dir, accountHome());
   try {
     claudeHooks.install(file, PORT);
   } catch (e) {
@@ -2287,15 +2356,16 @@ async function installHooks() {
   pushState();
 }
 
-async function uninstallHooks() {
+async function uninstallHooks(dir = '') {
+  const many = accountList().length > 1;
   const { response } = await dialog.showMessageBox({
     type: 'question', buttons: ['Disconnect', 'Cancel'], defaultId: 1, cancelId: 1,
-    message: 'Disconnect Blaube from Claude Code?',
-    detail: 'Blaube’s hooks come out of your Claude Code settings. The blobs stop knowing what your sessions are doing, and you can’t talk to them from here, until you connect again.',
+    message: many ? `Disconnect Blaube from ${accountName(dir)}?` : 'Disconnect Blaube from Claude Code?',
+    detail: `Blaube’s hooks come out of ${many ? 'this account’s' : 'your'} Claude Code settings. ${many ? 'Its' : 'The'} blobs stop knowing what ${many ? 'its' : 'your'} sessions are doing, and you can’t talk to them from here, until you connect again. Your sign-in stays as it is.`,
   });
   if (response !== 0) return;
   try {
-    claudeHooks.uninstall();
+    claudeHooks.uninstall(accounts.settingsOf(dir, accountHome()));
   } catch (e) {
     dialog.showErrorBox('Could not update Claude Code settings', e.message);
   }
@@ -2434,8 +2504,13 @@ app.whenReady().then(async () => {
   // Connected by an older Blaube: its hooks are brought up to date by
   // themselves (you said yes to connecting; this is the same hooks, newer),
   // so new sessions can take messages mid-turn, Stop works, and so on.
-  if (!TEST && claudeHooks.hasAnyBlaubeHooks() && !claudeHooks.isInstalled(undefined, PORT)) {
-    try { claudeHooks.install(claudeHooks.settingsPath(), PORT); log('brought the Claude Code hooks up to date'); } catch (e) { log(`couldn't bring the Claude Code hooks up to date: ${e.message}`); }
+  // (Each account's: see accounts.js.)
+  if (!TEST) {
+    for (const a of accountList()) {
+      const file = accounts.settingsOf(a.dir);
+      if (!claudeHooks.hasAnyBlaubeHooks(file) || claudeHooks.isInstalled(file, PORT)) continue;
+      try { claudeHooks.install(file, PORT); log(`brought the Claude Code hooks up to date in ${file}`); } catch (e) { log(`couldn't bring the Claude Code hooks up to date in ${file}: ${e.message}`); }
+    }
   }
 
   // Restarting (after a code change, or an update) the old Blaube can still
@@ -2663,11 +2738,12 @@ app.whenReady().then(async () => {
   // `claude auth login`, which opens your browser, as /login does.
   let lastAuth = 0, signingIn = false;
   signingInNow = () => signingIn;
-  const checkAuth = (force) => {
+  // (The account new sessions start as: see accounts.js.)
+  checkAuth = (force) => {
     const bin = owned.findClaude() || owned.shellPath();
     if (!bin || signingIn || (!force && Date.now() - lastAuth < 5 * 60e3)) return;
     lastAuth = Date.now();
-    auth.status(bin, (ok) => { if (ok === null || ok === !signedOutNow) return; signedOutNow = !ok; pushTalks(); });
+    auth.status(bin, (ok) => { if (ok === null || ok === !signedOutNow) return; signedOutNow = !ok; pushTalks(); }, newAccount());
   };
   ipcMain.on('talk-sign-in', (_e, id) => signIn(id));
   // Just installed: signed in yet? If not, sign in (your browser opens).
@@ -2679,18 +2755,45 @@ app.whenReady().then(async () => {
       if (!TEST && ok !== false) dialog.showMessageBox({ type: 'info', message: 'Claude Code is installed.', detail: 'Start a session from Blaube’s menu (New session…).' });
     });
   };
-  const signIn = (id) => {
+  // Signs in the account a session runs as (from its box), or `dir` (from
+  // the menu: see accounts.js). It's kept in that account's own folder, so
+  // another account's sign-in is never touched. Your browser signs in
+  // whichever claude.ai account it's on, so it says which one to be on, and
+  // afterwards who it signed in as (and if that's another account's too).
+  const signIn = (id, dir) => {
     const bin = owned.findClaude() || owned.shellPath();
     if (signingIn || !bin) return;
+    const acct = dir !== undefined ? dir : id ? accountOf(id) : newAccount();
+    const all = accountList(), many = all.length > 1;
     signingIn = true;
     const say = (text, error) => { if (id && tracker.sessions.has(id)) inbox.add(id, Object.assign({ who: 'note', text }, error ? { error: true } : {})); pushTalks(); };
-    say('Signing Claude Code in: finish in your browser');
+    say(many ? `Signing ${accountName(acct)} in: finish in your browser, on the claude.ai account you want here` : 'Signing Claude Code in: finish in your browser');
     auth.login(bin, (ok, why) => {
       signingIn = false;
-      if (ok) signedOutNow = false;
-      say(ok ? 'Signed in. Try again to carry on.' : `It didn’t sign in: ${why}`);
-      checkAuth(true);
-    }, (url) => say(`If your browser didn’t open, the page is ${url}`));
+      if (!ok) { say(`It didn’t sign in: ${why}`); checkAuth(true); return; }
+      if (acct === newAccount()) signedOutNow = false;
+      auth.status(bin, (_in, email) => {
+        const twin = email && all.find((a) => a.dir !== acct && a.email === email);
+        const text = twin ? `Signed in as ${email}, the same account as ${accountName(twin.dir)}. If you meant another one, switch accounts on claude.ai in your browser and sign in again.` : `Signed in${email ? ` as ${email}` : ''}. Try again to carry on.`;
+        say(text, !!twin);
+        if (!id && !TEST) dialog.showMessageBox({ type: twin ? 'warning' : 'info', message: twin ? 'That’s the same account as another one' : 'Signed in', detail: `${accountName(acct).replace(/ · .*/, '')}: ${text}` });
+        refreshTray();
+        checkAuth(true);
+      }, acct);
+    }, (url) => say(`If your browser didn’t open, the page is ${url}`), undefined, acct);
+  };
+  // From the menu: says first which account it is, and that the browser's
+  // account is the one you get.
+  signInAccount = async (dir) => {
+    if (!TEST) {
+      const { response } = await dialog.showMessageBox({
+        type: 'question', buttons: ['Sign in', 'Cancel'], defaultId: 0, cancelId: 1,
+        message: accountList().length > 1 ? `Sign in to ${accountName(dir)}?` : 'Sign Claude Code in again?',
+        detail: `Your browser opens claude.ai and signs in whichever account it’s on there. If that’s not the one you want${accountList().length > 1 ? ' for this' : ''}, switch accounts on claude.ai first (or sign out there).\n\nOnly this account’s own sign-in changes${dir ? ` (kept in ~/${path.basename(dir)})` : ''}.`,
+      });
+      if (response !== 0) return;
+    }
+    signIn('', dir);
   };
   // Back after ten minutes or more away from the computer: what happened
   // in the meantime, once (a notification; a click opens whoever wants you).
@@ -2900,7 +3003,7 @@ app.whenReady().then(async () => {
       log(`session ${id} couldn’t start yet (sign-in being refreshed): trying again (${n})`);
       setTimeout(() => {
         if (owned.has(id) || !tracker.sessions.has(id)) return;
-        owned.start(...again, [], id);
+        owned.start(...again.slice(0, 5), [], id, again[5] || '');
         startArgs.set(id, again);
         startedAt.set(id, Date.now());
         watchStart(id);
@@ -3765,7 +3868,7 @@ app.whenReady().then(async () => {
   }
   // Claude Code's own commands (claude plugin, mcp, doctor, update…), run
   // the same way, with your Claude login and never an API key (claudeEnv.js).
-  const runClaude = (id, cmd, as, then) => runForSession(id, cmd, as, then, null, 120e3, true);
+  const runClaude = (id, cmd, as, then) => runForSession(id, cmd, as, then, accounts.envFor(accountOf(id)), 120e3, true); // (as its own account)
   replyTo = sendMessage;
   // Push and Pull from its quick actions: git itself, right there (a step
   // with what it printed; no model call). It never waits on a password.
