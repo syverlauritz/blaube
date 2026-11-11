@@ -86,7 +86,7 @@ test('a command in plain words: what it is for, never the raw line', () => {
 		['echo "all done"', 'Printing a message'],
 		['echo hi > out.txt', 'Writing out.txt'],
 		// Runtimes and files.
-		['node C:/Users/syver/AppData/Local/Temp/claude/probe-3f2a.js --fast', 'Running probe-3f2a.js'],
+		['node C:/Users/me/AppData/Local/Temp/claude/probe-3f2a.js --fast', 'Running probe-3f2a.js'],
 		['node -e "console.log(1)"', 'Running a quick node script'],
 		['node --test test/*.test.js', 'Running the tests'],
 		['python -I scripts\\make_report.py', 'Running make_report.py'],
