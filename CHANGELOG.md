@@ -4,8 +4,18 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-11
+
+- **More than one Claude account** (work and personal, each in its own `~/.claude-<name>` folder): connecting asks which to connect, and **Claude Code** in the menu has a checkbox per account, **New sessions start as**, and **Sign in…** per account. Past sessions from every account can be picked up.
+- On Windows, the talk box no longer freezes half faded in when you click a blob.
 - Under each reply in the talk box, the time it came ("14:32", "Yesterday 14:32", "3 Nov 14:32"), before how long it took.
 - While you're typing in any talk box, the other blobs keep still (their "!" stays up) instead of hopping for you.
+- The talk box's git and tools panel is folded into one line, and can be hidden.
+- Sign-in and connect rows for MCP servers can be hidden: **Hide** on each, **Hide all** for several, and Blaube remembers.
+- A new session stuck while another Claude Code refreshes its sign-in says it's starting up, and starts again by itself (with what you sent meanwhile) if it gives up.
+- A restart asked for before Blaube had brought its sessions back no longer forgets them.
+- Haiku's freckles are spread apart, so each reads as its own dot.
+- Every Windows installer is now installed and started in CI before it's published.
 
 ## [0.6.0] - 2026-11-10
 

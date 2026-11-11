@@ -67,6 +67,32 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
       - if: runner.os == 'Windows'
         run: npx electron-builder --win --x64 --arm64 --publish never
+      # What someone downloading it gets: the installer, run the way
+      # install.ps1 runs it (quietly, just for this user), installs Blaube,
+      # and the installed app starts and answers on its port.
+      - if: runner.os == 'Windows'
+        name: The Windows installer installs a Blaube that starts
+        shell: pwsh
+        env:
+          BLAUBE_PORT: 47873
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Start-Process -FilePath dist\Blaube-Setup-windows.exe -ArgumentList '/S' -Wait
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\blaube\Blaube.exe'
+          if (-not (Test-Path $exe)) { throw "The installer didn't put Blaube at $exe" }
+          $p = Start-Process -FilePath $exe -PassThru
+          $ok = $false
+          foreach ($i in 1..60) {
+            Start-Sleep -Seconds 1
+            if ($p.HasExited) { throw "Blaube quit by itself (exit code $($p.ExitCode))" }
+            try {
+              $r = Invoke-RestMethod -Uri "http://127.0.0.1:$env:BLAUBE_PORT/blaube/ping" -TimeoutSec 2
+              if ($r.app -eq 'blaube') { $ok = $true; break }
+            } catch {}
+          }
+          Get-Process -Name Blaube -ErrorAction SilentlyContinue | Stop-Process -Force
+          if (-not $ok) { throw 'The installed Blaube never answered on its port' }
+          Write-Host "The installed Blaube started and answered in about $i s"
       # The installers, the zips the Mac updater downloads, and the update
       # feeds (latest*.yml) with their blockmaps.
       - uses: actions/upload-artifact@v4
