@@ -7,6 +7,16 @@ npm install
 npm start
 ```
 
+That runs whatever branch your checkout is on. Blaube's menu says which branch it's from and how far behind `main` it is, and a notification says so when it's behind.
+
+### Blaube (dev) on Windows: always the newest main
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\dev\install.ps1
+```
+
+This puts **Blaube (dev)** in the Start menu and on the desktop. It runs Blaube from a folder of its own, `.run-main` next to `.git`, which is always exactly `origin/main`. Each launch fetches main, runs `npm ci` when `package-lock.json` changed, and starts Blaube with no terminal. Your own checkout's branch doesn't matter. If a Blaube is already running, it says so; quit that one first (the sessions it started come back).
+
 ## Scripts
 
 

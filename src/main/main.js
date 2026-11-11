@@ -74,6 +74,8 @@ const { watchWindows, ledges } = require('./windows');
 const BlaubeConfig = require('../shared/config');
 const { visibility, blocked } = require('./visibility');
 const updater = require('./updater');
+const devSource = require('./devSource');
+let devWhere = null; // { branch, behind } when run from a git checkout (see devSource.js)
 
 const PORT = Number(process.env.BLAUBE_PORT) || DEFAULT_PORT;
 
@@ -2103,6 +2105,7 @@ function appMenuTemplate({ colour = false, blobs = true } = {}) {
     ] },
     { type: 'separator' },
     { label: `Blaube ${app.getVersion()}`, enabled: false },
+    ...(devSource.label(devWhere) ? [{ label: devSource.label(devWhere), enabled: false }] : []),
     updater.menuItem(),
     { label: 'Quit Blaube', role: 'quit' },
   ];
@@ -2448,6 +2451,21 @@ app.whenReady().then(async () => {
     tray.on('right-click', () => tray.popUpContextMenu(trayMenu()));
   }
   refreshTray();
+  // Run from a checkout: from which branch, and how far behind main.
+  if (!app.isPackaged && !TEST) {
+    let warned = false;
+    const where = () => devSource.check(app.getAppPath(), (w) => {
+      devWhere = w;
+      if (w) log(`running from ${w.branch}, ${w.behind} behind origin/main`);
+      refreshTray();
+      if (w && w.behind && !warned) {
+        warned = true;
+        new Notification({ title: `This Blaube is ${w.behind} change${w.behind === 1 ? '' : 's'} behind main`, body: `It runs from ${w.branch === 'HEAD' ? 'an old main' : w.branch}. Quit it and open Blaube (dev) for the newest.` }).show();
+      }
+    });
+    where();
+    setInterval(where, 30 * 60e3).unref();
+  }
   // (A Mac without a signed build can't update itself: say a new version is
   // out, once per version, so you needn't spot it in the menu.)
   updater.start({ log, test: !!TEST, announce: (version, download) => {
