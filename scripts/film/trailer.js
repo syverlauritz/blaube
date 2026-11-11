@@ -54,7 +54,7 @@ const CAST = {
 const ALL = Object.keys(CAST);
 
 // What the props say: Frenglish, all in good humour. (Only the first card is a "Ceci n’est pas".)
-const SAY = { chat: 'le chat (not le cat)', flick: 'la catapulte (oops)', shelf: 'le shelf', yank: 'le tablecloth trick', floor2: 'le plan B', tower: 'un petit tower', frog: 'le leapfrog', rain: ['le', 'rain', 'of blobs'], balloon: 'le balloon', choir: 'la chorale, very pro', family: 'la petite family', dizzy: 'une very bad idée' };
+const SAY = { chat: 'le chat (not le cat)', flick: 'la catapulte (oops)', shelf: 'le shelf', yank: 'le tablecloth trick', floor2: 'le plan B', tower: 'un petit tower', frog: 'le leapfrog', rain: ['un', 'shit tonne', 'de blaubes'], balloon: 'le balloon', choir: 'la chorale, very pro', family: 'la petite family', dizzy: 'une very bad idée' };
 
 module.exports = async function run({ win, tracker, inbox, talk, talkId, pinned, talkSize, moveTalk, moveToDisplay, otherWindows, demoTokens, demoEfforts, pickedModel, pushState, setBlobHidden, setColor }) {
 	win.webContents.on('console-message', (e) => { if (e.level === 'error') console.log('[film] renderer:', e.message); });
@@ -227,23 +227,27 @@ module.exports = async function run({ win, tracker, inbox, talk, talkId, pinned,
 	// A shot: who's in it, setting it up (off camera), and playing it (on camera).
 	const shot = (name, cast, setup, play, after) => SHOTS.push({ name, cast, setup, play, after });
 
-	// 1. The painting. It sits on "Ceci n’est pas un blob."; then the card is
-	// yanked from under it, and it’s left in the air.
+	// 1. The painting. It sits on "Ceci n’est pas un blob."; "Ceci est un
+	// blaube." comes up under it; the first card is yanked away, it’s left in the
+	// air, and lands on its name.
 	shot('pipe', ['blaube'], async () => {
 		const c = await card({ title: 'la trahison des images', text: 'Ceci n’est pas un blob.', size: 62, w: 664, h: 210, y: 470 });
+		// (waiting just under the screen’s edge, behind the taskbar)
+		const name = await card({ title: 'blaube', text: 'Ceci est un blaube.', size: 62, w: 664, h: 210, y: 1236 });
 		await onCard('blaube', c, 0.5);
-		return { c };
-	}, async ({ c }) => {
+		return { c, name };
+	}, async ({ c, name }) => {
 		await look(560, 200);
 		await sleep(1700);
 		await look(120, 330);
-		await sleep(1300);
-		await look(360, 620); // (it reads its own caption)
 		await sleep(1100);
+		look(360, 900); // (it looks down at what’s coming)
+		await slide(name, 0, -456, 650, out);
+		await sleep(600);
 		await lookAway();
-		await sleep(500);
+		await sleep(250);
 		cue();
-		yank(c); // (and it’s left in the air)
+		yank(c); // (and it’s left in the air, then lands on its name)
 		await sleep(180);
 		say('blaube', 'oh la la!', 1.3);
 		await sleep(2600);
@@ -356,9 +360,9 @@ module.exports = async function run({ win, tracker, inbox, talk, talkId, pinned,
 
 	// 7. It rains blobs: all of them from the top, down a staircase of words.
 	shot('rain', ALL, async () => {
-		const a = await card({ title: 'le', text: SAY.rain[0], size: 60, w: 250, h: 130, x: 40, y: 420 });
-		const b = await card({ title: 'rain', text: SAY.rain[1], size: 60, w: 270, h: 130, x: 410, y: 640 });
-		const c = await card({ title: 'of blobs', text: SAY.rain[2], size: 60, w: 270, h: 130, x: 90, y: 880 });
+		const a = await card({ title: 'un', text: SAY.rain[0], size: 60, w: 250, h: 130, x: 40, y: 420 });
+		const b = await card({ title: 'shit tonne', text: SAY.rain[1], size: 60, w: 270, h: 130, x: 410, y: 640 });
+		const c = await card({ title: 'de blaubes', text: SAY.rain[2], size: 60, w: 270, h: 130, x: 90, y: 880 });
 		for (const [i, id] of ALL.entries()) await place(id, SW * (0.12 + 0.152 * i), -P(140) - P(260) * ((i * 5) % 6));
 		return { a, b, c };
 	}, async () => {
