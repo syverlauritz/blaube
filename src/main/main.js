@@ -87,6 +87,13 @@ const TEST = process.env.BLAUBE_TEST || '';
 // A slip somewhere (a helper program that won't start, say) is logged, not
 // thrown in your face as an error box; Blaube carries on.
 process.on('uncaughtException', (e) => console.error('[blaube] uncaught:', e && e.stack || e));
+// Windows: Chromium stops drawing a window it thinks is covered by others.
+// The slimes' layer (full-screen, see-through) counts as covering whatever
+// is behind it while it's catching the mouse (over a slime, as you click
+// it), and it goes in front of the talk box as the box opens: the box froze
+// on its first frames, half faded in, and never drew again. Nothing of ours
+// is ever really hidden by another of our windows.
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 if (TEST) { app.setPath('userData', fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'blaube-test-'))); app.setPath('downloads', path.join(app.getPath('userData'), 'Downloads')); fs.mkdirSync(app.getPath('downloads')); }
 
 // When Blaube is started from inside a Claude Code session (e.g. `npm start`
