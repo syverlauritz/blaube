@@ -4,6 +4,8 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+- The beret sits on the head for real: its band follows the head’s outline however the blob is squashed or stretched, and the felt has weight (it squashes flat on a landing, puffs up in a fall, and its overhang flops).
+- A trailer, at the top of the README. It is played live by the real app (`scripts/film`, see docs/DEVELOPMENT.md).
 ## [0.7.0] - 2026-11-11
 
 - **More than one Claude account** (work and personal, each in its own `~/.claude-<name>` folder): connecting asks which to connect, and **Claude Code** in the menu has a checkbox per account, **New sessions start as**, and **Sign in…** per account. Past sessions from every account can be picked up.

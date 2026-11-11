@@ -1,3 +1,6 @@
+<p align="center"><a href="docs/trailer.mp4"><img src="docs/img/trailer.webp" alt="The Blaube trailer: a blob in a beret sits on a window that says Ceci n’est pas un blob; the window is yanked away and it lands on Ceci est un blaube; then blobs are flicked onto a shelf, stack into a tower, sing as a choir, and one is shaken until it is green" width="324"></a><br>
+<a href="docs/trailer.mp4"><b>Watch the trailer with sound</b></a> (40 seconds)</p>
+
 <p align="center"><img src="docs/img/blobs.png" alt="Five orange Blaube blobs in a row, wearing a curl, horns, cat ears, antennas and a bow; two have thought bubbles with turning gears" width="720"></p>
 
 <h1 align="center">Blaube</h1>

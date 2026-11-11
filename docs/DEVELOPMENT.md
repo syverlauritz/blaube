@@ -65,6 +65,18 @@ Set `BLAUBE_PORT` to use a different port; reconnect Claude Code afterwards so t
 
 How the look is decided and reviewed: `docs/DESIGN.md` (the brief, including what the creative director has decided) and `docs/REVIEW.md` (render, independent judges, fix, repeat). Problems that only show on a real desktop are logged to `blaube.log` in the app's data folder.
 
+## The trailer
+
+The trailer in the README is the real app, played live on a portrait screen and recorded (Windows, with ffmpeg in `C:\ffmpeg\bin`):
+
+```sh
+BLAUBE_FILM=scripts/film/trailer.js BLAUBE_PORT=47890 npx electron .  # plays every shot and records the screen (FILM_ONLY=pipe,chat for some of them)
+node scripts/film/cut.js     # cuts the take to the song’s bars -> scripts/film/out/blaube-trailer.mp4
+node scripts/film/sheet.js   # a contact sheet of each shot, to check a take without watching it
+```
+
+Film mode (`BLAUBE_FILM`) is test mode that can be seen and heard. The blobs only move by their physics; the cards are real windows, and the sky is a window behind them (no wallpaper is changed). The music (`scripts/film/music/`) and the recordings (`scripts/film/out/`) are not in the repository.
+
 ## Releasing
 
 1. Move the notes under **Unreleased** in `CHANGELOG.md` into a new `## [x.y.z] - date` section and commit.
