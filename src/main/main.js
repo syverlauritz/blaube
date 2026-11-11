@@ -1014,6 +1014,24 @@ if (TEST) global.__blaubeSweep = sweep;
 // Starts Claude Code in `cwd`, with no terminal: its slime pops out with
 // its talk box open, ready for your first message.
 const startedAt = new Map(); // session id -> when Blaube started it (see owned's 'exit')
+// How each was started, until Claude Code gets going: one that can't yet
+// (your sign-in being refreshed, often by another Claude Code at the same
+// moment) is started again under the same id, its slime and messages kept.
+const startArgs = new Map(); // session id -> [cwd, extra, settings, resume, fork]
+const retried = new Map(); // session id -> how many times
+const SIGNIN_BUSY = /couldn.t verify your sign-in|sign-in token was still being refreshed/i;
+// Claude Code slow to get going: its slime says so, so it doesn't look stuck.
+function watchStart(id) {
+  const t0 = Date.now();
+  let told = false;
+  const tick = setInterval(() => {
+    if (!startArgs.has(id) || owned.alive(id)) return clearInterval(tick);
+    if (!owned.has(id) || Date.now() - t0 < 4000) return;
+    if (win && !isOpen(id)) win.webContents.send('say', { id, text: 'Claude Code is starting up…', seconds: 3, status: true });
+    if (!told && Date.now() - t0 > 8000) { told = true; inbox.add(id, { who: 'note', text: 'Claude Code is slow to start (often your sign-in being refreshed). What you send goes in as soon as it’s up.' }); }
+  }, 3000);
+  tick.unref();
+}
 // `quiet`: no talk box popping open (brought back after a restart).
 function startSession(cwd, extra = [], resume = '', fork = '', quiet = false) {
   if (!cwd) return null;
@@ -1029,8 +1047,11 @@ function startSession(cwd, extra = [], resume = '', fork = '', quiet = false) {
     settings = claudeHooks.withBlaube({}, PORT);
     settings.hooks.Stop = settings.hooks.Stop.filter((g) => !g.hooks.some((h) => h.asyncRewake));
   }
-  const id = owned.start(cwd, ['--append-system-prompt', `${replyStyle()}\n\n${PICTURES}`, ...extra], settings, resume, fork);
+  const args = ['--append-system-prompt', `${replyStyle()}\n\n${PICTURES}`, ...extra];
+  const id = owned.start(cwd, args, settings, resume, fork);
   startedAt.set(id, Date.now());
+  startArgs.set(id, [cwd, args, settings, resume, fork]);
+  watchStart(id);
   prefs.recentFolders = [cwd, ...(prefs.recentFolders || []).filter((f) => f !== cwd)].slice(0, 5);
   savePrefs();
   log(`started a session in ${cwd}: ${id}`);
@@ -2836,7 +2857,27 @@ app.whenReady().then(async () => {
     else inbox.replied(id, r.text);
     tracker.handle({ session_id: id, hook_event_name: 'Stop', last_assistant_message: r.text }, 'blaube');
   });
-  owned.on('exit', (id, code, err, signal) => {
+  owned.on('alive', (id) => { startArgs.delete(id); retried.delete(id); });
+  owned.on('exit', (id, code, err, signal, how) => {
+    // It never got going as your sign-in was being refreshed: again, in a
+    // moment, under the same id (its slime stays; what you sent goes in).
+    const again = startArgs.get(id);
+    startArgs.delete(id);
+    if (again && how && !how.alive && SIGNIN_BUSY.test(err || '') && (retried.get(id) || 0) < 3 && tracker.sessions.has(id)) {
+      const n = (retried.get(id) || 0) + 1;
+      retried.set(id, n);
+      log(`session ${id} couldn’t start yet (sign-in being refreshed): trying again (${n})`);
+      setTimeout(() => {
+        if (owned.has(id) || !tracker.sessions.has(id)) return;
+        owned.start(...again, [], id);
+        startArgs.set(id, again);
+        startedAt.set(id, Date.now());
+        watchStart(id);
+        for (const [text, uuid] of how.early) owned.send(id, text, uuid);
+      }, 1500 * n);
+      return;
+    }
+    retried.delete(id);
     const s = tracker.sessions.get(id);
     log(`session ${id} ended (${signal || code})${err ? ': ' + err.slice(0, 300) : ''}`);
     // It stopped with an error before you could say anything (right after

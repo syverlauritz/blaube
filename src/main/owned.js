@@ -50,6 +50,8 @@ class Owned extends EventEmitter {
   }
 
   has(id) { return this.sessions.has(id); }
+  // Said anything yet (Claude Code got going).
+  alive(id) { const s = this.sessions.get(id); return !!(s && s.alive); }
   shellPath() { return shellClaude; } // where a login shell found claude, if it had to
   list() { return [...this.sessions.keys()]; }
   // Sent something and its turn hasn't ended yet.
@@ -62,8 +64,10 @@ class Owned extends EventEmitter {
   // keeps its id). `fork`: a session's id to start a copy of (its
   // conversation so far, under a new id; the original carries on).
   // `once`: arguments for this start only (not kept for a restart).
-  start(cwd, extra = [], settings = null, resume = '', fork = '', once = []) {
-    const id = (!fork && resume) || crypto.randomUUID();
+  // `keep`: an id to start under again (one that never got going: see
+  // main.js, a sign-in still being refreshed).
+  start(cwd, extra = [], settings = null, resume = '', fork = '', once = [], keep = '') {
+    const id = keep || (!fork && resume) || crypto.randomUUID();
     const bin = this.findClaude() || shellClaude || 'claude';
     const from = fork ? ['--resume', fork, '--fork-session', '--session-id', id] : resume ? ['--resume', id] : ['--session-id', id];
     // (--allow-dangerously-skip-permissions only lets "Don't ask" be picked later, from its box; it starts as it always does.)
@@ -81,7 +85,7 @@ class Owned extends EventEmitter {
     const proc = viaCmd
       ? spawn('cmd.exe', ['/d', '/s', '/c', `"${[quote(bin), ...args.map(quote)].join(' ')}"`], Object.assign(opts, { windowsVerbatimArguments: true }))
       : spawn(bin, args, opts);
-    const s = { id, proc, cwd, extra, settings, startedAt: Date.now(), err: '', buf: '', pending: new Map(), interrupted: false }; // (s.id can change: see read)
+    const s = { id, proc, cwd, extra, settings, startedAt: Date.now(), err: '', buf: '', pending: new Map(), interrupted: false, alive: false, early: [] }; // (s.id can change: see read)
     this.sessions.set(id, s);
     proc.stdout.setEncoding('utf8');
     proc.stdout.on('data', (chunk) => {
@@ -93,6 +97,9 @@ class Owned extends EventEmitter {
         let m;
         try { m = JSON.parse(line); } catch { continue; }
         if (s.cleared) continue; // (/clear: a new one has its slime now)
+        // (Its first word: Claude Code got going. Before that it can be
+        // stuck a while, on your sign-in say.)
+        if (!s.alive) { s.alive = true; s.early = []; this.emit('alive', s.id); }
         this.read(s.id, m);
       }
     });
@@ -109,7 +116,7 @@ class Owned extends EventEmitter {
       if (this.sessions.get(s.id) === s) this.sessions.delete(s.id);
       if (settingsFile) fs.rm(settingsFile, { force: true }, () => {});
       if (s.replaced) return; // (/clear: it carries on as a new one)
-      this.emit('exit', s.id, code == null && !signal ? 1 : code, s.err.trim(), signal || null);
+      this.emit('exit', s.id, code == null && !signal ? 1 : code, s.err.trim(), signal || null, { alive: s.alive, early: s.early });
     };
     proc.on('error', (e) => { s.err = (s.err + e.message).slice(-2000); if (!proc.pid) ended(1, null); });
     proc.on('close', ended);
@@ -175,6 +182,7 @@ class Owned extends EventEmitter {
   send(id, text, uuid) {
     const s = this.sessions.get(id);
     if (!s || !s.proc.stdin.writable) return false;
+    if (s.early && !s.alive) s.early.push([String(text), uuid]); // (sent again if it has to be started again)
     s.proc.stdin.write(JSON.stringify(Object.assign({ type: 'user', message: { role: 'user', content: String(text) } }, uuid ? { uuid } : {})) + '\n');
     s.busy = true;
     return true;

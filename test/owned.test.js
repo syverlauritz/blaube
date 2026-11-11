@@ -217,3 +217,48 @@ test('what Claude writes as it works is said as it comes, not its helpers’ wor
   owned.read('s', { type: 'assistant', message: { id: 'x', model: '<synthetic>', content: [{ type: 'text', text: 'No messages to compact' }] } });
   assert.deepEqual(got, [['s', 'Now the tests.', 'm1']]);
 });
+
+// Claude Code stuck on your sign-in, then giving up before it says a word:
+// what was sent to it meanwhile is handed back, so it can be started
+// again under the same id with them.
+const STUCK = `
+const fs = require('node:fs');
+const once = process.argv[process.argv.indexOf('--session-id') + 1] + '.tried';
+if (!fs.existsSync(once)) {
+	fs.writeFileSync(once, '');
+	process.stderr.write("Claude Code couldn't verify your sign-in with Anthropic yet (its sign-in token was still being refreshed)");
+	setTimeout(() => process.exit(1), 200);
+} else {
+	const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
+	out({ type: 'system', subtype: 'hook_started' });
+	require('node:readline').createInterface({ input: process.stdin }).on('line', (l) => {
+		const m = JSON.parse(l);
+		if (m.type === 'user') out({ type: 'result', subtype: 'success', result: 'got ' + m.message.content });
+	});
+}
+`;
+
+test('one that never got going says so, with what it was sent, and starts again under its id', async () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blaube-stuck-'));
+	fs.writeFileSync(path.join(dir, 'fake.js'), STUCK);
+	let bin = path.join(dir, 'claude');
+	if (process.platform === 'win32') { bin += '.cmd'; fs.writeFileSync(bin, `@node "${path.join(dir, 'fake.js')}" %*\r\n`); }
+	else fs.writeFileSync(bin, `#!/bin/sh\nexec node "${path.join(dir, 'fake.js')}" "$@"\n`, { mode: 0o755 });
+	const owned = new Owned(() => bin);
+	const id = owned.start(dir);
+	assert.equal(owned.alive(id), false);
+	owned.send(id, 'hi', 'u-1');
+	const [, code, err, , how] = await new Promise((r) => owned.once('exit', (...a) => r(a)));
+	assert.equal(code, 1);
+	assert.match(err, /sign-in token was still being refreshed/);
+	assert.deepEqual(how, { alive: false, early: [['hi', 'u-1']] });
+	const alive = new Promise((r) => owned.once('alive', r));
+	assert.equal(owned.start(dir, [], null, '', '', [], id), id);
+	assert.equal(await alive, id);
+	const result = new Promise((r) => owned.once('result', (_id, res) => r([_id, res.text])));
+	for (const [text, uuid] of how.early) owned.send(id, text, uuid);
+	assert.deepEqual(await result, [id, 'got hi']);
+	const gone = new Promise((r) => owned.once('exit', r));
+	owned.end(id);
+	await gone;
+});
