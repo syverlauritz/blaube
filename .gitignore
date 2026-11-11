@@ -3,3 +3,12 @@ dist/
 .DS_Store
 /shots/
 /.run-main/
+
+# Never commit keys or credentials
+.env
+.env.*
+*.p12
+*.pem
+*.key
+*.cer
+*.mobileprovision

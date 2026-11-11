@@ -552,7 +552,7 @@ const SCENES = {
 	},
 	hover: { sessions: [session('a', 'blaube', 'working', { activity: 'tool', tokens: { total: 400000, context: 124000, limit: 200000 } })], hover: true },
 	// A session with a title goes by it on hover, its repo small underneath.
-	hoverTitled: { sessions: [session('a', 'vergence-studios-playground', 'working', { activity: 'tool', info: { title: 'Story globe slow on Mac', branch: 'main · 2 changed', model: 'claude-opus-5-5' }, tokens: { total: 400000, context: 124000, limit: 200000 } })], hover: true },
+	hoverTitled: { sessions: [session('a', 'globe-playground', 'working', { activity: 'tool', info: { title: 'Story globe slow on Mac', branch: 'main · 2 changed', model: 'claude-opus-5-5' }, tokens: { total: 400000, context: 124000, limit: 200000 } })], hover: true },
 	// Hovering a busy slime: its squeezed-shut working eyes open wide and
 	// follow the cursor (on its left, its right, its top), easing open and,
 	// once you move off, shut again.
@@ -1545,7 +1545,7 @@ app.whenReady().then(async () => {
 		if (!scene || !scene.thinking) return { text: '', doing: '' };
 		if (typeof scene.thinking === 'object') return scene.thinking;
 		if (scene.thinking === 'doing') return { text: '', doing: 'Reading pancakes.md' };
-		if (scene.thinking === 'raw') return { text: '', doing: thinking.plainCommand('node C:/Users/syver/AppData/Local/Temp/claude/C--Git-blaube/probe-motion.js --check') };
+		if (scene.thinking === 'raw') return { text: '', doing: thinking.plainCommand('node C:/Users/me/AppData/Local/Temp/claude/C--Git-blaube/probe-motion.js --check') };
 		const helper = String(key).includes('/');
 		return { text: await thinking.thinkingOf(helper ? thinking.helperFile(FIX, 'fixture-helper') : FIX, !helper), doing: 'Running npm test' };
 	});

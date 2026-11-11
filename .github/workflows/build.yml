@@ -9,6 +9,10 @@ on:
   # for when a v* tag can't be pushed (the release job makes the tag).
   workflow_dispatch:
 
+# Read-only unless a job says otherwise (only the release jobs write).
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

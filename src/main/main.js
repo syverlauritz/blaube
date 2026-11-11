@@ -98,6 +98,15 @@ process.on('uncaughtException', (e) => console.error('[blaube] uncaught:', e && 
 // on its first frames, half faded in, and never drew again. Nothing of ours
 // is ever really hidden by another of our windows.
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+
+// Every window of ours shows only Blaube's own pages: none opens another
+// window or goes off to a web page (a link that slipped into a transcript,
+// say). Links are opened in your browser on purpose, through shell.
+app.on('web-contents-created', (_e, contents) => {
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  contents.on('will-navigate', (e, url) => { if (!String(url).startsWith('file:')) e.preventDefault(); });
+  contents.on('will-attach-webview', (e) => e.preventDefault());
+});
 if (TEST) { app.setPath('userData', fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'blaube-test-'))); app.setPath('downloads', path.join(app.getPath('userData'), 'Downloads')); fs.mkdirSync(app.getPath('downloads')); }
 
 // When Blaube is started from inside a Claude Code session (e.g. `npm start`
