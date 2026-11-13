@@ -912,6 +912,36 @@ function modelName(id) {
 }
 // A model you just switched a session to (until its transcript says so).
 const pickedModel = new Map();
+// Switches a session Blaube started to another model (Model in its menu, or
+// /model in its box): asked of Claude Code itself, said in its box, and its
+// blob wears that model's face at once.
+function switchModel(id, model) {
+  owned.control(id, { subtype: 'set_model', model }, (ok, r) => {
+    if (ok) pickedModel.set(id, (r && r.model) || model);
+    inbox.add(id, { who: 'note', text: ok ? `Now using ${modelName(r && r.model) || (r && r.model) || model}` : `Couldn’t switch to ${model}: ${r}` });
+    pushTalk(id);
+    pushState();
+  });
+}
+// The models to pick from (as Claude Code lists them, once a session has
+// said), and what to call each.
+const modelChoices = () => (prefs.models && prefs.models.length ? prefs.models : [{ value: 'default', displayName: 'Default' }, { value: 'opus', displayName: 'Opus' }, { value: 'sonnet', displayName: 'Sonnet' }, { value: 'haiku', displayName: 'Haiku' }]);
+const modelLabel = (m) => String(m.displayName || m.value).replace(/\s*\(recommended\)/i, '');
+// Model in a slime's own menu: the model this very session runs on, and a
+// tap switches it (not what new sessions start on: that's under Settings ▸
+// Claude Code). `now`: its model id ('' before its first reply).
+function modelMenu(id, now) {
+  const models = modelChoices();
+  const said = modelName(now);
+  const family = (/^(?:claude-)?([a-z]+)/.exec(String(now || '').toLowerCase()) || [])[1] || '';
+  const on = !now ? models.find((m) => m.value === 'default')
+    : models.find((m) => m.value !== 'default' && (m.value === now || (said && (modelLabel(m) === said || modelName(m.value) === said))))
+      || models.find((m) => m.value === family && !/\d/.test(modelLabel(m))); // (a bare "Opus": whichever Opus it's on)
+  return [
+    ...models.map((m) => ({ label: modelLabel(m), type: 'radio', checked: m === on, click: () => switchModel(id, m.value) })),
+    ...(on || !now ? [] : [{ label: said || String(now), type: 'radio', checked: true, enabled: false }]),
+  ];
+}
 // What you ran with ! in a session's box, not yet sent along: id -> [{ cmd, code, out }].
 const shellRan = new Map();
 
@@ -1495,7 +1525,7 @@ function pushState() {
       color: colorOf(s),
       look: (prefs.looks || {})[s.id] || s.look || '', // (picked from its menu: see New look)
       tokens: tokens.get(s.id) || null,
-      info: Object.assign(usage.sessionInfo(transcriptPath(s)), gitStates.get(s.id) ? { branch: [gitLine(s.id), testsWords(s.id)].filter(Boolean).join(' · ') } : {}), // (its git line on hover: branch, changes, its PR, its tests)
+      info: Object.assign(usage.sessionInfo(transcriptPath(s)), pickedModel.get(s.id) ? { model: pickedModel.get(s.id) } : {}, gitStates.get(s.id) ? { branch: [gitLine(s.id), testsWords(s.id)].filter(Boolean).join(' · ') } : {}), // (its git line on hover: branch, changes, its PR, its tests)
       todo: (() => { const t = inbox.todos.get(s.id) || []; const done = t.filter((x) => x.status === 'completed').length; return t.length && done < t.length ? { done, of: t.length } : null; })(),
       changes: s.cwd && !s.id.startsWith('demo-') ? gitChanges.get(s.cwd) : null,
       effort: efforts.get(s.id) || defaultEffort(),
@@ -2208,12 +2238,13 @@ function sessionMenuTemplate(id, { tray = false, quick = [] } = {}) {
   const effort = { low: 'low effort', medium: 'medium effort', high: 'high effort', xhigh: 'extra high effort', max: 'max effort' }[efforts.get(id) || defaultEffort()];
   const isDemo = id.startsWith('demo-');
   const mine = owned.has(id);
+  const modelNow = isDemo ? '' : pickedModel.get(id) || usage.sessionInfo(transcriptPath(s)).model;
   const talk = () => { if (!win) return; if (tray && process.platform === 'darwin') app.focus({ steal: true }); askTalk(id); };
   return [
     ...(quick.length ? [...quick, { type: 'separator' }] : []),
     ...(tray ? (effort ? [{ label: effort[0].toUpperCase() + effort.slice(1), enabled: false }, { type: 'separator' }] : []) : [
       { label: shownOf(s).full, enabled: false },
-      { label: `${word}${s.message && s.state === 'waiting' ? ': ' + s.message : ''}${effort ? ' · ' + effort : ''}`, enabled: false },
+      { label: `${word}${s.message && s.state === 'waiting' ? ': ' + s.message : ''}${modelName(modelNow) ? ' · ' + modelName(modelNow) : ''}${effort ? ' · ' + effort : ''}`, enabled: false },
       { type: 'separator' },
     ]),
     { label: 'Talk', enabled: !isDemo, click: talk },
@@ -2221,6 +2252,7 @@ function sessionMenuTemplate(id, { tray = false, quick = [] } = {}) {
       : { label: 'Go to its terminal', sublabel: process.platform === 'darwin' ? '⌥-click the blob' : 'Alt-click the blob', enabled: !isDemo, click: () => goToSession(s) },
     ...(!isDemo && s.cwd && editorNow() ? [{ label: `Open in ${editorNow().name}`, click: () => openInEditor(id, '') }] : []),
     { label: 'Open project folder', enabled: !!s.cwd, click: () => shell.openPath(s.cwd) },
+    ...(mine ? [{ label: 'Model', submenu: modelMenu(id, modelNow) }] : []),
     { label: 'Session', submenu: [
       ...(mine ? [] : [
         { label: 'Bring it into Blaube', toolTip: 'It closes in its terminal and carries on here, its conversation kept', enabled: canBringIn(s), click: () => bringIn(s) },
@@ -3797,6 +3829,7 @@ app.whenReady().then(async () => {
       if (c && c.help) { inbox.add(id, { who: 'note', text: c.help }); return; }
       if (c) {
         inbox.add(id, { who: 'you', text: String(text).trim(), via: 'blaube', status: 'sent' });
+        if (c.request.subtype === 'set_model') { switchModel(id, c.request.model); return; }
         owned.control(id, c.request, (ok, r) => {
           if (c.request.subtype === 'get_context_usage') {
             const n = ok && contextNote(r);
@@ -3809,10 +3842,8 @@ app.whenReady().then(async () => {
             inbox.add(id, { who: 'note', text: ok ? `Effort: ${level}` : `Couldn’t change its effort: ${r}`, error: !ok });
             return pushTalk(id);
           }
-          const what = c.request.subtype === 'set_model' ? (ok ? `Now using ${modelName(r.model) || r.model || c.request.model}` : `Couldn’t switch to ${c.request.model}: ${r}`)
-            : ok ? 'Plan mode: it shows you a plan before it changes anything' : `Couldn’t switch to plan mode: ${r}`;
+          const what = ok ? 'Plan mode: it shows you a plan before it changes anything' : `Couldn’t switch to plan mode: ${r}`;
           if (ok && c.request.mode) tracker.setMode(id, r.mode || c.request.mode);
-          if (ok && r.model) pickedModel.set(id, r.model);
           inbox.add(id, { who: 'note', text: what });
           pushTalk(id);
         });
@@ -4454,7 +4485,7 @@ app.whenReady().then(async () => {
     if (kind === 'model') return modelsFor(id, (models) => {
       const want = q.toLowerCase();
       resolve(models.filter((m) => !want || m.value.toLowerCase().startsWith(want) || m.displayName.toLowerCase().startsWith(want)).slice(0, 8)
-        .map((m) => ({ insert: m.value, label: m.value, about: m.description || m.displayName })));
+        .map((m) => ({ insert: m.value, label: m.value, about: m.description && m.displayName !== m.value && !/default/i.test(m.displayName) && !m.description.includes(m.displayName) ? `${m.displayName} · ${m.description}` : m.description || m.displayName }))); // (which version "fable" is)
     });
     if (kind !== 'file') return resolve([]);
     projectFiles.list(s.cwd, (all) => resolve(projectFiles.match(all, q).map((p) => ({ insert: '@' + p + ' ', label: p, about: '' }))));

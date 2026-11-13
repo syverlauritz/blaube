@@ -6544,7 +6544,7 @@
   // face as it was, rather than flicking it back to the plain one.)
   function modelLook(b) {
     const fam = (x, id) => {
-      const f = (/^claude-([a-z]+)/.exec(String(id || '')) || [])[1];
+      const f = (/^(?:claude-)?([a-z]+)/.exec(String(id || '')) || [])[1]; // ("claude-fable-5-2", or just "fable" when you've picked it and it hasn't answered yet)
       if (f && MODEL_LOOKS[f]) x.modelFam = f;
       return x.modelFam;
     };

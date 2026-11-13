@@ -100,6 +100,15 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(async () => /claude-sonnet-5-5 here\./.test(await said())), 'and it answers as that model');
 	await type('/model');
 	check(await until(async () => /Say which: \/model opus/.test(await said())), '/model alone says how');
+	// Model in its own menu: the model this session is on, switched with a tap (not what new sessions start on).
+	const modelItem = (label) => global.__blaubeSessionMenu(id).items.find((i) => i.label === 'Model').submenu.items.find((i) => i.label === label);
+	check(!!modelItem('Opus') && !!modelItem('Haiku') && !modelItem('Haiku').checked, 'its menu has Model, with the models Claude Code lists');
+	modelItem('Haiku').click();
+	check(await until(async () => /Now using claude-haiku/.test(await said())), 'picking one there switches this session');
+	check(modelItem('Haiku').checked && !modelItem('Opus').checked, 'and the menu shows it');
+	check(await until(() => { const st = (global.__blaubeState.sessions || []).find((x) => x.id === id); return !!st && st.info.model === 'claude-haiku'; }), 'and its blob is told at once, for its face');
+	modelItem('Opus').click();
+	check(await until(async () => /Now using claude-opus/.test(await said())), 'and back');
 	check(await box(`document.getElementById('suggest').hidden`), 'and sending leaves no suggestions behind');
 	const mode = () => box(`(() => { const m = document.getElementById('mode'); return m.hidden ? '' : m.className + ' | ' + m.textContent; })()`);
 	check(/default can \| Asks before editsShift\+Tab/.test(await mode()), 'how it asks shows under the field, as in the terminal');
