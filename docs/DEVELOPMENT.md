@@ -77,6 +77,17 @@ node scripts/film/sheet.js   # a contact sheet of each shot, to check a take wit
 
 Film mode (`BLAUBE_FILM`) is test mode that can be seen and heard. The blobs only move by their physics; the cards are real windows, and the sky is a window behind them (no wallpaper is changed). The music (`scripts/film/music/`) and the recordings (`scripts/film/out/`) are not in the repository.
 
+## Talking to Claude Code: official ways only
+
+Blaube never calls Anthropic or claude.ai itself, never uses an API key and never reads your keychain. It talks to Claude Code only, and only in ways Anthropic supports:
+
+- **The `claude` command and its documented options** (`-p`, `--input-format stream-json`, `--resume`, `--fork-session`, `--session-id`, `--model`, `--permission-mode`, `--tools`, …) and its own subcommands (`claude auth status|login|logout`, `claude mcp add|remove|login|list`, `claude plugin …`, `claude doctor`, `claude update`).
+- **Hooks** in `~/.claude/settings.json` that post to Blaube on `127.0.0.1` (Claude Code's documented HTTP hooks).
+- **Control requests** on a session it started, only the ones Anthropic's Agent SDK (`@anthropic-ai/claude-agent-sdk`) exposes as methods on `Query`: `initialize` (version, models, account), `interrupt`, `set_permission_mode`, `set_model`, `apply_flag_settings`, `mcp_status`, `mcp_reconnect`, `mcp_toggle`, `get_context_usage`, `reload_plugins`, `rewind_files`, `stop_task`, `background_tasks`. One more, `get_usage` (the snack jar's usage limits), is in the SDK's types but marked experimental and has no method.
+- **Your own files on disk**: session transcripts, settings, CLAUDE.md and memory files.
+
+Before adding a new control request, check that the Agent SDK has a public method for it (in its `sdk.d.ts`). Ones that only Claude Code's own screens use can change or vanish in any update.
+
 ## Releasing
 
 1. Move the notes under **Unreleased** in `CHANGELOG.md` into a new `## [x.y.z] - date` section and commit.

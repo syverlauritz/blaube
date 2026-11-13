@@ -4,6 +4,7 @@ Each release's notes on GitHub come from its section here (`.github/workflows/bu
 
 ## [Unreleased]
 
+- Blaube only asks Claude Code things in officially supported ways now. /status shows the account and MCP servers from Claude Code's official handshake, /cost counts from the session itself, /memory reads the memory files, /btw asks a quick unsaved copy of the session, and an MCP server's Sign in runs Claude Code's own `claude mcp login` (see docs/DEVELOPMENT.md).
 - The beret sits on the head for real: its band follows the head’s outline however the blob is squashed or stretched, and the felt has weight (it squashes flat on a landing, puffs up in a fall, and its overhang flops).
 - A trailer, at the top of the README. It is played live by the real app (`scripts/film`, see docs/DEVELOPMENT.md).
 ## [0.7.0] - 2026-11-11

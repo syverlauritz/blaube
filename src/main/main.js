@@ -2954,27 +2954,30 @@ app.whenReady().then(async () => {
       done(ok);
     });
   }));
-  // An MCP server that needs you to sign in: Claude Code gives the address
-  // (mcp_authenticate) and waits for the browser to come back to it.
+  // An MCP server that needs you to sign in: Claude Code's own `claude mcp
+  // login` (your browser opens), then the session reconnects to it.
   ipcMain.handle('talk-mcp-sign-in', (_e, id, name) => new Promise((done) => {
     if (!id || !isOpen(id) || !owned.has(id) || !(mcpStates.get(id) || []).some((m) => m.name === name)) return done(false);
-    owned.control(id, { subtype: 'mcp_authenticate', serverName: name }, (ok, r) => {
-      if (!ok) { inbox.add(id, { who: 'note', text: `Couldn’t sign in to ${name}: ${r}`, error: true }); return done(false); }
-      if (r && r.authUrl && /^https?:\/\//.test(r.authUrl)) {
-        if (TEST) global.__blaubeMcpAuthUrl = r.authUrl; else shell.openExternal(r.authUrl);
-        inbox.add(id, { who: 'note', text: `Finish signing in to ${name} in your browser` });
-      }
-      // (Asked again for a while, until it's connected.)
-      let n = 0;
-      const look = setInterval(() => {
-        if (!owned.has(id) || ++n > 36) return clearInterval(look);
-        askMcp(id);
-        const m = (mcpStates.get(id) || []).find((x) => x.name === name);
-        if (m && m.status === 'connected') { clearInterval(look); inbox.add(id, { who: 'note', text: `Signed in to ${name}: it’s connected` }); if (win) win.webContents.send('nod', id); }
-      }, TEST ? 300 : 5000);
-      look.unref();
-      done(true);
-    }, 30e3);
+    const sess = tracker.sessions.get(id);
+    const bin = TEST ? global.__blaubeClaudeBin || owned.findClaude() : owned.findClaude() || owned.shellPath() || 'claude';
+    inbox.add(id, { who: 'note', text: `Finish signing in to ${name} in your browser` });
+    auth.mcpLogin(bin, name, (sess && sess.cwd) || owned.sessions.get(id).cwd, (ok, why) => {
+      if (!ok) { inbox.add(id, { who: 'note', text: `Couldn’t sign in to ${name}: ${why}`, error: true }); return; }
+      if (!owned.has(id)) return;
+      // (Signed in: it connects again, now with the sign-in, and is asked
+      // for a while until it says it's connected.)
+      owned.control(id, { subtype: 'mcp_reconnect', serverName: name }, () => {
+        let n = 0;
+        const look = setInterval(() => {
+          if (!owned.has(id) || ++n > 36) return clearInterval(look);
+          askMcp(id);
+          const m = (mcpStates.get(id) || []).find((x) => x.name === name);
+          if (m && m.status === 'connected') { clearInterval(look); inbox.add(id, { who: 'note', text: `Signed in to ${name}: it’s connected` }); if (win) win.webContents.send('nod', id); }
+        }, TEST ? 300 : 5000);
+        look.unref();
+      }, 30e3);
+    }, (url) => { if (TEST) global.__blaubeMcpAuthUrl = url; }, 5 * 60e3, owned.sessions.get(id).configDir || '');
+    done(true);
   }));
   setInterval(askUsage, 5 * 60e3).unref();
   // While Claude Code waits to try again, the box says so, not just dots.
@@ -3427,15 +3430,15 @@ app.whenReady().then(async () => {
       try { if (!fs.existsSync(file)) fs.writeFileSync(file, `# ${path.basename(path.dirname(file))}\n\n`); } catch (e) { inbox.add(id, { who: 'note', text: `Couldn’t make CLAUDE.md: ${e.message}`, error: true }); return; }
       if (!TEST) shell.openPath(file);
       inbox.add(id, { who: 'note', text: `Opened ${path.basename(path.dirname(file))}/CLAUDE.md, what every session there reads first` });
-      // (One Blaube started: what else it reads, and what it has remembered
-      // on its own, as the terminal's /memory lists them.)
-      if (owned.has(id)) owned.control(id, { subtype: 'get_memory_dialog' }, (ok, r) => {
-        if (!ok || !r) return;
-        const reads = (Array.isArray(r.files) ? r.files : []).filter((f) => f && f.exists && f.path).map((f) => String(f.path).replace(os.homedir(), '~'));
-        const kept = (Array.isArray(r.memories) ? r.memories : []).filter((m) => m && m.name).slice(0, 12).map((m) => `${path.basename(String(m.name), '.md')}${m.description ? ` (${String(m.description).slice(0, 60)})` : ''}`);
+      // (What else it reads, and what it has remembered on its own, as the
+      // terminal's /memory lists them: from the files themselves.)
+      if (!id.startsWith('demo-')) {
+        const r = memory.whatItReads(sess.cwd, accountOf(id) || path.join(os.homedir(), '.claude'), transcriptPath(sess));
+        const reads = r.reads.map((f) => f.replace(os.homedir(), '~'));
+        const kept = r.memories.slice(0, 12).map((m) => `${m.name}${m.description ? ` (${m.description.slice(0, 60)})` : ''}`);
         const parts = [reads.length ? `It reads ${reads.join(', ')}` : '', kept.length ? `It remembers: ${kept.join(' · ')}${r.memories.length > 12 ? ` and ${r.memories.length - 12} more` : ''}` : ''].filter(Boolean);
         if (parts.length) inbox.add(id, { who: 'note', text: parts.join('. ') });
-      });
+      }
       return;
     }
     // "/run dev": one of its scripts (package.json). A dev server or a
@@ -3644,21 +3647,13 @@ app.whenReady().then(async () => {
       inbox.add(id, { who: 'note', text: list.length ? `Skills it can use: ${list.slice(0, 30).map((k) => `${k.name}${k.about ? ` (${k.about.length > 70 ? k.about.slice(0, 69) + '…' : k.about})` : ''}`).join(' · ')}. Ask for one by name, or it picks one when it fits.` : 'No skills of yours or this project’s (they go in .claude/skills).' });
       return;
     }
-    // "/cost" in a terminal's session: what it has used, from its
-    // transcript (one Blaube started asks Claude Code itself).
-    if (/^\/cost\s*$/i.test(String(text).trim()) && sess && !owned.has(id) && !id.startsWith('demo-')) {
+    // "/cost": what it has used, from its transcript (in a terminal's
+    // session and one Blaube started alike).
+    if (/^\/cost\s*$/i.test(String(text).trim()) && sess && !id.startsWith('demo-')) {
       const u = usage.sessionUsage(transcriptPath(sess));
       const turns = inbox.log(id).filter((e) => e.who === 'claude' && e.turn);
       const took = turns.reduce((n, e) => n + (e.turn.took || 0), 0);
       inbox.add(id, u ? { who: 'note', text: `It has used ${require('./commands').kTokens(u.total)} tokens (new input, cache writes and output, its helpers’ too)${u.context ? ` · its context is ${Math.round(100 * u.context / u.limit)}% full` : ''}${turns.length ? ` · ${turns.length} ${turns.length === 1 ? 'turn' : 'turns'} here, ${Math.max(1, Math.round(took / 60e3))}m working` : ''}` } : { who: 'note', text: 'Nothing to show yet: Claude Code hasn’t saved any of it.' });
-      return;
-    }
-    // ... and in one Blaube started, Claude Code's own count (get_session_cost).
-    if (/^\/cost\s*$/i.test(String(text).trim()) && owned.has(id)) {
-      owned.control(id, { subtype: 'get_session_cost' }, (ok, r) => {
-        const lines = ok && r && typeof r.text === 'string' ? r.text.split('\n').map((l) => l.replace(/:\s+/, ': ').trim()).filter(Boolean) : [];
-        inbox.add(id, lines.length ? { who: 'note', text: lines.join(' · ') } : { who: 'note', text: `Couldn’t ask what it has used${ok ? '' : `: ${r}`}`, error: true });
-      });
       return;
     }
     // Ones only the terminal itself has any use for.
@@ -3685,15 +3680,26 @@ app.whenReady().then(async () => {
           owned.has(id) ? 'started by Blaube' : 'in a terminal',
         ].filter(Boolean).join(' · ') }));
       };
-      // (One Blaube started: everything Claude Code's own /status says too,
-      // a tap away: how it's signed in, its MCP servers, its settings.)
+      // (One Blaube started: more of what Claude Code's own /status says, a
+      // tap away: the account it's signed in as and its MCP servers, from
+      // the official handshake and mcp_status.)
       if (owned.has(id)) {
-        return owned.control(id, { subtype: 'get_status' }, (ok, r) => {
-          const sections = ok && r && Array.isArray(r.sections) ? r.sections.slice(0, 12).map((x) => ({ title: String(x.title || '').slice(0, 60), rows: (Array.isArray(x.rows) ? x.rows : []).slice(0, 30).map((w) => ({ label: String(w.label || '').slice(0, 60), value: String(w.value == null ? '' : w.value).slice(0, 300) })) })).filter((x) => x.rows.length) : null;
-          const v = sections && ((sections[0] || { rows: [] }).rows.find((w) => w.label === 'Version') || {}).value;
-          if (v) return say(v, sections);
-          if (!bin) return say('', sections);
-          require('node:child_process').execFile(bin, ['--version'], { timeout: 8000, encoding: 'utf8', windowsHide: true }, (err, out) => say(err ? '' : String(out).trim().split(/\s/)[0], sections));
+        return owned.init(id, (ok, r) => {
+          const a = (ok && r && r.account) || {};
+          const plan = String(a.subscriptionType || '');
+          const account = [
+            a.email ? { label: 'Signed in as', value: String(a.email) } : null,
+            a.organization ? { label: 'Organization', value: String(a.organization) } : null,
+            plan ? { label: 'Plan', value: plan } : null,
+            a.apiProvider && a.apiProvider !== 'firstParty' ? { label: 'Through', value: String(a.apiProvider) } : null,
+          ].filter(Boolean);
+          const mcp = mcpStates.get(id) || [];
+          const count = (st) => mcp.filter((m) => m.status === st).length;
+          const servers = mcp.length ? [{ label: 'MCP servers', value: [[count('connected'), 'connected'], [count('failed'), 'failed'], [count('needs-auth'), 'need you to sign in'], [count('disabled'), 'turned off']].filter(([n]) => n).map(([n, w]) => `${n} ${w}`).join(', ') || `${mcp.length}` }] : [];
+          const sections = [account.length ? { title: 'Account', rows: account } : null, servers.length ? { title: 'Tools', rows: servers } : null].filter(Boolean).map((x) => ({ title: x.title, rows: x.rows.map((w) => ({ label: w.label, value: String(w.value).slice(0, 300) })) }));
+          const v = ok && r && typeof r.claude_code_version === 'string' ? r.claude_code_version : '';
+          if (v || !bin) return say(v, sections.length ? sections : null);
+          require('node:child_process').execFile(bin, ['--version'], { timeout: 8000, encoding: 'utf8', windowsHide: true }, (err, out) => say(err ? '' : String(out).trim().split(/\s/)[0], sections.length ? sections : null));
         });
       }
       if (!bin) return say('');
@@ -3747,11 +3753,11 @@ app.whenReady().then(async () => {
         const q = (btw[1] || '').trim();
         if (!q) { inbox.add(id, { who: 'note', text: 'Ask it something on the side: /btw what port does it run on?' }); return; }
         const asked = inbox.add(id, { who: 'note', text: `Asked on the side: ${q.length > 80 ? q.slice(0, 79) + '…' : q}` });
-        owned.control(id, { subtype: 'side_question', question: q }, (ok, r) => {
-          if (!ok || !r || typeof r.response !== 'string' || !r.response.trim()) { inbox.add(id, { who: 'note', text: `Couldn’t ask on the side: ${ok ? 'no answer' : r}`, error: true }); return; }
-          Object.assign(asked, { aside: { question: q, answer: r.response }, text: `On the side: ${q} — ${r.response}` }); // (the line saying it asked becomes the answer)
+        owned.aside(id, q, (ok, r) => {
+          if (!ok) { inbox.add(id, { who: 'note', text: `Couldn’t ask on the side: ${r}`, error: true }); return; }
+          Object.assign(asked, { aside: { question: q, answer: r }, text: `On the side: ${q} — ${r}` }); // (the line saying it asked becomes the answer)
           inbox.emit('change', id);
-        }, 120e3);
+        }, 120e3, pickedModel.get(id) || '', (sess && sess.cwd) || '');
         return;
       }
       // "/clear": a fresh conversation, as in the terminal: a new session in
@@ -4428,7 +4434,7 @@ app.whenReady().then(async () => {
   function modelsFor(id, cb) {
     if (!owned.has(id)) return cb([]);
     if (modelLists.has(id)) return cb(modelLists.get(id));
-    owned.control(id, { subtype: 'list_models' }, (ok, r) => {
+    owned.init(id, (ok, r) => { // (the models it offers, from the official handshake)
       const list = ok && r && Array.isArray(r.models) ? r.models.filter((m) => m && typeof m.value === 'string').map((m) => ({ value: m.value, displayName: String(m.displayName || m.value), description: String(m.description || '') })) : [];
       if (list.length) modelLists.set(id, list);
       // (Kept, for choosing a model for a new session.)

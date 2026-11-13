@@ -39,6 +39,12 @@ function stop(proc) {
 // Windows: run a .cmd through cmd.exe ourselves, every part quoted (Node's
 // shell option would leave paths with spaces, and anything else, unquoted).
 const quote = (a) => `"${String(a).replace(/"/g, '""')}"`;
+function run(bin, args, opts) {
+  const viaCmd = process.platform === 'win32' && (!path.isAbsolute(bin) || /\.(cmd|bat)$/i.test(bin));
+  return viaCmd
+    ? spawn('cmd.exe', ['/d', '/s', '/c', `"${[quote(bin), ...args.map(quote)].join(' ')}"`], Object.assign(opts, { windowsVerbatimArguments: true }))
+    : spawn(bin, args, opts);
+}
 
 class Owned extends EventEmitter {
   // findClaude: where the claude binary is (or nothing: use PATH).
@@ -83,10 +89,7 @@ class Owned extends EventEmitter {
     const env = claudeEnv(process.env, configDir ? { CLAUDE_CONFIG_DIR: configDir } : {}); // (your Claude login, never an API key: see claudeEnv.js)
     env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING = '1'; // (so a turn's changes can be put back: rewind_files)
     const opts = { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true };
-    const viaCmd = process.platform === 'win32' && (!path.isAbsolute(bin) || /\.(cmd|bat)$/i.test(bin));
-    const proc = viaCmd
-      ? spawn('cmd.exe', ['/d', '/s', '/c', `"${[quote(bin), ...args.map(quote)].join(' ')}"`], Object.assign(opts, { windowsVerbatimArguments: true }))
-      : spawn(bin, args, opts);
+    const proc = run(bin, args, opts);
     const s = { id, proc, cwd, extra, settings, configDir, startedAt: Date.now(), err: '', buf: '', pending: new Map(), interrupted: false, alive: false, early: [] }; // (s.id can change: see read)
     this.sessions.set(id, s);
     proc.stdout.setEncoding('utf8');
@@ -204,6 +207,56 @@ class Owned extends EventEmitter {
     if (request.subtype === 'interrupt') s.interrupted = true;
     s.proc.stdin.write(JSON.stringify({ type: 'control_request', request_id: rid, request }) + '\n');
     return true;
+  }
+
+  // "/btw": a quick question on the side, answered from the conversation
+  // so far without becoming part of it and without stopping it. Asked of
+  // a copy of the session made just for this (Claude Code's own
+  // --resume --fork-session, not saved, no tools), which then ends.
+  // `model`: the one it's on now, if Blaube knows; `cwd`: where it's working
+  // now (its own worktree, say). cb(ok, the answer or why not).
+  aside(id, question, cb = () => {}, wait = 120e3, model = '', cwd = '') {
+    const s = this.sessions.get(id);
+    if (!s) return cb(false, 'it isn’t running');
+    const bin = this.findClaude() || shellClaude || 'claude';
+    const ask = `A quick question on the side, while you work. Answer it briefly from what you already know of this conversation; you can't use tools for it.\n\n${question}`;
+    const args = ['-p', '--resume', id, '--fork-session', '--no-session-persistence', '--tools', '', '--output-format', 'json', ...(model ? ['--model', model] : [])];
+    const env = claudeEnv(process.env, s.configDir ? { CLAUDE_CONFIG_DIR: s.configDir } : {}); // (your Claude login, never an API key)
+    let proc;
+    try { proc = run(bin, args, { cwd: cwd || s.cwd, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }); } catch (e) { return cb(false, e.message); }
+    proc.stdin.on('error', () => {});
+    proc.stdin.end(ask); // (the question goes in on its input: no shell between can mangle it)
+    let out = '', err = '', over = false;
+    const finish = (ok, r) => { if (over) return; over = true; clearTimeout(late); cb(ok, r); };
+    const late = setTimeout(() => { stop(proc); finish(false, 'no answer'); }, wait);
+    proc.stdout.setEncoding('utf8'); proc.stdout.on('data', (d) => { out += d; });
+    proc.stderr.setEncoding('utf8'); proc.stderr.on('data', (d) => { err = (err + d).slice(-2000); });
+    proc.on('error', (e) => finish(false, e.message));
+    proc.on('close', () => {
+      let r = null;
+      try { r = JSON.parse(out.trim().split('\n').pop()); } catch { /* not JSON */ }
+      if (r && !r.is_error && typeof r.result === 'string' && r.result.trim()) return finish(true, r.result.trim());
+      finish(false, (r && typeof r.result === 'string' && r.result.trim()) || err.trim().split('\n').filter(Boolean).pop() || 'no answer');
+    });
+  }
+
+  // What Claude Code says about itself when an app connects to it (the
+  // official handshake, `initialize`, the one Anthropic's Agent SDK sends):
+  // its version, the models you can pick, the account it's signed in as.
+  // Asked once per run and kept. cb(ok, its answer or why not).
+  init(id, cb = () => {}) {
+    const s = this.sessions.get(id);
+    if (!s) return cb(false, 'it isn’t running');
+    if (s.init) return cb(true, s.init);
+    if (s.initWaiting) return s.initWaiting.push(cb);
+    s.initWaiting = [cb];
+    const sent = this.control(id, { subtype: 'initialize' }, (ok, r) => {
+      const waiting = s.initWaiting || [];
+      s.initWaiting = null;
+      if (ok && r) s.init = r;
+      for (const w of waiting) w(ok, r);
+    }, 15000);
+    if (!sent) s.initWaiting = null;
   }
 
   // /clear: a fresh conversation in the same folder, as a new session that
