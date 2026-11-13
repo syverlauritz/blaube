@@ -22,6 +22,8 @@ if (A === 'plugin install demo --json --accept-command abcdef0123456789') { cons
 if (A === 'plugin install nope --json') { console.log(JSON.stringify({ command: 'install', outcome: 'failed', plugin: 'nope', message: 'Plugin "nope" not found in any configured marketplace', failureCode: 'not_found' })); process.exit(1); }
 if (A === 'plugin disable demo') { console.log('✔ Disabled demo'); process.exit(0); }
 if (A === 'plugin marketplace add acme/plugins') { console.log('✔ Added marketplace acme'); process.exit(0); }
+if (A === 'mcp login linear') { console.log('Opening your browser… https://mcp.linear.app/authorize?state=fake'); setTimeout(() => { require('node:fs').writeFileSync(require('node:path').join(process.cwd(), 'mcp-signed-in'), ''); console.log('Authenticated with linear.'); process.exit(0); }, 300); return; }
+if (process.argv.includes('--fork-session') && process.argv.includes('--no-session-persistence') && process.argv.includes('--tools')) { let q = ''; process.stdin.on('data', (d) => { q += d; }); process.stdin.on('end', () => setTimeout(() => { console.log(JSON.stringify({ type: 'result', is_error: false, result: q.trim().endsWith('what port?') ? 'It runs on **port 3000**.' : 'Hmm?' })); process.exit(0); }, 300)); return; }
 if (A === 'auth logout') { try { require('node:fs').unlinkSync(SIGNED); } catch {} console.log('Successfully logged out from your Anthropic account.'); process.exit(0); }
 if (A === 'auth login') { console.log('Opening your browser… https://claude.ai/oauth/authorize?fake=1'); setTimeout(() => { require('node:fs').writeFileSync(SIGNED, ''); console.log('Login successful.'); process.exit(0); }, 300); return; }
 let model = 'claude-opus', turn = null, used = [12, 40], mcpUp = false, linear = 'connected'; const seen = new Set();
@@ -37,18 +39,13 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
     if (r.subtype === 'stop_task') return ok({});
     if (r.subtype === 'apply_flag_settings') return ok({});
     if (r.subtype === 'background_tasks') return ok({ backgrounded: r.tool_use_id === 'tu-fg' });
-    if (r.subtype === 'list_models') return ok({ models: [{ value: 'default', displayName: 'Default (recommended)', description: 'Sonnet 5.5 · Efficient for routine tasks' }, { value: 'opus', displayName: 'Opus', description: 'Opus 5.5 · Best for everyday, complex tasks' }, { value: 'haiku', displayName: 'Haiku', description: 'Haiku 5.5 · Fastest for quick answers' }] });
+    if (r.subtype === 'initialize') return ok({ models: [{ value: 'default', displayName: 'Default (recommended)', description: 'Sonnet 5.5 · Efficient for routine tasks' }, { value: 'opus', displayName: 'Opus', description: 'Opus 5.5 · Best for everyday, complex tasks' }, { value: 'haiku', displayName: 'Haiku', description: 'Haiku 5.5 · Fastest for quick answers' }], account: { email: 'sam@example.com', subscriptionType: 'Claude Max' }, claude_code_version: '9.9.9' });
     if (r.subtype === 'get_context_usage') return ok({ categories: [{ name: 'System tools', tokens: 29000, kind: 'used' }, { name: 'Messages', tokens: 61000, kind: 'used' }, { name: 'Free space', tokens: 410000, kind: 'free' }], totalTokens: 90000, maxTokens: 500000, percentage: 18 });
     if (r.subtype === 'rewind_files') return ok(seen.has(r.user_message_id) ? (r.dry_run ? { canRewind: true, filesChanged: ['/x/a.js', '/x/b.js'], insertions: 3, deletions: 1 } : { canRewind: true }) : { canRewind: false, error: 'No file checkpoint found for this message.' });
     if (r.subtype === 'mcp_status') return ok({ mcpServers: [{ name: 'github', status: mcpUp ? 'connected' : 'failed', error: 'ENOENT: no such file' }, { name: 'linear', status: linear }] });
-    if (r.subtype === 'mcp_authenticate') { setTimeout(() => { linear = 'connected'; }, 400); return ok({ authUrl: 'https://mcp.linear.app/authorize?state=fake', requiresUserAction: true, callbackExpected: true }); }
-    if (r.subtype === 'side_question') return setTimeout(() => ok({ response: 'It runs on **port 3000**.', synthetic: false }), 300);
     if (r.subtype === 'mcp_toggle') { if (r.serverName === 'linear') linear = r.enabled ? 'connected' : 'disabled'; return ok({}); }
     if (r.subtype === 'reload_plugins') { require('node:fs').writeFileSync(require('node:path').join(__dirname, 'reloaded'), ''); return ok({}); }
-    if (r.subtype === 'get_status') return ok({ sections: [{ title: 'Session', rows: [{ label: 'Version', value: '9.9.9' }, { label: 'Login method', value: 'Claude Max account' }] }, { title: 'Environment', rows: [{ label: 'Model', value: model }, { label: 'MCP servers', value: '1 connected, 1 failed · /mcp' }] }] });
-    if (r.subtype === 'get_memory_dialog') return ok({ files: [{ kind: 'user', path: require('node:os').homedir() + '/.claude/CLAUDE.md', exists: true }, { kind: 'project', path: process.cwd() + '/CLAUDE.md', exists: false }], memories: [{ name: 'pnpm.md', description: 'This repo uses pnpm, not npm' }] });
-    if (r.subtype === 'get_session_cost') return ok({ text: 'Total cost:            $0.0123\\nTotal duration (API):  4s\\nTotal duration (wall): 1m 2s\\nTotal code changes:    3 lines added, 1 line removed' });
-    if (r.subtype === 'mcp_reconnect') { mcpUp = r.serverName === 'github'; return ok({}); }
+    if (r.subtype === 'mcp_reconnect') { if (r.serverName === 'linear') { if (require('node:fs').existsSync(require('node:path').join(__dirname, 'mcp-signed-in'))) linear = 'connected'; } else mcpUp = r.serverName === 'github'; return ok({}); }
     if (r.subtype === 'get_usage') return ok({ session: {}, rate_limits_available: true, rate_limits: { five_hour: { utilization: used[0], resets_at: new Date(Date.now() + 7200e3).toISOString() }, seven_day: { utilization: used[1], resets_at: new Date(Date.now() + 4 * 86400e3).toISOString() } } });
     if (r.subtype === 'interrupt') { clearTimeout(turn); ok({}); return out({ type: 'result', subtype: 'error_during_execution', is_error: true }); }
     return;
@@ -140,11 +137,14 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await type('need linear');
 	check(await until(() => box(`!document.getElementById('mcp').hidden && document.getElementById('mcp').textContent === 'linear needs you to sign inSign inHide'`)), 'one that needs you to sign in offers Sign in');
 	await box(`document.querySelector('#mcp button').click()`);
-	check(await until(() => global.__blaubeMcpAuthUrl === 'https://mcp.linear.app/authorize?state=fake' && inbox.log(id).some((e) => e.text === 'Finish signing in to linear in your browser')), 'which opens its sign-in in your browser (mcp_authenticate)');
+	check(await until(() => global.__blaubeMcpAuthUrl === 'https://mcp.linear.app/authorize?state=fake' && inbox.log(id).some((e) => e.text === 'Finish signing in to linear in your browser')), 'which signs in with Claude Code’s own claude mcp login');
 	check(await until(() => inbox.log(id).some((e) => e.text === 'Signed in to linear: it’s connected') && box(`document.getElementById('mcp').hidden`)), 'and says when it’s connected');
 	await until(() => tracker.sessions.get(id).state === 'done');
+	const transcript = path.join(dir, 'transcript.jsonl');
+	fs.writeFileSync(transcript, JSON.stringify({ type: 'assistant', timestamp: new Date().toISOString(), message: { role: 'assistant', content: [{ type: 'text', text: 'hi' }], usage: { input_tokens: 1200, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 300 } } }) + '\n');
+	tracker.sessions.get(id).transcript = transcript;
 	await type('/cost');
-	check(await until(() => inbox.log(id).some((e) => e.text === 'Total cost: $0.0123 · Total duration (API): 4s · Total duration (wall): 1m 2s · Total code changes: 3 lines added, 1 line removed')), '/cost says what it has cost, asked of Claude Code (get_session_cost)');
+	check(await until(() => inbox.log(id).some((e) => /^It has used 1\.5k tokens/.test(e.text || ''))), '/cost says what it has used, from its transcript');
 	await type('/mcp disable linear');
 	check(await until(() => inbox.log(id).some((e) => e.text === 'Turned linear off')), '/mcp disable turns an MCP server off (mcp_toggle)');
 	await type('/mcp');
@@ -153,8 +153,10 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	check(await until(() => inbox.log(id).some((e) => e.text === 'Turned linear on')), 'and /mcp enable turns it back on');
 	await type('/rewind');
 	check(await until(() => inbox.log(id).some((e) => /^To go back, tap edit under something you said/.test(e.text || ''))), '/rewind says how to go back, here');
+	fs.mkdirSync(path.join(dir, 'memory'), { recursive: true });
+	fs.writeFileSync(path.join(dir, 'memory', 'pnpm.md'), '---\nname: pnpm\ndescription: This repo uses pnpm, not npm\nmetadata:\n  type: project\n---\n\nUse pnpm.\n');
 	await type('/memory');
-	check(await until(() => inbox.log(id).some((e) => e.text === 'It reads ~/.claude/CLAUDE.md. It remembers: pnpm (This repo uses pnpm, not npm)')), '/memory lists what it reads and what it has remembered (get_memory_dialog)');
+	check(await until(() => inbox.log(id).some((e) => /^It reads (.+, )?\/.*blaube-owned-[^/]+\/CLAUDE\.md\. It remembers: pnpm \(This repo uses pnpm, not npm\)$/.test(e.text || ''))), '/memory lists what it reads and what it has remembered, from the files themselves');
 	// Claude's servers busy: the box says it's trying again, not just dots.
 	await type('flaky');
 	check(await until(() => box(`/Claude’s servers are overloaded: trying again in 4s \\(2 of 10\\)/.test(document.getElementById('inner').textContent)`), 3000), 'while Claude Code tries again, the box says why (api_retry)');
@@ -174,7 +176,7 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	await type('slow');
 	await until(() => tracker.sessions.get(id).state === 'working', 3000);
 	await type('/btw what port?');
-	check(await until(() => box(`(() => { const a = [...document.querySelectorAll('#inner .aside')].pop(); return !!a && (a.querySelector('.asideq') || {}).textContent === 'what port?' && (a.querySelector('.asidea b') || {}).textContent === 'port 3000'; })()`)), '/btw asks a quick question on the side, answered while it works (side_question)');
+	check(await until(() => box(`(() => { const a = [...document.querySelectorAll('#inner .aside')].pop(); return !!a && (a.querySelector('.asideq') || {}).textContent === 'what port?' && (a.querySelector('.asidea b') || {}).textContent === 'port 3000'; })()`)), '/btw asks a quick question on the side, answered while it works (a copy of the session, not saved)');
 	check(tracker.sessions.get(id).state === 'working' && !inbox.log(id).some((e) => e.who === 'you' && /what port/.test(e.text)) && !(await box(`[...document.querySelectorAll('#inner .note')].some((e) => /^Asked on the side/.test(e.textContent))`)), 'without becoming part of the conversation');
 	await box(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '.', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }))`);
 	await until(() => tracker.sessions.get(id).state !== 'working', 3000);
@@ -211,7 +213,7 @@ module.exports = async function run({ win, owned, startSession, talk, talkId, tr
 	global.__blaubeClaudeBin = '';
 	await type('/status');
 	check(await until(() => inbox.log(id).some((e) => /^Claude Code 9\.9\.9 · .+ · in .+ · started by Blaube$/.test(e.text || ''))), '/status says what it’s running on');
-	check(await until(() => box(`(() => { const d = [...document.querySelectorAll('#inner .statusmore')].pop(); if (!d) return false; d.open = true; return /Login methodClaude Max account/.test(d.textContent) && /MCP servers1 connected, 1 failed/.test(d.textContent); })()`)), 'with everything Claude Code’s own /status says a tap away (get_status)');
+	check(await until(() => box(`(() => { const d = [...document.querySelectorAll('#inner .statusmore')].pop(); if (!d) return false; d.open = true; return /Signed in assam@example\.com/.test(d.textContent) && /PlanClaude Max/.test(d.textContent) && /MCP servers2 connected/.test(d.textContent); })()`)), 'with its account and MCP servers a tap away');
 	await type('/export');
 	check(await until(() => inbox.log(id).some((e) => /^Saved the conversation to Downloads\/.+\.md$/.test(e.text || '') && fs.existsSync(e.file))), '/export saves the conversation to Downloads');
 	await type('/doctor');

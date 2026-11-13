@@ -47,4 +47,28 @@ function login(bin, cb, onUrl = () => {}, timeout = 5 * 60e3, dir = '', email = 
   return p;
 }
 
-module.exports = { signedOut, status, login };
+// Signs in to one of its MCP servers (one that needs you to): Claude Code's
+// own `claude mcp login <name>`, run in the session's folder (so a
+// project's servers are found), as the account it runs as. Your browser
+// opens; onUrl(url) as for login. cb(ok, why not).
+function mcpLogin(bin, name, cwd, cb, onUrl = () => {}, timeout = 5 * 60e3, dir = '') {
+  if (!bin) return cb(false, 'Claude Code isn’t installed');
+  let p;
+  try { p = spawn(bin, ['mcp', 'login', name], { cwd: cwd || undefined, env: quiet(dir), stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }); } catch (e) { return cb(false, e.message); }
+  let said = '', url = '', over = false;
+  const finish = (ok, why) => { if (over) return; over = true; clearTimeout(timer); cb(ok, why); };
+  const timer = setTimeout(() => { try { p.kill(); } catch { /* gone */ } finish(false, 'It wasn’t finished in time'); }, timeout);
+  const read = (d) => {
+    said = (said + d).slice(-4000);
+    const m = !url && /https?:\/\/\S+/.exec(said);
+    if (m) { url = m[0].replace(/[).,]+$/, ''); onUrl(url); }
+  };
+  p.stdout.setEncoding('utf8'); p.stdout.on('data', read);
+  p.stderr.setEncoding('utf8'); p.stderr.on('data', read);
+  p.stdin.on('error', () => {});
+  p.on('error', (e) => finish(false, e.message));
+  p.on('close', (code) => finish(code === 0, code === 0 ? '' : said.trim().split('\n').filter(Boolean).pop() || 'It didn’t sign in'));
+  return p;
+}
+
+module.exports = { signedOut, status, login, mcpLogin };
